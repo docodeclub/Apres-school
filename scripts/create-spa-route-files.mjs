@@ -15,6 +15,7 @@ const routes = [
   "policies",
   "contact",
   "staff-application",
+  "staff-login",
 ];
 
 const indexHtml = await readFile(indexPath, "utf8");

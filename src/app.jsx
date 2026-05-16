@@ -151,6 +151,15 @@ const pagePaths = {
   Policies: "/policies",
 };
 const pathPages = Object.fromEntries(Object.entries(pagePaths).map(([page, path]) => [path, page]));
+function isPlatformPath() {
+  return window.location.pathname === "/staff-login";
+}
+
+function hasRecoveryHash() {
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return hash.get("type") === "recovery" || hash.has("access_token");
+}
+
 const pageMeta = {
   Home: ["Après School | Holiday Clubs, Wraparound Care and School Partnerships", "Warm, reliable holiday clubs, wraparound care and trusted school partnerships for families and schools."],
   Bookings: ["Bookings | Après School", "Find your Après School site and continue to the correct booking platform."],
@@ -562,7 +571,8 @@ function getInitialPage() {
 
 export default function App() {
   const [page, setPage] = useState(getInitialPage);
-  const [platform, setPlatform] = useState(false);
+  const [platform, setPlatform] = useState(isPlatformPath);
+  const [passwordRecovery, setPasswordRecovery] = useState(hasRecoveryHash);
   const [platformUnlocked, setPlatformUnlocked] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authUser, setAuthUser] = useState(null);
@@ -573,6 +583,15 @@ export default function App() {
 
   useEffect(() => {
     const meta = pageMeta[page] || pageMeta.Home;
+    if (passwordRecovery) {
+      document.title = "Reset Password | Après School";
+      return;
+    }
+    if (platform) {
+      document.title = "Staff Login | Après School";
+      if (window.location.pathname !== "/staff-login") window.history.pushState({ page: "Staff Login" }, "", "/staff-login");
+      return;
+    }
     document.title = meta[0];
     const description = document.querySelector('meta[name="description"]');
     if (description) description.setAttribute("content", meta[1]);
@@ -592,12 +611,13 @@ export default function App() {
     if (ogUrl) ogUrl.setAttribute("content", canonicalUrl);
     if (window.location.pathname !== nextPath) window.history.pushState({ page }, "", nextPath);
     window.scrollTo({ top: 0, behavior: "auto" });
-  }, [page]);
+  }, [page, platform, passwordRecovery]);
 
   useEffect(() => {
     function handlePopState() {
+      setPasswordRecovery(hasRecoveryHash());
+      setPlatform(isPlatformPath());
       setPage(getInitialPage());
-      setPlatform(false);
     }
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -666,6 +686,7 @@ export default function App() {
   async function handleAuthenticated(user) {
     await applySession({ user });
     setPlatformUnlocked(true);
+    setPasswordRecovery(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -769,7 +790,9 @@ export default function App() {
             </Suspense>
           )
           : <PlatformLogin authLoading={authLoading} setPlatform={setPlatform} onAuthenticated={handleAuthenticated} onDemoAuthenticated={handleDemoAuthenticated} />
-        : <PublicSite page={page} setPage={setPage} />}
+        : passwordRecovery
+          ? <PasswordReset onAuthenticated={handleAuthenticated} setPlatformMode={setPlatform} setPasswordRecovery={setPasswordRecovery} />
+          : <PublicSite page={page} setPage={setPage} />}
     </div>
   );
 }
@@ -1030,6 +1053,91 @@ function Home({ setPage, setPlatform }) {
         </div>
       </section>
     </>
+  );
+}
+
+function PasswordReset({ onAuthenticated, setPlatformMode, setPasswordRecovery }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [status, setStatus] = useState({ tone: "info", message: "Checking your password reset link..." });
+  const [ready, setReady] = useState(false);
+  const updating = status?.tone === "info" && status.message === "Updating your password...";
+
+  useEffect(() => {
+    let active = true;
+
+    async function prepareRecovery() {
+      if (!hasSupabaseConfig) {
+        setStatus({ tone: "warn", message: "Supabase Auth is not configured for this deployment yet." });
+        return;
+      }
+
+      try {
+        const { supabase } = await loadSupabaseModule();
+        const { data, error } = await supabase.auth.getSession();
+        if (!active) return;
+        if (error) throw error;
+        if (!data.session) {
+          setStatus({ tone: "bad", message: "This password reset link has expired or has already been used. Please request a fresh reset email." });
+          return;
+        }
+        setReady(true);
+        setStatus({ tone: "info", message: "Choose a new password for your staff account." });
+      } catch (error) {
+        if (!active) return;
+        setStatus({ tone: "bad", message: error.message || "Unable to read this password reset link. Please request a fresh reset email." });
+      }
+    }
+
+    prepareRecovery();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function submit(event) {
+    event.preventDefault();
+
+    if (password.length < 8) {
+      setStatus({ tone: "bad", message: "Please use at least 8 characters." });
+      return;
+    }
+    if (password !== confirmPassword) {
+      setStatus({ tone: "bad", message: "Those passwords do not match." });
+      return;
+    }
+
+    setStatus({ tone: "info", message: "Updating your password..." });
+
+    try {
+      const { supabase, updateStaffPassword } = await loadSupabaseModule();
+      await updateStaffPassword(password);
+      const { data } = await supabase.auth.getSession();
+      window.history.replaceState({ page: "Staff Login" }, "", "/staff-login");
+      setPasswordRecovery(false);
+      setPlatformMode(true);
+      if (data.session?.user) await onAuthenticated(data.session.user);
+      setStatus({ tone: "good", message: "Password updated. Opening your staff workspace..." });
+    } catch (error) {
+      setStatus({ tone: "bad", message: error.message || "Unable to update your password. Please request a fresh reset email." });
+    }
+  }
+
+  return (
+    <main className="login-page" id="main-content">
+      <section className="login-card">
+        <p className="eyebrow">Password Reset</p>
+        <h1>Set a new staff password</h1>
+        <p>Use this page to finish your secure Après School staff account reset.</p>
+        <form className="compact-form" onSubmit={submit}>
+          <label>New password<input required disabled={!ready} type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" /></label>
+          <label>Confirm password<input required disabled={!ready} type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat new password" /></label>
+          <button className="button book" type="submit" disabled={!ready || updating}>{updating ? "Updating..." : "Update Password"}</button>
+        </form>
+        {status && <p className={`login-status ${status.tone}`}>{status.message}</p>}
+        <p className="security-note">If this link has expired, request another password reset from Supabase Auth.</p>
+      </section>
+    </main>
   );
 }
 

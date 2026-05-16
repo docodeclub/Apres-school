@@ -29,6 +29,13 @@ export async function signOutStaff() {
   if (error) throw error;
 }
 
+export async function updateStaffPassword(password) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+  return data;
+}
+
 export async function getProfileRole(userId) {
   if (!supabase || !userId) return "Staff";
   const { data, error } = await supabase
