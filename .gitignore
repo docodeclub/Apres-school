@@ -1,0 +1,11 @@
+public/assets/apres-highlights/img_*.jpg
+public/assets/apres-highlights/*.HEIC.png
+node_modules/
+dist/
+supabase/.temp/
+.vercel
+.DS_Store
+private-assets/
+public/assets/**/.DS_Store
+public/assets/apres-highlights/privacy/
+public/assets/apres-highlights/privacy-png/

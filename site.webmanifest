@@ -1,0 +1,17 @@
+{
+  "name": "Après School",
+  "short_name": "Après School",
+  "description": "Holiday clubs, wraparound care and school partnerships for families and schools.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4a68da",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
