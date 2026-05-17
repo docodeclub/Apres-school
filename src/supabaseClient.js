@@ -154,7 +154,7 @@ export async function fetchPlatformData({ userId, role }) {
     hrCategoriesQuery,
   ]);
 
-  const firstError = [staffResult.error, sessionsResult.error, documentsResult.error, enquiriesResult.error, hrFilesResult.error, hrCategoriesResult.error].find(Boolean);
+  const firstError = [staffResult.error, sessionsResult.error, documentsResult.error, enquiriesResult.error].find(Boolean);
   if (firstError) throw firstError;
 
   const staff = mapStaffRecords(staffResult.data || []);
@@ -165,8 +165,8 @@ export async function fetchPlatformData({ userId, role }) {
     sessions: mapSessions(sessionsResult.data || []),
     documents: mapDocuments(documentsResult.data || []),
     enquiries: mapEnquiries(enquiriesResult.data || []),
-    hrFiles: mapHrFiles(hrFilesResult.data || []),
-    hrFileCategories: hrCategoriesResult.data || [],
+    hrFiles: hrFilesResult.error ? [] : mapHrFiles(hrFilesResult.data || []),
+    hrFileCategories: hrCategoriesResult.error ? [] : hrCategoriesResult.data || [],
   };
 }
 
