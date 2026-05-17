@@ -326,7 +326,11 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   };
   const access = buildAccessContext(effectiveRole, userEmail, enrichedData);
   const scopedData = access.data;
-  const visibleTabs = effectiveRole === "Staff" ? ["Staff", "Documents", "Pay", "Rewards", "Sessions"] : platformTabs;
+  const visibleTabs = effectiveRole === "Staff"
+    ? ["Staff", "Documents", "Pay", "Rewards", "Sessions"]
+    : effectiveRole === "Manager"
+      ? ["Staff", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Sessions"]
+      : platformTabs;
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item))])
     .filter(([, items]) => items.length);
@@ -344,8 +348,8 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
       <aside className="sidebar">
         <div className="sidebar-heading">
           <p className="eyebrow">Internal platform</p>
-          <h2>{effectiveRole === "Staff" ? "My Workspace" : "Admin Workspace"}</h2>
-          <span>{effectiveRole === "Staff" ? "Your shifts, documents and pay" : "People, sites, compliance and bookings"}</span>
+          <h2>{effectiveRole === "Staff" ? "My Workspace" : effectiveRole === "Manager" ? "Manager Workspace" : "Admin Workspace"}</h2>
+          <span>{effectiveRole === "Staff" ? "Your shifts, documents and pay" : effectiveRole === "Manager" ? "Your team, rota, hours and compliance" : "People, sites, compliance and bookings"}</span>
         </div>
         <nav className="platform-nav" aria-label="Internal platform sections">
           {visibleGroups.map(([group, items]) => (
@@ -629,7 +633,19 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
         <Panel title="Staff Actions">
           <div className="list">
             {staffActionRows.map((person) => (
-              <article className="list-item staff-action-card" key={person.id}>
+              <article
+                className="list-item staff-action-card"
+                key={person.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpenStaffProfile(person.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpenStaffProfile(person.id);
+                  }
+                }}
+              >
                 <div>
                   <strong>{person.name}</strong>
                   <span>{person.role} · {staffPrimaryLocation(person)}</span>
@@ -637,7 +653,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
                 </div>
                 <div className="staff-action-card-tools">
                   <Badge value={person.compliance || "Review"} />
-                  <button className="button light" type="button" onClick={() => onOpenStaffProfile(person.id)}>View profile</button>
+                  <button className="button light" type="button" onClick={(event) => { event.stopPropagation(); onOpenStaffProfile(person.id); }}>View profile</button>
                 </div>
               </article>
             ))}

@@ -5259,11 +5259,18 @@ label {
 
 .staff-action-card {
   align-items: flex-start;
+  cursor: pointer;
 }
 
-.staff-action-card:hover {
+.staff-action-card:hover,
+.staff-action-card:focus-visible {
   border-color: rgba(72, 103, 216, 0.34);
   background: #f7f9ff;
+}
+
+.staff-action-card:focus-visible {
+  outline: 3px solid rgba(72, 103, 216, 0.24);
+  outline-offset: 3px;
 }
 
 .staff-action-card-tools {
