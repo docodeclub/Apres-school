@@ -3256,6 +3256,8 @@ function StaffTable({ compact, data = mockPlatformData }) {
 
 function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction }) {
   const [notes, setNotes] = useState(() => readJson(staffProfileNotesStorageKey, {}));
+  const [photoUrl, setPhotoUrl] = useState(person.photoUrl || person.profilePhotoUrl || "");
+  const [photoStatus, setPhotoStatus] = useState("");
   const note = notes[person.id] || "";
   const assignments = staffAssignments(person);
   const hrFiles = (data.hrFiles || []).filter((file) => file.staffRecordId === person.id).slice(0, 5);
@@ -3263,7 +3265,12 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction 
     const label = `${session.site || ""} ${session.programme || ""}`.toLowerCase();
     return staffSchoolNames(person).some((school) => label.includes(school.toLowerCase()));
   }).slice(0, 3);
-  const avatar = person.photoUrl || person.profilePhotoUrl || defaultStaffAvatar;
+  const avatar = photoUrl || person.photoUrl || person.profilePhotoUrl || defaultStaffAvatar;
+
+  useEffect(() => {
+    setPhotoUrl(person.photoUrl || person.profilePhotoUrl || "");
+    setPhotoStatus("");
+  }, [person.id, person.photoUrl, person.profilePhotoUrl]);
 
   function updateNote(value) {
     const next = {
@@ -3274,10 +3281,38 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction 
     localStorage.setItem(staffProfileNotesStorageKey, JSON.stringify(next));
   }
 
+  async function uploadProfilePhoto(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!hasSupabaseConfig) {
+      setPhotoStatus("Photo upload needs Supabase on the live platform.");
+      return;
+    }
+    setPhotoStatus("Uploading photo...");
+    try {
+      const { uploadStaffProfilePhoto } = await loadSupabaseModule();
+      const result = await uploadStaffProfilePhoto(person.id, file);
+      setPhotoUrl(result.photoUrl);
+      setPhotoStatus("Photo saved.");
+      addAuditLog("Staff photo uploaded", person.name);
+    } catch (error) {
+      setPhotoStatus(error.message || "Unable to upload staff photo.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
   return (
     <article className="staff-profile-panel">
       <div className="staff-profile-identity">
-        <img src={avatar} alt={`${person.name} profile`} />
+        <div className="staff-photo-control">
+          <img src={avatar} alt={`${person.name} profile`} />
+          <label className="button light">
+            <Upload size={16} /> Upload photo
+            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadProfilePhoto} />
+          </label>
+          {photoStatus && <small>{photoStatus}</small>}
+        </div>
         <div>
           <p className="eyebrow">Staff profile</p>
           <h3>{person.name}</h3>

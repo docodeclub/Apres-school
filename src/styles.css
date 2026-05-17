@@ -5768,7 +5768,13 @@ label {
   align-items: center;
 }
 
-.staff-profile-identity img {
+.staff-photo-control {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.staff-photo-control img {
   width: 104px;
   height: 104px;
   border-radius: 28px;
@@ -5776,6 +5782,27 @@ label {
   border: 1px solid rgba(72, 103, 216, 0.22);
   background: #eef3ff;
   box-shadow: 0 12px 28px rgba(38, 63, 169, 0.13);
+}
+
+.staff-photo-control label {
+  cursor: pointer;
+}
+
+.staff-photo-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.staff-photo-control small {
+  max-width: 130px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-align: center;
 }
 
 .staff-profile-identity h3 {

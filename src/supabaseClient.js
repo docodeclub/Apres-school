@@ -4,6 +4,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const enquiryFunctionName = import.meta.env.VITE_ENQUIRY_FUNCTION_NAME || "notify-public-enquiry";
 const coverMoveFunctionName = import.meta.env.VITE_COVER_MOVE_FUNCTION_NAME || "notify-cover-move";
+const staffPhotoBucket = "staff-profile-photos";
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 
@@ -73,6 +74,8 @@ export async function fetchPlatformData({ userId, role }) {
       primary_site,
       pay_rate,
       annual_salary,
+      photo_storage_path,
+      photo_url,
       profiles(full_name, email, role),
       scr_checks(admin_review, dbs, safeguarding, first_aid)
     `)
@@ -154,8 +157,11 @@ export async function fetchPlatformData({ userId, role }) {
   const firstError = [staffResult.error, sessionsResult.error, documentsResult.error, enquiriesResult.error, hrFilesResult.error, hrCategoriesResult.error].find(Boolean);
   if (firstError) throw firstError;
 
+  const staff = mapStaffRecords(staffResult.data || []);
+  await attachStaffPhotoUrls(staff);
+
   return {
-    staff: mapStaffRecords(staffResult.data || []),
+    staff,
     sessions: mapSessions(sessionsResult.data || []),
     documents: mapDocuments(documentsResult.data || []),
     enquiries: mapEnquiries(enquiriesResult.data || []),
@@ -182,8 +188,22 @@ function mapStaffRecords(records) {
       payRate: Number(record.pay_rate || 0),
       annualSalary: Number(record.annual_salary || 0),
       contractType: record.contract_type || record.employment_type || "Not recorded",
+      photoStoragePath: record.photo_storage_path || "",
+      photoUrl: record.photo_url || "",
     };
   });
+}
+
+async function attachStaffPhotoUrls(staff) {
+  if (!supabase) return staff;
+  await Promise.all(staff.map(async (person) => {
+    if (!person.photoStoragePath || person.photoUrl) return;
+    const { data, error } = await supabase
+      .storage
+      .from(staffPhotoBucket)
+      .createSignedUrl(person.photoStoragePath, 60 * 60);
+    if (!error && data?.signedUrl) person.photoUrl = data.signedUrl;
+  }));
 }
 
 function mapHrFiles(records) {
@@ -325,6 +345,42 @@ export async function archiveHrFile(id) {
 
   if (error) throw error;
   return { id };
+}
+
+export async function uploadStaffProfilePhoto(staffRecordId, file) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!staffRecordId || !file) throw new Error("Choose a staff member and image file.");
+
+  const extension = file.name?.split(".").pop()?.toLowerCase() || "jpg";
+  const safeExtension = ["jpg", "jpeg", "png", "webp"].includes(extension) ? extension : "jpg";
+  const storagePath = `${staffRecordId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${safeExtension}`;
+  const { error: uploadError } = await supabase
+    .storage
+    .from(staffPhotoBucket)
+    .upload(storagePath, file, {
+      cacheControl: "3600",
+      contentType: file.type || "image/jpeg",
+      upsert: true,
+    });
+  if (uploadError) throw uploadError;
+
+  const { error: updateError } = await supabase
+    .from("staff_records")
+    .update({ photo_storage_path: storagePath, photo_url: null })
+    .eq("id", staffRecordId);
+  if (updateError) throw updateError;
+
+  const { data, error: signedUrlError } = await supabase
+    .storage
+    .from(staffPhotoBucket)
+    .createSignedUrl(storagePath, 60 * 60);
+  if (signedUrlError) throw signedUrlError;
+
+  return {
+    staffRecordId,
+    photoStoragePath: storagePath,
+    photoUrl: data?.signedUrl || "",
+  };
 }
 
 export async function sendCoverMoveNotifications(payload) {
