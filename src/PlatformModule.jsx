@@ -3425,16 +3425,27 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     return "Review needed";
   }
   function actionText(person) {
-    const missing = [
+    const missing = actionItems(person);
+    if (!missing.length) return checkStatus(person) === "Compliant" ? "No action" : "Check evidence";
+    return `Check ${missing.slice(0, 2).join(" / ")}${missing.length > 2 ? ` +${missing.length - 2}` : ""}`;
+  }
+  function actionItems(person) {
+    return [
       !hasValidDate(person.dbsRenewal) && "DBS",
       !hasValidDate(person.safeguardingExpiry) && "Safeguarding",
       !hasValidDate(person.allergyAwarenessExpiry) && "Allergy",
       !person.scrChecklist?.approvedAt && person.compliance !== "Compliant" && "Admin review",
     ].filter(Boolean);
-    if (!missing.length) return checkStatus(person) === "Compliant" ? "No action" : "Check evidence";
-    return `Check ${missing.slice(0, 2).join(" / ")}${missing.length > 2 ? ` +${missing.length - 2}` : ""}`;
   }
   const search = query.trim().toLowerCase();
+  const statusCounts = data.staff.reduce((acc, person) => {
+    const status = checkStatus(person);
+    acc.All += 1;
+    acc[status] = (acc[status] || 0) + 1;
+    if (status !== "Compliant") acc["Action needed"] += 1;
+    return acc;
+  }, { "Action needed": 0, All: 0, Compliant: 0, "Review needed": 0, Missing: 0, "Expiring soon": 0, Rejected: 0 });
+  const statusOptions = ["Action needed", "All", "Compliant", "Review needed", "Missing", "Expiring soon", "Rejected"];
   const rows = data.staff.filter((person) => {
     const status = checkStatus(person);
     const matchesStatus = statusFilter === "All" || (statusFilter === "Action needed" ? status !== "Compliant" : status === statusFilter);
@@ -3445,6 +3456,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   const actionCount = data.staff.filter((person) => checkStatus(person) !== "Compliant").length;
   const compliantCount = data.staff.length - actionCount;
   const selectedPerson = data.staff.find((person) => person.id === selectedId) || rows[0] || data.staff[0];
+  const filtersActive = query || statusFilter !== "Action needed" || siteFilter !== "All";
   useEffect(() => {
     if (!targetStaffId) return;
     setSelectedId(targetStaffId);
@@ -3457,16 +3469,24 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
           <p className="eyebrow">Live staff register</p>
           <h3>Find the next compliance action quickly.</h3>
           <p>{rows.length} of {data.staff.length} staff shown · {actionCount} need review · {compliantCount} currently compliant.</p>
+          <div className="scr-filter-chips" aria-label="SCR status filters">
+            {statusOptions.map((status) => (
+              <button key={status} className={statusFilter === status ? "active" : ""} type="button" onClick={() => setStatusFilter(status)}>
+                {status}<span>{statusCounts[status] || 0}</span>
+              </button>
+            ))}
+          </div>
         </div>
         <div className="staff-register-controls">
           <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, role, site, manager" /></label>
           <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            {["Action needed", "All", "Compliant", "Review needed", "Missing", "Expiring soon", "Rejected"].map((item) => <option key={item}>{item}</option>)}
+            {statusOptions.map((item) => <option key={item}>{item}</option>)}
           </select></label>
           <label>Site<select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
             <option>All</option>
             {siteOptions.map((site) => <option key={site}>{site}</option>)}
           </select></label>
+          <button className="button light" type="button" disabled={!filtersActive} onClick={() => { setQuery(""); setStatusFilter("Action needed"); setSiteFilter("All"); }}>Clear</button>
         </div>
       </div>
       {selectedPerson && (
@@ -3476,6 +3496,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
           managerName={managerName(selectedPerson)}
           checkStatus={checkStatus(selectedPerson)}
           nextAction={actionText(selectedPerson)}
+          actionItems={actionItems(selectedPerson)}
         />
       )}
       <TableWrap>
@@ -3483,7 +3504,18 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
           <thead><tr><th>Staff</th><th>Role</th><th>Assigned sites</th><th>Reports to</th><th>SCR</th><th>Next action</th>{!compact && <><th>DBS renewal</th><th>Safeguarding</th><th>First aid</th></>}<th>Profile</th></tr></thead>
           <tbody>
             {rows.map((person) => (
-              <tr key={person.id} className={selectedPerson?.id === person.id ? "selected-row" : ""}>
+              <tr
+                key={person.id}
+                className={selectedPerson?.id === person.id ? "selected-row" : ""}
+                onClick={() => setSelectedId(person.id)}
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSelectedId(person.id);
+                  }
+                }}
+              >
                 <td><strong>{person.name}</strong>{person.email && <><br /><small>{person.email}</small></>}</td>
                 <td>{person.role}</td>
                 <td>{staffPrimaryLocation(person)}</td>
@@ -3491,7 +3523,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
                 <td><Badge value={checkStatus(person)} /></td>
                 <td><strong>{actionText(person)}</strong></td>
                 {!compact && <><td>{person.dbsRenewal}</td><td>{person.safeguardingExpiry}</td><td>{person.firstAidExpiry}</td></>}
-                <td><button className="button subtle" type="button" onClick={() => setSelectedId(person.id)}>View</button></td>
+                <td><button className="button subtle" type="button" onClick={(event) => { event.stopPropagation(); setSelectedId(person.id); }}>{selectedPerson?.id === person.id ? "Open" : "View"}</button></td>
               </tr>
             ))}
           </tbody>
@@ -3502,7 +3534,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   );
 }
 
-function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction }) {
+function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction, actionItems = [] }) {
   const [notes, setNotes] = useState(() => readJson(staffProfileNotesStorageKey, {}));
   const [photoUrl, setPhotoUrl] = useState(person.photoUrl || person.profilePhotoUrl || "");
   const [photoStatus, setPhotoStatus] = useState("");
@@ -3597,6 +3629,16 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction 
           </div>
         ))}
       </div>
+      <section className={`scr-next-action-card ${actionItems.length ? "needs-action" : "ready"}`}>
+        <div>
+          <p className="eyebrow">Next action</p>
+          <h4>{nextAction}</h4>
+          <p>{actionItems.length ? "Work through these items before issuing assurance or marking the profile ready." : "No immediate SCR action is flagged for this staff member."}</p>
+        </div>
+        <div className="scr-action-tags">
+          {(actionItems.length ? actionItems : ["No action"]).map((item) => <span key={item}>{item}</span>)}
+        </div>
+      </section>
       <div className="staff-profile-grid">
         <section>
           <h4>Contact & line management</h4>
