@@ -6,8 +6,35 @@ import {
 
 const hasSupabaseConfig = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 let supabaseModulePromise;
+
+function isDynamicImportError(error) {
+  const message = String(error?.message || error || "");
+  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(message);
+}
+
+function recoverFromDynamicImportError(error) {
+  if (typeof window === "undefined" || !isDynamicImportError(error)) {
+    throw error;
+  }
+
+  const storageKey = "apres-dynamic-import-reload";
+  const lastReload = Number(sessionStorage.getItem(storageKey) || 0);
+  if (Date.now() - lastReload < 15000) {
+    throw error;
+  }
+
+  sessionStorage.setItem(storageKey, String(Date.now()));
+  const url = new URL(window.location.href);
+  url.searchParams.set("refresh", String(Date.now()));
+  window.location.replace(url.toString());
+  return new Promise(() => {});
+}
+
 function loadSupabaseModule() {
-  supabaseModulePromise ||= import("./supabaseClient.js");
+  supabaseModulePromise ||= import("./supabaseClient.js").catch((error) => {
+    supabaseModulePromise = undefined;
+    return recoverFromDynamicImportError(error);
+  });
   return supabaseModulePromise;
 }
 
