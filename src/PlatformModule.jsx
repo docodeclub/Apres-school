@@ -231,6 +231,17 @@ const staffProfileNotesStorageKey = "apres-staff-profile-notes";
 const ofstedLogsStorageKey = "apres-ofsted-site-logs";
 const ofstedInspectionDayStorageKey = "apres-ofsted-inspection-day";
 const ofstedGapOwnersStorageKey = "apres-ofsted-gap-owners";
+const scrEvidenceRequestOptions = [
+  ["dbs", "Enhanced DBS"],
+  ["safeguarding", "Safeguarding"],
+  ["allergy", "Allergy awareness"],
+  ["firstAid", "First aid"],
+  ["rightToWork", "Right to work"],
+  ["identity", "Identity / address"],
+  ["barredList", "Barred list"],
+  ["references", "References"],
+  ["declarations", "Annual declarations"],
+];
 const ofstedGapStatuses = ["Not started", "In progress", "Waiting on evidence", "Ready for review", "Resolved"];
 const ofstedInspectionDayItems = [
   { id: "registration", title: "Registration details ready", detail: "URN, registers, address and Ofsted provider page are available for the selected site." },
@@ -1452,6 +1463,7 @@ function HoursTracker({ data }) {
 
 function SCR({ data, access, targetStaffId, onTargetHandled }) {
   const [checklistState, setChecklistState] = useState(() => readScrChecklistState());
+  const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const [assignmentState, setAssignmentState] = useState(() => Object.fromEntries(
     data.staff.map((person) => [person.id, staffAssignments(person)]),
   ));
@@ -1545,6 +1557,40 @@ function SCR({ data, access, targetStaffId, onTargetHandled }) {
     });
     approveOnboardedStaffProfile(staffId);
     addAuditLog("SCR profile approved", `${person?.name || staffId} marked compliant`);
+  }
+  function saveRenewalRequests(next) {
+    setRenewalRequests(next);
+    localStorage.setItem(scrRenewalRequestsStorageKey, JSON.stringify(next));
+  }
+  function requestProfileEvidence(person, evidenceKey, note = "") {
+    const id = `${person.id}-${evidenceKey}`;
+    const check = scrEvidenceLabel(evidenceKey);
+    const requestNote = note.trim() || `${check} evidence requested from staff profile.`;
+    const next = {
+      ...renewalRequests,
+      [id]: appendScrRequestHistory({
+        ...(renewalRequests[id] || {}),
+        status: "Requested",
+        requestedAt: new Date().toISOString(),
+        requestedBy: access?.currentUser?.name || "Admin",
+        note: requestNote,
+      }, "Requested", access?.currentUser?.name || "Admin", requestNote),
+    };
+    saveRenewalRequests(next);
+    addAuditLog("SCR evidence requested", `${person.name}: ${check}`);
+  }
+  function clearProfileEvidenceRequest(request) {
+    const next = {
+      ...renewalRequests,
+      [request.id]: appendScrRequestHistory({
+        ...(renewalRequests[request.id] || {}),
+        status: "Cleared",
+        clearedAt: new Date().toISOString(),
+        clearedBy: access?.currentUser?.name || "Admin",
+      }, "Cleared", access?.currentUser?.name || "Admin", "Admin cleared this evidence request from the staff profile."),
+    };
+    saveRenewalRequests(next);
+    addAuditLog("SCR evidence request cleared", `${request.check}: ${request.staffId}`);
   }
   async function downloadStaffSummary() {
     const { exportStaffScrSummary } = await import("./pdfExports.js");
@@ -1662,7 +1708,14 @@ function SCR({ data, access, targetStaffId, onTargetHandled }) {
           </div>
         </article>
       </section>
-      <StaffTable data={scrData} targetStaffId={targetStaffId} onTargetHandled={onTargetHandled} />
+      <StaffTable
+        data={scrData}
+        targetStaffId={targetStaffId}
+        onTargetHandled={onTargetHandled}
+        evidenceRequests={renewalRequests}
+        onRequestEvidence={requestProfileEvidence}
+        onClearEvidenceRequest={clearProfileEvidenceRequest}
+      />
       <SCRRenewalPanel items={renewalItems} />
       {!!onboardingProfiles.length && <SCROnboardingQueue staff={onboardingProfiles} onUpdate={updateChecklist} onApprove={approveScrProfile} />}
       <SCRAssignmentsPanel
@@ -2441,6 +2494,29 @@ function buildStaffEvidenceRequests(staff, renewalItems, requests = {}) {
       };
     })
     .filter(Boolean);
+}
+
+function buildStaffProfileEvidenceRequests(staff, requests = {}) {
+  const staffPrefix = `${staff.id}-`;
+  return Object.entries(requests)
+    .map(([id, request]) => {
+      if (!id.startsWith(staffPrefix) || request.status === "Cleared") return null;
+      const evidenceKey = id.slice(staffPrefix.length);
+      const evidence = staff.scrChecklist?.evidence?.[evidenceKey] || {};
+      return {
+        id,
+        staffId: staff.id,
+        evidenceKey,
+        check: scrEvidenceLabel(evidenceKey),
+        status: request.status || "Requested",
+        requestedAt: request.requestedAt,
+        requestedBy: request.requestedBy,
+        note: request.note || request.rejectionReason || request.submissionNote || evidence.note || "",
+        history: buildScrEvidenceHistory(request),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(b.requestedAt || "").localeCompare(String(a.requestedAt || "")));
 }
 
 function buildSubmittedEvidenceReviews(staff, requests = {}) {
@@ -3398,7 +3474,7 @@ function Settings() {
   );
 }
 
-function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetHandled }) {
+function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetHandled, evidenceRequests = {}, onRequestEvidence, onClearEvidenceRequest }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Action needed");
   const [siteFilter, setSiteFilter] = useState("All");
@@ -3497,6 +3573,9 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
           checkStatus={checkStatus(selectedPerson)}
           nextAction={actionText(selectedPerson)}
           actionItems={actionItems(selectedPerson)}
+          evidenceRequests={buildStaffProfileEvidenceRequests(selectedPerson, evidenceRequests)}
+          onRequestEvidence={onRequestEvidence}
+          onClearEvidenceRequest={onClearEvidenceRequest}
         />
       )}
       <TableWrap>
@@ -3534,11 +3613,13 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   );
 }
 
-function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction, actionItems = [] }) {
+function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction, actionItems = [], evidenceRequests = [], onRequestEvidence, onClearEvidenceRequest }) {
   const [notes, setNotes] = useState(() => readJson(staffProfileNotesStorageKey, {}));
   const [photoUrl, setPhotoUrl] = useState(person.photoUrl || person.profilePhotoUrl || "");
   const [photoStatus, setPhotoStatus] = useState("");
   const [hrFileTab, setHrFileTab] = useState("All");
+  const [requestEvidenceKey, setRequestEvidenceKey] = useState(() => scrEvidenceRequestOptions[0][0]);
+  const [requestNote, setRequestNote] = useState("");
   const note = notes[person.id] || "";
   const assignments = staffAssignments(person);
   const hrFiles = (data.hrFiles || []).filter((file) => file.staffRecordId === person.id);
@@ -3568,6 +3649,15 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     setPhotoUrl(person.photoUrl || person.profilePhotoUrl || "");
     setPhotoStatus("");
     setHrFileTab("All");
+    const missingKey = actionItems.map((item) => String(item).toLowerCase()).includes("dbs")
+      ? "dbs"
+      : actionItems.map((item) => String(item).toLowerCase()).includes("safeguarding")
+        ? "safeguarding"
+        : actionItems.map((item) => String(item).toLowerCase()).includes("allergy")
+          ? "allergy"
+          : scrEvidenceRequestOptions[0][0];
+    setRequestEvidenceKey(missingKey);
+    setRequestNote("");
   }, [person.id, person.photoUrl, person.profilePhotoUrl]);
 
   function updateNote(value) {
@@ -3598,6 +3688,12 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     } finally {
       event.target.value = "";
     }
+  }
+
+  function submitEvidenceRequest(event) {
+    event.preventDefault();
+    onRequestEvidence?.(person, requestEvidenceKey, requestNote);
+    setRequestNote("");
   }
 
   return (
@@ -3637,6 +3733,41 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
         </div>
         <div className="scr-action-tags">
           {(actionItems.length ? actionItems : ["No action"]).map((item) => <span key={item}>{item}</span>)}
+        </div>
+      </section>
+      <section className="scr-profile-request-panel">
+        <div>
+          <p className="eyebrow">Evidence requests</p>
+          <h4>Request missing or updated SCR evidence.</h4>
+          <p>Requests logged here appear in the staff member’s evidence request area and can be tracked by admin until submitted, approved or cleared.</p>
+        </div>
+        <form className="scr-profile-request-form" onSubmit={submitEvidenceRequest}>
+          <label>
+            Evidence type
+            <select value={requestEvidenceKey} onChange={(event) => setRequestEvidenceKey(event.target.value)}>
+              {scrEvidenceRequestOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </label>
+          <label>
+            Note to staff
+            <textarea rows="2" value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Please upload your renewed certificate or reference." />
+          </label>
+          <button className="button dark" type="submit" disabled={!onRequestEvidence}><Upload size={16} /> Request Evidence</button>
+        </form>
+        <div className="scr-profile-request-list">
+          {evidenceRequests.length ? evidenceRequests.map((request) => (
+            <article key={request.id}>
+              <div>
+                <strong>{request.check}</strong>
+                <span>{request.status} · {request.requestedAt ? formatShortDate(request.requestedAt.slice(0, 10)) : "date pending"}{request.requestedBy ? ` · ${request.requestedBy}` : ""}</span>
+                {request.note && <p>{request.note}</p>}
+                {!!request.history.length && <EvidenceHistoryTimeline events={request.history} />}
+              </div>
+              {request.status !== "Submitted" && (
+                <button className="button light" type="button" onClick={() => onClearEvidenceRequest?.(request)} disabled={!onClearEvidenceRequest}>Clear</button>
+              )}
+            </article>
+          )) : <span className="muted-inline">No active evidence requests for this staff member.</span>}
         </div>
       </section>
       <div className="staff-profile-grid">

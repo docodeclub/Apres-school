@@ -5952,9 +5952,18 @@ label {
 
 .staff-register-controls {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(150px, 0.45fr) minmax(150px, 0.45fr) auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   align-items: end;
+}
+
+.staff-register-controls label:first-child,
+.staff-register-controls .button {
+  grid-column: 1 / -1;
+}
+
+.staff-register-controls .button {
+  justify-content: center;
 }
 
 .scr-filter-chips {
@@ -6172,6 +6181,78 @@ label {
   padding: 8px 10px;
   font-size: 0.8rem;
   font-weight: 950;
+}
+
+.scr-profile-request-panel {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(72, 103, 216, 0.18);
+  border-radius: 18px;
+  background: #fff;
+  padding: 16px;
+}
+
+.scr-profile-request-panel h4 {
+  margin: 0;
+  color: var(--royal-dark);
+  font-size: 1.18rem;
+}
+
+.scr-profile-request-panel p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.scr-profile-request-form {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.5fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.scr-profile-request-form label {
+  min-width: 0;
+}
+
+.scr-profile-request-form textarea {
+  min-height: 44px;
+  resize: vertical;
+}
+
+.scr-profile-request-form .button {
+  min-height: 44px;
+  justify-content: center;
+}
+
+.scr-profile-request-list {
+  display: grid;
+  gap: 10px;
+}
+
+.scr-profile-request-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f8faff;
+  padding: 12px;
+}
+
+.scr-profile-request-list strong,
+.scr-profile-request-list span,
+.scr-profile-request-list p {
+  overflow-wrap: anywhere;
+}
+
+.scr-profile-request-list span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 850;
 }
 
 .staff-profile-grid h4,
@@ -6813,6 +6894,8 @@ th {
   .staff-register-controls,
   .staff-home-summary,
   .staff-home-details,
+  .scr-profile-request-form,
+  .scr-profile-request-list article,
   .staff-profile-grid,
   .staff-profile-stat-strip,
   .cover-move-panel,
