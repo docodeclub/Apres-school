@@ -316,6 +316,7 @@ const defaultStaffAvatar = "/assets/internal/default-staff-avatar.png";
 function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const [staffProfileTargetId, setStaffProfileTargetId] = useState("");
   const [viewRole, setViewRole] = useState(role);
+  const [previewUserId, setPreviewUserId] = useState("");
   const localStaff = readOnboardedStaffProfiles();
   const canPreviewRoles = ["Admin", "Superadmin"].includes(role);
   const effectiveRole = canPreviewRoles ? viewRole : role;
@@ -324,7 +325,9 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
     staff: mergeStaffProfiles(data.staff, localStaff),
     source: localStaff.length ? `${data.source} + onboarding` : data.source,
   };
-  const access = buildAccessContext(effectiveRole, userEmail, enrichedData);
+  const previewUsers = canPreviewRoles ? buildPreviewUsers(enrichedData, viewRole) : [];
+  const selectedPreviewUser = previewUsers.find((user) => user.id === previewUserId) || null;
+  const access = buildAccessContext(effectiveRole, userEmail, enrichedData, canPreviewRoles ? previewUserId : "");
   const scopedData = access.data;
   const visibleTabs = effectiveRole === "Staff"
     ? ["Staff", "Documents", "Pay", "Rewards", "Sessions"]
@@ -337,11 +340,26 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
 
   useEffect(() => {
     setViewRole(role);
+    setPreviewUserId("");
   }, [role]);
 
   useEffect(() => {
     if (!visibleTabs.includes(tab)) setTab(visibleTabs[0] || "Staff");
   }, [setTab, tab, visibleTabs]);
+
+  useEffect(() => {
+    if (!canPreviewRoles || !["Staff", "Manager"].includes(viewRole)) {
+      if (previewUserId) setPreviewUserId("");
+      return;
+    }
+    if (!previewUsers.length) {
+      if (previewUserId) setPreviewUserId("");
+      return;
+    }
+    if (!previewUsers.some((user) => user.id === previewUserId)) {
+      setPreviewUserId(previewUsers[0].id);
+    }
+  }, [canPreviewRoles, previewUserId, previewUsers, viewRole]);
 
   return (
     <main className="platform">
@@ -371,6 +389,10 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
           canPreviewRoles={canPreviewRoles}
           viewRole={viewRole}
           setViewRole={setViewRole}
+          previewUsers={previewUsers}
+          previewUserId={previewUserId}
+          setPreviewUserId={setPreviewUserId}
+          selectedPreviewUser={selectedPreviewUser}
           userEmail={userEmail}
           onSignOut={onSignOut}
           data={enrichedData}
@@ -398,21 +420,27 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   );
 }
 
-function PlatformHeader({ role, actualRole, canPreviewRoles, viewRole, setViewRole, userEmail, onSignOut, data, access }) {
+function PlatformHeader({ role, actualRole, canPreviewRoles, viewRole, setViewRole, previewUsers, previewUserId, setPreviewUserId, selectedPreviewUser, userEmail, onSignOut, data, access }) {
   const headline = role === "Staff" ? "My Après Workspace" : "Today at Après";
   const subline = role === "Staff"
     ? "Your sessions, documents, pay and staff actions in one place."
     : "The key actions for staffing, compliance, bookings and site operations.";
+  const previewingPerson = canPreviewRoles && selectedPreviewUser && ["Staff", "Manager"].includes(viewRole);
   return (
     <div className="platform-header">
       <div>
         <p className="eyebrow">Secure role-based platform</p>
         <h1>{headline}</h1>
         <p className="platform-subline">{subline}</p>
-        {userEmail && <p className="platform-user">{userEmail} · {role}</p>}
-        {canPreviewRoles && viewRole !== actualRole && <p className="platform-warning">Previewing the platform as {viewRole}. Your real account remains {actualRole}.</p>}
+        {userEmail && <p className="platform-user">{previewingPerson ? `${selectedPreviewUser.name} · ${selectedPreviewUser.email}` : userEmail} · {role}</p>}
+        {canPreviewRoles && viewRole !== actualRole && (
+          <p className="platform-warning">
+            Previewing the platform as {previewingPerson ? `${selectedPreviewUser.name} (${viewRole})` : viewRole}. Your real account remains {actualRole}.
+          </p>
+        )}
         <p className="platform-source">{data.loading ? "Loading live records..." : `${data.source}${data.error ? " · using demo fallback" : ""}`}</p>
         {access?.isScoped && <p className="platform-source">Manager scope: {access.directReports.length} direct reports · own team records only</p>}
+        {access?.isStaffScoped && <p className="platform-source">Staff scope: personal records only</p>}
         {data.error && <p className="platform-warning">{data.error}</p>}
       </div>
       <div className="header-tools">
@@ -423,6 +451,17 @@ function PlatformHeader({ role, actualRole, canPreviewRoles, viewRole, setViewRo
               {["Superadmin", "Admin", "Manager", "Staff"].map((item) => <option key={item}>{item}</option>)}
             </select>
             <small>Signed in as {actualRole}</small>
+          </label>
+        )}
+        {canPreviewRoles && ["Staff", "Manager"].includes(viewRole) && (
+          <label className="view-as-control view-person-control">
+            <span>{viewRole === "Manager" ? "Preview manager" : "Preview staff member"}</span>
+            <select value={previewUserId} onChange={(event) => setPreviewUserId(event.target.value)} disabled={!previewUsers.length}>
+              {previewUsers.length
+                ? previewUsers.map((user) => <option key={user.id} value={user.id}>{user.name} · {user.email}</option>)
+                : <option value="">No {viewRole.toLowerCase()} records</option>}
+            </select>
+            <small>{previewUsers.length} available</small>
           </label>
         )}
         <span className="secure-label">Protected</span>
@@ -3779,10 +3818,24 @@ function saveScrChecklistState(next) {
   localStorage.setItem(scrChecklistStorageKey, JSON.stringify(next));
 }
 
-function buildAccessContext(role, userEmail, data) {
+function buildPreviewUsers(data, viewRole) {
+  const users = mergeUserRecords(data.staff, readUserAdminState());
+  const seen = new Set();
+  return users
+    .filter((user) => {
+      if (!user?.id || seen.has(user.id)) return false;
+      seen.add(user.id);
+      if (viewRole === "Manager") return user.role === "Manager";
+      if (viewRole === "Staff") return user.role !== "Superadmin" && user.role !== "Admin";
+      return true;
+    })
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+
+function buildAccessContext(role, userEmail, data, previewUserId = "") {
   const users = mergeUserRecords(data.staff, readUserAdminState());
   const hierarchy = readHierarchyState();
-  const currentUser = users.find((user) => user.email === userEmail) || users.find((user) => user.role === role) || users[0];
+  const currentUser = users.find((user) => user.id === previewUserId) || users.find((user) => user.email === userEmail) || users.find((user) => user.role === role) || users[0];
   const isScoped = role === "Manager";
   const isStaffScoped = role === "Staff";
   const directReports = isScoped
@@ -3800,6 +3853,7 @@ function buildAccessContext(role, userEmail, data) {
     role,
     currentUser,
     isScoped,
+    isStaffScoped,
     directReports,
     directIds,
     directNames,
