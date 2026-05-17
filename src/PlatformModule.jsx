@@ -448,6 +448,9 @@ function AdminDashboard({ data, access, onOpenTab }) {
     [pendingCoverMoves, "Cover notices pending", "Confirm rota cover emails when staff are moved between sites.", "Rota"],
     [pendingDocs, "Unread policy acknowledgements", "Chase missing reads from the document library.", "Documents"],
   ];
+  const staffActionRows = staffWithScrState
+    .filter((person) => !String(person.compliance).toLowerCase().includes("compliant"))
+    .slice(0, 5);
   const quickActions = [
     ["Rota", "Cover, first aid and EYFS cover", "Rota"],
     ["Ofsted", "Site readiness and inspection window", "Ofsted"],
@@ -560,7 +563,22 @@ function AdminDashboard({ data, access, onOpenTab }) {
         <Metric icon={<CalendarDays />} label="Upcoming sessions" value={data.sessions.length} tone="blue" />
         <Metric icon={<ClipboardCheck />} label="Submitted evidence" value={submittedEvidence.length} tone={submittedEvidence.length ? "amber" : "green"} />
         <Metric icon={<LockKeyhole />} label="Active users" value={activeUsers} tone="blue" />
-        <Panel title="Submitted Evidence Review"><SubmittedEvidenceReviewQueue items={submittedEvidence} onReview={reviewSubmittedEvidence} /></Panel>
+        <Panel title="Staff Actions">
+          <div className="list">
+            {staffActionRows.map((person) => (
+              <article className="list-item" key={person.id}>
+                <div>
+                  <strong>{person.name}</strong>
+                  <span>{person.role} · {staffPrimaryLocation(person)}</span>
+                  <small>DBS: {person.dbsRenewal || "Not recorded"} · Safeguarding: {person.safeguardingExpiry || "Not recorded"}</small>
+                </div>
+                <Badge value={person.compliance || "Review"} />
+              </article>
+            ))}
+            {!staffActionRows.length && <EmptyList title="No staff actions" text="Everyone in scope is currently marked compliant." />}
+          </div>
+          <button className="button light" type="button" onClick={() => onOpenTab("SCR")}>Open SCR</button>
+        </Panel>
         <Panel title="SCR Snapshot">
           <ActionList items={[
             `${renewalItems.length} renewal prompts`,
@@ -569,6 +587,7 @@ function AdminDashboard({ data, access, onOpenTab }) {
           ]} />
           <button className="button light" type="button" onClick={() => onOpenTab("SCR")}>Open SCR</button>
         </Panel>
+        <Panel title="Submitted Evidence Review"><SubmittedEvidenceReviewQueue items={submittedEvidence} onReview={reviewSubmittedEvidence} /></Panel>
         <Panel title="Recent Enquiries"><EnquiryList data={data} /></Panel>
       </DashboardGrid>
     </>
@@ -3135,6 +3154,9 @@ function Settings() {
 }
 
 function StaffTable({ compact, data = mockPlatformData }) {
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Action needed");
+  const [siteFilter, setSiteFilter] = useState("All");
   const hierarchy = readHierarchyState();
   const staffUsers = data.staff.map((person, index) => ({
     id: person.profileId || person.id,
@@ -3142,25 +3164,79 @@ function StaffTable({ compact, data = mockPlatformData }) {
     role: person.role?.toLowerCase().includes("manager") ? "Manager" : "Staff",
     order: index,
   }));
+  const siteOptions = Array.from(new Set(data.staff.flatMap((person) => staffSchoolNames(person)).filter(Boolean))).sort();
   function managerName(person) {
     const staffUser = staffUsers.find((item) => item.id === (person.profileId || person.id));
     const reportsTo = hierarchy[staffUser?.id]?.reportsTo ?? defaultReportsTo(staffUser, staffUsers);
     return staffUsers.find((item) => item.id === reportsTo)?.name || "Unassigned";
   }
+  function checkStatus(person) {
+    const status = String(person.compliance || "").toLowerCase();
+    if (status.includes("compliant")) return "Compliant";
+    if (status.includes("expiring")) return "Expiring soon";
+    if (status.includes("rejected")) return "Rejected";
+    if (status.includes("missing")) return "Missing";
+    return "Review needed";
+  }
+  function actionText(person) {
+    const missing = [
+      !hasValidDate(person.dbsRenewal) && "DBS",
+      !hasValidDate(person.safeguardingExpiry) && "Safeguarding",
+      !hasValidDate(person.allergyAwarenessExpiry) && "Allergy",
+      !person.scrChecklist?.approvedAt && person.compliance !== "Compliant" && "Admin review",
+    ].filter(Boolean);
+    if (!missing.length) return checkStatus(person) === "Compliant" ? "No action" : "Check evidence";
+    return `Check ${missing.slice(0, 2).join(" / ")}${missing.length > 2 ? ` +${missing.length - 2}` : ""}`;
+  }
+  const search = query.trim().toLowerCase();
+  const rows = data.staff.filter((person) => {
+    const status = checkStatus(person);
+    const matchesStatus = statusFilter === "All" || (statusFilter === "Action needed" ? status !== "Compliant" : status === statusFilter);
+    const matchesSite = siteFilter === "All" || staffSchoolNames(person).includes(siteFilter);
+    const haystack = [person.name, person.email, person.role, person.location, person.compliance, managerName(person), staffPrimaryLocation(person)].filter(Boolean).join(" ").toLowerCase();
+    return matchesStatus && matchesSite && (!search || haystack.includes(search));
+  });
+  const actionCount = data.staff.filter((person) => checkStatus(person) !== "Compliant").length;
+  const compliantCount = data.staff.length - actionCount;
   return (
-    <TableWrap>
-      <table>
-        <thead><tr><th>Staff</th><th>Role</th><th>Assigned sites</th><th>Reports to</th><th>SCR</th>{!compact && <><th>DBS renewal</th><th>Safeguarding</th><th>First aid</th></>}</tr></thead>
-        <tbody>
-          {data.staff.map((person) => (
-            <tr key={person.id}>
-              <td>{person.name}</td><td>{person.role}</td><td>{staffPrimaryLocation(person)}</td><td>{managerName(person)}</td><td><Badge value={person.compliance} /></td>
-              {!compact && <><td>{person.dbsRenewal}</td><td>{person.safeguardingExpiry}</td><td>{person.firstAidExpiry}</td></>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </TableWrap>
+    <section className="staff-register">
+      <div className="staff-register-head">
+        <div>
+          <p className="eyebrow">Live staff register</p>
+          <h3>Find the next compliance action quickly.</h3>
+          <p>{rows.length} of {data.staff.length} staff shown · {actionCount} need review · {compliantCount} currently compliant.</p>
+        </div>
+        <div className="staff-register-controls">
+          <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, role, site, manager" /></label>
+          <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            {["Action needed", "All", "Compliant", "Review needed", "Missing", "Expiring soon", "Rejected"].map((item) => <option key={item}>{item}</option>)}
+          </select></label>
+          <label>Site<select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
+            <option>All</option>
+            {siteOptions.map((site) => <option key={site}>{site}</option>)}
+          </select></label>
+        </div>
+      </div>
+      <TableWrap>
+        <table>
+          <thead><tr><th>Staff</th><th>Role</th><th>Assigned sites</th><th>Reports to</th><th>SCR</th><th>Next action</th>{!compact && <><th>DBS renewal</th><th>Safeguarding</th><th>First aid</th></>}</tr></thead>
+          <tbody>
+            {rows.map((person) => (
+              <tr key={person.id}>
+                <td><strong>{person.name}</strong>{person.email && <><br /><small>{person.email}</small></>}</td>
+                <td>{person.role}</td>
+                <td>{staffPrimaryLocation(person)}</td>
+                <td>{managerName(person)}</td>
+                <td><Badge value={checkStatus(person)} /></td>
+                <td><strong>{actionText(person)}</strong></td>
+                {!compact && <><td>{person.dbsRenewal}</td><td>{person.safeguardingExpiry}</td><td>{person.firstAidExpiry}</td></>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableWrap>
+      {!rows.length && <EmptyList title="No staff match these filters" text="Try all statuses or clear the search field." />}
+    </section>
   );
 }
 
