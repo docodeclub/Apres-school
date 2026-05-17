@@ -5237,6 +5237,19 @@ label {
   background: #fff;
 }
 
+.action-card-button {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.action-card-button:hover {
+  border-color: rgba(72, 103, 216, 0.34);
+  background: #f7f9ff;
+}
+
 .list-item > div {
   min-width: 0;
 }
@@ -5577,6 +5590,53 @@ label {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+.storage-health {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  padding: 14px 16px;
+  box-shadow: 0 10px 28px rgba(38, 63, 169, 0.07);
+}
+
+.storage-health strong,
+.storage-health span {
+  display: block;
+}
+
+.storage-health strong {
+  color: var(--royal-dark);
+}
+
+.storage-health span {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.storage-health.ready {
+  border-color: rgba(37, 133, 83, 0.25);
+}
+
+.storage-health.failed {
+  border-color: rgba(168, 49, 68, 0.3);
+  background: #fff8f9;
+}
+
+.document-link-cell {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.document-link-cell input {
+  width: 100%;
+  min-width: 0;
 }
 
 .hr-org,

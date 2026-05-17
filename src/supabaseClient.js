@@ -106,6 +106,7 @@ export async function fetchPlatformData({ userId, role }) {
       title,
       version,
       category,
+      source_url,
       archived_at,
       document_assignments(acknowledged_at, due_at, staff_record_id)
     `)
@@ -272,6 +273,7 @@ function mapDocuments(records) {
       id: record.id,
       name: record.title,
       version: record.version,
+      url: record.source_url || "",
       assigned,
       read,
       status: assigned && read < assigned ? `Chase ${assigned - read}` : "Complete",
@@ -315,6 +317,16 @@ export async function updateCrmEnquiry(id, patch) {
 
   if (error) throw error;
   return { id, ...patch };
+}
+
+export async function updateDocumentSourceUrl(id, sourceUrl) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { error } = await supabase
+    .from("document_versions")
+    .update({ source_url: sourceUrl || null })
+    .eq("id", id);
+  if (error) throw error;
+  return { id, sourceUrl };
 }
 
 export async function createHrFile(payload) {
@@ -390,6 +402,24 @@ export async function uploadHrFile(payload, file) {
     await supabase.storage.from(staffHrFilesBucket).remove([storagePath]);
     throw error;
   }
+}
+
+export async function checkHrFileStorageHealth() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+
+  const { error: categoryError } = await supabase
+    .from("hr_file_categories")
+    .select("id")
+    .limit(1);
+  if (categoryError) throw categoryError;
+
+  const { error: listError } = await supabase
+    .storage
+    .from(staffHrFilesBucket)
+    .list("", { limit: 1 });
+  if (listError) throw listError;
+
+  return { ok: true, bucket: staffHrFilesBucket };
 }
 
 export async function archiveHrFile(id) {

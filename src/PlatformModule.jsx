@@ -195,6 +195,7 @@ const auditStorageKey = "apres-audit-log";
 const rotaStorageKey = "apres-rota-assignments";
 const coverMoveStorageKey = "apres-cover-moves";
 const publicSettingsStorageKey = "apres-public-settings";
+const documentLinksStorageKey = "apres-document-links";
 const staffApplicationsStorageKey = "apres-staff-applications";
 const onboardedStaffStorageKey = "apres-onboarded-staff";
 const scrChecklistStorageKey = "apres-scr-checklists";
@@ -286,6 +287,7 @@ const coverReasons = ["Illness cover", "Planned absence", "Training cover", "Rat
 const defaultStaffAvatar = "/assets/internal/default-staff-avatar.png";
 
 function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
+  const [staffProfileTargetId, setStaffProfileTargetId] = useState("");
   const localStaff = readOnboardedStaffProfiles();
   const enrichedData = {
     ...data,
@@ -322,13 +324,13 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
       <section className="workspace">
         <PlatformHeader role={role} userEmail={userEmail} onSignOut={onSignOut} data={enrichedData} access={access} />
         {tab === "Staff" && <StaffDashboard data={scopedData} />}
-        {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} />}
+        {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && <HRHierarchy data={enrichedData} access={access} />}
         {tab === "HR Files" && <HRFiles data={enrichedData} />}
         {tab === "Rota" && <Rota data={scopedData} allData={enrichedData} access={access} />}
         {tab === "Hours" && <HoursTracker data={scopedData} access={access} />}
-        {tab === "SCR" && <SCR data={scopedData} access={access} />}
+        {tab === "SCR" && <SCR data={scopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
         {tab === "Documents" && <Documents data={scopedData} />}
         {tab === "Pay" && <Pay data={scopedData} />}
@@ -430,7 +432,7 @@ function StaffDashboard({ data }) {
   );
 }
 
-function AdminDashboard({ data, access, onOpenTab }) {
+function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const staffWithScrState = applyScrChecklistState(data.staff);
   const renewalItems = buildScrRenewalItems(staffWithScrState);
@@ -568,14 +570,14 @@ function AdminDashboard({ data, access, onOpenTab }) {
         <Panel title="Staff Actions">
           <div className="list">
             {staffActionRows.map((person) => (
-              <article className="list-item" key={person.id}>
+              <button className="list-item action-card-button" type="button" key={person.id} onClick={() => onOpenStaffProfile(person.id)}>
                 <div>
                   <strong>{person.name}</strong>
                   <span>{person.role} · {staffPrimaryLocation(person)}</span>
                   <small>DBS: {person.dbsRenewal || "Not recorded"} · Safeguarding: {person.safeguardingExpiry || "Not recorded"}</small>
                 </div>
                 <Badge value={person.compliance || "Review"} />
-              </article>
+              </button>
             ))}
             {!staffActionRows.length && <EmptyList title="No staff actions" text="Everyone in scope is currently marked compliant." />}
           </div>
@@ -872,6 +874,7 @@ function HRFiles({ data }) {
   const [staffFilter, setStaffFilter] = useState("All");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [status, setStatus] = useState("");
+  const [storageHealth, setStorageHealth] = useState({ state: hasSupabaseConfig ? "checking" : "local", message: hasSupabaseConfig ? "Checking Supabase Storage..." : "Supabase is not configured for this environment." });
   const categories = data.hrFileCategories?.length ? data.hrFileCategories : fallbackHrFileCategories;
   const staff = data.staff || [];
   const search = query.trim().toLowerCase();
@@ -888,6 +891,22 @@ function HRFiles({ data }) {
   useEffect(() => {
     setFiles(data.hrFiles || []);
   }, [data.hrFiles]);
+
+  useEffect(() => {
+    if (!hasSupabaseConfig) return undefined;
+    let active = true;
+    loadSupabaseModule()
+      .then(({ checkHrFileStorageHealth }) => checkHrFileStorageHealth())
+      .then(() => {
+        if (active) setStorageHealth({ state: "ready", message: "Private HR file storage is ready." });
+      })
+      .catch((error) => {
+        if (active) setStorageHealth({ state: "failed", message: error.message || "Storage health check failed." });
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function saveHrFile(event) {
     event.preventDefault();
@@ -972,6 +991,13 @@ function HRFiles({ data }) {
         <Metric icon={<Users />} label="Staff with files" value={staffWithFiles} tone="green" />
         <Metric icon={<LockKeyhole />} label="Restricted files" value={restrictedCount} tone="amber" />
       </div>
+      <section className={`storage-health ${storageHealth.state}`}>
+        <div>
+          <strong>{storageHealth.state === "ready" ? "Storage ready" : storageHealth.state === "failed" ? "Storage needs attention" : storageHealth.state === "local" ? "Local mode" : "Checking storage"}</strong>
+          <span>{storageHealth.message}</span>
+        </div>
+        <Badge value={storageHealth.state === "ready" ? "Uploaded files private" : storageHealth.state === "failed" ? "Check Supabase" : "Pending"} />
+      </section>
       <section className="hr-file-console">
         <form className="hr-file-form" onSubmit={saveHrFile}>
           <div>
@@ -1024,6 +1050,7 @@ function HRFiles({ data }) {
                   {file.syncError && <small className="sync-error">{file.syncError}</small>}
                 </div>
                 <div className="hr-file-actions">
+                  <Badge value={hrFileStorageStatus(file)} />
                   <span className={`hr-file-category ${file.sensitivity === "restricted" ? "restricted" : ""}`}>{file.category}</span>
                   {file.fileUrl && <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open file</a>}
                   <button className="button subtle" type="button" onClick={() => archiveFile(file)}>Archive</button>
@@ -1040,6 +1067,15 @@ function HRFiles({ data }) {
 
 function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+}
+
+function hrFileStorageStatus(file) {
+  if (file.syncError) return "Failed";
+  if (file.storagePath === "Pending upload") return "Uploading";
+  if (file.storagePath && file.fileUrl) return "Uploaded";
+  if (file.storagePath) return "Private";
+  if (file.fileUrl) return "Linked";
+  return "Metadata";
 }
 
 function Rota({ data, allData = data, access }) {
@@ -1279,7 +1315,7 @@ function HoursTracker({ data }) {
   );
 }
 
-function SCR({ data, access }) {
+function SCR({ data, access, targetStaffId, onTargetHandled }) {
   const [checklistState, setChecklistState] = useState(() => readScrChecklistState());
   const [assignmentState, setAssignmentState] = useState(() => Object.fromEntries(
     data.staff.map((person) => [person.id, staffAssignments(person)]),
@@ -1491,7 +1527,7 @@ function SCR({ data, access }) {
           </div>
         </article>
       </section>
-      <StaffTable data={scrData} />
+      <StaffTable data={scrData} targetStaffId={targetStaffId} onTargetHandled={onTargetHandled} />
       <SCRRenewalPanel items={renewalItems} />
       {!!onboardingProfiles.length && <SCROnboardingQueue staff={onboardingProfiles} onUpdate={updateChecklist} onApprove={approveScrProfile} />}
       <SCRAssignmentsPanel
@@ -2719,16 +2755,54 @@ function SCRRequirementPanel({ rows }) {
 }
 
 function Documents({ data }) {
+  const [links, setLinks] = useState(() => readJson(documentLinksStorageKey, {}));
+  const [linkStatus, setLinkStatus] = useState("");
+  function updateDocumentLink(name, value) {
+    const next = { ...links, [name]: value.trim() };
+    if (!next[name]) delete next[name];
+    setLinks(next);
+    localStorage.setItem(documentLinksStorageKey, JSON.stringify(next));
+  }
+  async function saveDocumentLink(doc) {
+    const link = links[doc.name] ?? doc.url ?? "";
+    if (!hasSupabaseConfig || !isUuid(doc.id)) {
+      setLinkStatus("Policy link saved locally on this browser.");
+      return;
+    }
+    try {
+      const { updateDocumentSourceUrl } = await loadSupabaseModule();
+      await updateDocumentSourceUrl(doc.id, link);
+      setLinkStatus(`${doc.name} link saved to Supabase.`);
+    } catch (error) {
+      setLinkStatus(error.message || "Unable to save policy link to Supabase.");
+    }
+  }
   return (
     <Panel title="Document & Policy Library">
+      <p className="panel-note">Add the Google Doc link for each live policy so staff and admins can open the source document from the library.</p>
+      {linkStatus && <p className="panel-note">{linkStatus}</p>}
       <TableWrap>
         <table>
-          <thead><tr><th>Document</th><th>Version</th><th>Progress</th><th>Status</th></tr></thead>
+          <thead><tr><th>Document</th><th>Version</th><th>Google Doc link</th><th>Progress</th><th>Status</th></tr></thead>
           <tbody>{data.documents.map((doc) => {
             const assigned = Number(doc.assigned || 0);
             const read = Number(doc.read || 0);
             const percent = assigned ? Math.round((read / assigned) * 100) : 100;
-            return <tr key={doc.id || doc.name}><td>{doc.name}</td><td>{doc.version}</td><td><Progress value={percent} label={`${read}/${assigned} read`} /></td><td><Badge value={doc.status} /></td></tr>;
+            const link = links[doc.name] || doc.url || "";
+            return (
+              <tr key={doc.id || doc.name}>
+                <td>{doc.name}</td>
+                <td>{doc.version}</td>
+                <td>
+                  <div className="document-link-cell">
+                    <input value={link} onChange={(event) => updateDocumentLink(doc.name, event.target.value)} onBlur={() => saveDocumentLink(doc)} placeholder="Paste Google Doc link" />
+                    {link && <a className="button light" href={link} target="_blank" rel="noreferrer">Open</a>}
+                  </div>
+                </td>
+                <td><Progress value={percent} label={`${read}/${assigned} read`} /></td>
+                <td><Badge value={doc.status} /></td>
+              </tr>
+            );
           })}</tbody>
         </table>
       </TableWrap>
@@ -3122,6 +3196,8 @@ function AuditLog() {
 
 function Settings() {
   const [settings, setSettings] = useState(() => readPublicSettings());
+  const documentLinks = readJson(documentLinksStorageKey, {});
+  const hrFileCount = readJson(auditStorageKey, []).filter((item) => String(item.action || "").toLowerCase().includes("hr file")).length;
 
   function updateSetting(patch) {
     const next = { ...settings, ...patch, updatedAt: new Date().toISOString() };
@@ -3158,12 +3234,36 @@ function Settings() {
           </div>
           <Badge value={settings.campAnnouncementEnabled ? "Live" : "Off"} />
         </article>
+        <article className="setting-card">
+          <div>
+            <p className="eyebrow">Document library</p>
+            <h3>Google policy links</h3>
+            <p>{Object.keys(documentLinks).length} policy links are saved on this browser. Open Documents to add or update live Google Doc links.</p>
+          </div>
+          <Badge value={`${Object.keys(documentLinks).length} linked`} />
+        </article>
+        <article className="setting-card">
+          <div>
+            <p className="eyebrow">HR files</p>
+            <h3>Private storage</h3>
+            <p>HR uploads use the private Supabase Storage bucket and signed file links in the admin platform.</p>
+          </div>
+          <Badge value="Supabase Storage" />
+        </article>
+        <article className="setting-card">
+          <div>
+            <p className="eyebrow">Audit</p>
+            <h3>Recent admin changes</h3>
+            <p>{hrFileCount} HR file actions have been logged locally. Production audit rows can be moved server-side as the platform matures.</p>
+          </div>
+          <Badge value="Local audit" />
+        </article>
       </section>
     </div>
   );
 }
 
-function StaffTable({ compact, data = mockPlatformData }) {
+function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetHandled }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Action needed");
   const [siteFilter, setSiteFilter] = useState("All");
@@ -3210,6 +3310,11 @@ function StaffTable({ compact, data = mockPlatformData }) {
   const actionCount = data.staff.filter((person) => checkStatus(person) !== "Compliant").length;
   const compliantCount = data.staff.length - actionCount;
   const selectedPerson = data.staff.find((person) => person.id === selectedId) || rows[0] || data.staff[0];
+  useEffect(() => {
+    if (!targetStaffId) return;
+    setSelectedId(targetStaffId);
+    onTargetHandled?.();
+  }, [targetStaffId, onTargetHandled]);
   return (
     <section className="staff-register">
       <div className="staff-register-head">
