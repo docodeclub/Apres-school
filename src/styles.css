@@ -5586,6 +5586,130 @@ label {
   align-items: start;
 }
 
+.hr-files-workspace .toolbar {
+  align-items: start;
+}
+
+.hr-file-console {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.42fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.hr-file-form,
+.hr-file-list-panel {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  padding: 18px;
+  box-shadow: 0 10px 28px rgba(38, 63, 169, 0.07);
+}
+
+.hr-file-form h3 {
+  color: var(--royal-dark);
+  font-size: 1.45rem;
+}
+
+.hr-file-form p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.form-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hr-files-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.45fr) minmax(180px, 0.45fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.hr-file-list {
+  display: grid;
+  gap: 12px;
+}
+
+.hr-file-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #f9fbff;
+  padding: 14px;
+}
+
+.hr-file-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 14px;
+  background: #eef3ff;
+  color: var(--royal);
+}
+
+.hr-file-row strong {
+  color: var(--royal-dark);
+}
+
+.hr-file-row span,
+.hr-file-row small,
+.hr-file-row p {
+  display: block;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.hr-file-row p {
+  margin-top: 6px;
+}
+
+.hr-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.hr-file-category {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #eef3ff;
+  color: var(--royal);
+  padding: 7px 10px;
+  font-size: 0.75rem;
+  font-weight: 950;
+}
+
+.hr-file-category.restricted {
+  background: #fff4dc;
+  color: #9a5b00;
+}
+
+.button.subtle {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.button svg {
+  flex: 0 0 auto;
+}
+
+.sync-error {
+  color: #a83144 !important;
+}
+
 .cover-move-panel,
 .email-preview {
   display: grid;
@@ -6065,6 +6189,10 @@ th {
   .user-grid,
   .hr-summary,
   .hr-manager-panel,
+  .hr-file-console,
+  .hr-files-toolbar,
+  .hr-file-row,
+  .form-two,
   .cover-move-panel,
   .cover-email-grid,
   .org-tree,

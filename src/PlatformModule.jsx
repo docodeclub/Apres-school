@@ -74,10 +74,10 @@ const Users = makeIcon("US");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Users", "HR", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Users", "HR", "HR Files", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Overview", ["Admin", "Staff"]],
-  ["People", ["Users", "HR", "SCR", "Ofsted", "Documents"]],
+  ["People", ["Users", "HR", "HR Files", "SCR", "Ofsted", "Documents"]],
   ["Operations", ["Rota", "Hours", "Sessions", "CRM"]],
   ["Finance & culture", ["Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
@@ -323,6 +323,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && <HRHierarchy data={enrichedData} access={access} />}
+        {tab === "HR Files" && <HRFiles data={enrichedData} />}
         {tab === "Rota" && <Rota data={scopedData} allData={enrichedData} access={access} />}
         {tab === "Hours" && <HoursTracker data={scopedData} access={access} />}
         {tab === "SCR" && <SCR data={scopedData} access={access} />}
@@ -831,6 +832,185 @@ function HRHierarchy({ data }) {
       </TableWrap>
     </div>
   );
+}
+
+const fallbackHrFileCategories = [
+  { id: "contract", name: "Contract", sensitivity: "restricted" },
+  { id: "payslip", name: "Payslip", sensitivity: "restricted" },
+  { id: "letter", name: "Letter / Communication", sensitivity: "confidential" },
+  { id: "disciplinary", name: "Disciplinary", sensitivity: "restricted" },
+  { id: "right-to-work", name: "Right to Work", sensitivity: "restricted" },
+  { id: "dbs", name: "DBS", sensitivity: "restricted" },
+  { id: "training", name: "Training Certificate", sensitivity: "confidential" },
+  { id: "id-lanyard", name: "ID / Lanyard", sensitivity: "confidential" },
+];
+
+function HRFiles({ data }) {
+  const [files, setFiles] = useState(data.hrFiles || []);
+  const [query, setQuery] = useState("");
+  const [staffFilter, setStaffFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [status, setStatus] = useState("");
+  const categories = data.hrFileCategories?.length ? data.hrFileCategories : fallbackHrFileCategories;
+  const staff = data.staff || [];
+  const search = query.trim().toLowerCase();
+  const visibleFiles = files.filter((file) => {
+    const matchesStaff = staffFilter === "All" || file.staffRecordId === staffFilter;
+    const matchesCategory = categoryFilter === "All" || file.category === categoryFilter;
+    const haystack = [file.staffName, file.staffEmail, file.title, file.category, file.notes, file.status].filter(Boolean).join(" ").toLowerCase();
+    return matchesStaff && matchesCategory && (!search || haystack.includes(search));
+  });
+  const activeCount = files.filter((file) => file.status !== "archived").length;
+  const restrictedCount = files.filter((file) => file.sensitivity === "restricted").length;
+  const staffWithFiles = new Set(files.map((file) => file.staffRecordId).filter(Boolean)).size;
+
+  useEffect(() => {
+    setFiles(data.hrFiles || []);
+  }, [data.hrFiles]);
+
+  async function saveHrFile(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const staffRecordId = String(form.get("staffRecordId") || "");
+    const categoryName = String(form.get("category") || "");
+    const category = categories.find((item) => item.name === categoryName) || categories[0];
+    const person = staff.find((item) => item.id === staffRecordId) || {};
+    const payload = {
+      staffRecordId,
+      categoryId: isUuid(category?.id) ? category.id : "",
+      category: category?.name || "HR file",
+      sensitivity: category?.sensitivity || "confidential",
+      title: String(form.get("title") || "").trim(),
+      fileUrl: String(form.get("fileUrl") || "").trim(),
+      storagePath: String(form.get("storagePath") || "").trim(),
+      issueDate: String(form.get("issueDate") || ""),
+      expiryDate: String(form.get("expiryDate") || ""),
+      notes: String(form.get("notes") || "").trim(),
+      status: "active",
+    };
+    if (!payload.staffRecordId || !payload.title) {
+      setStatus("Choose a staff member and add a title before saving.");
+      return;
+    }
+
+    const localRecord = {
+      id: `hr-file-${Date.now()}`,
+      ...payload,
+      staffName: person.name || "Staff member",
+      staffEmail: person.email || "",
+      uploadedAt: new Date().toISOString(),
+    };
+    setFiles((current) => [localRecord, ...current]);
+    setStatus(hasSupabaseConfig ? "Saving HR file..." : "Saved locally for this browser. Connect Supabase to persist.");
+    addAuditLog("HR file added", `${localRecord.staffName}: ${payload.title}`);
+    event.currentTarget.reset();
+
+    if (!hasSupabaseConfig) return;
+    try {
+      const { createHrFile } = await loadSupabaseModule();
+      const saved = await createHrFile(payload);
+      setFiles((current) => current.map((file) => file.id === localRecord.id ? saved : file));
+      setStatus("HR file saved.");
+    } catch (error) {
+      setFiles((current) => current.map((file) => file.id === localRecord.id ? { ...file, syncError: error.message || "Save failed" } : file));
+      setStatus("Saved locally, but Supabase could not persist it. Check permissions/storage settings.");
+    }
+  }
+
+  async function archiveFile(file) {
+    setFiles((current) => current.filter((item) => item.id !== file.id));
+    addAuditLog("HR file archived", `${file.staffName}: ${file.title}`);
+    if (!hasSupabaseConfig || String(file.id).startsWith("hr-file-")) {
+      setStatus("HR file removed from this view.");
+      return;
+    }
+    try {
+      const { archiveHrFile } = await loadSupabaseModule();
+      await archiveHrFile(file.id);
+      setStatus("HR file archived.");
+    } catch (error) {
+      setFiles((current) => [file, ...current]);
+      setStatus(error.message || "Unable to archive HR file.");
+    }
+  }
+
+  return (
+    <div className="stack hr-files-workspace">
+      <div className="toolbar">
+        <div>
+          <h2>HR Files</h2>
+          <p className="panel-note">Store staff HR document metadata for contracts, payslips, letters, disciplinary records and secure compliance files.</p>
+        </div>
+        <Badge value="Restricted admin area" />
+      </div>
+      <div className="hr-summary">
+        <Metric icon={<FileText />} label="Active files" value={activeCount} tone="blue" />
+        <Metric icon={<Users />} label="Staff with files" value={staffWithFiles} tone="green" />
+        <Metric icon={<LockKeyhole />} label="Restricted files" value={restrictedCount} tone="amber" />
+      </div>
+      <section className="hr-file-console">
+        <form className="hr-file-form" onSubmit={saveHrFile}>
+          <div>
+            <p className="eyebrow">Add HR record</p>
+            <h3>Log a document against a staff profile.</h3>
+            <p>For launch, this stores the reference, category and dates. File uploads can move into Supabase Storage once your folder policy is final.</p>
+          </div>
+          <label>Staff member<select name="staffRecordId" defaultValue="">
+            <option value="" disabled>Choose staff</option>
+            {staff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+          </select></label>
+          <label>Category<select name="category" defaultValue={categories[0]?.name}>{categories.map((category) => <option key={category.id || category.name}>{category.name}</option>)}</select></label>
+          <label>Title<input name="title" required placeholder="Signed contract, May payslip, HR letter..." /></label>
+          <div className="form-two">
+            <label>Issue date<input name="issueDate" type="date" /></label>
+            <label>Expiry date<input name="expiryDate" type="date" /></label>
+          </div>
+          <label>File URL<input name="fileUrl" type="url" placeholder="Optional secure link" /></label>
+          <label>Storage path<input name="storagePath" placeholder="Optional Supabase Storage path" /></label>
+          <label>Notes<textarea name="notes" rows="3" placeholder="Internal note, payroll month, signed date..." /></label>
+          <button className="button book" type="submit"><Upload size={18} /> Save HR file</button>
+          {status && <p className="panel-note">{status}</p>}
+        </form>
+        <div className="hr-file-list-panel">
+          <div className="hr-files-toolbar">
+            <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search files or staff" /></label>
+            <label>Staff<select value={staffFilter} onChange={(event) => setStaffFilter(event.target.value)}>
+              <option>All</option>
+              {staff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+            </select></label>
+            <label>Category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              <option>All</option>
+              {categories.map((category) => <option key={category.id || category.name}>{category.name}</option>)}
+            </select></label>
+          </div>
+          <div className="hr-file-list">
+            {visibleFiles.map((file) => (
+              <article className="hr-file-row" key={file.id}>
+                <div className="hr-file-icon"><FileText size={20} /></div>
+                <div>
+                  <strong>{file.title}</strong>
+                  <span>{file.staffName}{file.staffEmail ? ` · ${file.staffEmail}` : ""}</span>
+                  <small>{file.issueDate ? `Issued ${formatShortDate(file.issueDate)}` : "Issue date not recorded"}{file.expiryDate ? ` · Expires ${formatShortDate(file.expiryDate)}` : ""}</small>
+                  {file.notes && <p>{file.notes}</p>}
+                  {file.syncError && <small className="sync-error">{file.syncError}</small>}
+                </div>
+                <div className="hr-file-actions">
+                  <span className={`hr-file-category ${file.sensitivity === "restricted" ? "restricted" : ""}`}>{file.category}</span>
+                  {file.fileUrl && <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open</a>}
+                  <button className="button subtle" type="button" onClick={() => archiveFile(file)}>Archive</button>
+                </div>
+              </article>
+            ))}
+            {!visibleFiles.length && <EmptyList title="No HR files found" text="Add a document reference or change the filters." />}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 }
 
 function Rota({ data, allData = data, access }) {
@@ -3443,6 +3623,7 @@ function iconFor(item) {
     CRM: <Mail />,
     Users: <Users />,
     HR: <Users />,
+    "HR Files": <FileText />,
     Audit: <FileText />,
     Settings: <ShieldCheck />,
   };

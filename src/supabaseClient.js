@@ -116,14 +116,42 @@ export async function fetchPlatformData({ userId, role }) {
         .order("created_at", { ascending: false })
         .limit(20);
 
-  const [staffResult, sessionsResult, documentsResult, enquiriesResult] = await Promise.all([
+  const hrFilesQuery = supabase
+    .from("staff_hr_files")
+    .select(`
+      id,
+      staff_record_id,
+      title,
+      storage_path,
+      file_url,
+      issue_date,
+      expiry_date,
+      status,
+      notes,
+      uploaded_at,
+      hr_file_categories(id, name, sensitivity),
+      staff_records(preferred_name, profiles(full_name, email))
+    `)
+    .is("archived_at", null)
+    .order("uploaded_at", { ascending: false })
+    .limit(isStaff ? 40 : 160);
+
+  const hrCategoriesQuery = supabase
+    .from("hr_file_categories")
+    .select("id, name, sensitivity")
+    .eq("active", true)
+    .order("name", { ascending: true });
+
+  const [staffResult, sessionsResult, documentsResult, enquiriesResult, hrFilesResult, hrCategoriesResult] = await Promise.all([
     staffQuery,
     sessionsQuery,
     documentsQuery,
     enquiriesQuery,
+    hrFilesQuery,
+    hrCategoriesQuery,
   ]);
 
-  const firstError = [staffResult.error, sessionsResult.error, documentsResult.error, enquiriesResult.error].find(Boolean);
+  const firstError = [staffResult.error, sessionsResult.error, documentsResult.error, enquiriesResult.error, hrFilesResult.error, hrCategoriesResult.error].find(Boolean);
   if (firstError) throw firstError;
 
   return {
@@ -131,6 +159,8 @@ export async function fetchPlatformData({ userId, role }) {
     sessions: mapSessions(sessionsResult.data || []),
     documents: mapDocuments(documentsResult.data || []),
     enquiries: mapEnquiries(enquiriesResult.data || []),
+    hrFiles: mapHrFiles(hrFilesResult.data || []),
+    hrFileCategories: hrCategoriesResult.data || [],
   };
 }
 
@@ -142,6 +172,7 @@ function mapStaffRecords(records) {
       id: record.id,
       profileId: record.profile_id,
       name: record.preferred_name || profile?.full_name || "Staff member",
+      email: profile?.email || "",
       role: record.job_role || profile?.role || "Staff",
       location: record.primary_site || record.employment_type || "Assigned sites",
       compliance: scr?.admin_review?.status || "Review needed",
@@ -151,6 +182,31 @@ function mapStaffRecords(records) {
       payRate: Number(record.pay_rate || 0),
       annualSalary: Number(record.annual_salary || 0),
       contractType: record.contract_type || record.employment_type || "Not recorded",
+    };
+  });
+}
+
+function mapHrFiles(records) {
+  return records.map((record) => {
+    const category = Array.isArray(record.hr_file_categories) ? record.hr_file_categories[0] : record.hr_file_categories;
+    const staffRecord = Array.isArray(record.staff_records) ? record.staff_records[0] : record.staff_records;
+    const profile = Array.isArray(staffRecord?.profiles) ? staffRecord.profiles[0] : staffRecord?.profiles;
+    return {
+      id: record.id,
+      staffRecordId: record.staff_record_id,
+      staffName: staffRecord?.preferred_name || profile?.full_name || "Staff member",
+      staffEmail: profile?.email || "",
+      categoryId: category?.id || "",
+      category: category?.name || "HR file",
+      sensitivity: category?.sensitivity || "confidential",
+      title: record.title,
+      fileUrl: record.file_url || "",
+      storagePath: record.storage_path || "",
+      issueDate: record.issue_date || "",
+      expiryDate: record.expiry_date || "",
+      status: record.status || "active",
+      notes: record.notes || "",
+      uploadedAt: record.uploaded_at || "",
     };
   });
 }
@@ -223,6 +279,52 @@ export async function updateCrmEnquiry(id, patch) {
 
   if (error) throw error;
   return { id, ...patch };
+}
+
+export async function createHrFile(payload) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase
+    .from("staff_hr_files")
+    .insert({
+      staff_record_id: payload.staffRecordId,
+      category_id: payload.categoryId || null,
+      title: payload.title,
+      file_url: payload.fileUrl || null,
+      storage_path: payload.storagePath || null,
+      issue_date: payload.issueDate || null,
+      expiry_date: payload.expiryDate || null,
+      status: payload.status || "active",
+      notes: payload.notes || null,
+    })
+    .select(`
+      id,
+      staff_record_id,
+      title,
+      storage_path,
+      file_url,
+      issue_date,
+      expiry_date,
+      status,
+      notes,
+      uploaded_at,
+      hr_file_categories(id, name, sensitivity),
+      staff_records(preferred_name, profiles(full_name, email))
+    `)
+    .single();
+
+  if (error) throw error;
+  return mapHrFiles([data])[0];
+}
+
+export async function archiveHrFile(id) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { error } = await supabase
+    .from("staff_hr_files")
+    .update({ status: "archived", archived_at: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) throw error;
+  return { id };
 }
 
 export async function sendCoverMoveNotifications(payload) {
