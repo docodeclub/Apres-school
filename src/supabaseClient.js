@@ -5,6 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const enquiryFunctionName = import.meta.env.VITE_ENQUIRY_FUNCTION_NAME || "notify-public-enquiry";
 const coverMoveFunctionName = import.meta.env.VITE_COVER_MOVE_FUNCTION_NAME || "notify-cover-move";
 const staffPhotoBucket = "staff-profile-photos";
+const staffHrFilesBucket = "staff-hr-files";
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 
@@ -159,13 +160,15 @@ export async function fetchPlatformData({ userId, role }) {
 
   const staff = mapStaffRecords(staffResult.data || []);
   await attachStaffPhotoUrls(staff);
+  const hrFiles = hrFilesResult.error ? [] : mapHrFiles(hrFilesResult.data || []);
+  await attachHrFileUrls(hrFiles);
 
   return {
     staff,
     sessions: mapSessions(sessionsResult.data || []),
     documents: mapDocuments(documentsResult.data || []),
     enquiries: mapEnquiries(enquiriesResult.data || []),
-    hrFiles: hrFilesResult.error ? [] : mapHrFiles(hrFilesResult.data || []),
+    hrFiles,
     hrFileCategories: hrCategoriesResult.error ? [] : hrCategoriesResult.data || [],
   };
 }
@@ -229,6 +232,19 @@ function mapHrFiles(records) {
       uploadedAt: record.uploaded_at || "",
     };
   });
+}
+
+async function attachHrFileUrls(files) {
+  if (!supabase) return files;
+  await Promise.all(files.map(async (file) => {
+    if (!file.storagePath || file.fileUrl) return;
+    const { data, error } = await supabase
+      .storage
+      .from(staffHrFilesBucket)
+      .createSignedUrl(file.storagePath, 60 * 60);
+    if (!error && data?.signedUrl) file.fileUrl = data.signedUrl;
+  }));
+  return files;
 }
 
 function mapSessions(records) {
@@ -333,7 +349,47 @@ export async function createHrFile(payload) {
     .single();
 
   if (error) throw error;
-  return mapHrFiles([data])[0];
+  const [file] = mapHrFiles([data]);
+  await attachHrFileUrls([file]);
+  return file;
+}
+
+export async function uploadHrFile(payload, file) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!payload?.staffRecordId || !file) throw new Error("Choose a staff member and file.");
+
+  const extension = file.name?.split(".").pop()?.toLowerCase() || "pdf";
+  const safeExtension = ["pdf", "doc", "docx", "jpg", "jpeg", "png", "webp"].includes(extension) ? extension : "pdf";
+  const contentTypes = {
+    pdf: "application/pdf",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+  };
+  const storagePath = `${payload.staffRecordId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${safeExtension}`;
+  const { error: uploadError } = await supabase
+    .storage
+    .from(staffHrFilesBucket)
+    .upload(storagePath, file, {
+      cacheControl: "3600",
+      contentType: file.type || contentTypes[safeExtension] || "application/pdf",
+      upsert: false,
+    });
+  if (uploadError) throw uploadError;
+
+  try {
+    return await createHrFile({
+      ...payload,
+      storagePath,
+      fileUrl: "",
+    });
+  } catch (error) {
+    await supabase.storage.from(staffHrFilesBucket).remove([storagePath]);
+    throw error;
+  }
 }
 
 export async function archiveHrFile(id) {

@@ -5627,6 +5627,23 @@ label {
   line-height: 1.55;
 }
 
+.metadata-fallback {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f9fbff;
+  padding: 12px;
+}
+
+.metadata-fallback summary {
+  cursor: pointer;
+  color: var(--royal-dark);
+  font-weight: 900;
+}
+
+.metadata-fallback label {
+  margin-top: 12px;
+}
+
 .form-two {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5680,6 +5697,11 @@ label {
 
 .hr-file-row p {
   margin-top: 6px;
+}
+
+.hr-file-row .storage-note {
+  color: var(--royal) !important;
+  font-weight: 900;
 }
 
 .hr-file-actions {

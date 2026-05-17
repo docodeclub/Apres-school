@@ -896,12 +896,14 @@ function HRFiles({ data }) {
     const categoryName = String(form.get("category") || "");
     const category = categories.find((item) => item.name === categoryName) || categories[0];
     const person = staff.find((item) => item.id === staffRecordId) || {};
+    const uploadFile = form.get("file");
+    const hasUploadFile = uploadFile && typeof uploadFile === "object" && uploadFile.name;
     const payload = {
       staffRecordId,
       categoryId: isUuid(category?.id) ? category.id : "",
       category: category?.name || "HR file",
       sensitivity: category?.sensitivity || "confidential",
-      title: String(form.get("title") || "").trim(),
+      title: String(form.get("title") || "").trim() || uploadFile?.name || "",
       fileUrl: String(form.get("fileUrl") || "").trim(),
       storagePath: String(form.get("storagePath") || "").trim(),
       issueDate: String(form.get("issueDate") || ""),
@@ -920,18 +922,19 @@ function HRFiles({ data }) {
       staffName: person.name || "Staff member",
       staffEmail: person.email || "",
       uploadedAt: new Date().toISOString(),
+      storagePath: hasUploadFile ? "Pending upload" : payload.storagePath,
     };
     setFiles((current) => [localRecord, ...current]);
-    setStatus(hasSupabaseConfig ? "Saving HR file..." : "Saved locally for this browser. Connect Supabase to persist.");
+    setStatus(hasSupabaseConfig ? (hasUploadFile ? "Uploading HR file..." : "Saving HR file...") : "Saved locally for this browser. Connect Supabase to persist.");
     addAuditLog("HR file added", `${localRecord.staffName}: ${payload.title}`);
     event.currentTarget.reset();
 
     if (!hasSupabaseConfig) return;
     try {
-      const { createHrFile } = await loadSupabaseModule();
-      const saved = await createHrFile(payload);
+      const { createHrFile, uploadHrFile } = await loadSupabaseModule();
+      const saved = hasUploadFile ? await uploadHrFile(payload, uploadFile) : await createHrFile(payload);
       setFiles((current) => current.map((file) => file.id === localRecord.id ? saved : file));
-      setStatus("HR file saved.");
+      setStatus(hasUploadFile ? "HR file uploaded and saved." : "HR file saved.");
     } catch (error) {
       setFiles((current) => current.map((file) => file.id === localRecord.id ? { ...file, syncError: error.message || "Save failed" } : file));
       setStatus("Saved locally, but Supabase could not persist it. Check permissions/storage settings.");
@@ -973,23 +976,27 @@ function HRFiles({ data }) {
         <form className="hr-file-form" onSubmit={saveHrFile}>
           <div>
             <p className="eyebrow">Add HR record</p>
-            <h3>Log a document against a staff profile.</h3>
-            <p>For launch, this stores the reference, category and dates. File uploads can move into Supabase Storage once your folder policy is final.</p>
+            <h3>Upload a document to a staff profile.</h3>
+            <p>Files are stored privately in Supabase Storage, with the category, dates and notes kept against the staff record.</p>
           </div>
           <label>Staff member<select name="staffRecordId" defaultValue="">
             <option value="" disabled>Choose staff</option>
             {staff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
           </select></label>
           <label>Category<select name="category" defaultValue={categories[0]?.name}>{categories.map((category) => <option key={category.id || category.name}>{category.name}</option>)}</select></label>
-          <label>Title<input name="title" required placeholder="Signed contract, May payslip, HR letter..." /></label>
+          <label>Title<input name="title" placeholder="Signed contract, May payslip, HR letter..." /></label>
+          <label>Upload file<input name="file" type="file" accept="application/pdf,.doc,.docx,image/png,image/jpeg,image/webp" /></label>
           <div className="form-two">
             <label>Issue date<input name="issueDate" type="date" /></label>
             <label>Expiry date<input name="expiryDate" type="date" /></label>
           </div>
-          <label>File URL<input name="fileUrl" type="url" placeholder="Optional secure link" /></label>
-          <label>Storage path<input name="storagePath" placeholder="Optional Supabase Storage path" /></label>
+          <details className="metadata-fallback">
+            <summary>Use an existing secure link instead</summary>
+            <label>File URL<input name="fileUrl" type="url" placeholder="Optional secure link" /></label>
+            <label>Storage path<input name="storagePath" placeholder="Optional Supabase Storage path" /></label>
+          </details>
           <label>Notes<textarea name="notes" rows="3" placeholder="Internal note, payroll month, signed date..." /></label>
-          <button className="button book" type="submit"><Upload size={18} /> Save HR file</button>
+          <button className="button book" type="submit"><Upload size={18} /> Upload / save HR file</button>
           {status && <p className="panel-note">{status}</p>}
         </form>
         <div className="hr-file-list-panel">
@@ -1012,12 +1019,13 @@ function HRFiles({ data }) {
                   <strong>{file.title}</strong>
                   <span>{file.staffName}{file.staffEmail ? ` · ${file.staffEmail}` : ""}</span>
                   <small>{file.issueDate ? `Issued ${formatShortDate(file.issueDate)}` : "Issue date not recorded"}{file.expiryDate ? ` · Expires ${formatShortDate(file.expiryDate)}` : ""}</small>
+                  {file.storagePath && <small className="storage-note">{file.storagePath === "Pending upload" ? "Upload pending" : "Private storage file"}</small>}
                   {file.notes && <p>{file.notes}</p>}
                   {file.syncError && <small className="sync-error">{file.syncError}</small>}
                 </div>
                 <div className="hr-file-actions">
                   <span className={`hr-file-category ${file.sensitivity === "restricted" ? "restricted" : ""}`}>{file.category}</span>
-                  {file.fileUrl && <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open</a>}
+                  {file.fileUrl && <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open file</a>}
                   <button className="button subtle" type="button" onClick={() => archiveFile(file)}>Archive</button>
                 </div>
               </article>
