@@ -3347,6 +3347,7 @@ label {
 
 .workspace {
   padding: 30px;
+  min-width: 0;
 }
 
 .platform-header,
@@ -3362,6 +3363,7 @@ label {
   margin: 0;
   color: var(--royal-dark);
   font-size: clamp(1.8rem, 3vw, 3rem);
+  overflow-wrap: anywhere;
 }
 
 .platform-subline {
@@ -3376,6 +3378,7 @@ label {
   margin: 8px 0 0;
   color: var(--muted);
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .platform-source,
@@ -3401,6 +3404,7 @@ label {
   display: grid;
   gap: 4px;
   min-width: 150px;
+  max-width: min(360px, 100%);
   color: var(--royal-dark);
   font-weight: 900;
 }
@@ -3413,8 +3417,14 @@ label {
 }
 
 .view-as-control select {
+  min-width: 0;
+  max-width: 100%;
   border-radius: 12px;
   padding: 9px 10px;
+}
+
+.view-person-control {
+  min-width: min(300px, 100%);
 }
 
 .dashboard-grid {
@@ -3422,6 +3432,75 @@ label {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   align-items: start;
+  min-width: 0;
+}
+
+.staff-workspace-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.staff-home-summary {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 18px;
+  border: 1px solid rgba(72, 103, 216, 0.22);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 92% 10%, rgba(242, 165, 76, 0.16), transparent 30%),
+    linear-gradient(135deg, #f7faff 0%, #fff 58%, #edf3ff 100%);
+  padding: clamp(18px, 3vw, 26px);
+  box-shadow: 0 16px 34px rgba(38, 63, 169, 0.08);
+}
+
+.staff-home-copy h2 {
+  color: var(--royal-dark);
+  font-size: clamp(1.8rem, 3vw, 2.55rem);
+  line-height: 1.08;
+  overflow-wrap: anywhere;
+}
+
+.staff-home-copy p {
+  color: var(--muted);
+  font-weight: 850;
+  line-height: 1.5;
+}
+
+.staff-home-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.staff-home-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-self: stretch;
+}
+
+.staff-home-details span {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--muted);
+  padding: 13px;
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.staff-home-details strong {
+  color: var(--royal-dark);
+  font-size: 0.95rem;
+  line-height: 1.25;
+  text-transform: none;
+  overflow-wrap: anywhere;
 }
 
 .ops-briefing {
@@ -3556,6 +3635,7 @@ label {
 .metric {
   display: grid;
   gap: 8px;
+  min-width: 0;
   padding: 20px;
 }
 
@@ -3574,6 +3654,7 @@ label {
 
 .metric strong {
   font-size: 1.55rem;
+  overflow-wrap: anywhere;
 }
 
 .metric.green svg,
@@ -5255,6 +5336,7 @@ label {
   border-radius: 14px;
   padding: 14px;
   background: #fff;
+  min-width: 0;
 }
 
 .staff-action-card {
@@ -5289,6 +5371,8 @@ label {
 .list-item span,
 .list-item small {
   display: block;
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .progress {
@@ -5872,6 +5956,7 @@ label {
   border-radius: 20px;
   background: linear-gradient(135deg, #f7faff 0%, #ffffff 54%, #eef4ff 100%);
   padding: 18px;
+  min-width: 0;
 }
 
 .staff-profile-identity {
@@ -5879,6 +5964,7 @@ label {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 16px;
   align-items: center;
+  min-width: 0;
 }
 
 .staff-photo-control {
@@ -5922,10 +6008,12 @@ label {
   color: var(--royal-dark);
   font-size: clamp(1.8rem, 3vw, 2.8rem);
   line-height: 1.02;
+  overflow-wrap: anywhere;
 }
 
 .staff-profile-identity p {
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .staff-profile-badges {
@@ -5939,16 +6027,50 @@ label {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .staff-profile-grid section,
 .staff-profile-notes {
   display: grid;
   gap: 10px;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.82);
   padding: 14px;
+}
+
+.staff-profile-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.staff-profile-stat-strip div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 13px;
+}
+
+.staff-profile-stat-strip span,
+.compliance-check-grid span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.staff-profile-stat-strip strong,
+.compliance-check-grid strong {
+  color: var(--royal-dark);
+  line-height: 1.28;
+  overflow-wrap: anywhere;
 }
 
 .staff-profile-grid .staff-profile-files {
@@ -5983,6 +6105,21 @@ label {
   margin: 0;
   color: var(--ink);
   font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.compliance-check-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.compliance-check-grid div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border-radius: 12px;
+  background: #f7f9ff;
+  padding: 10px;
 }
 
 .staff-profile-list {
@@ -5993,6 +6130,7 @@ label {
 .staff-profile-list div {
   display: grid;
   gap: 3px;
+  min-width: 0;
   border-radius: 12px;
   background: #f7f9ff;
   padding: 10px;
@@ -6052,6 +6190,7 @@ label {
   color: var(--muted);
   font-size: 0.86rem;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .staff-profile-notes textarea {
@@ -6547,7 +6686,10 @@ th {
   .form-two,
   .staff-register-head,
   .staff-register-controls,
+  .staff-home-summary,
+  .staff-home-details,
   .staff-profile-grid,
+  .staff-profile-stat-strip,
   .cover-move-panel,
   .cover-email-grid,
   .org-tree,
@@ -6653,7 +6795,13 @@ th {
   .header-tools,
   .toolbar div {
     width: 100%;
+    flex-wrap: wrap;
     justify-content: space-between;
+  }
+
+  .view-as-control,
+  .view-person-control {
+    flex: 1 1 240px;
   }
 }
 
@@ -6804,6 +6952,19 @@ th {
 
   .dashboard-grid {
     grid-template-columns: 1fr;
+  }
+
+  .staff-profile-identity {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-photo-control {
+    justify-items: start;
+  }
+
+  .staff-profile-grid dl div {
+    grid-template-columns: 1fr;
+    gap: 3px;
   }
 
   .renewal-action {

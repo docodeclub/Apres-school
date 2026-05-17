@@ -520,7 +520,25 @@ function StaffDashboard({ data }) {
     addAuditLog("SCR evidence submitted", `${item.title}: ${submission.reference}`);
   }
   return (
-    <DashboardGrid>
+    <DashboardGrid className="staff-workspace-grid">
+      {ownStaff && (
+        <section className="staff-home-summary">
+          <div className="staff-home-copy">
+            <p className="eyebrow">My staff record</p>
+            <h2>{ownStaff.preferredName || ownStaff.name}</h2>
+            <p>{ownStaff.role} · {staffPrimaryLocation(ownStaff)}</p>
+            <div className="staff-home-badges">
+              <Badge value={ownStaff.compliance || "Review"} />
+              <Badge value={ownStaff.contractType || "Contract not recorded"} />
+            </div>
+          </div>
+          <div className="staff-home-details">
+            <span><strong>{ownStaff.email || "Email not recorded"}</strong>Email</span>
+            <span><strong>{ownStaff.phone || "Phone not recorded"}</strong>Phone</span>
+            <span><strong>{ownStaff.startDate || "Not recorded"}</strong>Start date</span>
+          </div>
+        </section>
+      )}
       <Metric icon={<CalendarDays />} label="Upcoming shifts" value={data.sessions.length} tone="green" />
       <Metric icon={<ClipboardCheck />} label="Compliance status" value={ownStaff?.compliance || "Review"} tone="blue" />
       <Metric icon={<BookOpen />} label="Docs to read" value={pendingDocs} tone={pendingDocs ? "amber" : "green"} />
@@ -3499,6 +3517,20 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction 
     return staffSchoolNames(person).some((school) => label.includes(school.toLowerCase()));
   }).slice(0, 3);
   const avatar = photoUrl || person.photoUrl || person.profilePhotoUrl || defaultStaffAvatar;
+  const profileStats = [
+    ["SCR", checkStatus],
+    ["Next action", nextAction],
+    ["Manager", managerName || "Unassigned"],
+    ["Sites", assignments.length ? String(assignments.length) : "None"],
+  ];
+  const complianceChecks = [
+    ["Right to work", person.rightToWork || person.rightToWorkType || "Not recorded"],
+    ["Enhanced DBS", person.dbsRenewal || "Not recorded"],
+    ["Safeguarding", person.safeguardingExpiry || "Not recorded"],
+    ["Allergy awareness", person.allergyAwarenessExpiry || "Not recorded"],
+    ["First aid", person.firstAidExpiry || "Not required"],
+    ["Admin review", person.scrChecklist?.approvedAt ? `Approved ${formatShortDate(person.scrChecklist.approvedAt.slice(0, 10))}` : "Awaiting review"],
+  ];
 
   useEffect(() => {
     setPhotoUrl(person.photoUrl || person.profilePhotoUrl || "");
@@ -3557,6 +3589,14 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction 
           </div>
         </div>
       </div>
+      <div className="staff-profile-stat-strip">
+        {profileStats.map(([label, value]) => (
+          <div key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
       <div className="staff-profile-grid">
         <section>
           <h4>Contact & line management</h4>
@@ -3569,12 +3609,14 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction 
         </section>
         <section>
           <h4>SCR snapshot</h4>
-          <dl>
-            <div><dt>DBS renewal</dt><dd>{person.dbsRenewal || "Not recorded"}</dd></div>
-            <div><dt>Safeguarding</dt><dd>{person.safeguardingExpiry || "Not recorded"}</dd></div>
-            <div><dt>Allergy awareness</dt><dd>{person.allergyAwarenessExpiry || "Not recorded"}</dd></div>
-            <div><dt>First aid</dt><dd>{person.firstAidExpiry || "Not required"}</dd></div>
-          </dl>
+          <div className="compliance-check-grid">
+            {complianceChecks.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
         </section>
         <section>
           <h4>Pay & contract</h4>
