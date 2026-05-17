@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   faqs,
   services,
@@ -580,6 +580,7 @@ export default function App() {
   const [tab, setTab] = useState("Admin");
   const [menu, setMenu] = useState(false);
   const [platformData, setPlatformData] = useState(mockPlatformData);
+  const authUserIdRef = useRef(null);
 
   useEffect(() => {
     const meta = pageMeta[page] || pageMeta.Home;
@@ -663,14 +664,25 @@ export default function App() {
 
   async function applySession(session) {
     const user = session?.user || null;
-    setAuthUser(user);
-    setPlatformUnlocked(Boolean(user));
+    const sameSignedInUser = user?.id && authUserIdRef.current === user.id;
 
     if (!user) {
+      authUserIdRef.current = null;
+      setAuthUser(null);
+      setPlatformUnlocked(false);
       setRole("Staff");
       setTab("Staff");
       return;
     }
+
+    if (sameSignedInUser) {
+      setPlatformUnlocked(true);
+      return;
+    }
+
+    authUserIdRef.current = user.id;
+    setAuthUser(user);
+    setPlatformUnlocked(true);
 
     try {
       const { getProfileRole } = await loadSupabaseModule();
