@@ -69,6 +69,10 @@ export async function fetchPlatformData({ userId, role }) {
       job_role,
       employment_type,
       start_date,
+      contract_type,
+      primary_site,
+      pay_rate,
+      annual_salary,
       profiles(full_name, email, role),
       scr_checks(admin_review, dbs, safeguarding, first_aid)
     `)
@@ -139,12 +143,14 @@ function mapStaffRecords(records) {
       profileId: record.profile_id,
       name: record.preferred_name || profile?.full_name || "Staff member",
       role: record.job_role || profile?.role || "Staff",
-      location: record.employment_type || "Assigned sites",
+      location: record.primary_site || record.employment_type || "Assigned sites",
       compliance: scr?.admin_review?.status || "Review needed",
       dbsRenewal: scr?.dbs?.renewalDate || scr?.dbs?.renewal_date || "Not recorded",
       safeguardingExpiry: scr?.safeguarding?.expiryDate || scr?.safeguarding?.expiry_date || "Not recorded",
       firstAidExpiry: scr?.first_aid?.expiryDate || scr?.first_aid?.expiry_date || "Not required",
       payRate: Number(record.pay_rate || 0),
+      annualSalary: Number(record.annual_salary || 0),
+      contractType: record.contract_type || record.employment_type || "Not recorded",
     };
   });
 }
