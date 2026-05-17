@@ -5860,6 +5860,10 @@ label {
   padding: 14px;
 }
 
+.staff-profile-grid .staff-profile-files {
+  grid-column: span 2;
+}
+
 .staff-profile-grid h4,
 .staff-profile-notes {
   color: var(--royal-dark);
@@ -5901,6 +5905,55 @@ label {
   border-radius: 12px;
   background: #f7f9ff;
   padding: 10px;
+}
+
+.staff-hr-file-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.staff-hr-file-tabs button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.staff-hr-file-tabs button.active {
+  border-color: rgba(72, 103, 216, 0.36);
+  background: #eef3ff;
+  color: var(--royal);
+}
+
+.staff-hr-file-tabs span {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(72, 103, 216, 0.1);
+  color: inherit;
+  font-size: 0.72rem;
+}
+
+.staff-profile-list .staff-profile-file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.staff-profile-list .staff-profile-file-row > div {
+  padding: 0;
+  background: transparent;
 }
 
 .staff-profile-list span,
@@ -6410,6 +6463,10 @@ th {
   .settings-grid,
   .rota-grid {
     grid-template-columns: 1fr;
+  }
+
+  .staff-profile-grid .staff-profile-files {
+    grid-column: auto;
   }
 
   .camp-announcement {

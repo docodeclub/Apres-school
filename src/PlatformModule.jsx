@@ -3266,9 +3266,12 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction 
   const [notes, setNotes] = useState(() => readJson(staffProfileNotesStorageKey, {}));
   const [photoUrl, setPhotoUrl] = useState(person.photoUrl || person.profilePhotoUrl || "");
   const [photoStatus, setPhotoStatus] = useState("");
+  const [hrFileTab, setHrFileTab] = useState("All");
   const note = notes[person.id] || "";
   const assignments = staffAssignments(person);
-  const hrFiles = (data.hrFiles || []).filter((file) => file.staffRecordId === person.id).slice(0, 5);
+  const hrFiles = (data.hrFiles || []).filter((file) => file.staffRecordId === person.id);
+  const hrFileTabs = buildStaffHrFileTabs(hrFiles);
+  const visibleHrFiles = hrFileTab === "All" ? hrFiles : hrFiles.filter((file) => staffHrFileBucket(file) === hrFileTab);
   const sessions = (data.sessions || []).filter((session) => {
     const label = `${session.site || ""} ${session.programme || ""}`.toLowerCase();
     return staffSchoolNames(person).some((school) => label.includes(school.toLowerCase()));
@@ -3278,6 +3281,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction 
   useEffect(() => {
     setPhotoUrl(person.photoUrl || person.profilePhotoUrl || "");
     setPhotoStatus("");
+    setHrFileTab("All");
   }, [person.id, person.photoUrl, person.profilePhotoUrl]);
 
   function updateNote(value) {
@@ -3371,16 +3375,34 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction 
             {!assignments.length && <span className="muted-inline">No active site assignment.</span>}
           </div>
         </section>
-        <section>
+        <section className="staff-profile-files">
           <h4>HR files</h4>
+          <div className="staff-hr-file-tabs" role="tablist" aria-label={`${person.name} HR file categories`}>
+            {hrFileTabs.map((tab) => (
+              <button
+                key={tab.name}
+                className={hrFileTab === tab.name ? "active" : ""}
+                type="button"
+                role="tab"
+                aria-selected={hrFileTab === tab.name}
+                onClick={() => setHrFileTab(tab.name)}
+              >
+                {tab.name}<span>{tab.count}</span>
+              </button>
+            ))}
+          </div>
           <div className="staff-profile-list">
-            {hrFiles.map((file) => (
-              <div key={file.id}>
-                <strong>{file.title}</strong>
-                <span>{file.category}{file.expiryDate ? ` · expires ${formatShortDate(file.expiryDate)}` : ""}</span>
+            {visibleHrFiles.slice(0, 6).map((file) => (
+              <div className="staff-profile-file-row" key={file.id}>
+                <div>
+                  <strong>{file.title}</strong>
+                  <span>{file.category}{file.expiryDate ? ` · expires ${formatShortDate(file.expiryDate)}` : ""}</span>
+                </div>
+                {file.fileUrl && <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open</a>}
               </div>
             ))}
-            {!hrFiles.length && <span className="muted-inline">No HR files logged yet.</span>}
+            {!visibleHrFiles.length && <span className="muted-inline">No {hrFileTab === "All" ? "" : `${hrFileTab.toLowerCase()} `}HR files logged yet.</span>}
+            {visibleHrFiles.length > 6 && <span className="muted-inline">Showing latest 6 of {visibleHrFiles.length}. Open HR Files for the full document history.</span>}
           </div>
         </section>
         <section>
@@ -3399,6 +3421,28 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction 
       <label className="staff-profile-notes">Internal notes<textarea value={note} onChange={(event) => updateNote(event.target.value)} rows="3" placeholder="Manager notes, HR follow-up, contract reminders..." /></label>
     </article>
   );
+}
+
+function staffHrFileBucket(file) {
+  const category = `${file.category || ""} ${file.sensitivity || ""} ${file.title || ""}`.toLowerCase();
+  if (category.includes("payslip") || category.includes("payroll")) return "Payslips";
+  if (category.includes("contract")) return "Contracts";
+  if (category.includes("letter") || category.includes("communication")) return "Letters";
+  if (category.includes("disciplinary") || category.includes("dbs") || category.includes("right to work") || category.includes("restricted")) return "Restricted";
+  return "Other";
+}
+
+function buildStaffHrFileTabs(files) {
+  const baseTabs = ["All", "Contracts", "Payslips", "Letters", "Restricted", "Other"];
+  const counts = files.reduce((acc, file) => {
+    const bucket = staffHrFileBucket(file);
+    acc.All += 1;
+    acc[bucket] = (acc[bucket] || 0) + 1;
+    return acc;
+  }, { All: 0, Contracts: 0, Payslips: 0, Letters: 0, Restricted: 0, Other: 0 });
+  return baseTabs
+    .filter((name) => name === "All" || counts[name] > 0)
+    .map((name) => ({ name, count: counts[name] || 0 }));
 }
 
 function SessionList({ personal, detailed, data = mockPlatformData }) {
