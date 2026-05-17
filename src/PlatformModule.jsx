@@ -288,25 +288,37 @@ const defaultStaffAvatar = "/assets/internal/default-staff-avatar.png";
 
 function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const [staffProfileTargetId, setStaffProfileTargetId] = useState("");
+  const [viewRole, setViewRole] = useState(role);
   const localStaff = readOnboardedStaffProfiles();
+  const canPreviewRoles = ["Admin", "Superadmin"].includes(role);
+  const effectiveRole = canPreviewRoles ? viewRole : role;
   const enrichedData = {
     ...data,
     staff: mergeStaffProfiles(data.staff, localStaff),
     source: localStaff.length ? `${data.source} + onboarding` : data.source,
   };
-  const access = buildAccessContext(role, userEmail, enrichedData);
+  const access = buildAccessContext(effectiveRole, userEmail, enrichedData);
   const scopedData = access.data;
-  const visibleTabs = role === "Staff" ? ["Staff", "Documents", "Pay", "Rewards", "Sessions"] : platformTabs;
+  const visibleTabs = effectiveRole === "Staff" ? ["Staff", "Documents", "Pay", "Rewards", "Sessions"] : platformTabs;
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item))])
     .filter(([, items]) => items.length);
+
+  useEffect(() => {
+    setViewRole(role);
+  }, [role]);
+
+  useEffect(() => {
+    if (!visibleTabs.includes(tab)) setTab(visibleTabs[0] || "Staff");
+  }, [setTab, tab, visibleTabs]);
+
   return (
     <main className="platform">
       <aside className="sidebar">
         <div className="sidebar-heading">
           <p className="eyebrow">Internal platform</p>
-          <h2>{role === "Staff" ? "My Workspace" : "Admin Workspace"}</h2>
-          <span>{role === "Staff" ? "Your shifts, documents and pay" : "People, sites, compliance and bookings"}</span>
+          <h2>{effectiveRole === "Staff" ? "My Workspace" : "Admin Workspace"}</h2>
+          <span>{effectiveRole === "Staff" ? "Your shifts, documents and pay" : "People, sites, compliance and bookings"}</span>
         </div>
         <nav className="platform-nav" aria-label="Internal platform sections">
           {visibleGroups.map(([group, items]) => (
@@ -322,7 +334,17 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         </nav>
       </aside>
       <section className="workspace">
-        <PlatformHeader role={role} userEmail={userEmail} onSignOut={onSignOut} data={enrichedData} access={access} />
+        <PlatformHeader
+          role={effectiveRole}
+          actualRole={role}
+          canPreviewRoles={canPreviewRoles}
+          viewRole={viewRole}
+          setViewRole={setViewRole}
+          userEmail={userEmail}
+          onSignOut={onSignOut}
+          data={enrichedData}
+          access={access}
+        />
         {tab === "Staff" && <StaffDashboard data={scopedData} />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
@@ -345,7 +367,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   );
 }
 
-function PlatformHeader({ role, userEmail, onSignOut, data, access }) {
+function PlatformHeader({ role, actualRole, canPreviewRoles, viewRole, setViewRole, userEmail, onSignOut, data, access }) {
   const headline = role === "Staff" ? "My Après Workspace" : "Today at Après";
   const subline = role === "Staff"
     ? "Your sessions, documents, pay and staff actions in one place."
@@ -357,11 +379,21 @@ function PlatformHeader({ role, userEmail, onSignOut, data, access }) {
         <h1>{headline}</h1>
         <p className="platform-subline">{subline}</p>
         {userEmail && <p className="platform-user">{userEmail} · {role}</p>}
+        {canPreviewRoles && viewRole !== actualRole && <p className="platform-warning">Previewing the platform as {viewRole}. Your real account remains {actualRole}.</p>}
         <p className="platform-source">{data.loading ? "Loading live records..." : `${data.source}${data.error ? " · using demo fallback" : ""}`}</p>
         {access?.isScoped && <p className="platform-source">Manager scope: {access.directReports.length} direct reports · own team records only</p>}
         {data.error && <p className="platform-warning">{data.error}</p>}
       </div>
       <div className="header-tools">
+        {canPreviewRoles && (
+          <label className="view-as-control">
+            <span>View as</span>
+            <select value={viewRole} onChange={(event) => setViewRole(event.target.value)}>
+              {["Superadmin", "Admin", "Manager", "Staff"].map((item) => <option key={item}>{item}</option>)}
+            </select>
+            <small>Signed in as {actualRole}</small>
+          </label>
+        )}
         <span className="secure-label">Protected</span>
         <button className="button light" type="button" onClick={onSignOut}>Sign Out</button>
       </div>
@@ -570,14 +602,17 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
         <Panel title="Staff Actions">
           <div className="list">
             {staffActionRows.map((person) => (
-              <button className="list-item action-card-button" type="button" key={person.id} onClick={() => onOpenStaffProfile(person.id)}>
+              <article className="list-item staff-action-card" key={person.id}>
                 <div>
                   <strong>{person.name}</strong>
                   <span>{person.role} · {staffPrimaryLocation(person)}</span>
                   <small>DBS: {person.dbsRenewal || "Not recorded"} · Safeguarding: {person.safeguardingExpiry || "Not recorded"}</small>
                 </div>
-                <Badge value={person.compliance || "Review"} />
-              </button>
+                <div className="staff-action-card-tools">
+                  <Badge value={person.compliance || "Review"} />
+                  <button className="button light" type="button" onClick={() => onOpenStaffProfile(person.id)}>View profile</button>
+                </div>
+              </article>
             ))}
             {!staffActionRows.length && <EmptyList title="No staff actions" text="Everyone in scope is currently marked compliant." />}
           </div>
@@ -3706,13 +3741,16 @@ function buildAccessContext(role, userEmail, data) {
   const hierarchy = readHierarchyState();
   const currentUser = users.find((user) => user.email === userEmail) || users.find((user) => user.role === role) || users[0];
   const isScoped = role === "Manager";
+  const isStaffScoped = role === "Staff";
   const directReports = isScoped
     ? users.filter((user) => (hierarchy[user.id]?.reportsTo ?? defaultReportsTo(user, users)) === currentUser?.id)
+    : isStaffScoped
+      ? [currentUser].filter(Boolean)
     : users;
   const directIds = new Set(directReports.map((user) => user.id));
   const directNames = new Set(directReports.map((user) => user.name));
-  const scopedStaff = isScoped ? data.staff.filter((person) => directIds.has(person.profileId || person.id)) : data.staff;
-  const scopedSessions = isScoped
+  const scopedStaff = isScoped || isStaffScoped ? data.staff.filter((person) => directIds.has(person.profileId || person.id)) : data.staff;
+  const scopedSessions = isScoped || isStaffScoped
     ? data.sessions.filter((session) => directNames.has(session.staff) || scopedStaff.some((person) => staffAssignedToSchool(person, session.site)))
     : data.sessions;
   return {

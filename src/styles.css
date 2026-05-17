@@ -3397,6 +3397,26 @@ label {
   align-items: center;
 }
 
+.view-as-control {
+  display: grid;
+  gap: 4px;
+  min-width: 150px;
+  color: var(--royal-dark);
+  font-weight: 900;
+}
+
+.view-as-control span,
+.view-as-control small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.view-as-control select {
+  border-radius: 12px;
+  padding: 9px 10px;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -5237,17 +5257,21 @@ label {
   background: #fff;
 }
 
-.action-card-button {
-  width: 100%;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+.staff-action-card {
+  align-items: flex-start;
 }
 
-.action-card-button:hover {
+.staff-action-card:hover {
   border-color: rgba(72, 103, 216, 0.34);
   background: #f7f9ff;
+}
+
+.staff-action-card-tools {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .list-item > div {
