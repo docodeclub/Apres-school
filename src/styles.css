@@ -5091,12 +5091,21 @@ label {
 
 .requirement-checks div {
   display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(112px, 0.85fr) minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   border-radius: 12px;
   background: #fff;
   padding: 10px;
+}
+
+.requirement-checks strong,
+.requirement-checks span {
+  min-width: 0;
+}
+
+.requirement-checks strong {
+  overflow-wrap: anywhere;
 }
 
 .requirement-checks span {
@@ -5743,6 +5752,123 @@ label {
   gap: 12px;
 }
 
+.staff-profile-panel {
+  display: grid;
+  gap: 18px;
+  border: 1px solid rgba(72, 103, 216, 0.22);
+  border-radius: 20px;
+  background: linear-gradient(135deg, #f7faff 0%, #ffffff 54%, #eef4ff 100%);
+  padding: 18px;
+}
+
+.staff-profile-identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.staff-profile-identity img {
+  width: 104px;
+  height: 104px;
+  border-radius: 28px;
+  object-fit: cover;
+  border: 1px solid rgba(72, 103, 216, 0.22);
+  background: #eef3ff;
+  box-shadow: 0 12px 28px rgba(38, 63, 169, 0.13);
+}
+
+.staff-profile-identity h3 {
+  color: var(--royal-dark);
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  line-height: 1.02;
+}
+
+.staff-profile-identity p {
+  color: var(--muted);
+}
+
+.staff-profile-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.staff-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.staff-profile-grid section,
+.staff-profile-notes {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 14px;
+}
+
+.staff-profile-grid h4,
+.staff-profile-notes {
+  color: var(--royal-dark);
+  font-weight: 950;
+}
+
+.staff-profile-grid dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.staff-profile-grid dl div {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.5fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.staff-profile-grid dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.staff-profile-grid dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 850;
+}
+
+.staff-profile-list {
+  display: grid;
+  gap: 8px;
+}
+
+.staff-profile-list div {
+  display: grid;
+  gap: 3px;
+  border-radius: 12px;
+  background: #f7f9ff;
+  padding: 10px;
+}
+
+.staff-profile-list span,
+.muted-inline {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.staff-profile-notes textarea {
+  font-weight: 700;
+}
+
+tr.selected-row {
+  background: #f4f7ff;
+}
+
 .cover-move-panel,
 .email-preview {
   display: grid;
@@ -6228,6 +6354,7 @@ th {
   .form-two,
   .staff-register-head,
   .staff-register-controls,
+  .staff-profile-grid,
   .cover-move-panel,
   .cover-email-grid,
   .org-tree,

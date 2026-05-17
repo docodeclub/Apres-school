@@ -199,6 +199,7 @@ const staffApplicationsStorageKey = "apres-staff-applications";
 const onboardedStaffStorageKey = "apres-onboarded-staff";
 const scrChecklistStorageKey = "apres-scr-checklists";
 const scrRenewalRequestsStorageKey = "apres-scr-renewal-requests";
+const staffProfileNotesStorageKey = "apres-staff-profile-notes";
 const ofstedLogsStorageKey = "apres-ofsted-site-logs";
 const ofstedInspectionDayStorageKey = "apres-ofsted-inspection-day";
 const ofstedGapOwnersStorageKey = "apres-ofsted-gap-owners";
@@ -282,6 +283,7 @@ const ofstedSites = [
   },
 ];
 const coverReasons = ["Illness cover", "Planned absence", "Training cover", "Ratio support", "Emergency cover"];
+const defaultStaffAvatar = "/assets/internal/default-staff-avatar.png";
 
 function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const localStaff = readOnboardedStaffProfiles();
@@ -3157,6 +3159,7 @@ function StaffTable({ compact, data = mockPlatformData }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Action needed");
   const [siteFilter, setSiteFilter] = useState("All");
+  const [selectedId, setSelectedId] = useState(data.staff[0]?.id || "");
   const hierarchy = readHierarchyState();
   const staffUsers = data.staff.map((person, index) => ({
     id: person.profileId || person.id,
@@ -3198,6 +3201,7 @@ function StaffTable({ compact, data = mockPlatformData }) {
   });
   const actionCount = data.staff.filter((person) => checkStatus(person) !== "Compliant").length;
   const compliantCount = data.staff.length - actionCount;
+  const selectedPerson = data.staff.find((person) => person.id === selectedId) || rows[0] || data.staff[0];
   return (
     <section className="staff-register">
       <div className="staff-register-head">
@@ -3217,12 +3221,21 @@ function StaffTable({ compact, data = mockPlatformData }) {
           </select></label>
         </div>
       </div>
+      {selectedPerson && (
+        <StaffProfilePanel
+          person={selectedPerson}
+          data={data}
+          managerName={managerName(selectedPerson)}
+          checkStatus={checkStatus(selectedPerson)}
+          nextAction={actionText(selectedPerson)}
+        />
+      )}
       <TableWrap>
         <table>
-          <thead><tr><th>Staff</th><th>Role</th><th>Assigned sites</th><th>Reports to</th><th>SCR</th><th>Next action</th>{!compact && <><th>DBS renewal</th><th>Safeguarding</th><th>First aid</th></>}</tr></thead>
+          <thead><tr><th>Staff</th><th>Role</th><th>Assigned sites</th><th>Reports to</th><th>SCR</th><th>Next action</th>{!compact && <><th>DBS renewal</th><th>Safeguarding</th><th>First aid</th></>}<th>Profile</th></tr></thead>
           <tbody>
             {rows.map((person) => (
-              <tr key={person.id}>
+              <tr key={person.id} className={selectedPerson?.id === person.id ? "selected-row" : ""}>
                 <td><strong>{person.name}</strong>{person.email && <><br /><small>{person.email}</small></>}</td>
                 <td>{person.role}</td>
                 <td>{staffPrimaryLocation(person)}</td>
@@ -3230,6 +3243,7 @@ function StaffTable({ compact, data = mockPlatformData }) {
                 <td><Badge value={checkStatus(person)} /></td>
                 <td><strong>{actionText(person)}</strong></td>
                 {!compact && <><td>{person.dbsRenewal}</td><td>{person.safeguardingExpiry}</td><td>{person.firstAidExpiry}</td></>}
+                <td><button className="button subtle" type="button" onClick={() => setSelectedId(person.id)}>View</button></td>
               </tr>
             ))}
           </tbody>
@@ -3237,6 +3251,110 @@ function StaffTable({ compact, data = mockPlatformData }) {
       </TableWrap>
       {!rows.length && <EmptyList title="No staff match these filters" text="Try all statuses or clear the search field." />}
     </section>
+  );
+}
+
+function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction }) {
+  const [notes, setNotes] = useState(() => readJson(staffProfileNotesStorageKey, {}));
+  const note = notes[person.id] || "";
+  const assignments = staffAssignments(person);
+  const hrFiles = (data.hrFiles || []).filter((file) => file.staffRecordId === person.id).slice(0, 5);
+  const sessions = (data.sessions || []).filter((session) => {
+    const label = `${session.site || ""} ${session.programme || ""}`.toLowerCase();
+    return staffSchoolNames(person).some((school) => label.includes(school.toLowerCase()));
+  }).slice(0, 3);
+  const avatar = person.photoUrl || person.profilePhotoUrl || defaultStaffAvatar;
+
+  function updateNote(value) {
+    const next = {
+      ...notes,
+      [person.id]: value,
+    };
+    setNotes(next);
+    localStorage.setItem(staffProfileNotesStorageKey, JSON.stringify(next));
+  }
+
+  return (
+    <article className="staff-profile-panel">
+      <div className="staff-profile-identity">
+        <img src={avatar} alt={`${person.name} profile`} />
+        <div>
+          <p className="eyebrow">Staff profile</p>
+          <h3>{person.name}</h3>
+          <p>{person.role} · {staffPrimaryLocation(person)}</p>
+          <div className="staff-profile-badges">
+            <Badge value={checkStatus} />
+            <Badge value={person.contractType || "Contract not recorded"} />
+          </div>
+        </div>
+      </div>
+      <div className="staff-profile-grid">
+        <section>
+          <h4>Contact & line management</h4>
+          <dl>
+            <div><dt>Email</dt><dd>{person.email || "Not recorded"}</dd></div>
+            <div><dt>Phone</dt><dd>{person.phone || "Not recorded"}</dd></div>
+            <div><dt>Reports to</dt><dd>{managerName || "Unassigned"}</dd></div>
+            <div><dt>Next action</dt><dd>{nextAction}</dd></div>
+          </dl>
+        </section>
+        <section>
+          <h4>SCR snapshot</h4>
+          <dl>
+            <div><dt>DBS renewal</dt><dd>{person.dbsRenewal || "Not recorded"}</dd></div>
+            <div><dt>Safeguarding</dt><dd>{person.safeguardingExpiry || "Not recorded"}</dd></div>
+            <div><dt>Allergy awareness</dt><dd>{person.allergyAwarenessExpiry || "Not recorded"}</dd></div>
+            <div><dt>First aid</dt><dd>{person.firstAidExpiry || "Not required"}</dd></div>
+          </dl>
+        </section>
+        <section>
+          <h4>Pay & contract</h4>
+          <dl>
+            <div><dt>Hourly rate</dt><dd>{person.payRate ? `£${person.payRate}/hr` : "Not recorded"}</dd></div>
+            <div><dt>Annual salary</dt><dd>{person.annualSalary ? `£${person.annualSalary}` : "Not recorded"}</dd></div>
+            <div><dt>Contract</dt><dd>{person.contractType || "Not recorded"}</dd></div>
+            <div><dt>Start date</dt><dd>{person.startDate || "Not recorded"}</dd></div>
+          </dl>
+        </section>
+        <section>
+          <h4>Assigned sites</h4>
+          <div className="staff-profile-list">
+            {assignments.map((assignment, index) => (
+              <div key={`${assignment.school}-${index}`}>
+                <strong>{assignment.school}</strong>
+                <span>{assignment.role || person.role} · {assignment.status || "Active"}</span>
+              </div>
+            ))}
+            {!assignments.length && <span className="muted-inline">No active site assignment.</span>}
+          </div>
+        </section>
+        <section>
+          <h4>HR files</h4>
+          <div className="staff-profile-list">
+            {hrFiles.map((file) => (
+              <div key={file.id}>
+                <strong>{file.title}</strong>
+                <span>{file.category}{file.expiryDate ? ` · expires ${formatShortDate(file.expiryDate)}` : ""}</span>
+              </div>
+            ))}
+            {!hrFiles.length && <span className="muted-inline">No HR files logged yet.</span>}
+          </div>
+        </section>
+        <section>
+          <h4>Upcoming rota context</h4>
+          <div className="staff-profile-list">
+            {sessions.map((session) => (
+              <div key={session.id || `${session.site}-${session.date}`}>
+                <strong>{session.programme}</strong>
+                <span>{session.site} · {session.date} · {session.time}</span>
+              </div>
+            ))}
+            {!sessions.length && <span className="muted-inline">No matching upcoming sessions loaded.</span>}
+          </div>
+        </section>
+      </div>
+      <label className="staff-profile-notes">Internal notes<textarea value={note} onChange={(event) => updateNote(event.target.value)} rows="3" placeholder="Manager notes, HR follow-up, contract reminders..." /></label>
+    </article>
   );
 }
 
