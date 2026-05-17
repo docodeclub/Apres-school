@@ -936,8 +936,8 @@ function HRFiles({ data }) {
       setFiles((current) => current.map((file) => file.id === localRecord.id ? saved : file));
       setStatus(hasUploadFile ? "HR file uploaded and saved." : "HR file saved.");
     } catch (error) {
-      setFiles((current) => current.map((file) => file.id === localRecord.id ? { ...file, syncError: error.message || "Save failed" } : file));
-      setStatus("Saved locally, but Supabase could not persist it. Check permissions/storage settings.");
+      setFiles((current) => current.map((file) => file.id === localRecord.id ? { ...file, storagePath: "", syncError: error.message || "Save failed" } : file));
+      setStatus(error.message || "Supabase could not save this HR file. Check permissions/storage settings.");
     }
   }
 
