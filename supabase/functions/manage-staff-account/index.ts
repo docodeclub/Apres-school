@@ -83,7 +83,7 @@ async function getActor(authHeader: string) {
 }
 
 async function createOrUpdateUser(payload: StaffAccountPayload) {
-  const existing = await findUserByEmail(payload.email);
+  const existing = await findProfileUserByEmail(payload.email);
   if (existing) {
     const { data, error } = await supabase.auth.admin.updateUserById(existing.id, {
       password: payload.temporaryPassword,
@@ -100,12 +100,12 @@ async function createOrUpdateUser(payload: StaffAccountPayload) {
     email_confirm: true,
     user_metadata: { full_name: payload.name, role: payload.role },
   });
-  if (error) throw error;
+  if (error) throw new Error(formatCreateUserError(error));
   return data.user;
 }
 
 async function resetExistingUser(payload: StaffAccountPayload) {
-  const existing = await findUserByEmail(payload.email);
+  const existing = await findProfileUserByEmail(payload.email);
   if (!existing) return createOrUpdateUser(payload);
 
   const { data, error } = await supabase.auth.admin.updateUserById(existing.id, {
@@ -117,16 +117,23 @@ async function resetExistingUser(payload: StaffAccountPayload) {
   return data.user;
 }
 
-async function findUserByEmail(email: string) {
-  let page = 1;
-  while (page <= 10) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
-    if (error) throw error;
-    const match = data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase());
-    if (match || data.users.length < 1000) return match || null;
-    page += 1;
+async function findProfileUserByEmail(email: string) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, email")
+    .ilike("email", email)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+function formatCreateUserError(error: { message?: string }) {
+  const message = error.message || "Unable to create staff auth user";
+  if (/already|registered|exists/i.test(message)) {
+    return "This email already exists in Supabase Auth but is not linked to a staff profile. Link or remove the existing Auth user, then retry.";
   }
-  return null;
+  return message;
 }
 
 async function linkStaffRecord(staffRecordId: string, userId: string) {
