@@ -1464,6 +1464,7 @@ function HoursTracker({ data }) {
 function SCR({ data, access, targetStaffId, onTargetHandled }) {
   const [checklistState, setChecklistState] = useState(() => readScrChecklistState());
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
+  const [evidenceFilter, setEvidenceFilter] = useState("Action needed");
   const [assignmentState, setAssignmentState] = useState(() => Object.fromEntries(
     data.staff.map((person) => [person.id, staffAssignments(person)]),
   ));
@@ -1502,6 +1503,8 @@ function SCR({ data, access, targetStaffId, onTargetHandled }) {
   ];
   const onboardingProfiles = scrData.staff.filter((person) => person.onboardingStatus);
   const renewalItems = buildScrRenewalItems(scrData.staff);
+  const evidenceWorkflowItems = buildEvidenceWorkflowItems(scrData.staff, renewalItems, renewalRequests);
+  const submittedEvidence = buildSubmittedEvidenceReviews(scrData.staff, renewalRequests);
   function updateAssignment(staffId, index, patch) {
     setAssignmentState((current) => {
       const assignments = [...(current[staffId] || [])];
@@ -1591,6 +1594,44 @@ function SCR({ data, access, targetStaffId, onTargetHandled }) {
     };
     saveRenewalRequests(next);
     addAuditLog("SCR evidence request cleared", `${request.check}: ${request.staffId}`);
+  }
+  function reviewSubmittedEvidence(item, decision, note = "") {
+    const rejectionReason = note.trim() || "Please check the evidence reference, date or document and resubmit for review.";
+    const currentProfile = checklistState[item.staffId] || scrData.staff.find((person) => person.id === item.staffId)?.scrChecklist || {};
+    const currentEvidence = currentProfile.evidence || {};
+    const nextChecklistState = {
+      ...checklistState,
+      [item.staffId]: {
+        ...currentProfile,
+        evidence: {
+          ...currentEvidence,
+          [item.evidenceKey]: {
+            ...(currentEvidence[item.evidenceKey] || {}),
+            status: decision === "approve" ? "Approved" : "Rejected",
+            reviewedAt: new Date().toISOString(),
+            reviewedBy: access?.currentUser?.name || "Admin",
+            reviewNote: decision === "approve" ? "" : rejectionReason,
+            verifiedBy: decision === "approve" ? (access?.currentUser?.name || "Admin") : currentEvidence[item.evidenceKey]?.verifiedBy,
+            dateSeen: decision === "approve" ? new Date().toISOString().slice(0, 10) : currentEvidence[item.evidenceKey]?.dateSeen,
+          },
+        },
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    setChecklistState(nextChecklistState);
+    saveScrChecklistState(nextChecklistState);
+    const nextRequests = {
+      ...renewalRequests,
+      [item.id]: appendScrRequestHistory({
+        ...(renewalRequests[item.id] || {}),
+        status: decision === "approve" ? "Approved" : "Rejected",
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: access?.currentUser?.name || "Admin",
+        rejectionReason: decision === "approve" ? "" : rejectionReason,
+      }, decision === "approve" ? "Approved" : "Sent back", access?.currentUser?.name || "Admin", decision === "approve" ? "Evidence approved." : rejectionReason),
+    };
+    saveRenewalRequests(nextRequests);
+    addAuditLog(decision === "approve" ? "SCR evidence approved" : "SCR evidence rejected", `${item.staffName}: ${item.check}`);
   }
   async function downloadStaffSummary() {
     const { exportStaffScrSummary } = await import("./pdfExports.js");
@@ -1716,6 +1757,21 @@ function SCR({ data, access, targetStaffId, onTargetHandled }) {
         onRequestEvidence={requestProfileEvidence}
         onClearEvidenceRequest={clearProfileEvidenceRequest}
       />
+      <section className="scr-evidence-console">
+        <div className="scr-assignments-heading">
+          <div>
+            <p className="eyebrow">Evidence inbox</p>
+            <h3>Track every SCR evidence request without leaving the register.</h3>
+            <p>Requested, submitted, rejected and approved evidence all sits here, with the newest activity and audit history visible to admins.</p>
+          </div>
+          <div className="renewal-mini-metrics">
+            <Metric icon={<Bell />} label="Action needed" value={evidenceWorkflowItems.filter((item) => ["Prompt", "Requested", "Submitted", "Rejected"].includes(item.status)).length} tone="amber" />
+            <Metric icon={<ClipboardCheck />} label="Submitted" value={submittedEvidence.length} tone={submittedEvidence.length ? "amber" : "green"} />
+          </div>
+        </div>
+        <EvidenceWorkflowInbox items={evidenceWorkflowItems} filter={evidenceFilter} onFilter={setEvidenceFilter} />
+        <SubmittedEvidenceReviewQueue items={submittedEvidence} onReview={reviewSubmittedEvidence} />
+      </section>
       <SCRRenewalPanel items={renewalItems} />
       {!!onboardingProfiles.length && <SCROnboardingQueue staff={onboardingProfiles} onUpdate={updateChecklist} onApprove={approveScrProfile} />}
       <SCRAssignmentsPanel

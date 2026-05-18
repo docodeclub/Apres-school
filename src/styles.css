@@ -4738,6 +4738,7 @@ label {
 
 .scr-requirements,
 .scr-renewal-panel,
+.scr-evidence-console,
 .scr-onboarding-queue {
   display: grid;
   gap: 18px;
