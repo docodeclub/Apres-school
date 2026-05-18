@@ -519,6 +519,8 @@ function StaffDashboard({ data }) {
         ...appendScrRequestHistory({
           ...(renewalRequests[item.id] || {}),
           status: "Submitted",
+          evidenceReference: submission.reference,
+          evidenceExpiryDate: submission.expiryDate,
           submittedAt: new Date().toISOString(),
           submittedBy: ownStaff?.name || "Staff member",
           submissionNote: submission.note,
@@ -553,9 +555,9 @@ function StaffDashboard({ data }) {
       <Metric icon={<CalendarDays />} label="Upcoming shifts" value={data.sessions.length} tone="green" />
       <Metric icon={<ClipboardCheck />} label="Compliance status" value={ownStaff?.compliance || "Review"} tone="blue" />
       <Metric icon={<BookOpen />} label="Docs to read" value={pendingDocs} tone={pendingDocs ? "amber" : "green"} />
-      <Metric icon={<Upload />} label="Evidence requests" value={staffEvidenceRequests.length} tone={staffEvidenceRequests.length ? "amber" : "green"} />
+      <Metric icon={<Upload />} label="Evidence requests" value={staffEvidenceRequests.filter((item) => ["Requested", "Rejected"].includes(item.status)).length} tone={staffEvidenceRequests.some((item) => ["Requested", "Rejected"].includes(item.status)) ? "amber" : "green"} />
       <Metric icon={<PoundSterling />} label="Pay data" value={ownStaff?.payRate ? `£${ownStaff.payRate}/hr` : "Pending"} tone="green" />
-      <Panel title="Evidence Requests"><StaffEvidenceRequestList items={staffEvidenceRequests} onSubmit={saveEvidenceSubmission} /></Panel>
+      <Panel title="My Evidence Requests"><StaffEvidenceRequestList items={staffEvidenceRequests} onSubmit={saveEvidenceSubmission} /></Panel>
       <Panel title="My Upcoming Sessions"><SessionList data={data} personal /></Panel>
       <Panel title="My Trophy Cabinet"><RewardList data={data} /></Panel>
       <Panel title="Outstanding Actions"><ActionList items={["Read Staff Handbook v2026.2", "Confirm annual medical declaration", "Upload renewed proof of address"]} /></Panel>
@@ -2527,7 +2529,7 @@ function buildStaffEvidenceRequests(staff, renewalItems, requests = {}) {
   const staffPrefix = `${staff.id}-`;
   return Object.entries(requests)
     .map(([id, request]) => {
-      if (!id.startsWith(staffPrefix) || !["Requested", "Rejected"].includes(request.status)) return null;
+      if (!id.startsWith(staffPrefix) || !["Requested", "Rejected", "Submitted", "Approved"].includes(request.status)) return null;
       const evidenceKey = id.slice(staffPrefix.length);
       const renewalItem = renewalById[id];
       const evidence = staff.scrChecklist?.evidence?.[evidenceKey] || {};
@@ -2535,16 +2537,27 @@ function buildStaffEvidenceRequests(staff, renewalItems, requests = {}) {
       const status = renewalItem?.status || evidenceExpiryStatus(evidence) || "Requested";
       const dateText = expiryDate ? formatShortDate(expiryDate) : "No date recorded";
       const rejected = request.status === "Rejected";
+      const submitted = request.status === "Submitted";
+      const approved = request.status === "Approved";
       return {
         id,
         staffId: staff.id,
         evidenceKey,
         check: renewalItem?.check || scrEvidenceLabel(evidenceKey),
         title: `${renewalItem?.check || scrEvidenceLabel(evidenceKey)} evidence`,
-        meta: rejected ? "Sent back · please resubmit" : `${status} · ${status === "Expired" ? "expired" : `due ${dateText}`}`,
+        meta: rejected
+          ? "Sent back · please resubmit"
+          : submitted
+            ? "Submitted · waiting for admin review"
+            : approved
+              ? "Approved · no action needed"
+              : `${status} · ${status === "Expired" ? "expired" : `due ${dateText}`}`,
         request,
         history: buildScrEvidenceHistory(request),
+        status: request.status,
         rejected,
+        submitted,
+        approved,
         previousReference: evidence.reference,
         previousNote: evidence.note,
       };
@@ -2819,6 +2832,9 @@ function StaffEvidenceRequestList({ items, onSubmit }) {
   if (!items.length) {
     return <EmptyList title="No evidence requested" text="Any SCR evidence requests from your manager or admin team will appear here." />;
   }
+  const actionItems = items.filter((item) => ["Requested", "Rejected"].includes(item.status));
+  const submittedItems = items.filter((item) => item.status === "Submitted");
+  const approvedItems = items.filter((item) => item.status === "Approved");
   function submit(event, item) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -2831,26 +2847,49 @@ function StaffEvidenceRequestList({ items, onSubmit }) {
   }
   return (
     <div className="staff-evidence-list">
+      <div className="staff-evidence-summary">
+        <span><strong>{actionItems.length}</strong> to complete</span>
+        <span><strong>{submittedItems.length}</strong> waiting for review</span>
+        <span><strong>{approvedItems.length}</strong> approved</span>
+      </div>
       {items.map((item) => (
-        <article className={`staff-evidence-card ${item.rejected ? "rejected" : ""}`} key={item.id}>
-          <div>
-            <p className="eyebrow">{item.rejected ? "Action needed" : "Evidence requested"}</p>
+        <article className={`staff-evidence-card ${item.rejected ? "rejected" : ""} ${item.submitted ? "submitted" : ""} ${item.approved ? "approved" : ""}`} key={item.id}>
+          <div className="staff-evidence-content">
+            <p className="eyebrow">{item.rejected ? "Action needed" : item.submitted ? "Waiting for review" : item.approved ? "Approved" : "Evidence requested"}</p>
             <h3>{item.title}</h3>
             <p>{item.meta}</p>
             <small>
               {item.rejected
                 ? `Reviewed ${formatShortDate(item.request.reviewedAt?.slice(0, 10))} by ${item.request.reviewedBy || "Admin"}.`
-                : `Requested ${formatShortDate(item.request.requestedAt?.slice(0, 10))} by ${item.request.requestedBy || "Admin"}.`}
+                : item.submitted
+                  ? `Submitted ${formatShortDate(item.request.submittedAt?.slice(0, 10))} by ${item.request.submittedBy || "you"}.`
+                  : item.approved
+                    ? `Approved ${formatShortDate(item.request.reviewedAt?.slice(0, 10))} by ${item.request.reviewedBy || "Admin"}.`
+                    : `Requested ${formatShortDate(item.request.requestedAt?.slice(0, 10))} by ${item.request.requestedBy || "Admin"}.`}
             </small>
+            {item.request.note && <p className="staff-evidence-instruction">{item.request.note}</p>}
             {item.rejected && <strong className="staff-evidence-feedback">{item.request.rejectionReason || "Please resubmit this evidence for review."}</strong>}
-            {item.rejected && item.previousReference && <small>Previous submission: {item.previousReference}</small>}
+            {(item.rejected || item.submitted || item.approved) && (item.request.evidenceReference || item.previousReference) && <small>Latest submission: {item.request.evidenceReference || item.previousReference}</small>}
+            {!!item.history?.length && (
+              <details className="staff-evidence-history">
+                <summary>Activity history</summary>
+                <EvidenceHistoryTimeline events={item.history} />
+              </details>
+            )}
           </div>
-          <form className="staff-evidence-form" onSubmit={(event) => submit(event, item)}>
-            <label>Evidence reference<input required name="reference" placeholder="Certificate name, DBS ref or uploaded file name" /></label>
-            <label>New expiry / review date<input name="expiryDate" type="date" /></label>
-            <label className="full">Note<textarea name="note" rows="2" placeholder="Anything the admin team should know." /></label>
-            <button className="button book" type="submit">{item.rejected ? "Resubmit Evidence" : "Submit Evidence"}</button>
-          </form>
+          {["Requested", "Rejected"].includes(item.status) ? (
+            <form className="staff-evidence-form" onSubmit={(event) => submit(event, item)}>
+              <label>Evidence reference<input required name="reference" placeholder="Certificate name, DBS ref or uploaded file name" /></label>
+              <label>New expiry / review date<input name="expiryDate" type="date" /></label>
+              <label className="full">Note<textarea name="note" rows="2" placeholder="Anything the admin team should know." /></label>
+              <button className="button book" type="submit">{item.rejected ? "Resubmit Evidence" : "Submit Evidence"}</button>
+            </form>
+          ) : (
+            <div className="staff-evidence-state">
+              <strong>{item.submitted ? "No action needed right now" : "Evidence accepted"}</strong>
+              <span>{item.submitted ? "The admin team will review this and send it back only if something needs correcting." : "This request is complete and remains visible here for your records."}</span>
+            </div>
+          )}
         </article>
       ))}
     </div>

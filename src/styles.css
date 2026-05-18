@@ -5029,8 +5029,32 @@ label {
   gap: 14px;
 }
 
+.staff-evidence-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.staff-evidence-summary span {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.staff-evidence-summary strong {
+  display: block;
+  color: var(--ink);
+  font-size: 1.2rem;
+  line-height: 1.1;
+}
+
 .staff-evidence-card {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
   gap: 16px;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -5041,6 +5065,22 @@ label {
 .staff-evidence-card.rejected {
   border-color: rgba(230, 126, 34, 0.42);
   background: #fffaf2;
+}
+
+.staff-evidence-card.submitted {
+  border-color: rgba(72, 97, 214, 0.24);
+  background: #f6f8ff;
+}
+
+.staff-evidence-card.approved {
+  border-color: rgba(34, 139, 93, 0.28);
+  background: #f4fbf7;
+}
+
+.staff-evidence-content {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
 }
 
 .staff-evidence-card h3,
@@ -5060,10 +5100,33 @@ label {
   font-size: 0.86rem;
 }
 
+.staff-evidence-instruction {
+  border-left: 3px solid rgba(72, 97, 214, 0.25);
+  padding-left: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.staff-evidence-history {
+  margin-top: 4px;
+}
+
+.staff-evidence-history summary {
+  cursor: pointer;
+  color: var(--blue);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
 .staff-evidence-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  align-self: start;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .staff-evidence-form label {
@@ -5080,6 +5143,27 @@ label {
 .staff-evidence-form textarea {
   width: 100%;
   min-width: 0;
+}
+
+.staff-evidence-state {
+  align-self: start;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.staff-evidence-state strong {
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.staff-evidence-state span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 750;
 }
 
 .submitted-evidence-list {
@@ -7194,6 +7278,11 @@ th {
   }
 
   .evidence-inbox-item {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-evidence-summary,
+  .staff-evidence-card {
     grid-template-columns: 1fr;
   }
 
