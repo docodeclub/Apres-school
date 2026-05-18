@@ -3731,14 +3731,46 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     ["Manager", managerName || "Unassigned"],
     ["Sites", assignments.length ? String(assignments.length) : "None"],
   ];
-  const complianceChecks = [
-    ["Right to work", person.rightToWork || person.rightToWorkType || "Not recorded"],
-    ["Enhanced DBS", person.dbsRenewal || "Not recorded"],
-    ["Safeguarding", person.safeguardingExpiry || "Not recorded"],
-    ["Allergy awareness", person.allergyAwarenessExpiry || "Not recorded"],
-    ["First aid", person.firstAidExpiry || "Not required"],
-    ["Admin review", person.scrChecklist?.approvedAt ? `Approved ${formatShortDate(person.scrChecklist.approvedAt.slice(0, 10))}` : "Awaiting review"],
-  ];
+  const requestByEvidenceKey = Object.fromEntries(evidenceRequests.map((request) => [request.evidenceKey, request]));
+  const evidenceDateFields = {
+    dbs: "dbsRenewal",
+    safeguarding: "safeguardingExpiry",
+    allergy: "allergyAwarenessExpiry",
+    firstAid: "firstAidExpiry",
+  };
+  const evidenceTextFields = {
+    rightToWork: ["rightToWork", "rightToWorkType"],
+    identity: ["identityVerified", "proofOfAddressVerified"],
+    barredList: ["barredListResult", "barredListCheck"],
+    references: ["referencesStatus", "references"],
+    declarations: ["annualDeclarationDate", "declarationsStatus"],
+  };
+  const evidenceChecklistRows = scrEvidenceRequestOptions.map(([key, label]) => {
+    const request = requestByEvidenceKey[key];
+    const evidence = person.scrChecklist?.evidence?.[key] || {};
+    const dateValue = evidence.expiryDate || person[evidenceDateFields[key]];
+    const fieldValue = evidence.reference || evidence.status || (evidenceTextFields[key] || []).map((field) => person[field]).find(Boolean);
+    const expiryStatus = evidenceExpiryStatus({ expiryDate: dateValue });
+    const firstAidNotRequired = key === "firstAid" && String(person.firstAidExpiry || "").toLowerCase() === "not required";
+    const status = request?.status === "Rejected"
+      ? "Sent back"
+      : request?.status === "Submitted"
+        ? "Awaiting review"
+        : request?.status === "Requested"
+          ? "Requested"
+          : request?.status === "Approved" || evidence.status === "Approved"
+            ? "Approved"
+            : firstAidNotRequired
+              ? "Not required"
+              : expiryStatus || (fieldValue ? "Recorded" : "Missing");
+    const tone = ["Approved", "Recorded", "In date", "Not required"].includes(status)
+      ? "ready"
+      : ["Awaiting review", "Requested", "Expiring soon"].includes(status)
+        ? "pending"
+        : "alert";
+    const detail = request?.note || request?.rejectionReason || request?.submissionNote || evidence.note || (dateValue ? `Review date ${formatShortDate(dateValue)}` : fieldValue || "No evidence recorded yet.");
+    return { key, label, status, tone, detail };
+  });
 
   useEffect(() => {
     setPhotoUrl(person.photoUrl || person.profilePhotoUrl || "");
@@ -3875,15 +3907,21 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
             <div><dt>Next action</dt><dd>{nextAction}</dd></div>
           </dl>
         </section>
-        <section>
-          <h4>SCR snapshot</h4>
-          <div className="compliance-check-grid">
-            {complianceChecks.map(([label, value]) => (
-              <div key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
+        <section className="staff-profile-scr-checklist">
+          <h4>SCR evidence checklist</h4>
+          <p className="panel-note">Each item shows what admin should do next for this staff record.</p>
+          <div className="scr-profile-checklist">
+            {evidenceChecklistRows.map((row) => (
+              <div className={`scr-profile-check ${row.tone}`} key={row.key}>
+                <span>{row.label}</span>
+                <strong>{row.status}</strong>
+                <small>{row.detail}</small>
               </div>
             ))}
+          </div>
+          <div className="scr-profile-admin-review">
+            <span>Admin review</span>
+            <strong>{person.scrChecklist?.approvedAt ? `Approved ${formatShortDate(person.scrChecklist.approvedAt.slice(0, 10))}` : "Awaiting review"}</strong>
           </div>
         </section>
         <section>
