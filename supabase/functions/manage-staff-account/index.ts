@@ -8,7 +8,10 @@ const corsHeaders = {
 };
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-const serviceRoleKey = Deno.env.get("APRES_SERVICE_ROLE_KEY") ?? "";
+const serviceRoleKey =
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  Deno.env.get("APRES_SERVICE_ROLE_KEY") ??
+  "";
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
 const resendFrom = Deno.env.get("RESEND_FROM") ?? "Après School <hello@apres-school.co.uk>";
 const defaultLoginUrl = Deno.env.get("STAFF_LOGIN_URL") ?? "https://www.apres-school.co.uk/staff-login";
@@ -150,6 +153,9 @@ async function findProfileUserByEmail(email: string) {
 
 function formatCreateUserError(error: { message?: string }) {
   const message = error.message || "Unable to create staff auth user";
+  if (/database error checking email/i.test(message)) {
+    return "Supabase Auth could not create this account because the email is in a broken or duplicate Auth state. Check Supabase Auth > Users for this email, then retry.";
+  }
   if (/already|registered|exists/i.test(message)) {
     return "This email already exists in Supabase Auth but is not linked to a staff profile. Link or remove the existing Auth user, then retry.";
   }
