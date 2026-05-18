@@ -38,8 +38,8 @@ serve(async (request) => {
       ? await createOrUpdateUser(payload)
       : await resetExistingUser(payload);
 
-    await linkStaffRecord(payload.staffRecordId, user.id);
     await upsertProfile(user.id, payload);
+    await linkStaffRecord(payload.staffRecordId, user.id);
 
     let emailed = false;
     if (resendApiKey) {

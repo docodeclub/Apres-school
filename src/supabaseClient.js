@@ -484,8 +484,22 @@ async function sendStaffAccountAction(action, payload) {
   const { data, error } = await supabase.functions.invoke(staffAccountFunctionName, {
     body: { action, ...payload },
   });
-  if (error) throw error;
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Staff account action failed.");
+  }
   return data;
+}
+
+async function readFunctionError(error) {
+  const context = error?.context;
+  if (!context || typeof context.json !== "function") return "";
+  try {
+    const body = await context.json();
+    return body?.error || body?.message || "";
+  } catch {
+    return "";
+  }
 }
 
 export function getStaffLoginUrl() {
