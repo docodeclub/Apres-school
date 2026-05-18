@@ -5807,6 +5807,90 @@ label {
   font-size: 0.92rem;
 }
 
+.account-rollout-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.account-rollout-stats span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid rgba(38, 63, 169, 0.12);
+  border-radius: 999px;
+  background: #f8fbff;
+  color: var(--muted);
+  padding: 8px 11px;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.account-rollout-stats strong {
+  color: var(--royal-dark);
+}
+
+.account-rollout {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: #fff;
+  padding: 22px;
+  box-shadow: 0 10px 28px rgba(38, 63, 169, 0.07);
+}
+
+.account-controls {
+  grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.6fr);
+}
+
+.account-rollout-table-wrap {
+  overflow-x: auto;
+}
+
+.account-rollout-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+.account-rollout-table th,
+.account-rollout-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 14px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.account-rollout-table th {
+  color: var(--muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.account-rollout-table td {
+  color: var(--royal-dark);
+}
+
+.account-rollout-table td strong,
+.account-rollout-table td span {
+  display: block;
+}
+
+.account-rollout-table td span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.account-rollout-table code {
+  color: var(--royal-dark);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .user-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

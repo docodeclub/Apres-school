@@ -752,6 +752,8 @@ function UserManagement({ data }) {
   const [selectedStaffId, setSelectedStaffId] = useState(data.staff[0]?.id || "");
   const [accountMessage, setAccountMessage] = useState("");
   const [busyAccountId, setBusyAccountId] = useState("");
+  const [accountQuery, setAccountQuery] = useState("");
+  const [rolloutFilter, setRolloutFilter] = useState("All");
   const users = mergeUserRecords(data.staff, state);
   const staffOptions = data.staff.map((person) => {
     const id = person.profileId || person.id;
@@ -766,30 +768,46 @@ function UserManagement({ data }) {
     };
   });
   const selectedStaff = staffOptions.find((person) => person.id === selectedStaffId) || staffOptions[0];
+  const accountRows = buildAccountRolloutRows(staffOptions, users);
+  const rolloutCounts = {
+    ready: accountRows.filter((row) => row.readiness === "Ready").length,
+    missing: accountRows.filter((row) => row.readiness === "Missing email").length,
+    invited: accountRows.filter((row) => row.status === "Invited").length,
+    active: accountRows.filter((row) => row.status === "Active").length,
+  };
+  const visibleAccountRows = accountRows.filter((row) => {
+    const matchesQuery = [row.name, row.email, row.role, row.location].join(" ").toLowerCase().includes(accountQuery.toLowerCase());
+    if (!matchesQuery) return false;
+    if (rolloutFilter === "All") return true;
+    if (rolloutFilter === "Ready") return row.readiness === "Ready";
+    if (rolloutFilter === "Missing email") return row.readiness === "Missing email";
+    if (rolloutFilter === "Invited") return row.status === "Invited";
+    return true;
+  });
 
   function saveState(next) {
     setState(next);
     localStorage.setItem(userStorageKey, JSON.stringify(next));
   }
 
-  async function inviteStaffMember() {
-    if (!selectedStaff?.id) return;
-    const email = selectedStaff.email || "";
-    if (!email.includes("@")) {
+  async function inviteStaffMember(targetStaff = selectedStaff) {
+    if (!targetStaff?.id) return;
+    const email = targetStaff.email || "";
+    if (!isRealStaffEmail(email)) {
       setAccountMessage("Add a real email address to this staff record before inviting them.");
       return;
     }
 
     const temporaryPassword = generateTemporaryPassword();
     const now = new Date().toISOString();
-    setBusyAccountId(selectedStaff.id);
+    setBusyAccountId(targetStaff.id);
     setAccountMessage("Creating invite...");
 
     const patch = {
-      id: selectedStaff.id,
-      name: selectedStaff.name,
+      id: targetStaff.id,
+      name: targetStaff.name,
       email,
-      role: selectedStaff.role,
+      role: targetStaff.role,
       status: "Invited",
       source: "staff record",
       temporaryPassword,
@@ -804,10 +822,10 @@ function UserManagement({ data }) {
       if (hasSupabaseConfig) {
         const { createStaffAccountInvite, getStaffLoginUrl } = await loadSupabaseModule();
         result = await createStaffAccountInvite({
-          staffRecordId: selectedStaff.staffRecordId || selectedStaff.id,
-          name: selectedStaff.name,
+          staffRecordId: targetStaff.staffRecordId || targetStaff.id,
+          name: targetStaff.name,
           email,
-          role: selectedStaff.role,
+          role: targetStaff.role,
           temporaryPassword,
           loginUrl: getStaffLoginUrl(),
         });
@@ -815,11 +833,11 @@ function UserManagement({ data }) {
 
       saveState({
         ...state,
-        [selectedStaff.id]: {
-          ...users.find((user) => user.id === selectedStaff.id),
-          ...state[selectedStaff.id],
+        [targetStaff.id]: {
+          ...users.find((user) => user.id === targetStaff.id),
+          ...state[targetStaff.id],
           ...patch,
-          supabaseUserId: result?.userId || state[selectedStaff.id]?.supabaseUserId || "",
+          supabaseUserId: result?.userId || state[targetStaff.id]?.supabaseUserId || "",
           emailStatus: result?.emailed ? "Welcome email sent" : (hasSupabaseConfig ? "Account created, email provider not configured" : "Local preview only"),
         },
       });
@@ -828,9 +846,9 @@ function UserManagement({ data }) {
     } catch (error) {
       saveState({
         ...state,
-        [selectedStaff.id]: {
-          ...users.find((user) => user.id === selectedStaff.id),
-          ...state[selectedStaff.id],
+        [targetStaff.id]: {
+          ...users.find((user) => user.id === targetStaff.id),
+          ...state[targetStaff.id],
           ...patch,
           accountAction: "Invite failed",
           emailStatus: error.message || "Invite failed",
@@ -843,7 +861,7 @@ function UserManagement({ data }) {
   }
 
   async function resetUserPassword(user) {
-    if (!user?.email?.includes("@")) {
+    if (!isRealStaffEmail(user?.email)) {
       setAccountMessage("This staff member needs a real email before a password can be reset.");
       return;
     }
@@ -947,6 +965,11 @@ function UserManagement({ data }) {
           <h2>Invite staff into the Après workspace.</h2>
           <p>Select a staff member, generate their account, and send a welcome email with a login link and temporary password. The system is for staff-only features: sessions, documents, compliance evidence, HR files, pay and internal updates.</p>
           <p>It also helps Après School stay compliant across sites and ready to provide evidence to Ofsted or partner schools when required.</p>
+          <div className="account-rollout-stats">
+            <span><strong>{rolloutCounts.ready}</strong> ready</span>
+            <span><strong>{rolloutCounts.missing}</strong> missing email</span>
+            <span><strong>{rolloutCounts.invited}</strong> invited</span>
+          </div>
         </div>
         <div className="account-invite-panel">
           <label>Staff member
@@ -961,10 +984,67 @@ function UserManagement({ data }) {
               <small>{selectedStaff.role} · {selectedStaff.location || "Assigned sites"}</small>
             </div>
           )}
-          <button className="button book" type="button" disabled={!selectedStaff || busyAccountId === selectedStaff.id} onClick={inviteStaffMember}>
+          <button className="button book" type="button" disabled={!selectedStaff || !isRealStaffEmail(selectedStaff.email) || busyAccountId === selectedStaff.id} onClick={() => inviteStaffMember()}>
             {busyAccountId === selectedStaff?.id ? "Creating..." : "Invite to Create Account"}
           </button>
           {accountMessage && <p className="account-message">{accountMessage}</p>}
+        </div>
+      </section>
+      <section className="account-rollout">
+        <div className="scr-assignments-heading">
+          <div>
+            <p className="eyebrow">Account rollout</p>
+            <h2>Create users in a controlled run.</h2>
+            <p>Use this list to test one real invite first, then work through ready staff. Missing-email rows are blocked until their staff profile is updated.</p>
+          </div>
+          <Badge value={hasSupabaseConfig ? "Live Supabase" : "Local preview"} />
+        </div>
+        <div className="crm-controls account-controls">
+          <label>Search staff<input value={accountQuery} onChange={(event) => setAccountQuery(event.target.value)} placeholder="Search name, email, role or site" /></label>
+          <label>Show<select value={rolloutFilter} onChange={(event) => setRolloutFilter(event.target.value)}>
+            {["Ready", "Missing email", "Invited", "All"].map((item) => <option key={item}>{item}</option>)}
+          </select></label>
+        </div>
+        <div className="account-rollout-table-wrap">
+          <table className="account-rollout-table">
+            <thead>
+              <tr>
+                <th>Staff member</th>
+                <th>Role / site</th>
+                <th>Readiness</th>
+                <th>Last account action</th>
+                <th>Temporary password</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleAccountRows.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    <strong>{row.name}</strong>
+                    <span>{row.email || "Email missing"}</span>
+                  </td>
+                  <td>
+                    <strong>{row.role}</strong>
+                    <span>{row.location || "Assigned sites"}</span>
+                  </td>
+                  <td><Badge value={row.readiness} /></td>
+                  <td><span>{row.emailStatus || row.status}</span></td>
+                  <td>{row.temporaryPassword ? <code>{row.temporaryPassword}</code> : <span>Not generated</span>}</td>
+                  <td>
+                    {row.readiness === "Missing email" ? (
+                      <button className="button light" type="button" disabled>Needs email</button>
+                    ) : row.status === "Invited" || row.temporaryPassword ? (
+                      <button className="button light" type="button" disabled={busyAccountId === row.id} onClick={() => resetUserPassword(row)}>{busyAccountId === row.id ? "Working..." : "Reset"}</button>
+                    ) : (
+                      <button className="button book" type="button" disabled={busyAccountId === row.id} onClick={() => inviteStaffMember(row)}>{busyAccountId === row.id ? "Creating..." : "Invite"}</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!visibleAccountRows.length && <EmptyList title="No matching staff" text="Adjust the search or filter to see staff account readiness." />}
         </div>
       </section>
       <section className="onboarding-admin">
@@ -4441,6 +4521,30 @@ function mergeUserRecords(staffRecords, state) {
   });
   const invited = Object.values(state).filter((user) => user.source === "local invite" || user.source === "approved onboarding");
   return [...invited, ...base];
+}
+
+function buildAccountRolloutRows(staffOptions, users) {
+  return staffOptions.map((person) => {
+    const user = users.find((item) => item.id === person.id) || {};
+    const email = user.email || person.email || "";
+    return {
+      ...person,
+      ...user,
+      id: person.id,
+      staffRecordId: person.staffRecordId || user.staffRecordId || person.id,
+      email,
+      role: user.role || person.role || "Staff",
+      status: user.status || person.status || "Active",
+      readiness: isRealStaffEmail(email) ? "Ready" : "Missing email",
+      emailStatus: user.emailStatus || "",
+      temporaryPassword: user.temporaryPassword || "",
+    };
+  });
+}
+
+function isRealStaffEmail(email) {
+  const value = String(email || "").trim().toLowerCase();
+  return value.includes("@") && !value.endsWith("@apres-school.local");
 }
 
 function readUserAdminState() {
