@@ -84,16 +84,30 @@ async function getActor(authHeader: string) {
 
 async function createOrUpdateUser(payload: StaffAccountPayload) {
   const existing = await findProfileUserByEmail(payload.email);
-  if (existing) {
-    const { data, error } = await supabase.auth.admin.updateUserById(existing.id, {
-      password: payload.temporaryPassword,
-      email_confirm: true,
-      user_metadata: { full_name: payload.name, role: payload.role },
-    });
-    if (error) throw error;
-    return data.user;
-  }
+  if (existing) return updateExistingAuthUser(existing, payload);
 
+  return createAuthUser(payload);
+}
+
+async function resetExistingUser(payload: StaffAccountPayload) {
+  const existing = await findProfileUserByEmail(payload.email);
+  if (!existing) return createOrUpdateUser(payload);
+  return updateExistingAuthUser(existing, payload);
+}
+
+async function updateExistingAuthUser(existing: { id: string; email: string }, payload: StaffAccountPayload) {
+  const { data, error } = await supabase.auth.admin.updateUserById(existing.id, {
+    password: payload.temporaryPassword,
+    email_confirm: true,
+    user_metadata: { full_name: payload.name, role: payload.role },
+  });
+
+  if (!error) return data.user;
+  if (isAuthUserLoadError(error)) return createReplacementAuthUser(existing, payload);
+  throw error;
+}
+
+async function createAuthUser(payload: StaffAccountPayload) {
   const { data, error } = await supabase.auth.admin.createUser({
     email: payload.email,
     password: payload.temporaryPassword,
@@ -104,17 +118,23 @@ async function createOrUpdateUser(payload: StaffAccountPayload) {
   return data.user;
 }
 
-async function resetExistingUser(payload: StaffAccountPayload) {
-  const existing = await findProfileUserByEmail(payload.email);
-  if (!existing) return createOrUpdateUser(payload);
+async function createReplacementAuthUser(existing: { id: string; email: string }, payload: StaffAccountPayload) {
+  const user = await createAuthUser(payload);
+  if (user.id !== existing.id) await archiveProfileEmail(existing);
+  return user;
+}
 
-  const { data, error } = await supabase.auth.admin.updateUserById(existing.id, {
-    password: payload.temporaryPassword,
-    email_confirm: true,
-    user_metadata: { full_name: payload.name, role: payload.role },
-  });
+async function archiveProfileEmail(existing: { id: string; email: string }) {
+  const archiveEmail = `archived-${Date.now()}-${existing.email}`;
+  const { error } = await supabase
+    .from("profiles")
+    .update({ email: archiveEmail, active: false })
+    .eq("id", existing.id);
   if (error) throw error;
-  return data.user;
+}
+
+function isAuthUserLoadError(error: { message?: string }) {
+  return /database error loading user/i.test(error.message || "");
 }
 
 async function findProfileUserByEmail(email: string) {
