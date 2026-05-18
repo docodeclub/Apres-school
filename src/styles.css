@@ -5935,6 +5935,25 @@ label {
   overflow-wrap: anywhere;
 }
 
+.temporary-password-row,
+.temporary-password-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.temporary-password-row .button,
+.temporary-password-inline .button {
+  min-height: 34px;
+  padding: 8px 11px;
+}
+
+.temporary-password-inline {
+  justify-content: flex-start;
+}
+
 .user-card-actions {
   display: flex;
   flex-wrap: wrap;

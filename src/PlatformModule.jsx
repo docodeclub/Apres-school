@@ -1030,7 +1030,14 @@ function UserManagement({ data }) {
                   </td>
                   <td><Badge value={row.readiness} /></td>
                   <td><span>{row.emailStatus || row.status}</span></td>
-                  <td>{row.temporaryPassword ? <code>{row.temporaryPassword}</code> : <span>Not generated</span>}</td>
+                  <td>
+                    {row.temporaryPassword ? (
+                      <div className="temporary-password-inline">
+                        <code>{row.temporaryPassword}</code>
+                        <button className="button light" type="button" onClick={() => copyTemporaryPassword(row.temporaryPassword, row.name)}>Copy</button>
+                      </div>
+                    ) : <span>Not generated</span>}
+                  </td>
                   <td>
                     {row.readiness === "Missing email" ? (
                       <button className="button light" type="button" disabled>Needs email</button>
@@ -1092,7 +1099,10 @@ function UserManagement({ data }) {
             {user.temporaryPassword && (
               <div className="temporary-password">
                 <span>Temporary password</span>
-                <code>{user.temporaryPassword}</code>
+                <div className="temporary-password-row">
+                  <code>{user.temporaryPassword}</code>
+                  <button className="button light" type="button" onClick={() => copyTemporaryPassword(user.temporaryPassword, user.name)}>Copy</button>
+                </div>
                 <small>{user.temporaryPasswordUpdatedAt ? `Generated ${formatDateTime(user.temporaryPasswordUpdatedAt)}` : "Generated locally"}</small>
               </div>
             )}
@@ -4545,6 +4555,12 @@ function buildAccountRolloutRows(staffOptions, users) {
 function isRealStaffEmail(email) {
   const value = String(email || "").trim().toLowerCase();
   return value.includes("@") && !value.endsWith("@apres-school.local");
+}
+
+async function copyTemporaryPassword(password, staffName) {
+  if (!password || typeof navigator === "undefined" || !navigator.clipboard) return;
+  await navigator.clipboard.writeText(password);
+  addAuditLog("Temporary password copied", `${staffName || "Staff"} temporary password copied by admin`);
 }
 
 function readUserAdminState() {
