@@ -749,32 +749,149 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
 function UserManagement({ data }) {
   const [state, setState] = useState(() => readUserAdminState());
   const [applications, setApplications] = useState(() => readJson(staffApplicationsStorageKey, []));
+  const [selectedStaffId, setSelectedStaffId] = useState(data.staff[0]?.id || "");
+  const [accountMessage, setAccountMessage] = useState("");
+  const [busyAccountId, setBusyAccountId] = useState("");
   const users = mergeUserRecords(data.staff, state);
+  const staffOptions = data.staff.map((person) => {
+    const id = person.profileId || person.id;
+    const user = users.find((item) => item.id === id) || {};
+    return {
+      ...person,
+      id,
+      staffRecordId: person.id,
+      email: user.email || person.email || "",
+      role: user.role || (person.role?.toLowerCase().includes("manager") ? "Manager" : "Staff"),
+      status: user.status || "Active",
+    };
+  });
+  const selectedStaff = staffOptions.find((person) => person.id === selectedStaffId) || staffOptions[0];
 
   function saveState(next) {
     setState(next);
     localStorage.setItem(userStorageKey, JSON.stringify(next));
   }
 
-  function inviteUser(event) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const id = `invite-${Date.now()}`;
-    const next = {
-      ...state,
-      [id]: {
-        id,
-        name: form.get("name"),
-        email: form.get("email"),
-        role: form.get("role"),
-        status: "Invited",
-        source: "local invite",
-        invitedAt: new Date().toISOString(),
-      },
+  async function inviteStaffMember() {
+    if (!selectedStaff?.id) return;
+    const email = selectedStaff.email || "";
+    if (!email.includes("@")) {
+      setAccountMessage("Add a real email address to this staff record before inviting them.");
+      return;
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    const now = new Date().toISOString();
+    setBusyAccountId(selectedStaff.id);
+    setAccountMessage("Creating invite...");
+
+    const patch = {
+      id: selectedStaff.id,
+      name: selectedStaff.name,
+      email,
+      role: selectedStaff.role,
+      status: "Invited",
+      source: "staff record",
+      temporaryPassword,
+      temporaryPasswordUpdatedAt: now,
+      lastInviteAt: now,
+      accountAction: "Invite created locally",
+      emailStatus: hasSupabaseConfig ? "Sending" : "Local preview",
     };
-    saveState(next);
-    addAuditLog("User invited", `${form.get("email")} invited as ${form.get("role")}`);
-    event.currentTarget.reset();
+
+    try {
+      let result = null;
+      if (hasSupabaseConfig) {
+        const { createStaffAccountInvite, getStaffLoginUrl } = await loadSupabaseModule();
+        result = await createStaffAccountInvite({
+          staffRecordId: selectedStaff.staffRecordId || selectedStaff.id,
+          name: selectedStaff.name,
+          email,
+          role: selectedStaff.role,
+          temporaryPassword,
+          loginUrl: getStaffLoginUrl(),
+        });
+      }
+
+      saveState({
+        ...state,
+        [selectedStaff.id]: {
+          ...users.find((user) => user.id === selectedStaff.id),
+          ...state[selectedStaff.id],
+          ...patch,
+          supabaseUserId: result?.userId || state[selectedStaff.id]?.supabaseUserId || "",
+          emailStatus: result?.emailed ? "Welcome email sent" : (hasSupabaseConfig ? "Account created, email provider not configured" : "Local preview only"),
+        },
+      });
+      setAccountMessage(result?.emailed ? "Invite sent. The temporary password is visible below." : "Invite prepared. Temporary password is visible below.");
+      addAuditLog("Staff account invited", `${email} invited to the staff platform`);
+    } catch (error) {
+      saveState({
+        ...state,
+        [selectedStaff.id]: {
+          ...users.find((user) => user.id === selectedStaff.id),
+          ...state[selectedStaff.id],
+          ...patch,
+          accountAction: "Invite failed",
+          emailStatus: error.message || "Invite failed",
+        },
+      });
+      setAccountMessage(`Invite saved locally, but live account creation failed: ${error.message}`);
+    } finally {
+      setBusyAccountId("");
+    }
+  }
+
+  async function resetUserPassword(user) {
+    if (!user?.email?.includes("@")) {
+      setAccountMessage("This staff member needs a real email before a password can be reset.");
+      return;
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    const now = new Date().toISOString();
+    setBusyAccountId(user.id);
+    setAccountMessage("Preparing password reset...");
+
+    const patch = {
+      temporaryPassword,
+      temporaryPasswordUpdatedAt: now,
+      lastPasswordResetAt: now,
+      accountAction: "Password reset locally",
+      emailStatus: hasSupabaseConfig ? "Sending reset email" : "Local preview",
+    };
+
+    try {
+      let result = null;
+      if (hasSupabaseConfig) {
+        const { resetStaffAccountPassword, getStaffLoginUrl } = await loadSupabaseModule();
+        result = await resetStaffAccountPassword({
+          staffRecordId: user.staffRecordId || user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          temporaryPassword,
+          loginUrl: getStaffLoginUrl(),
+        });
+      }
+
+      updateUser(user.id, {
+        ...patch,
+        status: user.status === "Deactivated" ? "Invited" : user.status,
+        supabaseUserId: result?.userId || user.supabaseUserId || "",
+        emailStatus: result?.emailed ? "Reset email sent" : (hasSupabaseConfig ? "Password reset, email provider not configured" : "Local preview only"),
+      });
+      setAccountMessage("Temporary password generated. It is visible on the staff card.");
+      addAuditLog("Staff password reset", `${user.email} password reset generated`);
+    } catch (error) {
+      updateUser(user.id, {
+        ...patch,
+        emailStatus: error.message || "Reset failed",
+      });
+      setAccountMessage(`Temporary password saved locally, but live reset failed: ${error.message}`);
+    } finally {
+      setBusyAccountId("");
+    }
   }
 
   function updateUser(id, patch) {
@@ -827,15 +944,28 @@ function UserManagement({ data }) {
       <section className="user-invite">
         <div>
           <p className="eyebrow">User management</p>
-          <h2>Invite staff and control platform access.</h2>
-          <p>Local demo workflow for role assignment and account deactivation. Production invites should run through a secure Supabase Edge Function.</p>
+          <h2>Invite staff into the Après workspace.</h2>
+          <p>Select a staff member, generate their account, and send a welcome email with a login link and temporary password. The system is for staff-only features: sessions, documents, compliance evidence, HR files, pay and internal updates.</p>
+          <p>It also helps Après School stay compliant across sites and ready to provide evidence to Ofsted or partner schools when required.</p>
         </div>
-        <form className="compact-form" onSubmit={inviteUser}>
-          <label>Name<input required name="name" placeholder="Staff member name" /></label>
-          <label>Email<input required type="email" name="email" placeholder="name@apres-school.co.uk" /></label>
-          <label>Role<select name="role" defaultValue="Staff">{userRoles.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <button className="button book" type="submit">Create Invite</button>
-        </form>
+        <div className="account-invite-panel">
+          <label>Staff member
+            <select value={selectedStaff?.id || ""} onChange={(event) => setSelectedStaffId(event.target.value)}>
+              {staffOptions.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.email || "No email"}</option>)}
+            </select>
+          </label>
+          {selectedStaff && (
+            <div className="account-preview">
+              <strong>{selectedStaff.name}</strong>
+              <span>{selectedStaff.email || "Email missing"}</span>
+              <small>{selectedStaff.role} · {selectedStaff.location || "Assigned sites"}</small>
+            </div>
+          )}
+          <button className="button book" type="button" disabled={!selectedStaff || busyAccountId === selectedStaff.id} onClick={inviteStaffMember}>
+            {busyAccountId === selectedStaff?.id ? "Creating..." : "Invite to Create Account"}
+          </button>
+          {accountMessage && <p className="account-message">{accountMessage}</p>}
+        </div>
       </section>
       <section className="onboarding-admin">
         <div className="scr-assignments-heading">
@@ -879,7 +1009,19 @@ function UserManagement({ data }) {
             <Badge value={user.status} />
             <label>Role<select value={user.role} onChange={(event) => updateUser(user.id, { role: event.target.value })}>{userRoles.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>Status<select value={user.status} onChange={(event) => updateUser(user.id, { status: event.target.value })}>{["Active", "Invited", "Deactivated"].map((item) => <option key={item}>{item}</option>)}</select></label>
-            <small>{user.source === "local invite" ? "Local invite" : "Mapped from staff record"} · {user.updatedAt ? "Updated locally" : "Ready"}</small>
+            {user.temporaryPassword && (
+              <div className="temporary-password">
+                <span>Temporary password</span>
+                <code>{user.temporaryPassword}</code>
+                <small>{user.temporaryPasswordUpdatedAt ? `Generated ${formatDateTime(user.temporaryPasswordUpdatedAt)}` : "Generated locally"}</small>
+              </div>
+            )}
+            <div className="user-card-actions">
+              <button className="button light" type="button" disabled={busyAccountId === user.id} onClick={() => resetUserPassword(user)}>
+                {busyAccountId === user.id ? "Working..." : "Reset Password"}
+              </button>
+            </div>
+            <small>{user.emailStatus || (user.source === "local invite" ? "Local invite" : "Mapped from staff record")} · {user.updatedAt ? "Updated locally" : "Ready"}</small>
           </article>
         ))}
       </section>
@@ -4283,11 +4425,12 @@ function buildAccessContext(role, userEmail, data, previewUserId = "") {
 
 function mergeUserRecords(staffRecords, state) {
   const base = staffRecords.map((person, index) => {
-    const email = `${String(person.name || `staff-${index + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")}@apres-school.local`;
+    const email = person.email || `${String(person.name || `staff-${index + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")}@apres-school.local`;
     const defaultRole = person.role?.toLowerCase().includes("manager") ? "Manager" : "Staff";
     const id = person.profileId || person.id;
     return {
       id,
+      staffRecordId: person.id,
       name: person.name,
       email,
       role: defaultRole,
@@ -4333,6 +4476,28 @@ function dateInputValue(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatDateTime(value) {
+  if (!value) return "Not recorded";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function generateTemporaryPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const bytes = new Uint32Array(12);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * alphabet.length);
+  }
+  const body = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+  return `${body}!7Aa`;
 }
 
 function daysUntil(dateString) {

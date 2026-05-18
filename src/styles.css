@@ -5773,6 +5773,40 @@ label {
   line-height: 1.55;
 }
 
+.account-invite-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #f8fbff;
+  padding: 16px;
+}
+
+.account-preview {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(38, 63, 169, 0.12);
+  border-radius: 14px;
+  background: #fff;
+  padding: 14px;
+}
+
+.account-preview strong {
+  color: var(--royal-dark);
+}
+
+.account-preview span,
+.account-preview small,
+.account-message {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.account-message {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
 .user-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5791,6 +5825,36 @@ label {
 
 .user-card h3 {
   color: var(--royal-dark);
+}
+
+.temporary-password {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(38, 63, 169, 0.14);
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 12px;
+}
+
+.temporary-password span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.temporary-password code {
+  color: var(--royal-dark);
+  font-size: 0.98rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.user-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .hr-summary {

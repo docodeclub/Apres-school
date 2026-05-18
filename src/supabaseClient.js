@@ -4,6 +4,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const enquiryFunctionName = import.meta.env.VITE_ENQUIRY_FUNCTION_NAME || "notify-public-enquiry";
 const coverMoveFunctionName = import.meta.env.VITE_COVER_MOVE_FUNCTION_NAME || "notify-cover-move";
+const staffAccountFunctionName = import.meta.env.VITE_STAFF_ACCOUNT_FUNCTION_NAME || "manage-staff-account";
 const staffPhotoBucket = "staff-profile-photos";
 const staffHrFilesBucket = "staff-hr-files";
 
@@ -476,6 +477,28 @@ export async function sendCoverMoveNotifications(payload) {
   });
   if (error) throw error;
   return data;
+}
+
+async function sendStaffAccountAction(action, payload) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.functions.invoke(staffAccountFunctionName, {
+    body: { action, ...payload },
+  });
+  if (error) throw error;
+  return data;
+}
+
+export function getStaffLoginUrl() {
+  if (typeof window === "undefined") return "https://www.apres-school.co.uk/staff-login";
+  return `${window.location.origin}/staff-login`;
+}
+
+export async function createStaffAccountInvite(payload) {
+  return sendStaffAccountAction("invite", payload);
+}
+
+export async function resetStaffAccountPassword(payload) {
+  return sendStaffAccountAction("reset-password", payload);
 }
 
 function normalizeCrmStatus(status) {
