@@ -6090,6 +6090,71 @@ label {
   font-size: 0.72rem;
 }
 
+.scr-priority-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.scr-priority-strip button {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  text-align: left;
+  border: 1px solid rgba(242, 165, 76, 0.26);
+  border-radius: 14px;
+  background: #fff9ef;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.scr-priority-strip span,
+.scr-priority-pill {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: rgba(242, 165, 76, 0.18);
+  color: #9a4f00;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.scr-priority-strip strong {
+  color: var(--royal-dark);
+  overflow-wrap: anywhere;
+}
+
+.scr-priority-strip small,
+.staff-register table small {
+  color: var(--muted);
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.scr-priority-pill.high {
+  background: rgba(206, 77, 77, 0.14);
+  color: #9b1c2b;
+}
+
+.scr-priority-pill.medium {
+  background: rgba(242, 165, 76, 0.18);
+  color: #9a4f00;
+}
+
+.scr-priority-pill.low {
+  background: rgba(72, 103, 216, 0.12);
+  color: var(--royal);
+}
+
+.scr-priority-pill.clear {
+  background: rgba(37, 166, 122, 0.14);
+  color: #13714d;
+}
+
 .staff-profile-panel {
   display: grid;
   gap: 18px;
@@ -7047,6 +7112,7 @@ th {
   .staff-register-controls,
   .staff-home-summary,
   .staff-home-details,
+  .scr-priority-strip,
   .scr-profile-request-form,
   .scr-profile-request-list article,
   .staff-profile-grid,

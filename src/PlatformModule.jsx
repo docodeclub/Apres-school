@@ -3573,6 +3573,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Action needed");
   const [siteFilter, setSiteFilter] = useState("All");
+  const [priorityView, setPriorityView] = useState(false);
   const [selectedId, setSelectedId] = useState(data.staff[0]?.id || "");
   const hierarchy = readHierarchyState();
   const staffUsers = data.staff.map((person, index) => ({
@@ -3608,6 +3609,46 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
       !person.scrChecklist?.approvedAt && person.compliance !== "Compliant" && "Admin review",
     ].filter(Boolean);
   }
+  function priorityProfile(person) {
+    const personRequests = Object.entries(evidenceRequests)
+      .filter(([id]) => id.startsWith(`${person.id}-`))
+      .map(([, request]) => request);
+    const rejected = personRequests.filter((request) => request.status === "Rejected").length;
+    const submitted = personRequests.filter((request) => request.status === "Submitted").length;
+    const requested = personRequests.filter((request) => request.status === "Requested").length;
+    const missing = actionItems(person).filter((item) => item !== "Admin review").length;
+    const expiring = [
+      ["DBS", person.dbsRenewal],
+      ["Safeguarding", person.safeguardingExpiry],
+      ["Allergy", person.allergyAwarenessExpiry],
+      ["First aid", person.firstAidExpiry],
+    ].filter(([, value]) => evidenceExpiryStatus({ expiryDate: value }) === "Expiring soon").map(([label]) => label);
+    const expired = [
+      ["DBS", person.dbsRenewal],
+      ["Safeguarding", person.safeguardingExpiry],
+      ["Allergy", person.allergyAwarenessExpiry],
+      ["First aid", person.firstAidExpiry],
+    ].filter(([, value]) => evidenceExpiryStatus({ expiryDate: value }) === "Expired").map(([label]) => label);
+    const adminReview = !person.scrChecklist?.approvedAt && person.compliance !== "Compliant";
+    const score = (rejected * 120) + (expired.length * 95) + (missing * 70) + (submitted * 55) + (requested * 45) + (expiring.length * 35) + (adminReview ? 20 : 0);
+    const reason = rejected
+      ? `${rejected} evidence item${rejected === 1 ? "" : "s"} sent back`
+      : expired.length
+        ? `${expired[0]} expired`
+        : missing
+          ? `Missing ${actionItems(person).filter((item) => item !== "Admin review").slice(0, 2).join(" / ")}`
+          : submitted
+            ? `${submitted} submission${submitted === 1 ? "" : "s"} waiting`
+            : requested
+              ? `${requested} request${requested === 1 ? "" : "s"} open`
+              : expiring.length
+                ? `${expiring[0]} expiring soon`
+                : adminReview
+                  ? "Admin review needed"
+                  : "No urgent SCR action";
+    const tier = score >= 90 ? "High" : score >= 45 ? "Medium" : score > 0 ? "Low" : "Clear";
+    return { score, reason, tier };
+  }
   const search = query.trim().toLowerCase();
   const statusCounts = data.staff.reduce((acc, person) => {
     const status = checkStatus(person);
@@ -3617,17 +3658,26 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     return acc;
   }, { "Action needed": 0, All: 0, Compliant: 0, "Review needed": 0, Missing: 0, "Expiring soon": 0, Rejected: 0 });
   const statusOptions = ["Action needed", "All", "Compliant", "Review needed", "Missing", "Expiring soon", "Rejected"];
-  const rows = data.staff.filter((person) => {
+  const visibleRows = data.staff.filter((person) => {
     const status = checkStatus(person);
-    const matchesStatus = statusFilter === "All" || (statusFilter === "Action needed" ? status !== "Compliant" : status === statusFilter);
+    const matchesStatus = priorityView ? priorityProfile(person).score > 0 : statusFilter === "All" || (statusFilter === "Action needed" ? status !== "Compliant" : status === statusFilter);
     const matchesSite = siteFilter === "All" || staffSchoolNames(person).includes(siteFilter);
     const haystack = [person.name, person.email, person.role, person.location, person.compliance, managerName(person), staffPrimaryLocation(person)].filter(Boolean).join(" ").toLowerCase();
     return matchesStatus && matchesSite && (!search || haystack.includes(search));
   });
+  const rows = [...visibleRows].sort((a, b) => {
+    if (!priorityView) return data.staff.findIndex((person) => person.id === a.id) - data.staff.findIndex((person) => person.id === b.id);
+    return priorityProfile(b).score - priorityProfile(a).score || a.name.localeCompare(b.name);
+  });
+  const priorityRows = data.staff
+    .map((person) => ({ person, priority: priorityProfile(person) }))
+    .filter((item) => item.priority.score > 0)
+    .sort((a, b) => b.priority.score - a.priority.score)
+    .slice(0, 4);
   const actionCount = data.staff.filter((person) => checkStatus(person) !== "Compliant").length;
   const compliantCount = data.staff.length - actionCount;
   const selectedPerson = data.staff.find((person) => person.id === selectedId) || rows[0] || data.staff[0];
-  const filtersActive = query || statusFilter !== "Action needed" || siteFilter !== "All";
+  const filtersActive = query || statusFilter !== "Action needed" || siteFilter !== "All" || priorityView;
   useEffect(() => {
     if (!targetStaffId) return;
     setSelectedId(targetStaffId);
@@ -3640,12 +3690,26 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
           <p className="eyebrow">Live staff register</p>
           <h3>Find the next compliance action quickly.</h3>
           <p>{rows.length} of {data.staff.length} staff shown · {actionCount} need review · {compliantCount} currently compliant.</p>
+          {!!priorityRows.length && (
+            <div className="scr-priority-strip" aria-label="SCR priority view">
+              {priorityRows.map(({ person, priority }) => (
+                <button key={person.id} type="button" onClick={() => { setSelectedId(person.id); setPriorityView(true); }}>
+                  <span>{priority.tier}</span>
+                  <strong>{person.name}</strong>
+                  <small>{priority.reason}</small>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="scr-filter-chips" aria-label="SCR status filters">
             {statusOptions.map((status) => (
               <button key={status} className={statusFilter === status ? "active" : ""} type="button" onClick={() => setStatusFilter(status)}>
                 {status}<span>{statusCounts[status] || 0}</span>
               </button>
             ))}
+            <button className={priorityView ? "active" : ""} type="button" onClick={() => setPriorityView((value) => !value)}>
+              Priority view<span>{priorityRows.length}</span>
+            </button>
           </div>
         </div>
         <div className="staff-register-controls">
@@ -3657,7 +3721,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
             <option>All</option>
             {siteOptions.map((site) => <option key={site}>{site}</option>)}
           </select></label>
-          <button className="button light" type="button" disabled={!filtersActive} onClick={() => { setQuery(""); setStatusFilter("Action needed"); setSiteFilter("All"); }}>Clear</button>
+          <button className="button light" type="button" disabled={!filtersActive} onClick={() => { setQuery(""); setStatusFilter("Action needed"); setSiteFilter("All"); setPriorityView(false); }}>Clear</button>
         </div>
       </div>
       {selectedPerson && (
@@ -3675,9 +3739,11 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
       )}
       <TableWrap>
         <table>
-          <thead><tr><th>Staff</th><th>Role</th><th>Assigned sites</th><th>Reports to</th><th>SCR</th><th>Next action</th>{!compact && <><th>DBS renewal</th><th>Safeguarding</th><th>First aid</th></>}<th>Profile</th></tr></thead>
+          <thead><tr><th>Staff</th><th>Role</th><th>Assigned sites</th><th>Reports to</th><th>SCR</th><th>Priority</th><th>Next action</th>{!compact && <><th>DBS renewal</th><th>Safeguarding</th><th>First aid</th></>}<th>Profile</th></tr></thead>
           <tbody>
-            {rows.map((person) => (
+            {rows.map((person) => {
+              const priority = priorityProfile(person);
+              return (
               <tr
                 key={person.id}
                 className={selectedPerson?.id === person.id ? "selected-row" : ""}
@@ -3695,11 +3761,13 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
                 <td>{staffPrimaryLocation(person)}</td>
                 <td>{managerName(person)}</td>
                 <td><Badge value={checkStatus(person)} /></td>
+                <td><span className={`scr-priority-pill ${priority.tier.toLowerCase()}`}>{priority.tier}</span><br /><small>{priority.reason}</small></td>
                 <td><strong>{actionText(person)}</strong></td>
                 {!compact && <><td>{person.dbsRenewal}</td><td>{person.safeguardingExpiry}</td><td>{person.firstAidExpiry}</td></>}
                 <td><button className="button subtle" type="button" onClick={(event) => { event.stopPropagation(); setSelectedId(person.id); }}>{selectedPerson?.id === person.id ? "Open" : "View"}</button></td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </TableWrap>
