@@ -1637,11 +1637,11 @@ function SCR({ data, access, targetStaffId, onTargetHandled }) {
   }
   async function downloadStaffSummary() {
     const { exportStaffScrSummary } = await import("./pdfExports.js");
-    exportStaffScrSummary(samplePerson, scrData.staff);
+    exportStaffScrSummary(samplePerson, scrData.staff, { evidenceRequests: renewalRequests });
   }
   async function downloadAssuranceLetter() {
     const { exportSchoolAssuranceLetter } = await import("./pdfExports.js");
-    exportSchoolAssuranceLetter(selectedAssuranceStaff, assuranceSchool, { includeEvidenceAppendix });
+    exportSchoolAssuranceLetter(selectedAssuranceStaff, assuranceSchool, { includeEvidenceAppendix, evidenceRequests: renewalRequests });
   }
   const requirementRows = schoolOptions.map((school) => {
     const assigned = scrData.staff.filter((person) => staffAssignedToSchool(person, school));

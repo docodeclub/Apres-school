@@ -199,13 +199,32 @@ function assignedSites(person) {
   return person?.location || "Not recorded";
 }
 
-function evidenceSummary(staff, key) {
+function evidenceRequestFor(staff, key, requests = {}) {
+  return requests?.[`${staff.id}-${key}`] || null;
+}
+
+function requestStatus(request) {
+  if (!request) return "";
+  if (request.status === "Rejected") return "Sent back";
+  if (request.status === "Submitted") return "Submitted for review";
+  if (request.status === "Requested") return "Requested from staff";
+  if (request.status === "Approved") return "Approved";
+  if (request.status === "Cleared") return "Cleared";
+  return request.status || "";
+}
+
+function evidenceSummary(staff, key, requests = {}) {
+  const request = evidenceRequestFor(staff, key, requests);
   const evidence = staff.scrChecklist?.evidence?.[key] || {};
   const parts = [
-    evidence.reference || "No reference recorded",
+    request?.evidenceReference || evidence.reference || "No reference recorded",
+    request?.submittedAt ? `submitted ${request.submittedAt.slice(0, 10)}` : "",
+    request?.reviewedAt ? `reviewed ${request.reviewedAt.slice(0, 10)}` : "",
     evidence.dateSeen ? `seen ${evidence.dateSeen}` : "",
-    evidence.expiryDate ? `expires/reviews ${evidence.expiryDate}` : "",
+    request?.evidenceExpiryDate || evidence.expiryDate ? `expires/reviews ${request?.evidenceExpiryDate || evidence.expiryDate}` : "",
     evidence.verifiedBy ? `by ${evidence.verifiedBy}` : "",
+    request?.rejectionReason ? `reason: ${request.rejectionReason}` : "",
+    request?.note || request?.submissionNote || "",
   ].filter(Boolean);
   return parts.join(", ");
 }
@@ -221,9 +240,13 @@ function evidenceExpiryStatus(evidence) {
   return "In date";
 }
 
-function checklistStatus(staff, key) {
+function checklistStatus(staff, key, requests = {}) {
+  const request = evidenceRequestFor(staff, key, requests);
+  const workflowStatus = requestStatus(request);
+  if (workflowStatus && workflowStatus !== "Cleared") return workflowStatus;
   const expiryStatus = evidenceExpiryStatus(staff.scrChecklist?.evidence?.[key]);
   if (expiryStatus === "Expired" || expiryStatus === "Expiring soon") return expiryStatus;
+  if (staff.scrChecklist?.evidence?.[key]?.status === "Approved") return "Approved";
   if (staff.scrChecklist?.[key]) return "Complete";
   if (staff.scrChecklist?.evidence?.[key]?.reference) return "Evidence noted";
   return "Pending";
@@ -236,13 +259,15 @@ const assuranceEvidenceChecks = [
   ["Barred list", "barredList"],
   ["Safeguarding", "safeguarding"],
   ["Allergy", "allergy"],
+  ["First aid", "firstAid"],
   ["References", "references"],
   ["Declarations", "declarations"],
 ];
 
-export function exportStaffScrSummary(person, allStaff = []) {
+export function exportStaffScrSummary(person, allStaff = [], options = {}) {
   const staff = person || allStaff[0];
   if (!staff) return;
+  const evidenceRequests = options.evidenceRequests || {};
   const counts = complianceCounts(allStaff.length ? allStaff : [staff]);
   const doc = new PdfDoc(`${staff.name} SCR Summary`).addPage();
   doc.pageHeader("Staff SCR Record", `Record owner: ${staff.name}`);
@@ -282,14 +307,14 @@ export function exportStaffScrSummary(person, allStaff = []) {
     ["Check", "Status", "Evidence / verifier"],
     [
       ["SCR status", staff.compliance, "Current admin review"],
-      ["Right to work", checklistStatus(staff, "rightToWork"), evidenceSummary(staff, "rightToWork")],
-      ["Identity / address", checklistStatus(staff, "identity"), evidenceSummary(staff, "identity")],
-      ["Enhanced DBS", checklistStatus(staff, "dbs"), evidenceSummary(staff, "dbs")],
-      ["Barred list", checklistStatus(staff, "barredList"), evidenceSummary(staff, "barredList")],
-      ["Safeguarding training", checklistStatus(staff, "safeguarding"), evidenceSummary(staff, "safeguarding")],
-      ["Allergy awareness", checklistStatus(staff, "allergy"), evidenceSummary(staff, "allergy")],
-      ["References", checklistStatus(staff, "references"), evidenceSummary(staff, "references")],
-      ["Annual declarations", checklistStatus(staff, "declarations"), evidenceSummary(staff, "declarations")],
+      ["Right to work", checklistStatus(staff, "rightToWork", evidenceRequests), evidenceSummary(staff, "rightToWork", evidenceRequests)],
+      ["Identity / address", checklistStatus(staff, "identity", evidenceRequests), evidenceSummary(staff, "identity", evidenceRequests)],
+      ["Enhanced DBS", checklistStatus(staff, "dbs", evidenceRequests), evidenceSummary(staff, "dbs", evidenceRequests)],
+      ["Barred list", checklistStatus(staff, "barredList", evidenceRequests), evidenceSummary(staff, "barredList", evidenceRequests)],
+      ["Safeguarding training", checklistStatus(staff, "safeguarding", evidenceRequests), evidenceSummary(staff, "safeguarding", evidenceRequests)],
+      ["Allergy awareness", checklistStatus(staff, "allergy", evidenceRequests), evidenceSummary(staff, "allergy", evidenceRequests)],
+      ["References", checklistStatus(staff, "references", evidenceRequests), evidenceSummary(staff, "references", evidenceRequests)],
+      ["Annual declarations", checklistStatus(staff, "declarations", evidenceRequests), evidenceSummary(staff, "declarations", evidenceRequests)],
     ],
     PAGE.margin,
     y + 18,
@@ -306,6 +331,7 @@ export function exportStaffScrSummary(person, allStaff = []) {
 
 export function exportSchoolAssuranceLetter(staff = [], schoolName = "Partner School", options = {}) {
   const counts = complianceCounts(staff);
+  const evidenceRequests = options.evidenceRequests || {};
   const doc = new PdfDoc(`${schoolName} Assurance Letter`).addPage();
   doc.pageHeader("Letter of Assurance", `School: ${schoolName}`);
   doc.text("Safeguarding and Safer Recruitment Assurance", PAGE.margin, 116, 20, BLUE);
@@ -323,9 +349,9 @@ export function exportSchoolAssuranceLetter(staff = [], schoolName = "Partner Sc
     staff.map((person) => [
       person.name,
       person.role,
-      person.dbsRenewal || "Not recorded",
-      person.safeguardingExpiry || "Not recorded",
-      person.firstAidExpiry || "Not recorded",
+      checklistStatus(person, "dbs", evidenceRequests),
+      checklistStatus(person, "safeguarding", evidenceRequests),
+      checklistStatus(person, "firstAid", evidenceRequests),
       person.compliance,
     ]),
     PAGE.margin,
@@ -353,7 +379,7 @@ export function exportSchoolAssuranceLetter(staff = [], schoolName = "Partner Sc
   y += 210;
   doc.wrap("Where a staff record is pending, action needed or review due, that item should be resolved before deployment to regulated activity where the missing check is required.", PAGE.margin, y, 500, 9, MUTED);
 
-  const hasEvidence = options.includeEvidenceAppendix && staff.some((person) => assuranceEvidenceChecks.some(([, key]) => person.scrChecklist?.evidence?.[key]?.reference || person.scrChecklist?.[key]));
+  const hasEvidence = options.includeEvidenceAppendix && staff.some((person) => assuranceEvidenceChecks.some(([, key]) => person.scrChecklist?.evidence?.[key]?.reference || person.scrChecklist?.[key] || evidenceRequestFor(person, key, evidenceRequests)));
   if (hasEvidence) {
     doc.addPage();
     doc.pageHeader("Letter of Assurance", `School: ${schoolName}`);
@@ -370,7 +396,7 @@ export function exportSchoolAssuranceLetter(staff = [], schoolName = "Partner Sc
       doc.text(person.name, PAGE.margin, y, 12, BLUE);
       y = doc.table(
         ["Check", "Status", "Evidence / verifier"],
-        assuranceEvidenceChecks.map(([label, key]) => [label, checklistStatus(person, key), evidenceSummary(person, key)]),
+        assuranceEvidenceChecks.map(([label, key]) => [label, checklistStatus(person, key, evidenceRequests), evidenceSummary(person, key, evidenceRequests)]),
         PAGE.margin,
         y + 12,
         [135, 110, 265],
