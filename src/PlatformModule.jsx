@@ -758,12 +758,14 @@ function UserManagement({ data }) {
   const staffOptions = data.staff.map((person) => {
     const id = person.profileId || person.id;
     const user = users.find((item) => item.id === id) || {};
+    const freshEmail = isRealStaffEmail(person.email) ? person.email : "";
+    const freshRole = person.accessRole || (person.role?.toLowerCase().includes("manager") ? "Manager" : "Staff");
     return {
       ...person,
       id,
       staffRecordId: person.id,
-      email: user.email || person.email || "",
-      role: user.role || (person.role?.toLowerCase().includes("manager") ? "Manager" : "Staff"),
+      email: freshEmail || user.email || person.email || "",
+      role: freshRole || user.role || "Staff",
       status: user.status || "Active",
     };
   });
@@ -4524,17 +4526,18 @@ function buildAccessContext(role, userEmail, data, previewUserId = "") {
 function mergeUserRecords(staffRecords, state) {
   const base = staffRecords.map((person, index) => {
     const email = person.email || `${String(person.name || `staff-${index + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")}@apres-school.local`;
-    const defaultRole = person.role?.toLowerCase().includes("manager") ? "Manager" : "Staff";
+    const defaultRole = person.accessRole || (person.role?.toLowerCase().includes("manager") ? "Manager" : "Staff");
     const id = person.profileId || person.id;
+    const saved = state[id] || {};
     return {
       id,
       staffRecordId: person.id,
       name: person.name,
-      email,
-      role: defaultRole,
       status: "Active",
       source: "staff record",
-      ...state[id],
+      ...saved,
+      email: isRealStaffEmail(person.email) ? person.email : (saved.email || email),
+      role: defaultRole || saved.role || "Staff",
     };
   });
   const invited = Object.values(state).filter((user) => user.source === "local invite" || user.source === "approved onboarding");

@@ -184,6 +184,7 @@ function mapStaffRecords(records) {
       profileId: record.profile_id,
       name: record.preferred_name || profile?.full_name || "Staff member",
       email: profile?.email || "",
+      accessRole: normalizeRole(profile?.role),
       role: record.job_role || profile?.role || "Staff",
       location: record.primary_site || record.employment_type || "Assigned sites",
       compliance: scr?.admin_review?.status || "Review needed",

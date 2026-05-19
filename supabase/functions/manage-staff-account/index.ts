@@ -269,7 +269,17 @@ async function sendAccountEmail(payload: StaffAccountPayload) {
   });
 
   if (!response.ok) {
-    throw new Error(`Resend email failed with ${response.status}`);
+    const detail = await safeResponseText(response);
+    throw new Error(`Resend email failed with ${response.status}${detail ? `: ${detail}` : ""}`);
+  }
+}
+
+async function safeResponseText(response: Response) {
+  try {
+    const text = await response.text();
+    return text.slice(0, 500);
+  } catch {
+    return "";
   }
 }
 
