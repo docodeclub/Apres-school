@@ -1559,15 +1559,38 @@ function Wraparound({ setPage }) {
 
       <section className="wraparound-audience">
         {[
-          ["For parents", "Reliable care without losing the warmth.", "A clear booking route, familiar adults, good routines and a place where children can settle, play and finish the day well."],
-          ["For schools", "Provision that supports the school office.", "We work around your timetable, spaces, collection points and parent communication so the service feels part of the school site."],
-        ].map(([eyebrow, title, text]) => (
+          ["For parents", "Reliable care without losing the warmth.", "A clear booking route, familiar adults and routines that help children finish the day well.", ["Simple booking by school", "Snack, play and calmer choices", "Clear collection routines"]],
+          ["For schools", "Provision that supports the school office.", "We work around your timetable, spaces, collection points and parent communication so the club feels part of the school site.", ["Site-specific operating model", "Safeguarding-led staffing", "Responsive parent communication"]],
+        ].map(([eyebrow, title, text, points]) => (
           <article key={eyebrow}>
             <p className="eyebrow">{eyebrow}</p>
             <h2>{title}</h2>
             <p>{text}</p>
+            <ul>
+              {points.map((point) => <li key={point}>{point}</li>)}
+            </ul>
           </article>
         ))}
+      </section>
+
+      <section className="wraparound-flow">
+        <div>
+          <p className="eyebrow">How a session feels</p>
+          <h2>A predictable rhythm, with room for children to choose.</h2>
+        </div>
+        <div className="wraparound-flow-steps">
+          {[
+            ["Arrive", "Children are registered and welcomed by the team."],
+            ["Snack", "A familiar food and water routine helps everyone reset."],
+            ["Play", "Active games, table activities and quieter choices are available."],
+            ["Collect", "The session winds down with a clear dismissal routine."],
+          ].map(([title, text]) => (
+            <article key={title}>
+              <strong>{title}</strong>
+              <span>{text}</span>
+            </article>
+          ))}
+        </div>
       </section>
 
       <section className="wraparound-booking-panel">
@@ -1575,16 +1598,17 @@ function Wraparound({ setPage }) {
           <p className="eyebrow">Current booking route</p>
           <h2>Choose your school before you book.</h2>
           <p>Wraparound care currently books through Magicbooking. Start on the Bookings page so you can select the correct school centre first.</p>
-          <div className="wraparound-sites">
-            {wraparoundSites.map((site) => <span key={site.title}>{site.title}</span>)}
-          </div>
           <button className="button book" type="button" onClick={() => setPage("Bookings")}>View Booking Sites</button>
         </div>
         <div className="wraparound-booking-list">
           {wraparoundSites.map((site) => (
             <article key={site.title}>
-              <strong>{site.title}</strong>
-              <span>{site.schedule}</span>
+              <div>
+                <strong>{site.title}</strong>
+                <span>{site.type}</span>
+              </div>
+              <p>{site.schedule}</p>
+              <small>{site.provider}</small>
             </article>
           ))}
         </div>
