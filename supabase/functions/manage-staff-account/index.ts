@@ -45,9 +45,15 @@ serve(async (request) => {
     await linkStaffRecord(payload.staffRecordId, user.id);
 
     let emailed = false;
+    let emailError = "";
     if (resendApiKey) {
-      await sendAccountEmail(payload);
-      emailed = true;
+      try {
+        await sendAccountEmail(payload);
+        emailed = true;
+      } catch (error) {
+        emailError = error instanceof Error ? error.message : "Email provider failed";
+        console.error(emailError);
+      }
     }
 
     await supabase.from("audit_log").insert({
@@ -59,10 +65,12 @@ serve(async (request) => {
         email: payload.email,
         staffRecordId: payload.staffRecordId,
         emailProviderConfigured: Boolean(resendApiKey),
+        emailSent: emailed,
+        emailError,
       },
     });
 
-    return json({ userId: user.id, email: payload.email, emailed });
+    return json({ userId: user.id, email: payload.email, emailed, emailError });
   } catch (error) {
     console.error(error);
     return json({ error: error instanceof Error ? error.message : "Unable to manage staff account" }, 500);
@@ -106,7 +114,7 @@ async function updateExistingAuthUser(existing: { id: string; email: string }, p
   });
 
   if (!error) return data.user;
-  if (isAuthUserLoadError(error)) return createReplacementAuthUser(existing, payload);
+  if (isAuthUserLoadError(error)) return repairExistingAuthUser(payload);
   throw error;
 }
 
@@ -117,14 +125,40 @@ async function createAuthUser(payload: StaffAccountPayload) {
     email_confirm: true,
     user_metadata: { full_name: payload.name, role: payload.role },
   });
+  if (error && isAuthEmailConflict(error)) return recoverExistingAuthUser(payload, error);
   if (error) throw new Error(formatCreateUserError(error));
   return data.user;
+}
+
+async function recoverExistingAuthUser(payload: StaffAccountPayload, originalError: { message?: string }) {
+  try {
+    return await repairExistingAuthUser(payload);
+  } catch {
+    const existing = await findAuthUserByEmail(payload.email);
+    if (!existing) throw new Error(formatCreateUserError(originalError));
+    return updateExistingAuthUser({ id: existing.id, email: payload.email }, payload);
+  }
 }
 
 async function createReplacementAuthUser(existing: { id: string; email: string }, payload: StaffAccountPayload) {
   const user = await createAuthUser(payload);
   if (user.id !== existing.id) await archiveProfileEmail(existing);
   return user;
+}
+
+async function repairExistingAuthUser(payload: StaffAccountPayload) {
+  const { data, error } = await supabase
+    .rpc("repair_staff_auth_email_user", {
+      p_email: payload.email,
+      p_password: payload.temporaryPassword,
+      p_full_name: payload.name,
+      p_role: payload.role,
+    })
+    .maybeSingle();
+
+  if (error) throw new Error(`Supabase Auth repair failed: ${error.message}`);
+  if (!data?.id) throw new Error(formatCreateUserError({ message: "database error checking email" }));
+  return { id: data.id, email: data.email };
 }
 
 async function archiveProfileEmail(existing: { id: string; email: string }) {
@@ -138,6 +172,37 @@ async function archiveProfileEmail(existing: { id: string; email: string }) {
 
 function isAuthUserLoadError(error: { message?: string }) {
   return /database error loading user/i.test(error.message || "");
+}
+
+function isAuthEmailConflict(error: { message?: string }) {
+  return /database error checking email|already|registered|exists/i.test(error.message || "");
+}
+
+async function findAuthUserByEmail(email: string) {
+  const targetEmail = email.toLowerCase();
+  let page = 1;
+
+  while (page <= 20) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) return findAuthUserByEmailFromDatabase(email, error.message);
+
+    const found = data.users.find((user) => user.email?.toLowerCase() === targetEmail);
+    if (found) return found;
+    if (data.users.length < 1000) break;
+    page += 1;
+  }
+
+  return null;
+}
+
+async function findAuthUserByEmailFromDatabase(email: string, adminApiError: string) {
+  const { data, error } = await supabase
+    .rpc("find_auth_user_id_by_email", { p_email: email })
+    .maybeSingle();
+
+  if (error) throw new Error(`Supabase Auth could not inspect existing users: ${adminApiError}`);
+  if (!data?.id) return null;
+  return { id: data.id, email: data.email };
 }
 
 async function findProfileUserByEmail(email: string) {

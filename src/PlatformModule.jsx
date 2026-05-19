@@ -838,10 +838,14 @@ function UserManagement({ data }) {
           ...state[targetStaff.id],
           ...patch,
           supabaseUserId: result?.userId || state[targetStaff.id]?.supabaseUserId || "",
-          emailStatus: result?.emailed ? "Welcome email sent" : (hasSupabaseConfig ? "Account created, email provider not configured" : "Local preview only"),
+          emailStatus: result?.emailed
+            ? "Welcome email sent"
+            : (result?.emailError || (hasSupabaseConfig ? "Account created, email not sent" : "Local preview only")),
         },
       });
-      setAccountMessage(result?.emailed ? "Invite sent. The temporary password is visible below." : "Invite prepared. Temporary password is visible below.");
+      setAccountMessage(result?.emailed
+        ? "Invite sent. The temporary password is visible below."
+        : "Account created. Email was not sent, so use the visible temporary password.");
       addAuditLog("Staff account invited", `${email} invited to the staff platform`);
     } catch (error) {
       saveState({
@@ -897,9 +901,13 @@ function UserManagement({ data }) {
         ...patch,
         status: user.status === "Deactivated" ? "Invited" : user.status,
         supabaseUserId: result?.userId || user.supabaseUserId || "",
-        emailStatus: result?.emailed ? "Reset email sent" : (hasSupabaseConfig ? "Password reset, email provider not configured" : "Local preview only"),
+        emailStatus: result?.emailed
+          ? "Reset email sent"
+          : (result?.emailError || (hasSupabaseConfig ? "Password reset, email not sent" : "Local preview only")),
       });
-      setAccountMessage("Temporary password generated. It is visible on the staff card.");
+      setAccountMessage(result?.emailed
+        ? "Temporary password generated and reset email sent."
+        : "Temporary password generated. Email was not sent, so use the visible password.");
       addAuditLog("Staff password reset", `${user.email} password reset generated`);
     } catch (error) {
       updateUser(user.id, {
