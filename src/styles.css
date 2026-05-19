@@ -3326,6 +3326,7 @@ label {
   gap: 10px;
   align-items: center;
   width: 100%;
+  min-width: 0;
   border: 0;
   border-radius: 14px;
   background: transparent;
@@ -3338,6 +3339,12 @@ label {
 .platform-nav button svg {
   flex: 0 0 auto;
   width: 18px;
+}
+
+.platform-nav button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .platform-nav button.active {
@@ -5807,6 +5814,22 @@ label {
   font-size: 0.92rem;
 }
 
+.manual-invite-notice {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(242, 165, 76, 0.34);
+  border-radius: 14px;
+  background: #fff8eb;
+  color: var(--royal-dark);
+  padding: 12px;
+}
+
+.manual-invite-notice span {
+  color: #7c5a21;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 .account-rollout-stats {
   display: flex;
   flex-wrap: wrap;
@@ -5845,13 +5868,20 @@ label {
   grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.6fr);
 }
 
+.status-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .account-rollout-table-wrap {
   overflow-x: auto;
 }
 
 .account-rollout-table {
   width: 100%;
-  min-width: 900px;
+  min-width: 1040px;
   border-collapse: collapse;
 }
 
@@ -5952,6 +5982,11 @@ label {
 
 .temporary-password-inline {
   justify-content: flex-start;
+}
+
+.temporary-password-inline code,
+.temporary-password-row code {
+  max-width: 260px;
 }
 
 .user-card-actions {
@@ -6394,6 +6429,51 @@ label {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
+}
+
+.staff-profile-account-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
+  gap: 14px;
+  align-items: center;
+  border: 1px solid rgba(72, 103, 216, 0.18);
+  border-radius: 18px;
+  background: #fff;
+  padding: 16px;
+}
+
+.staff-profile-account-card .account-message {
+  grid-column: 1 / -1;
+}
+
+.staff-profile-account-card h4 {
+  margin: 0;
+  color: var(--royal-dark);
+  font-size: 1.2rem;
+}
+
+.staff-profile-account-card p,
+.staff-profile-account-card small {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.staff-profile-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.staff-profile-account-actions code {
+  max-width: 190px;
+  color: var(--royal-dark);
+  font-weight: 850;
+  overflow-wrap: anywhere;
 }
 
 .staff-profile-grid {
@@ -6864,6 +6944,10 @@ tr.selected-row {
   box-shadow: 0 10px 28px rgba(38, 63, 169, 0.07);
 }
 
+.setting-card-wide {
+  grid-column: 1 / -1;
+}
+
 .setting-card h3 {
   color: var(--royal-dark);
 }
@@ -6871,6 +6955,47 @@ tr.selected-row {
 .setting-card p {
   color: var(--muted);
   line-height: 1.55;
+}
+
+.settings-checklist {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-checklist span {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 9px;
+  align-items: start;
+  border: 1px solid rgba(37, 166, 122, 0.18);
+  border-radius: 14px;
+  background: #f5fcf9;
+  padding: 12px;
+}
+
+.settings-checklist.pending span {
+  border-color: rgba(242, 165, 76, 0.24);
+  background: #fff9ef;
+}
+
+.settings-checklist svg {
+  grid-row: span 2;
+  color: var(--green);
+}
+
+.settings-checklist.pending svg {
+  color: var(--orange);
+}
+
+.settings-checklist strong {
+  color: var(--royal-dark);
+  line-height: 1.2;
+}
+
+.settings-checklist small {
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .toggle-row {
@@ -7283,11 +7408,13 @@ th {
   .scr-profile-request-form,
   .scr-profile-request-list article,
   .staff-profile-grid,
+  .staff-profile-account-card,
   .staff-profile-stat-strip,
   .cover-move-panel,
   .cover-email-grid,
   .org-tree,
   .settings-grid,
+  .settings-checklist,
   .rota-grid {
     grid-template-columns: 1fr;
   }
@@ -7380,6 +7507,7 @@ th {
   .platform-nav button {
     flex: 0 0 auto;
     width: auto;
+    max-width: min(58vw, 220px);
     min-height: 42px;
     white-space: nowrap;
   }

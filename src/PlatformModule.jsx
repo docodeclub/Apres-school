@@ -109,6 +109,11 @@ const platformGroups = [
   ["Finance & culture", ["Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
 ];
+const nextCamp = {
+  title: "May Half Term Camp",
+  dates: "26-29 May",
+  sites: ["Willington Prep", "The Rowans", "King's House School"],
+};
 
 function staffAssignments(person) {
   if (Array.isArray(person?.siteAssignments) && person.siteAssignments.length) return person.siteAssignments;
@@ -560,7 +565,7 @@ function StaffDashboard({ data }) {
       <Panel title="My Evidence Requests"><StaffEvidenceRequestList items={staffEvidenceRequests} onSubmit={saveEvidenceSubmission} /></Panel>
       <Panel title="My Upcoming Sessions"><SessionList data={data} personal /></Panel>
       <Panel title="My Trophy Cabinet"><RewardList data={data} /></Panel>
-      <Panel title="Outstanding Actions"><ActionList items={["Read Staff Handbook v2026.2", "Confirm annual medical declaration", "Upload renewed proof of address"]} /></Panel>
+      <Panel title="My Actions"><ActionList items={["Read assigned policy updates", "Confirm any annual declaration requests", "Upload evidence only when asked by admin"]} /></Panel>
     </DashboardGrid>
   );
 }
@@ -776,7 +781,10 @@ function UserManagement({ data }) {
     missing: accountRows.filter((row) => row.readiness === "Missing email").length,
     invited: accountRows.filter((row) => row.status === "Invited").length,
     active: accountRows.filter((row) => row.status === "Active").length,
+    admins: accountRows.filter((row) => ["Admin", "Superadmin"].includes(row.role)).length,
   };
+  const resendSetupReady = accountRows.some((row) => /welcome email sent|reset email sent/i.test(row.emailStatus || ""));
+  const manualInviteMode = hasSupabaseConfig && !resendSetupReady;
   const visibleAccountRows = accountRows.filter((row) => {
     const matchesQuery = [row.name, row.email, row.role, row.location].join(" ").toLowerCase().includes(accountQuery.toLowerCase());
     if (!matchesQuery) return false;
@@ -784,6 +792,10 @@ function UserManagement({ data }) {
     if (rolloutFilter === "Ready") return row.readiness === "Ready";
     if (rolloutFilter === "Missing email") return row.readiness === "Missing email";
     if (rolloutFilter === "Invited") return row.status === "Invited";
+    if (rolloutFilter === "Active") return row.status === "Active";
+    if (rolloutFilter === "Admin") return ["Admin", "Superadmin"].includes(row.role);
+    if (rolloutFilter === "Manager") return row.role === "Manager";
+    if (rolloutFilter === "Staff") return row.role === "Staff";
     return true;
   });
 
@@ -848,7 +860,7 @@ function UserManagement({ data }) {
       setAccountMessage(result?.emailed
         ? "Invite sent. The temporary password is visible below."
         : "Account created. Email was not sent, so use the visible temporary password.");
-      addAuditLog("Staff account invited", `${email} invited to the staff platform`);
+      addAuditLog("Staff account invited", `${email} invited to the staff platform${result?.emailed ? " by email" : " for manual handover"}`);
     } catch (error) {
       saveState({
         ...state,
@@ -910,7 +922,7 @@ function UserManagement({ data }) {
       setAccountMessage(result?.emailed
         ? "Temporary password generated and reset email sent."
         : "Temporary password generated. Email was not sent, so use the visible password.");
-      addAuditLog("Staff password reset", `${user.email} password reset generated`);
+      addAuditLog("Staff password reset", `${user.email} password reset generated${result?.emailed ? " and emailed" : " for manual handover"}`);
     } catch (error) {
       updateUser(user.id, {
         ...patch,
@@ -979,9 +991,16 @@ function UserManagement({ data }) {
             <span><strong>{rolloutCounts.ready}</strong> ready</span>
             <span><strong>{rolloutCounts.missing}</strong> missing email</span>
             <span><strong>{rolloutCounts.invited}</strong> invited</span>
+            <span><strong>{rolloutCounts.admins}</strong> admin access</span>
           </div>
         </div>
         <div className="account-invite-panel">
+          {manualInviteMode && (
+            <div className="manual-invite-notice">
+              <strong>Manual invite mode</strong>
+              <span>Resend is not fully configured yet. Accounts can still be created and passwords can be handed to staff directly.</span>
+            </div>
+          )}
           <label>Staff member
             <select value={selectedStaff?.id || ""} onChange={(event) => setSelectedStaffId(event.target.value)}>
               {staffOptions.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.email || "No email"}</option>)}
@@ -1006,13 +1025,17 @@ function UserManagement({ data }) {
             <p className="eyebrow">Account rollout</p>
             <h2>Create users in a controlled run.</h2>
             <p>Use this list to test one real invite first, then work through ready staff. Missing-email rows are blocked until their staff profile is updated.</p>
+            <p className="panel-note">Temporary passwords are visible for handover while email sending is being configured. Copy details only when you are ready to share them with the staff member.</p>
           </div>
-          <Badge value={hasSupabaseConfig ? "Live Supabase" : "Local preview"} />
+          <div className="status-stack">
+            <Badge value={hasSupabaseConfig ? "Live Supabase" : "Local preview"} />
+            {manualInviteMode && <Badge value="Manual handover" />}
+          </div>
         </div>
         <div className="crm-controls account-controls">
           <label>Search staff<input value={accountQuery} onChange={(event) => setAccountQuery(event.target.value)} placeholder="Search name, email, role or site" /></label>
           <label>Show<select value={rolloutFilter} onChange={(event) => setRolloutFilter(event.target.value)}>
-            {["Ready", "Missing email", "Invited", "All"].map((item) => <option key={item}>{item}</option>)}
+            {["Ready", "Missing email", "Invited", "Active", "Admin", "Manager", "Staff", "All"].map((item) => <option key={item}>{item}</option>)}
           </select></label>
         </div>
         <div className="account-rollout-table-wrap">
@@ -1023,6 +1046,7 @@ function UserManagement({ data }) {
                 <th>Role / site</th>
                 <th>Readiness</th>
                 <th>Last account action</th>
+                <th>Last login</th>
                 <th>Temporary password</th>
                 <th>Action</th>
               </tr>
@@ -1040,11 +1064,13 @@ function UserManagement({ data }) {
                   </td>
                   <td><Badge value={row.readiness} /></td>
                   <td><span>{row.emailStatus || row.status}</span></td>
+                  <td><span>{row.lastLoginAt ? formatDateTime(row.lastLoginAt) : "Not tracked yet"}</span></td>
                   <td>
                     {row.temporaryPassword ? (
                       <div className="temporary-password-inline">
                         <code>{row.temporaryPassword}</code>
                         <button className="button light" type="button" onClick={() => copyTemporaryPassword(row.temporaryPassword, row.name)}>Copy</button>
+                        <button className="button light" type="button" onClick={() => copyLoginDetails(row)}>Copy login</button>
                       </div>
                     ) : <span>Not generated</span>}
                   </td>
@@ -1112,6 +1138,7 @@ function UserManagement({ data }) {
                 <div className="temporary-password-row">
                   <code>{user.temporaryPassword}</code>
                   <button className="button light" type="button" onClick={() => copyTemporaryPassword(user.temporaryPassword, user.name)}>Copy</button>
+                  <button className="button light" type="button" onClick={() => copyLoginDetails(user)}>Copy login details</button>
                 </div>
                 <small>{user.temporaryPasswordUpdatedAt ? `Generated ${formatDateTime(user.temporaryPasswordUpdatedAt)}` : "Generated locally"}</small>
               </div>
@@ -3745,7 +3772,20 @@ function AuditLog() {
 function Settings() {
   const [settings, setSettings] = useState(() => readPublicSettings());
   const documentLinks = readJson(documentLinksStorageKey, {});
-  const hrFileCount = readJson(auditStorageKey, []).filter((item) => String(item.action || "").toLowerCase().includes("hr file")).length;
+  const auditItems = readAuditLog();
+  const hrFileCount = auditItems.filter((item) => String(item.action || "").toLowerCase().includes("hr file")).length;
+  const launchItems = [
+    ["Public site live", "Domain, homepage and booking routes are published."],
+    ["Staff login live", "Manual temporary passwords work while email setup is completed."],
+    ["SCR data visible", "Admins can review staff compliance and evidence requests."],
+    ["CRM usable", "School outreach and enquiries are available as rows with search and filters."],
+  ];
+  const resendItems = [
+    ["Create Resend account", "Use an Après School-owned login."],
+    ["Add apres-school.co.uk", "Verify the sending domain inside Resend."],
+    ["Add DNS records", "Copy the DKIM/SPF records Resend provides into Squarespace DNS."],
+    ["Retest staff invite", "Send one reset to Kelly, then move the platform out of manual invite mode."],
+  ];
 
   function updateSetting(patch) {
     const next = { ...settings, ...patch, updatedAt: new Date().toISOString() };
@@ -3805,6 +3845,30 @@ function Settings() {
             <p>{hrFileCount} HR file actions have been logged locally. Production audit rows can be moved server-side as the platform matures.</p>
           </div>
           <Badge value="Local audit" />
+        </article>
+        <article className="setting-card setting-card-wide">
+          <div>
+            <p className="eyebrow">Launch readiness</p>
+            <h3>V1 checks before wider rollout</h3>
+            <p>A short operational checklist for the current launch phase.</p>
+          </div>
+          <div className="settings-checklist">
+            {launchItems.map(([title, text]) => (
+              <span key={title}><CheckCircle2 size={18} /><strong>{title}</strong><small>{text}</small></span>
+            ))}
+          </div>
+        </article>
+        <article className="setting-card setting-card-wide">
+          <div>
+            <p className="eyebrow">Email setup</p>
+            <h3>Resend setup for staff invites</h3>
+            <p>Until this is complete, use the Users page to create accounts and hand temporary passwords to staff manually.</p>
+          </div>
+          <div className="settings-checklist pending">
+            {resendItems.map(([title, text]) => (
+              <span key={title}><Clock size={18} /><strong>{title}</strong><small>{text}</small></span>
+            ))}
+          </div>
         </article>
       </section>
     </div>
@@ -4020,13 +4084,17 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
 
 function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction, actionItems = [], evidenceRequests = [], onRequestEvidence, onClearEvidenceRequest }) {
   const [notes, setNotes] = useState(() => readJson(staffProfileNotesStorageKey, {}));
+  const [accountState, setAccountState] = useState(() => readUserAdminState());
   const [photoUrl, setPhotoUrl] = useState(person.photoUrl || person.profilePhotoUrl || "");
   const [photoStatus, setPhotoStatus] = useState("");
+  const [accountStatus, setAccountStatus] = useState("");
+  const [accountBusy, setAccountBusy] = useState(false);
   const [hrFileTab, setHrFileTab] = useState("All");
   const [requestEvidenceKey, setRequestEvidenceKey] = useState(() => scrEvidenceRequestOptions[0][0]);
   const [requestNote, setRequestNote] = useState("");
   const note = notes[person.id] || "";
   const assignments = staffAssignments(person);
+  const accountUser = mergeUserRecords(data.staff || [], accountState).find((user) => user.id === (person.profileId || person.id) || user.staffRecordId === person.id);
   const hrFiles = (data.hrFiles || []).filter((file) => file.staffRecordId === person.id);
   const hrFileTabs = buildStaffHrFileTabs(hrFiles);
   const visibleHrFiles = hrFileTab === "All" ? hrFiles : hrFiles.filter((file) => staffHrFileBucket(file) === hrFileTab);
@@ -4039,7 +4107,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     ["SCR", checkStatus],
     ["Next action", nextAction],
     ["Manager", managerName || "Unassigned"],
-    ["Sites", assignments.length ? String(assignments.length) : "None"],
+    ["Account", accountUser?.status || "Not invited"],
   ];
   const requestByEvidenceKey = Object.fromEntries(evidenceRequests.map((request) => [request.evidenceKey, request]));
   const evidenceDateFields = {
@@ -4097,6 +4165,72 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     setRequestNote("");
   }, [person.id, person.photoUrl, person.profilePhotoUrl]);
 
+  async function resetProfileAccountPassword() {
+    const email = accountUser?.email || person.email || "";
+    if (!isRealStaffEmail(email)) {
+      setAccountStatus("Add a real email before generating account access.");
+      return;
+    }
+    const temporaryPassword = generateTemporaryPassword();
+    const now = new Date().toISOString();
+    setAccountBusy(true);
+    setAccountStatus("Generating temporary password...");
+    const nextAccount = {
+      ...(accountUser || {}),
+      id: accountUser?.id || person.profileId || person.id,
+      staffRecordId: person.id,
+      name: person.name,
+      email,
+      role: accountUser?.role || person.accessRole || (person.role?.toLowerCase().includes("manager") ? "Manager" : "Staff"),
+      status: accountUser?.status === "Deactivated" ? "Invited" : (accountUser?.status || "Active"),
+      temporaryPassword,
+      temporaryPasswordUpdatedAt: now,
+      lastPasswordResetAt: now,
+      accountAction: "Password reset from profile",
+      emailStatus: hasSupabaseConfig ? "Sending reset email" : "Local preview",
+    };
+    try {
+      let result = null;
+      if (hasSupabaseConfig) {
+        const { resetStaffAccountPassword, getStaffLoginUrl } = await loadSupabaseModule();
+        result = await resetStaffAccountPassword({
+          staffRecordId: person.id,
+          name: person.name,
+          email,
+          role: nextAccount.role,
+          temporaryPassword,
+          loginUrl: getStaffLoginUrl(),
+        });
+      }
+      const updated = {
+        ...nextAccount,
+        supabaseUserId: result?.userId || nextAccount.supabaseUserId || "",
+        emailStatus: result?.emailed
+          ? "Reset email sent"
+          : (result?.emailError || (hasSupabaseConfig ? "Password reset, email not sent" : "Local preview only")),
+      };
+      const nextState = {
+        ...accountState,
+        [updated.id]: updated,
+      };
+      setAccountState(nextState);
+      localStorage.setItem(userStorageKey, JSON.stringify(nextState));
+      setAccountStatus(result?.emailed ? "Password reset and email sent." : "Password reset. Use the visible password for manual handover.");
+      addAuditLog("Staff password reset", `${email} password reset from profile${result?.emailed ? " and emailed" : " for manual handover"}`);
+    } catch (error) {
+      const updated = { ...nextAccount, emailStatus: error.message || "Reset failed" };
+      const nextState = {
+        ...accountState,
+        [updated.id]: updated,
+      };
+      setAccountState(nextState);
+      localStorage.setItem(userStorageKey, JSON.stringify(nextState));
+      setAccountStatus(`Temporary password saved locally, but live reset failed: ${error.message}`);
+    } finally {
+      setAccountBusy(false);
+    }
+  }
+
   function updateNote(value) {
     const next = {
       ...notes,
@@ -4151,9 +4285,29 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           <div className="staff-profile-badges">
             <Badge value={checkStatus} />
             <Badge value={person.contractType || "Contract not recorded"} />
+            <Badge value={accountUser?.role ? `${accountUser.role} access` : "Access not set"} />
           </div>
         </div>
       </div>
+      <section className="staff-profile-account-card">
+        <div>
+          <p className="eyebrow">Account access</p>
+          <h4>{accountUser?.status || "Not invited"}</h4>
+          <p>{accountUser?.email || person.email || "Email not recorded"} · {accountUser?.role || "Staff"} access</p>
+        </div>
+        <div className="staff-profile-account-actions">
+          {accountUser?.temporaryPassword ? (
+            <>
+              <code>{accountUser.temporaryPassword}</code>
+              <button className="button light" type="button" onClick={() => copyLoginDetails(accountUser)}>Copy login details</button>
+            </>
+          ) : (
+            <small>No temporary password is currently visible.</small>
+          )}
+          <button className="button light" type="button" disabled={accountBusy} onClick={resetProfileAccountPassword}>{accountBusy ? "Working..." : "Reset password"}</button>
+        </div>
+        {accountStatus && <p className="account-message">{accountStatus}</p>}
+      </section>
       <div className="staff-profile-stat-strip">
         {profileStats.map(([label, value]) => (
           <div key={label}>
@@ -4574,6 +4728,20 @@ async function copyTemporaryPassword(password, staffName) {
   addAuditLog("Temporary password copied", `${staffName || "Staff"} temporary password copied by admin`);
 }
 
+async function copyLoginDetails(user) {
+  if (!user?.temporaryPassword || typeof navigator === "undefined" || !navigator.clipboard) return;
+  const message = [
+    `Après School staff login`,
+    `Link: ${window.location.origin}/staff-login`,
+    `Email: ${user.email}`,
+    `Temporary password: ${user.temporaryPassword}`,
+    "",
+    "Please log in and change your password when prompted.",
+  ].join("\n");
+  await navigator.clipboard.writeText(message);
+  addAuditLog("Staff login details copied", `${user.name || user.email || "Staff"} login details copied by admin`);
+}
+
 function readUserAdminState() {
   try {
     return JSON.parse(localStorage.getItem(userStorageKey) || "{}");
@@ -4791,7 +4959,8 @@ function addAuditLog(action, detail) {
 }
 
 function readAuditLog() {
-  return readJson(auditStorageKey, []);
+  const items = readJson(auditStorageKey, []);
+  return Array.isArray(items) ? items : [];
 }
 
 function readJson(key, fallback) {
