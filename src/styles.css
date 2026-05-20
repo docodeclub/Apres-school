@@ -1594,30 +1594,116 @@ summary {
 }
 
 .guide-hero {
-  display: flex;
-  gap: 22px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 22px;
-  border-radius: 20px;
-  background: var(--royal);
-  color: #fff;
-  padding: clamp(24px, 5vw, 42px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
+  gap: clamp(20px, 4vw, 34px);
+  align-items: end;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 8% 12%, rgba(83, 156, 246, 0.14), transparent 34%),
+    linear-gradient(135deg, #fff 0%, #fbfcff 52%, #f4f7ff 100%);
+  color: var(--royal-dark);
+  padding: clamp(24px, 4vw, 44px);
+  box-shadow: var(--shadow-soft);
+}
+
+.guide-hero > div > span {
+  display: inline-flex;
+  margin-bottom: 14px;
+  border-radius: 999px;
+  background: #fff4df;
+  color: #945d10;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .guide-hero p {
-  max-width: 760px;
+  max-width: 650px;
   margin: 0;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 1.12rem;
-  line-height: 1.65;
+  color: var(--muted);
+  font-size: 1.04rem;
+  line-height: 1.58;
 }
 
 .guide-hero h2 {
-  margin-bottom: 8px;
+  max-width: 760px;
+  margin-bottom: 12px;
+  color: var(--royal-dark);
+  font-size: clamp(2.05rem, 3.8vw, 4.2rem);
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.guide-platform-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 24px;
+  background:
+    linear-gradient(145deg, rgba(74, 104, 218, 0.98), rgba(38, 63, 169, 0.96)),
+    var(--royal);
+  padding: 24px;
   color: #fff;
-  font-size: clamp(1.9rem, 3.2vw, 3.4rem);
-  line-height: 1.04;
+  box-shadow: 0 22px 46px rgba(38, 63, 169, 0.2);
+}
+
+.guide-platform-card strong {
+  color: #fff;
+  font-size: 1.45rem;
+}
+
+.guide-platform-card p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.5;
+}
+
+.guide-platform-card .text-link {
+  justify-self: start;
+  color: #fff;
+}
+
+.guide-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.guide-summary article {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  padding: 18px;
+  box-shadow: 0 12px 28px rgba(38, 63, 169, 0.07);
+}
+
+.guide-summary span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--orange);
+  font-size: 0.76rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.guide-summary p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.48;
 }
 
 .guide-steps {
@@ -1639,13 +1725,14 @@ summary {
 
 .guide-steps strong {
   display: grid;
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   place-items: center;
   margin-bottom: 14px;
-  border-radius: 999px;
-  background: var(--orange);
-  color: #fff;
+  border-radius: 14px;
+  background: var(--soft);
+  color: var(--royal);
+  font-weight: 950;
 }
 
 .guide-steps p,
@@ -1656,6 +1743,42 @@ summary {
 
 .guide-note {
   margin-top: 22px;
+}
+
+.guide-note.refined {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(260px, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  background: #f8faff;
+}
+
+.guide-note.refined h2 {
+  margin-bottom: 6px;
+  color: var(--royal-dark);
+  font-size: 1.55rem;
+}
+
+.guide-site-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.guide-site-pills span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--royal-dark);
+  padding: 8px 11px;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.guide-note-actions {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
 }
 
 .image-copy-band {
@@ -7540,7 +7663,9 @@ th {
   .faq-columns,
   .faq-contact-band,
   .guide-hero,
+  .guide-summary,
   .guide-steps,
+  .guide-note.refined,
   .zone-grid,
   .school-models-intro,
   .school-operating-grid,

@@ -1611,16 +1611,27 @@ function MagicbookingGuide({ setPage }) {
   return (
     <GuidePage
       eyebrow="Magicbooking"
-      title="How to book Après School provision with Magicbooking."
-      intro="Magicbooking is the current booking route for most wraparound care and selected holiday programmes."
+      title="Magicbooking is used for most term-time care."
+      intro="Use this route for breakfast club, after-school care and selected school-linked holiday provision."
+      heroTitle="Book regular care without guessing the centre."
+      platform="Magicbooking"
+      routeLabel="Regular care"
+      summary={[
+        ["Used for", "Breakfast club, after-school care and selected school-specific holiday programmes."],
+        ["Before you click", "Know your school centre and the sessions you want to book."],
+        ["Good to check", "Child details, collection contacts, medical notes and payment method."],
+      ]}
       steps={[
         ["Create or log in", "Use the Après School Magicbooking link and sign in or create a parent account."],
         ["Add your child", "Complete child details, emergency contacts and any required medical or collection information."],
         ["Choose your centre", "Select the relevant school or activity centre, then choose the sessions you need."],
         ["Review and pay", "Check dates, fees, terms and payment options before confirming your booking."],
       ]}
+      checklist={["Willington Prep", "King's House School", "Shrewsbury House School", "Ripley Court School"]}
       cta="Open Magicbooking"
       href={MAGICBOOKING_URL}
+      secondary="View Booking Sites"
+      onSecondary={() => setPage("Bookings")}
       setPage={setPage}
     />
   );
@@ -1630,40 +1641,76 @@ function BookPebbleGuide({ setPage }) {
   return (
     <GuidePage
       eyebrow="Book Pebble"
-      title="How to book selected holiday camps with Book Pebble."
-      intro="Some Après School holiday camps are listed through Book Pebble. Use the site card on the Bookings page to confirm the correct route."
+      title="Pebble is used for selected holiday camps."
+      intro="Some open-access holiday camps are listed through Pebble. Start with the site card so you open the correct camp listing."
+      heroTitle="Find the right camp listing before checkout."
+      platform="Pebble"
+      routeLabel="Selected camps"
+      summary={[
+        ["Used for", "Selected open-access holiday camps at listed school sites."],
+        ["Before you click", "Choose the camp location first, because some sites use different links."],
+        ["Good to check", "Dates, age guidance, location notes, timings and cancellation terms."],
+      ]}
       steps={[
-        ["Open the camp listing", "Follow the Book Now button for the relevant school holiday camp."],
+        ["Choose the site card", "Start from the Bookings page and select the relevant holiday camp location."],
+        ["Open the camp listing", "Follow the Pebble button on that location card."],
         ["Check dates and eligibility", "Review the camp dates, age range, location notes and any school-specific restrictions."],
-        ["Add attendee details", "Complete the booking details requested by Book Pebble."],
         ["Confirm payment", "Review the cancellation terms and payment details before completing checkout."],
       ]}
+      checklist={["King's House School", "The Rowans School", "Shrewsbury House School"]}
       cta="View booking sites"
       onClick={() => setPage("Bookings")}
+      secondary="Contact Us"
+      onSecondary={() => setPage("Contact")}
       setPage={setPage}
     />
   );
 }
 
-function GuidePage({ eyebrow, title, intro, steps, cta, href, onClick, setPage }) {
+function GuidePage({ eyebrow, title, intro, heroTitle, platform, routeLabel, summary, steps, checklist, cta, href, onClick, secondary, onSecondary, setPage }) {
   return (
     <PageShell eyebrow={eyebrow} title={title}>
       <section className="guide-hero">
         <div>
-          <h2>Book in four simple steps.</h2>
+          <span>{routeLabel}</span>
+          <h2>{heroTitle}</h2>
           <p>{intro}</p>
+          <div className="guide-actions">
+            {href ? <a className="button book large" href={href} target="_blank" rel="noreferrer">{cta}</a> : <button className="button book large" type="button" onClick={onClick}>{cta}</button>}
+            {secondary && <button className="button light" type="button" onClick={onSecondary}>{secondary}</button>}
+          </div>
         </div>
-        {href ? <a className="button book large" href={href} target="_blank" rel="noreferrer">{cta}</a> : <button className="button book large" type="button" onClick={onClick}>{cta}</button>}
+        <aside className="guide-platform-card">
+          <strong>{platform}</strong>
+          <p>The booking platform opens in a new tab. Return here if you need to check which site route applies.</p>
+          <button className="text-link" type="button" onClick={() => setPage("Bookings")}>Back to all sites</button>
+        </aside>
+      </section>
+      <section className="guide-summary">
+        {summary.map(([heading, text]) => (
+          <article key={heading}>
+            <span>{heading}</span>
+            <p>{text}</p>
+          </article>
+        ))}
       </section>
       <div className="guide-steps">
         {steps.map(([heading, text], index) => (
           <article key={heading}><strong>{index + 1}</strong><h3>{heading}</h3><p>{text}</p></article>
         ))}
       </div>
-      <section className="guide-note">
-        <h2>Need help?</h2>
-        <p>If you cannot find your child’s centre or activity, contact Après School and we’ll point you to the right booking route.</p>
-        <button className="button light" type="button" onClick={() => setPage("Contact")}>Contact Après School</button>
+      <section className="guide-note refined">
+        <div>
+          <h2>Quick site check</h2>
+          <p>If your school or camp is listed here, this guide applies. If you are unsure, use the booking directory first.</p>
+        </div>
+        <div className="guide-site-pills">
+          {checklist.map((item) => <span key={item}>{item}</span>)}
+        </div>
+        <div className="guide-note-actions">
+          <button className="button light" type="button" onClick={() => setPage("Bookings")}>View Booking Sites</button>
+          <button className="text-link" type="button" onClick={() => setPage("Contact")}>Ask for Help</button>
+        </div>
       </section>
     </PageShell>
   );
