@@ -2092,6 +2092,150 @@ summary {
   line-height: 1.65;
 }
 
+.support-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: clamp(20px, 4vw, 34px);
+  align-items: end;
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 8% 12%, rgba(83, 156, 246, 0.14), transparent 34%),
+    linear-gradient(135deg, #fff 0%, #fbfcff 52%, #f4f7ff 100%);
+  padding: clamp(24px, 4vw, 44px);
+  box-shadow: var(--shadow-soft);
+}
+
+.support-hero span {
+  display: inline-flex;
+  margin-bottom: 14px;
+  border-radius: 999px;
+  background: #fff4df;
+  color: #945d10;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.support-hero h2 {
+  max-width: 780px;
+  margin-bottom: 12px;
+  color: var(--royal-dark);
+  font-size: clamp(2.05rem, 3.8vw, 4.2rem);
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.support-hero p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.04rem;
+  line-height: 1.58;
+}
+
+.support-hero-actions {
+  display: grid;
+  gap: 12px;
+  min-width: 250px;
+}
+
+.support-route-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.support-route-cards article {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: #fff;
+  padding: 22px;
+  box-shadow: 0 12px 28px rgba(38, 63, 169, 0.07);
+}
+
+.support-route-cards span {
+  display: block;
+  margin-bottom: 14px;
+  color: var(--orange);
+  font-size: 0.75rem;
+  font-weight: 950;
+  letter-spacing: 0.11em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.support-route-cards h3 {
+  margin-bottom: 8px;
+  color: var(--royal-dark);
+  font-size: 1.35rem;
+}
+
+.support-route-cards p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.52;
+}
+
+.support-process {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(300px, 1fr);
+  gap: 24px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--royal);
+  color: #fff;
+  padding: clamp(22px, 4vw, 34px);
+  box-shadow: var(--shadow-soft);
+}
+
+.support-process.warning {
+  background:
+    linear-gradient(135deg, rgba(74, 104, 218, 0.98), rgba(38, 63, 169, 0.96)),
+    var(--royal);
+}
+
+.support-process .eyebrow {
+  color: #ffbf64;
+}
+
+.support-process h2 {
+  max-width: 520px;
+  margin-bottom: 10px;
+  color: #fff;
+  font-size: clamp(1.8rem, 3vw, 3.1rem);
+  line-height: 1.04;
+}
+
+.support-process p {
+  max-width: 560px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.84);
+  line-height: 1.55;
+}
+
+.support-process ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.support-process li {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 12px 14px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
 .content-grid.tight {
   margin-bottom: 20px;
 }
@@ -7666,6 +7810,9 @@ th {
   .guide-summary,
   .guide-steps,
   .guide-note.refined,
+  .support-hero,
+  .support-route-cards,
+  .support-process,
   .zone-grid,
   .school-models-intro,
   .school-operating-grid,
@@ -8328,6 +8475,7 @@ th {
   .image-copy-band p,
   .school-hero p,
   .booking-intro p,
+  .support-hero p,
   .guide-hero p,
   .faq-hero p,
   .contact-card p,
@@ -8455,6 +8603,26 @@ th {
     padding: 12px;
   }
 
+  .support-hero {
+    gap: 18px;
+    padding: 22px 20px;
+  }
+
+  .support-hero-actions {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .support-route-cards article {
+    padding: 18px;
+  }
+
+  .support-process {
+    gap: 18px;
+    border-radius: 22px;
+    padding: 20px;
+  }
+
   .booking-route-strip {
     gap: 10px;
   }
@@ -8577,6 +8745,7 @@ th {
 
   .booking-card .button,
   .booking-intro .button,
+  .support-hero .button,
   .guide-hero .button,
   .faq-actions .button,
   .contact-form .button {

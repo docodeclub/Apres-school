@@ -878,8 +878,8 @@ function PublicSite({ page, setPage, setPlatform }) {
       {page === "Schools" && <Schools setPage={setPage} />}
       {page === "Magicbooking" && <MagicbookingGuide setPage={setPage} />}
       {page === "Book Pebble" && <BookPebbleGuide setPage={setPage} />}
-      {page === "Payments" && <Payments />}
-      {page === "Cancellations" && <Cancellations />}
+      {page === "Payments" && <Payments setPage={setPage} />}
+      {page === "Cancellations" && <Cancellations setPage={setPage} />}
       {page === "Policies" && <Policies setPage={setPage} />}
       {page === "Contact" && <Contact setPage={setPage} />}
       {page === "Staff Application" && <StaffApplication />}
@@ -1716,35 +1716,105 @@ function GuidePage({ eyebrow, title, intro, heroTitle, platform, routeLabel, sum
   );
 }
 
-function Payments() {
+function Payments({ setPage }) {
   return (
     <PageShell eyebrow="Payments" title="Payments happen inside the booking platform.">
-      <section className="simple-band">
-        <h2>Check payment options before confirming your place.</h2>
-        <p>Magicbooking and Book Pebble show the available payment methods during checkout. Voucher support can vary by site and activity.</p>
+      <SupportHero
+        label="Parent payments"
+        title="Check payment options before confirming your place."
+        text="Magicbooking and Pebble show the live payment options during checkout. Voucher support, receipts and payment records depend on the platform and activity selected."
+        primary="Find Your Booking Route"
+        secondary="Ask a Question"
+        onPrimary={() => setPage("Bookings")}
+        onSecondary={() => setPage("Contact")}
+      />
+      <SupportRouteCards
+        cards={[
+          ["Magicbooking", "Term-time care and selected school-linked holiday provision.", "Payments, receipts and booking records sit inside your Magicbooking account."],
+          ["Pebble", "Selected open-access holiday camps.", "Pebble shows the camp fee, checkout options and confirmation details before you pay."],
+          ["Childcare vouchers", "Where supported by the activity.", "Check the payment section during checkout and contact us if your provider is not shown."],
+        ]}
+      />
+      <section className="support-process">
+        <div>
+          <p className="eyebrow">Before paying</p>
+          <h2>Do one final check at checkout.</h2>
+          <p>Before you confirm, check the school or camp name, dates, child details, fee, voucher options and any platform-specific terms.</p>
+        </div>
+        <ul>
+          <li>Correct school, camp or activity selected.</li>
+          <li>Dates and sessions match what you need.</li>
+          <li>Child details and collection contacts are up to date.</li>
+          <li>Payment method, receipt and voucher handling are clear.</li>
+        </ul>
       </section>
-      <div className="content-grid tight">
-        <TextBlock title="Booking-platform payments" text="Payments are completed inside Magicbooking or Book Pebble depending on the activity selected. The platform will show available payment methods before confirmation." />
-        <TextBlock title="Childcare vouchers" text="Childcare voucher availability can vary by site and booking platform. Check the payment options during booking and contact us if your provider is not shown." />
-        <TextBlock title="Invoices and receipts" text="Receipts, booking confirmations and payment records are usually managed through the booking platform account used to place the booking." />
-      </div>
     </PageShell>
   );
 }
 
-function Cancellations() {
+function Cancellations({ setPage }) {
   return (
     <PageShell eyebrow="Cancellations" title="Change requests start where you booked.">
-      <section className="simple-band">
-        <h2>Your booking platform shows the live options.</h2>
-        <p>Cancellation windows, credits and amendments vary by programme, so always check the terms shown against the booking itself.</p>
+      <SupportHero
+        label="Changes and cancellations"
+        title="Your booking platform shows the live options."
+        text="Cancellation windows, credits and amendments vary by programme. Start where you booked so the rules match the specific session, camp or school centre."
+        primary="View Booking Sites"
+        secondary="Contact Après School"
+        onPrimary={() => setPage("Bookings")}
+        onSecondary={() => setPage("Contact")}
+      />
+      <SupportRouteCards
+        cards={[
+          ["Magicbooking", "Breakfast club, after-school care and selected school-linked provision.", "Log into Magicbooking to view permitted amendments and cancellation options for your centre."],
+          ["Pebble", "Selected holiday camps.", "Use your Pebble booking confirmation or account area to review camp change and cancellation rules."],
+          ["Site-specific terms", "Some rules vary by activity.", "Cut-off times, refunds and credits can differ, so always check the booking terms shown for that place."],
+        ]}
+      />
+      <section className="support-process warning">
+        <div>
+          <p className="eyebrow">Best route</p>
+          <h2>Use the same platform you booked with.</h2>
+          <p>If you are unsure where a booking was made, use the Bookings page to identify the school or camp route first.</p>
+        </div>
+        <ul>
+          <li>Find the original confirmation email or platform account.</li>
+          <li>Check the session, camp and date you want to change.</li>
+          <li>Read the cancellation or amendment terms shown there.</li>
+          <li>Contact us if the platform does not answer your question.</li>
+        </ul>
       </section>
-      <div className="content-grid tight">
-        <TextBlock title="Magicbooking amendments" text="Log into Magicbooking to view bookings, permitted amendments and cancellation options for your selected centre." />
-        <TextBlock title="Book Pebble amendments" text="For camps booked through Book Pebble, use your Book Pebble confirmation or account area to review change and cancellation rules." />
-        <TextBlock title="Site-specific terms" text="Cut-off times, refunds and credits can vary by programme. Always check the terms shown at the time of booking." />
-      </div>
     </PageShell>
+  );
+}
+
+function SupportHero({ label, title, text, primary, secondary, onPrimary, onSecondary }) {
+  return (
+    <section className="support-hero">
+      <div>
+        <span>{label}</span>
+        <h2>{title}</h2>
+        <p>{text}</p>
+      </div>
+      <div className="support-hero-actions">
+        <button className="button book large" type="button" onClick={onPrimary}>{primary}</button>
+        <button className="button light" type="button" onClick={onSecondary}>{secondary}</button>
+      </div>
+    </section>
+  );
+}
+
+function SupportRouteCards({ cards }) {
+  return (
+    <section className="support-route-cards">
+      {cards.map(([title, label, text]) => (
+        <article key={title}>
+          <span>{label}</span>
+          <h3>{title}</h3>
+          <p>{text}</p>
+        </article>
+      ))}
+    </section>
   );
 }
 
