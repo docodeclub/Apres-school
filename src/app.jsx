@@ -2103,44 +2103,70 @@ function FAQs({ setPage }) {
 }
 
 function Policies({ setPage }) {
-  const policySummaries = {
-    Safeguarding: "Our safeguarding approach is built around safer recruitment, training expectations, clear escalation routes and a child-first culture.",
-    Behaviour: "We use calm, consistent routines that help children feel safe, respected and able to enjoy the session.",
-    "Health and Safety": "Site routines, risk awareness, collection arrangements and activity planning are managed with school-friendly discipline.",
-    Complaints: "Families and schools can raise concerns clearly, with follow-up recorded and handled by the appropriate lead.",
-    Privacy: "Personal information is handled only for legitimate childcare, staffing and operational purposes, with GDPR-ready workflows planned.",
-    Terms: "Booking terms depend on the activity and booking platform. Parents should review the terms shown before confirming payment.",
-    "First Aid": "First aid provision is planned by programme, site and staffing model, with qualifications tracked where required.",
-    "Code of Conduct": "Staff are expected to model warm, professional behaviour and follow clear boundaries in every setting.",
-  };
+  const policySummaries = [
+    ["Safeguarding", "Child safety", "Our safeguarding approach is built around safer recruitment, training expectations, clear escalation routes and a child-first culture."],
+    ["Behaviour", "Session culture", "We use calm, consistent routines that help children feel safe, respected and able to enjoy the session."],
+    ["Health and Safety", "Site routines", "Site routines, risk awareness, collection arrangements and activity planning are managed with school-friendly discipline."],
+    ["Complaints", "Clear follow-up", "Families and schools can raise concerns clearly, with follow-up recorded and handled by the appropriate lead."],
+    ["Privacy", "Data care", "Personal information is handled only for legitimate childcare, staffing and operational purposes, with GDPR-ready workflows planned."],
+    ["Terms", "Booking terms", "Booking terms depend on the activity and booking platform. Parents should review the terms shown before confirming payment."],
+    ["First Aid", "Planned cover", "First aid provision is planned by programme, site and staffing model, with qualifications tracked where required."],
+    ["Code of Conduct", "Staff expectations", "Staff are expected to model warm, professional behaviour and follow clear boundaries in every setting."],
+  ];
   return (
     <PageShell eyebrow="Policies" title="Safeguarding, policies and school assurance.">
-      <section className="assurance-band">
+      <section className="policy-hero">
         <div>
-          <p className="eyebrow">For partner schools</p>
-          <h2>Assurance without the admin chase.</h2>
-          <p>School partners can request concise policy summaries, insurance details, safer recruitment assurances and safeguarding documentation.</p>
+          <span>Policy library</span>
+          <h2>Clear, practical policies behind every session.</h2>
+          <p>Parents should feel confident. Schools should be able to ask for assurance without a long admin chase. This page summarises the core policy areas that sit behind our provision.</p>
         </div>
-        <button className="button book" type="button" onClick={() => setPage("Contact")}>Request Assurance Pack</button>
+        <aside>
+          <ShieldCheck />
+          <strong>For partner schools</strong>
+          <p>Schools can request concise policy summaries, insurance details, safer recruitment assurances and safeguarding documentation.</p>
+          <button className="button book" type="button" onClick={() => setPage("Contact")}>Request Assurance Pack</button>
+        </aside>
       </section>
       <section className="policy-trust-row">
         {[
           ["Safeguarding-led", "Child-first expectations, safer recruitment and clear escalation routes."],
           ["Version controlled", "Policies are prepared for staff acknowledgement, review cycles and archive history."],
           ["School-ready", "Short summaries help schools and families understand the approach quickly."],
-        ].map(([title, text]) => <TextBlock key={title} title={title} text={text} />)}
+        ].map(([title, text], index) => (
+          <article key={title}>
+            <strong>{index + 1}</strong>
+            <h3>{title}</h3>
+            <p>{text}</p>
+          </article>
+        ))}
+      </section>
+      <section className="policy-library-head">
+        <div>
+          <p className="eyebrow">Core documents</p>
+          <h2>Policy areas parents and schools ask about most.</h2>
+        </div>
+        <p>These are public summaries. Controlled policy documents, acknowledgements and archived versions are managed internally.</p>
       </section>
       <div className="policy-list">
-        {Object.entries(policySummaries).map(([policy, summary]) => (
+        {policySummaries.map(([policy, label, summary]) => (
           <article key={policy}>
             <FileText />
             <div>
+              <span>{label}</span>
               <h3>{policy}</h3>
               <p>{summary}</p>
             </div>
           </article>
         ))}
       </div>
+      <section className="policy-help-band">
+        <div>
+          <h2>Need a specific document?</h2>
+          <p>Parents can ask for practical policy guidance. Schools can request assurance evidence for their site or partnership discussion.</p>
+        </div>
+        <button className="button light" type="button" onClick={() => setPage("Contact")}>Contact Après School</button>
+      </section>
     </PageShell>
   );
 }
