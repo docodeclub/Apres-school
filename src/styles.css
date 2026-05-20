@@ -2146,34 +2146,35 @@ summary {
 
 .wraparound-hero {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1fr);
-  gap: clamp(24px, 4vw, 46px);
+  grid-template-columns: minmax(340px, 0.82fr) minmax(440px, 1.18fr);
+  gap: clamp(24px, 4vw, 52px);
   align-items: center;
   margin-bottom: 30px;
   border: 1px solid var(--line);
   border-radius: 28px;
   background:
-    radial-gradient(circle at 8% 12%, rgba(83, 156, 246, 0.16), transparent 36%),
-    linear-gradient(135deg, #fff, #f7f9ff);
-  padding: clamp(24px, 5vw, 48px);
+    radial-gradient(circle at 5% 10%, rgba(83, 156, 246, 0.14), transparent 36%),
+    linear-gradient(135deg, #fff 0%, #fbfcff 48%, #f4f7ff 100%);
+  padding: clamp(24px, 4vw, 42px);
   box-shadow: var(--shadow-soft);
+  overflow: hidden;
 }
 
 .wraparound-hero-copy h2 {
-  max-width: 720px;
+  max-width: 620px;
   margin-bottom: 18px;
   color: var(--royal-dark);
-  font-size: clamp(2.2rem, 4.1vw, 4.6rem);
+  font-size: clamp(2.15rem, 3.75vw, 4.1rem);
   font-weight: 780;
-  line-height: 1.02;
+  line-height: 1.04;
   text-wrap: balance;
 }
 
 .wraparound-hero-copy p:not(.eyebrow) {
-  max-width: 680px;
+  max-width: 590px;
   color: var(--muted);
-  font-size: 1.08rem;
-  line-height: 1.65;
+  font-size: 1.04rem;
+  line-height: 1.62;
 }
 
 .wraparound-hero-actions,
@@ -2189,28 +2190,66 @@ summary {
   border-radius: 999px;
   background: #fff;
   color: var(--royal-dark);
-  padding: 8px 11px;
+  padding: 9px 12px;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 760;
+}
+
+.wraparound-hero-proof strong {
+  font-weight: 950;
 }
 
 .wraparound-hero-media {
-  display: grid;
-  grid-template-columns: 1fr 0.78fr;
-  gap: 14px;
+  position: relative;
+  min-height: clamp(390px, 38vw, 540px);
 }
 
-.wraparound-hero-media div {
-  min-height: 430px;
+.wraparound-hero-main-image {
+  position: absolute;
+  inset: 0 0 0 6%;
   border-radius: 24px;
   background-position: center;
   background-size: cover;
   box-shadow: var(--shadow);
 }
 
-.wraparound-hero-media div:last-child {
-  min-height: 360px;
-  align-self: end;
+.wraparound-hero-inset {
+  position: absolute;
+  left: 0;
+  bottom: 34px;
+  width: min(260px, 40%);
+  aspect-ratio: 0.86;
+  border: 10px solid #fff;
+  border-radius: 24px;
+  background-position: center;
+  background-size: cover;
+  box-shadow: 0 22px 50px rgba(38, 63, 169, 0.22);
+}
+
+.wraparound-hero-note {
+  position: absolute;
+  right: 22px;
+  bottom: 22px;
+  display: grid;
+  gap: 5px;
+  width: min(310px, 56%);
+  border: 1px solid rgba(255, 255, 255, 0.54);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.91);
+  padding: 15px 16px;
+  box-shadow: 0 18px 45px rgba(24, 35, 89, 0.16);
+  backdrop-filter: blur(12px);
+}
+
+.wraparound-hero-note strong {
+  color: var(--royal-dark);
+  font-size: 1rem;
+}
+
+.wraparound-hero-note span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
 }
 
 .wraparound-rhythm {
@@ -7357,15 +7396,16 @@ th {
   }
 
   .wraparound-hero-media {
-    grid-template-columns: 1fr 0.8fr;
+    min-height: 430px;
   }
 
-  .wraparound-hero-media div {
-    min-height: 320px;
+  .wraparound-hero-main-image {
+    inset: 0;
   }
 
-  .wraparound-hero-media div:last-child {
-    min-height: 260px;
+  .wraparound-hero-inset {
+    width: min(230px, 42%);
+    bottom: 22px;
   }
 
   .wraparound-rhythm > div:first-child {
@@ -7941,13 +7981,34 @@ th {
     width: 100%;
   }
 
-  .wraparound-hero-media {
-    grid-template-columns: 1fr;
+  .wraparound-hero-actions {
+    display: none;
   }
 
-  .wraparound-hero-media div,
-  .wraparound-hero-media div:last-child {
-    min-height: 230px;
+  .wraparound-hero-media {
+    min-height: 360px;
+  }
+
+  .wraparound-hero-inset {
+    width: 145px;
+    border-width: 7px;
+    border-radius: 18px;
+  }
+
+  .wraparound-hero-note {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100% - 172px);
+    padding: 12px;
+    border-radius: 15px;
+  }
+
+  .wraparound-hero-note strong {
+    font-size: 0.9rem;
+  }
+
+  .wraparound-hero-note span {
+    font-size: 0.8rem;
   }
 
   .wraparound-rhythm-cards article {

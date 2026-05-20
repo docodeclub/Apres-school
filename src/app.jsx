@@ -1511,14 +1511,18 @@ function Wraparound({ setPage }) {
             <button className="button light" type="button" onClick={() => setPage("Schools")}>For Schools</button>
           </div>
           <div className="wraparound-hero-proof">
-            <span>Breakfast club where offered</span>
-            <span>After-school care to 18:00</span>
-            <span>Magicbooking route</span>
+            <span><strong>Breakfast</strong> where offered</span>
+            <span><strong>After school</strong> to 18:00</span>
+            <span><strong>Bookings</strong> via Magicbooking</span>
           </div>
         </div>
         <div className="wraparound-hero-media" aria-hidden="true">
-          <div style={{ backgroundImage: `url("${APRES_IMG.wraparoundSnackSpread}")` }} />
-          <div style={{ backgroundImage: `url("${APRES_IMG.homeWraparoundPrivacy}")` }} />
+          <div className="wraparound-hero-main-image" style={{ backgroundImage: `url("${APRES_IMG.wraparoundSchoolRun}")` }} />
+          <div className="wraparound-hero-inset" style={{ backgroundImage: `url("${APRES_IMG.wraparoundSnackSpread}")` }} />
+          <div className="wraparound-hero-note">
+            <strong>Built around the school day</strong>
+            <span>Snack, play, quieter choices and clear collection routines.</span>
+          </div>
         </div>
       </section>
 
