@@ -2177,13 +2177,26 @@ function Contact({ setPage }) {
   }
   return (
     <PageShell eyebrow="Contact" title="Speak to the right Après School team.">
+      <section className="contact-hero">
+        <div>
+          <span>How can we help?</span>
+          <h2>Tell us what you need and we’ll route it properly.</h2>
+          <p>Parents, schools and staff often need different answers. Choose the route below first and the form will shape itself around the kind of enquiry you are sending.</p>
+        </div>
+        <aside>
+          <Mail />
+          <strong>hello@apres-school.co.uk</strong>
+          <p>For urgent booking changes, check the platform you booked through first so you see the live options for that booking.</p>
+        </aside>
+      </section>
       <section className="contact-route-grid">
         {[
-          ["Parent booking help", "Booking routes, payments, collection or finding the correct school/camp.", "Parent", "I have a question about booking for:"],
-          ["School partnerships", "Wraparound care, holiday provision, enrichment clubs or staffing support.", "School", "We would like to discuss provision for:"],
-          ["Staff and recruitment", "Staff login, vacancies, onboarding, training or work with Après School.", "Staff", "I would like to ask about staff opportunities or onboarding:"],
-        ].map(([title, text, type, template]) => (
+          [CalendarDays, "Parent booking help", "Booking routes, payments, collection or finding the correct school/camp.", "Parent", "I have a question about booking for:"],
+          [ShieldCheck, "School partnerships", "Wraparound care, holiday provision, enrichment clubs or staffing support.", "School", "We would like to discuss provision for:"],
+          [Users, "Staff and recruitment", "Staff login, vacancies, onboarding, training or work with Après School.", "Staff", "I would like to ask about staff opportunities or onboarding:"],
+        ].map(([Icon, title, text, type, template]) => (
           <button className="contact-route-card" key={title} type="button" onClick={() => applyTemplate(type, template)}>
+            <Icon />
             <span>{type}</span>
             <strong>{title}</strong>
             <small>{text}</small>
@@ -2194,6 +2207,11 @@ function Contact({ setPage }) {
         <div className="contact-card">
           <h2>We’ll route your message to the right person.</h2>
           <p>For live booking changes, start with your booking platform. For site questions, partnerships or staff enquiries, send us the details here.</p>
+          <div className="contact-response-list">
+            <span>Booking platform questions</span>
+            <span>School partnership conversations</span>
+            <span>Staff applications and onboarding</span>
+          </div>
           <div className="contact-methods">
             <a href="mailto:hello@apres-school.co.uk">hello@apres-school.co.uk</a>
             <button className="text-link" type="button" onClick={() => setPage("Staff Application")}>Staff application form</button>
@@ -2201,11 +2219,15 @@ function Contact({ setPage }) {
           </div>
         </div>
         <form className="contact-form" onSubmit={submit}>
-          <label>Name<input required name="name" autoComplete="name" /></label>
-          <label>Email<input required type="email" inputMode="email" name="email" autoComplete="email" /></label>
-          <label>Organisation or school<input name="organisation" /></label>
+          <div className="contact-form-head full">
+            <span>Send an enquiry</span>
+            <p>Add the school, site, booking platform or staff context if you have it. That helps us respond with less back-and-forth.</p>
+          </div>
+          <label>Name<input required name="name" autoComplete="name" placeholder="Your name" /></label>
+          <label>Email<input required type="email" inputMode="email" name="email" autoComplete="email" placeholder="you@example.com" /></label>
+          <label>Organisation or school<input name="organisation" placeholder="Optional" /></label>
           <label>Enquiry type<select name="type"><option>Parent</option><option>School</option><option>Staff</option><option>Other</option></select></label>
-          <label className="full">Message<textarea required name="message" rows="5" /></label>
+          <label className="full">Message<textarea required name="message" rows="6" placeholder="Tell us the school, camp, booking route or question..." /></label>
           <div className="contact-shortcuts full">
             <button type="button" onClick={(event) => setTemplate(event, "Parent", "I have a question about booking for:")}>Parent booking question</button>
             <button type="button" onClick={(event) => setTemplate(event, "School", "We would like to discuss wraparound care or holiday provision for:")}>School partnership enquiry</button>
