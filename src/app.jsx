@@ -1263,23 +1263,10 @@ function Bookings({ setPage }) {
     const text = `${site.title} ${site.type} ${site.area} ${site.description}`.toLowerCase();
     return matchesFilter && text.includes(query.toLowerCase());
   });
-  const platformSummaries = [
-    {
-      platform: "Magicbooking",
-      label: "Use for regular care",
-      text: "Use Magicbooking for wraparound care and selected school-specific holiday programmes.",
-      bestFor: "Best for breakfast clubs, after-school care and some school-only holiday provision.",
-      href: MAGICBOOKING_URL,
-      action: "Open Magicbooking",
-    },
-    {
-      platform: "Book Pebble",
-      label: "Use for selected camps",
-      text: "Use Pebble for selected open-access holiday camps where the site card says Book Pebble.",
-      bestFor: "Best for open holiday camps at King's House, The Rowans and Shrewsbury House.",
-      href: PEBBLE_KINGS_ROWANS_URL,
-      action: "Open Pebble",
-    },
+  const bookingSteps = [
+    ["1", "Choose the care type", "Term-time care and holiday camps can use different systems."],
+    ["2", "Select your school", "Each card below shows the exact school or camp location."],
+    ["3", "Use that card's button", "The button opens the correct platform for that site."],
   ];
 
   return (
@@ -1288,8 +1275,8 @@ function Bookings({ setPage }) {
         <div>
           <h2>Start with the location, not the platform.</h2>
           <p>
-            Each school and camp card below shows the correct booking route. Regular term-time care
-            usually runs through Magicbooking; selected holiday camps run through Pebble.
+            Pick the school or camp first. We will then point you to Magicbooking or Pebble,
+            depending on how that site is currently managed.
           </p>
           <div className="booking-quick-actions">
             <button className="button book large" type="button" onClick={() => setFilter("Wraparound")}>Term-Time Care</button>
@@ -1297,33 +1284,32 @@ function Bookings({ setPage }) {
           </div>
         </div>
         <div className="booking-platform-card">
-          <span>Quick rule</span>
-          <strong>Pick your site card, then use the button on that card.</strong>
-          <p>This avoids sending parents to the wrong checkout.</p>
+          <span>Current booking route</span>
+          <strong>One directory. Two booking systems.</strong>
+          <p>Use the site card below and you will land in the right place.</p>
           <div className="booking-route-mini">
             <span>{wraparoundCount} wraparound sites</span>
             <span>{campCount} camp routes</span>
           </div>
         </div>
       </section>
-      <section className="booking-platforms">
-        {platformSummaries.map(({ platform, text, href, label, bestFor, action }) => (
-          <article key={platform}>
-            <span className="booking-platform-icon">{platform === "Magicbooking" ? <CalendarDays /> : <Sparkles />}</span>
-            <span>{label}</span>
-            <h3>{platform}</h3>
-            <p>{text}</p>
-            <small>{bestFor}</small>
-            <a className="text-link" href={href} target="_blank" rel="noreferrer">{action}</a>
+      <section className="booking-route-strip" aria-label="How bookings work">
+        {bookingSteps.map(([number, title, text]) => (
+          <article key={title}>
+            <strong>{number}</strong>
+            <div>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </div>
           </article>
         ))}
       </section>
       <section className="booking-directory-heading">
         <div>
           <p className="eyebrow">Site directory</p>
-          <h2>Every current site, clearly separated.</h2>
+          <h2>Choose the card for your school or camp.</h2>
         </div>
-        <p>Filter by care type or platform. Every card shows who it is for, when it runs and where to book.</p>
+        <p>Filter by care type or platform. Each card shows who it is for, when it runs and which booking system to open.</p>
         <span className="booking-count">Showing {filteredSites.length} of {bookingSites.length}</span>
       </section>
       <section className="booking-filters">
@@ -1354,7 +1340,7 @@ function Bookings({ setPage }) {
               <a className="button book" href={site.url} target="_blank" rel="noreferrer" aria-label={`Open ${site.provider === "Book Pebble" ? "Pebble" : site.provider} booking route for ${site.title}`}>Open {site.provider === "Book Pebble" ? "Pebble" : site.provider}</a>
             </div>
             <details className="site-detail">
-              <summary>Details before you book</summary>
+              <summary>Before you book</summary>
               <p><strong>Schedule:</strong> {site.schedule}</p>
               <p><strong>Booking note:</strong> {site.bookingNote}</p>
               <p>{site.beforeBooking}</p>

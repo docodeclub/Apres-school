@@ -1076,15 +1076,17 @@ summary {
 .booking-intro {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
-  gap: 24px;
+  gap: clamp(20px, 4vw, 34px);
   align-items: center;
-  margin-bottom: 26px;
-  border-radius: 20px;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 28px;
   background:
-    linear-gradient(90deg, rgba(74, 104, 218, 0.96), rgba(38, 63, 169, 0.88)),
-    url("/assets/apres-highlights/real-img_0014.jpg") center / cover;
-  color: #fff;
-  padding: clamp(22px, 4vw, 34px);
+    radial-gradient(circle at 8% 12%, rgba(83, 156, 246, 0.14), transparent 34%),
+    linear-gradient(135deg, #fff 0%, #fbfcff 52%, #f4f7ff 100%);
+  color: var(--royal-dark);
+  padding: clamp(24px, 4vw, 44px);
+  box-shadow: var(--shadow-soft);
 }
 
 .booking-quick-actions {
@@ -1097,16 +1099,17 @@ summary {
 .booking-platform-card {
   display: grid;
   gap: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.52);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 24px;
+  background:
+    linear-gradient(145deg, rgba(74, 104, 218, 0.98), rgba(38, 63, 169, 0.96)),
+    var(--royal);
   padding: 24px;
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(14px);
+  box-shadow: 0 22px 46px rgba(38, 63, 169, 0.2);
 }
 
 .booking-platform-card > span {
-  color: var(--orange);
+  color: #ffbf64;
   font-size: 0.78rem;
   font-weight: 950;
   letter-spacing: 0.12em;
@@ -1114,7 +1117,7 @@ summary {
 }
 
 .booking-platform-card strong {
-  color: var(--royal-dark);
+  color: #fff;
   font-size: 1.25rem;
   line-height: 1.18;
 }
@@ -1122,7 +1125,7 @@ summary {
 .booking-intro .booking-platform-card p,
 .booking-platform-card p {
   margin: 0;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.82);
   line-height: 1.55;
 }
 
@@ -1135,11 +1138,55 @@ summary {
 
 .booking-route-mini span {
   border-radius: 999px;
-  background: var(--soft);
-  color: var(--royal-dark);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
   padding: 7px 10px;
   font-size: 0.76rem;
   font-weight: 900;
+}
+
+.booking-route-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.booking-route-strip article {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 13px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  padding: 17px;
+  box-shadow: 0 12px 28px rgba(38, 63, 169, 0.07);
+}
+
+.booking-route-strip strong {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--soft);
+  color: var(--royal);
+  font-size: 0.94rem;
+  font-weight: 950;
+}
+
+.booking-route-strip h3 {
+  margin: 0 0 4px;
+  color: var(--royal-dark);
+  font-size: 1rem;
+}
+
+.booking-route-strip p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.42;
 }
 
 .booking-guide {
@@ -1304,14 +1351,19 @@ summary {
 
 .booking-intro h2 {
   margin-bottom: 8px;
-  font-size: clamp(1.8rem, 3vw, 3.1rem);
+  max-width: 760px;
+  color: var(--royal-dark);
+  font-size: clamp(2.05rem, 3.8vw, 4.2rem);
+  line-height: 1.02;
+  text-wrap: balance;
 }
 
 .booking-intro p {
-  max-width: 760px;
+  max-width: 650px;
   margin-bottom: 0;
-  color: rgba(255, 255, 255, 0.9);
-  line-height: 1.65;
+  color: var(--muted);
+  font-size: 1.04rem;
+  line-height: 1.58;
 }
 
 .booking-grid {
@@ -1395,14 +1447,14 @@ summary {
 .booking-card {
   display: grid;
   grid-template-rows: auto auto auto auto auto auto;
-  gap: 14px;
+  gap: 13px;
   align-content: start;
-  min-height: 462px;
+  min-height: 456px;
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: 20px;
   background: #fff;
   overflow: hidden;
-  padding: 0 24px 24px;
+  padding: 0 22px 22px;
   box-shadow: var(--shadow-soft);
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
@@ -1413,8 +1465,8 @@ summary {
 }
 
 .booking-image {
-  height: 198px;
-  margin: 0 -24px 8px;
+  height: 186px;
+  margin: 0 -22px 6px;
   background-position: center;
   background-size: cover;
 }
@@ -1461,7 +1513,7 @@ summary {
 .booking-card h3 {
   margin: 0;
   color: var(--royal-dark);
-  font-size: 1.45rem;
+  font-size: 1.34rem;
   line-height: 1.12;
 }
 
@@ -1469,7 +1521,8 @@ summary {
 .booking-card small {
   margin: 0;
   color: var(--muted);
-  line-height: 1.55;
+  font-size: 0.95rem;
+  line-height: 1.48;
 }
 
 .booking-facts {
@@ -1495,7 +1548,7 @@ summary {
 .booking-card-actions {
   display: grid;
   gap: 12px;
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .booking-card-actions .button {
@@ -1504,7 +1557,7 @@ summary {
 
 .site-detail {
   margin-top: 0;
-  padding: 13px 14px;
+  padding: 12px 14px;
   border-radius: 14px;
   background: #f8faff;
   box-shadow: none;
@@ -7446,6 +7499,7 @@ th {
   .route-grid,
   .assurance-matrix,
   .booking-intro,
+  .booking-route-strip,
   .booking-guide,
   .booking-platforms,
   .booking-directory-heading,
@@ -8274,6 +8328,21 @@ th {
   .booking-filters {
     gap: 12px;
     padding: 12px;
+  }
+
+  .booking-route-strip {
+    gap: 10px;
+  }
+
+  .booking-route-strip article {
+    grid-template-columns: 34px 1fr;
+    padding: 14px;
+  }
+
+  .booking-route-strip strong {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
   }
 
   .booking-platforms {
