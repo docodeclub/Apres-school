@@ -155,12 +155,13 @@ const APRES_IMG = {
 };
 
 const nav = ["Home", "Bookings", "Holiday Clubs", "Wraparound", "Schools", "Contact"];
-const platformTabs = ["Staff", "Admin", "Users", "HR", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Users", "HR", "HR Files", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
-  ["Overview", ["Admin", "Staff"]],
-  ["People", ["Users", "HR", "SCR", "Ofsted", "Documents"]],
-  ["Operations", ["Rota", "Hours", "Sessions", "CRM"]],
-  ["Finance & culture", ["Pay", "Rewards"]],
+  ["Today", ["Admin", "Staff"]],
+  ["People", ["Users", "SCR", "HR", "HR Files"]],
+  ["Sites", ["Rota", "Hours", "Sessions", "Ofsted"]],
+  ["Comms", ["Documents", "CRM"]],
+  ["Finance", ["Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
 ];
 const pagePaths = {

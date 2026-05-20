@@ -103,12 +103,31 @@ const X = makeIcon("X");
 
 const platformTabs = ["Staff", "Admin", "Users", "HR", "HR Files", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
-  ["Overview", ["Admin", "Staff"]],
-  ["People", ["Users", "HR", "HR Files", "SCR", "Ofsted", "Documents"]],
-  ["Operations", ["Rota", "Hours", "Sessions", "CRM"]],
-  ["Finance & culture", ["Pay", "Rewards"]],
+  ["Today", ["Admin", "Staff"]],
+  ["People", ["Users", "SCR", "HR", "HR Files"]],
+  ["Sites", ["Rota", "Hours", "Sessions", "Ofsted"]],
+  ["Comms", ["Documents", "CRM"]],
+  ["Finance", ["Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
 ];
+const platformTabHints = {
+  Staff: "Personal shifts, documents, pay and rewards",
+  Admin: "Key actions across staffing, compliance and bookings",
+  Users: "Invite staff and reset access",
+  HR: "Reporting lines and manager structure",
+  "HR Files": "Contracts, payslips and staff documents",
+  SCR: "Single Central Register and safer recruitment",
+  Rota: "Site rota, cover and staffing requirements",
+  Hours: "Approved hours, setup, session and clean-up time",
+  Sessions: "Programmes, locations and assignments",
+  Ofsted: "Inspection windows and site evidence",
+  Documents: "Policies, acknowledgements and staff links",
+  CRM: "School outreach and enquiries",
+  Pay: "Rates, payroll and expenses",
+  Rewards: "Staff recognition and achievements",
+  Audit: "Important admin activity",
+  Settings: "Platform preferences and controls",
+};
 const nextCamp = {
   title: "May Half Term Camp",
   dates: "26-29 May",
@@ -390,7 +409,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
             <div className="platform-nav-group" key={group}>
               <strong>{group}</strong>
               {items.map((item) => (
-                <button key={item} type="button" aria-current={tab === item ? "page" : undefined} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>
+                <button key={item} type="button" aria-current={tab === item ? "page" : undefined} className={tab === item ? "active" : ""} title={platformTabHints[item] || item} onClick={() => setTab(item)}>
                   {iconFor(item)} <span>{item}</span>
                 </button>
               ))}
