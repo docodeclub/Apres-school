@@ -134,6 +134,7 @@ const nextCamp = {
   sites: ["Willington Prep", "The Rowans", "King's House School"],
 };
 const payrollHoursStorageKey = "apres-payroll-hours";
+const payrollRunsStorageKey = "apres-payroll-runs";
 
 function currentPayrollPeriod() {
   return new Date().toISOString().slice(0, 7);
@@ -148,6 +149,24 @@ function formatPayrollPeriod(period) {
 
 function formatCurrency(value) {
   return `£${Number(value || 0).toFixed(2)}`;
+}
+
+function csvValue(value) {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows.map((row) => row.map(csvValue).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function staffAssignments(person) {
@@ -3523,11 +3542,14 @@ function Documents({ data }) {
 
 function Pay({ data, access }) {
   const records = readJson(payrollHoursStorageKey, {});
+  const [runs, setRuns] = useState(() => readJson(payrollRunsStorageKey, {}));
   const availablePeriods = Object.keys(records).sort().reverse();
   const [period, setPeriod] = useState(availablePeriods[0] || currentPayrollPeriod());
   const periodRecords = records[period] || {};
   const isStaff = access?.role === "Staff";
   const isAdmin = ["Admin", "Superadmin"].includes(access?.role);
+  const canMarkPaid = access?.role === "Superadmin";
+  const currentRun = runs[period] || { status: "Draft", adjustments: {} };
   const staffIds = new Set(data.staff.map((person) => person.id));
   const payrollRows = data.staff.map((person) => {
     const schoolRows = Object.entries(periodRecords).flatMap(([schoolName, record]) => (record.rows || [])
@@ -3535,15 +3557,88 @@ function Pay({ data, access }) {
       .map((row) => ({ ...row, schoolName, status: record.status || "Draft" })));
     const hours = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
     const gross = hours * Number(person.payRate || 0);
-    return { ...person, payrollEntries: schoolRows, hours, gross, expenses: 0, deductions: 0 };
+    const adjustment = currentRun.adjustments?.[person.id] || {};
+    const expenses = Number(adjustment.expenses || 0);
+    const deductions = Number(adjustment.deductions || 0);
+    return { ...person, payrollEntries: schoolRows, hours, gross, expenses, deductions, payrollNote: adjustment.note || "" };
   });
   const totalHours = payrollRows.reduce((sum, row) => sum + row.hours, 0);
   const totalGross = payrollRows.reduce((sum, row) => sum + row.gross, 0);
+  const totalExpenses = payrollRows.reduce((sum, row) => sum + row.expenses, 0);
+  const totalDeductions = payrollRows.reduce((sum, row) => sum + row.deductions, 0);
+  const totalNet = totalGross + totalExpenses - totalDeductions;
   const submittedSites = Object.values(periodRecords).filter((record) => record.status === "Submitted").length;
+  const payrollReady = payrollRows.some((row) => row.hours > 0);
 
   useEffect(() => {
     if (availablePeriods.length && !availablePeriods.includes(period)) setPeriod(availablePeriods[0]);
   }, [availablePeriods, period]);
+
+  function saveRun(nextRun, action = "Payroll run updated") {
+    const next = {
+      ...runs,
+      [period]: {
+        ...nextRun,
+        updatedAt: new Date().toISOString(),
+        updatedBy: access?.currentUser?.email || access?.currentUser?.name || "Admin",
+      },
+    };
+    localStorage.setItem(payrollRunsStorageKey, JSON.stringify(next));
+    setRuns(next);
+    addAuditLog(action, formatPayrollPeriod(period));
+  }
+
+  function updateAdjustment(staffId, patch) {
+    const nextAdjustment = {
+      ...(currentRun.adjustments?.[staffId] || {}),
+      ...patch,
+    };
+    saveRun({
+      ...currentRun,
+      adjustments: {
+        ...(currentRun.adjustments || {}),
+        [staffId]: nextAdjustment,
+      },
+    }, "Payroll adjustment updated");
+  }
+
+  function setRunStatus(status) {
+    const timestampKey = status === "Reviewed" ? "reviewedAt" : status === "Approved" ? "approvedAt" : "paidAt";
+    saveRun({
+      ...currentRun,
+      status,
+      [timestampKey]: new Date().toISOString(),
+      [`${status.toLowerCase()}By`]: access?.currentUser?.email || access?.currentUser?.name || "Admin",
+    }, `Payroll ${status.toLowerCase()}`);
+  }
+
+  function exportPayroll() {
+    const rows = [
+      ["Period", "Run status", "Staff", "Email", "Schools", "Hours", "Rate", "Gross", "Expenses", "Deductions", "Net", "Payslip status", "Notes"],
+      ...payrollRows.map((row) => {
+        const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName))).join("; ");
+        const submittedEntries = row.payrollEntries.filter((entry) => entry.status === "Submitted");
+        const net = row.gross + row.expenses - row.deductions;
+        return [
+          formatPayrollPeriod(period),
+          currentRun.status || "Draft",
+          row.name,
+          row.email || "",
+          schools || "No hours submitted",
+          row.hours.toFixed(2),
+          Number(row.payRate || 0).toFixed(2),
+          row.gross.toFixed(2),
+          row.expenses.toFixed(2),
+          row.deductions.toFixed(2),
+          net.toFixed(2),
+          submittedEntries.length ? "Ready to upload" : "Pending hours",
+          row.payrollNote || "",
+        ];
+      }),
+    ];
+    downloadCsv(`apres-payroll-${period}.csv`, rows);
+    addAuditLog("Payroll exported", formatPayrollPeriod(period));
+  }
 
   return (
     <div className="stack">
@@ -3560,11 +3655,29 @@ function Pay({ data, access }) {
         <Metric icon={<Clock />} label={isStaff ? "My paid hours" : "Paid hours"} value={totalHours.toFixed(2)} tone={totalHours ? "green" : "amber"} />
         <Metric icon={<PoundSterling />} label={isStaff ? "My gross pay" : "Gross payroll"} value={formatCurrency(totalGross)} tone="green" />
         <Metric icon={<ClipboardCheck />} label="Submitted sites" value={isAdmin ? submittedSites : payrollRows.flatMap((row) => row.payrollEntries).filter((entry) => entry.status === "Submitted").length} tone={submittedSites ? "blue" : "amber"} />
+        {isAdmin && <Metric icon={<CheckCircle2 />} label="Run status" value={currentRun.status || "Draft"} tone={currentRun.status === "Paid" ? "green" : currentRun.status === "Draft" ? "amber" : "blue"} />}
       </div>
+      {isAdmin && (
+        <Panel title={`${formatPayrollPeriod(period)} Payroll Run`}>
+          <div className="payroll-run-console">
+            <div>
+              <Badge value={currentRun.status || "Draft"} />
+              <p>Net payroll is {formatCurrency(totalNet)} from {totalHours.toFixed(2)} approved hours, {formatCurrency(totalExpenses)} expenses and {formatCurrency(totalDeductions)} deductions.</p>
+            </div>
+            <div className="payroll-run-actions">
+              <button className="button light" type="button" onClick={() => setRunStatus("Reviewed")} disabled={!payrollReady}>Mark reviewed</button>
+              <button className="button light" type="button" onClick={() => setRunStatus("Approved")} disabled={!payrollReady || currentRun.status === "Paid"}>Approve payroll</button>
+              <button className="button primary" type="button" onClick={() => setRunStatus("Paid")} disabled={!payrollReady || !canMarkPaid || currentRun.status !== "Approved"}>Mark paid</button>
+              <button className="button subtle" type="button" onClick={exportPayroll} disabled={!payrollReady}>Export CSV</button>
+            </div>
+          </div>
+          {!canMarkPaid && <p className="panel-note">Only Superadmin can mark a payroll run as paid.</p>}
+        </Panel>
+      )}
       <Panel title={`${formatPayrollPeriod(period)} Pay`}>
         <TableWrap>
           <table>
-            <thead><tr><th>Staff</th><th>Submitted schools</th><th>Hours</th><th>Rate</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th><th>Payslip</th></tr></thead>
+            <thead><tr><th>Staff</th><th>Submitted schools</th><th>Hours</th><th>Rate</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th><th>Payslip</th>{isAdmin && <th>Payroll note</th>}</tr></thead>
             <tbody>{payrollRows.map((row) => {
               const submittedEntries = row.payrollEntries.filter((entry) => entry.status === "Submitted");
               const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName)));
@@ -3576,13 +3689,27 @@ function Pay({ data, access }) {
                   <td><strong>{row.hours.toFixed(2)}</strong></td>
                   <td>{row.payRate ? `${formatCurrency(row.payRate)}/hr` : "No rate"}</td>
                   <td>{formatCurrency(row.gross)}</td>
-                  <td>{formatCurrency(row.expenses)}</td>
-                  <td>{formatCurrency(row.deductions)}</td>
+                  <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.expenses || ""} onChange={(event) => updateAdjustment(row.id, { expenses: event.target.value })} aria-label={`${row.name} expenses`} /> : formatCurrency(row.expenses)}</td>
+                  <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.deductions || ""} onChange={(event) => updateAdjustment(row.id, { deductions: event.target.value })} aria-label={`${row.name} deductions`} /> : formatCurrency(row.deductions)}</td>
                   <td><strong>{formatCurrency(net)}</strong></td>
                   <td><Badge value={submittedEntries.length ? "Ready to upload" : "Pending hours"} /></td>
+                  {isAdmin && <td><input type="text" value={row.payrollNote} onChange={(event) => updateAdjustment(row.id, { note: event.target.value })} placeholder="Private payroll note" /></td>}
                 </tr>
               );
             })}</tbody>
+            <tfoot>
+              <tr>
+                <td colSpan="2"><strong>Total</strong></td>
+                <td><strong>{totalHours.toFixed(2)}</strong></td>
+                <td />
+                <td><strong>{formatCurrency(totalGross)}</strong></td>
+                <td><strong>{formatCurrency(totalExpenses)}</strong></td>
+                <td><strong>{formatCurrency(totalDeductions)}</strong></td>
+                <td><strong>{formatCurrency(totalNet)}</strong></td>
+                <td />
+                {isAdmin && <td />}
+              </tr>
+            </tfoot>
           </table>
         </TableWrap>
         {!payrollRows.some((row) => staffIds.has(row.id) && row.hours > 0) && <p className="panel-note">No payroll hours have been submitted for this month yet.</p>}

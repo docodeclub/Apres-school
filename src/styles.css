@@ -4701,10 +4701,12 @@ label {
 .stack {
   display: grid;
   gap: 18px;
+  grid-template-columns: 1fr;
   min-width: 0;
 }
 
 .stack > * {
+  grid-column: 1 / -1;
   min-width: 0;
 }
 
@@ -6612,13 +6614,40 @@ label {
   padding-top: 18px;
 }
 
+.payroll-run-console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+}
+
+.payroll-run-console p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.payroll-run-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .payroll-console .hr-summary {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .payroll-console table select,
-.payroll-console table input {
+.payroll-console table input,
+table input[type="number"],
+table input[type="text"] {
   min-width: 130px;
+}
+
+tfoot td {
+  border-top: 2px solid var(--line);
+  background: #f8fbff;
 }
 
 .user-admin {
@@ -8314,9 +8343,15 @@ th {
   }
 
   .payroll-record-head,
-  .payroll-submit-row {
+  .payroll-submit-row,
+  .payroll-run-console {
     align-items: stretch;
     flex-direction: column;
+    grid-template-columns: 1fr;
+  }
+
+  .payroll-run-actions {
+    justify-content: flex-start;
   }
 
   .payroll-console .toolbar {
