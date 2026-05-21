@@ -175,8 +175,25 @@ function staffAssignments(person) {
   return [];
 }
 
+function canonicalSchoolName(value) {
+  const text = String(value || "").trim();
+  const normalised = text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const aliases = {
+    "kings house": "King's House School",
+    "kings house school": "King's House School",
+    "ripley court": "Ripley Court School",
+    "ripley court school": "Ripley Court School",
+    "shrewsbury house": "Shrewsbury House School",
+    "shrewsbury house school": "Shrewsbury House School",
+    "willington": "Willington Prep",
+    "willington prep": "Willington Prep",
+    "holiday camp": "Holiday Camp",
+  };
+  return aliases[normalised] || text;
+}
+
 function staffSchoolNames(person) {
-  return staffAssignments(person).map((assignment) => assignment.school).filter(Boolean);
+  return staffAssignments(person).map((assignment) => canonicalSchoolName(assignment.school)).filter(Boolean);
 }
 
 function staffPrimaryLocation(person) {
@@ -187,7 +204,7 @@ function staffPrimaryLocation(person) {
 }
 
 function staffAssignedToSchool(person, school) {
-  return staffSchoolNames(person).includes(school);
+  return staffSchoolNames(person).includes(canonicalSchoolName(school));
 }
 
 function hasValidDate(value) {
@@ -1732,10 +1749,12 @@ function Rota({ data, allData = data, access }) {
 function HoursTracker({ data, access }) {
   const isAdmin = ["Admin", "Superadmin"].includes(access?.role);
   const usingSupabase = String(data.source || "").startsWith("Supabase");
-  const schoolOptions = Array.from(new Set([
-    ...rotaSites.map((site) => site.site),
-    ...data.staff.flatMap((person) => staffSchoolNames(person)),
-  ].filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  const canonicalRotaSites = Array.from(new Set(rotaSites.map((site) => canonicalSchoolName(site.site))));
+  const savedPayrollSites = Object.values(data.payrollHours || {})
+    .flatMap((periodRecords) => Object.keys(periodRecords || {}).map(canonicalSchoolName));
+  const schoolOptions = Array.from(new Set([...canonicalRotaSites, ...savedPayrollSites]))
+    .filter((site) => !["Admin", "Manager", "Staff", "Superadmin"].includes(site))
+    .sort((a, b) => a.localeCompare(b));
   const [period, setPeriod] = useState(currentPayrollPeriod());
   const [school, setSchool] = useState(schoolOptions[0] || "");
   const [records, setRecords] = useState(() => usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {}));
@@ -3570,6 +3589,7 @@ function Pay({ data, access }) {
   const records = usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {});
   const [runs, setRuns] = useState(() => usingSupabase ? (data.payrollRuns || {}) : readJson(payrollRunsStorageKey, {}));
   const [syncStatus, setSyncStatus] = useState("");
+  const [showAllPayRows, setShowAllPayRows] = useState(false);
   const availablePeriods = Object.keys(records).sort().reverse();
   const [period, setPeriod] = useState(availablePeriods[0] || currentPayrollPeriod());
   const periodRecords = records[period] || {};
@@ -3596,6 +3616,7 @@ function Pay({ data, access }) {
   const totalNet = totalGross + totalExpenses - totalDeductions;
   const submittedSites = Object.values(periodRecords).filter((record) => record.status === "Submitted").length;
   const payrollReady = payrollRows.some((row) => row.hours > 0);
+  const visiblePayrollRows = isAdmin && !showAllPayRows ? payrollRows.filter((row) => row.hours > 0) : payrollRows;
 
   useEffect(() => {
     if (availablePeriods.length && !availablePeriods.includes(period)) setPeriod(availablePeriods[0]);
@@ -3719,10 +3740,18 @@ function Pay({ data, access }) {
         </Panel>
       )}
       <Panel title={`${formatPayrollPeriod(period)} Pay`}>
+        {isAdmin && (
+          <div className="payroll-table-controls">
+            <p>{showAllPayRows ? "Showing every active staff member." : "Showing staff with submitted hours only."}</p>
+            <button className="button subtle" type="button" onClick={() => setShowAllPayRows((value) => !value)}>
+              {showAllPayRows ? "Hide zero-hour staff" : "Show all staff"}
+            </button>
+          </div>
+        )}
         <TableWrap>
           <table>
             <thead><tr><th>Staff</th><th>Submitted schools</th><th>Hours</th><th>Rate</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th><th>Payslip</th>{isAdmin && <th>Payroll note</th>}</tr></thead>
-            <tbody>{payrollRows.map((row) => {
+            <tbody>{visiblePayrollRows.map((row) => {
               const submittedEntries = row.payrollEntries.filter((entry) => entry.status === "Submitted");
               const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName)));
               const net = row.gross + row.expenses - row.deductions;
@@ -3740,7 +3769,12 @@ function Pay({ data, access }) {
                   {isAdmin && <td><input type="text" value={row.payrollNote} onChange={(event) => updateAdjustment(row.id, { note: event.target.value })} placeholder="Private payroll note" /></td>}
                 </tr>
               );
-            })}</tbody>
+            })}
+            {!visiblePayrollRows.length && (
+              <tr>
+                <td colSpan={isAdmin ? 10 : 9}><strong>No submitted payroll hours for this month yet.</strong> Use the Hours page to enter a school month, then return here to review payroll.</td>
+              </tr>
+            )}</tbody>
             <tfoot>
               <tr>
                 <td colSpan="2"><strong>Total</strong></td>

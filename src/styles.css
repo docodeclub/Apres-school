@@ -6634,6 +6634,22 @@ label {
   justify-content: flex-end;
 }
 
+.payroll-table-controls {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+}
+
+.payroll-table-controls p {
+  color: var(--muted);
+  margin: 0;
+}
+
 .payroll-console .hr-summary {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -8344,6 +8360,7 @@ th {
 
   .payroll-record-head,
   .payroll-submit-row,
+  .payroll-table-controls,
   .payroll-run-console {
     align-items: stretch;
     flex-direction: column;
