@@ -133,6 +133,22 @@ const nextCamp = {
   dates: "26-29 May",
   sites: ["Willington Prep", "The Rowans", "King's House School"],
 };
+const payrollHoursStorageKey = "apres-payroll-hours";
+
+function currentPayrollPeriod() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function formatPayrollPeriod(period) {
+  if (!period) return "Current month";
+  const [year, month] = String(period).split("-");
+  if (!year || !month) return period;
+  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+
+function formatCurrency(value) {
+  return `£${Number(value || 0).toFixed(2)}`;
+}
 
 function staffAssignments(person) {
   if (Array.isArray(person?.siteAssignments) && person.siteAssignments.length) return person.siteAssignments;
@@ -189,7 +205,7 @@ function evidenceExpiryDays(evidence) {
 
 function formatShortDate(value) {
   if (!value) return "";
-  const parsed = new Date(`${value}T00:00:00`);
+  const parsed = new Date(String(value).includes("T") ? value : `${value}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
@@ -367,7 +383,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const visibleTabs = effectiveRole === "Staff"
     ? ["Staff", "Documents", "Pay", "Rewards", "Sessions"]
     : effectiveRole === "Manager"
-      ? ["Staff", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Sessions"]
+      ? ["Staff", "Rota", "SCR", "Ofsted", "Documents", "Sessions"]
       : platformTabs;
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item))])
@@ -443,7 +459,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "SCR" && <SCR data={scopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
         {tab === "Documents" && <Documents data={scopedData} />}
-        {tab === "Pay" && <Pay data={scopedData} />}
+        {tab === "Pay" && <Pay data={scopedData} access={access} />}
         {tab === "Rewards" && <Rewards data={scopedData} />}
         {tab === "Sessions" && <Sessions data={scopedData} />}
         {tab === "Incidents" && <Incidents />}
@@ -1694,59 +1710,160 @@ function Rota({ data, allData = data, access }) {
   );
 }
 
-function HoursTracker({ data }) {
-  const [entries, setEntries] = useState(() => readJson("apres-hours-entries", {}));
-  const staffOptions = data.staff.map((person) => person.name);
-  const totals = rotaSites.reduce((summary, site) => {
-    const entry = entries[site.id] || {};
-    const breakMinutes = Number(entry.breakMinutes ?? (durationMinutes(site.sessionStart, site.sessionEnd) > 360 ? 30 : 0));
-    const paidMinutes = site.setupMinutes + durationMinutes(site.sessionStart, site.sessionEnd) + site.cleanupMinutes - breakMinutes;
-    return {
-      assigned: summary.assigned + (entry.staff ? 1 : 0),
-      hours: summary.hours + (entry.staff ? paidMinutes / 60 : 0),
-    };
-  }, { assigned: 0, hours: 0 });
+function HoursTracker({ data, access }) {
+  const isAdmin = ["Admin", "Superadmin"].includes(access?.role);
+  const schoolOptions = Array.from(new Set([
+    ...rotaSites.map((site) => site.site),
+    ...data.staff.flatMap((person) => staffSchoolNames(person)),
+  ].filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  const [period, setPeriod] = useState(currentPayrollPeriod());
+  const [school, setSchool] = useState(schoolOptions[0] || "");
+  const [records, setRecords] = useState(() => readJson(payrollHoursStorageKey, {}));
+  const selectedRecord = records[period]?.[school] || { rows: [], status: "Draft" };
+  const staffOptions = data.staff
+    .map((person) => ({ ...person, assignedHere: staffAssignedToSchool(person, school) }))
+    .sort((a, b) => Number(b.assignedHere) - Number(a.assignedHere) || String(a.name || "").localeCompare(String(b.name || "")));
+  const enteredRows = selectedRecord.rows || [];
+  const totalHours = enteredRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
+  const totalGross = enteredRows.reduce((sum, row) => {
+    const person = data.staff.find((staff) => staff.id === row.staffId || staff.profileId === row.staffId);
+    return sum + Number(row.hours || 0) * Number(person?.payRate || row.rate || 0);
+  }, 0);
+  const periodRecords = Object.values(records[period] || {});
+  const periodSubmitted = periodRecords.filter((record) => record.status === "Submitted").length;
 
-  function update(siteId, patch) {
-    const next = { ...entries, [siteId]: { ...entries[siteId], ...patch } };
-    localStorage.setItem("apres-hours-entries", JSON.stringify(next));
-    setEntries(next);
-    addAuditLog("Hours updated", `${siteId} hours entry changed`);
+  useEffect(() => {
+    if (schoolOptions.length && !schoolOptions.includes(school)) setSchool(schoolOptions[0]);
+  }, [school, schoolOptions]);
+
+  function saveRecord(nextRecord, action = "Payroll hours updated") {
+    const next = {
+      ...records,
+      [period]: {
+        ...(records[period] || {}),
+        [school]: {
+          ...nextRecord,
+          updatedAt: new Date().toISOString(),
+          updatedBy: access?.currentUser?.email || access?.currentUser?.name || "Admin",
+        },
+      },
+    };
+    localStorage.setItem(payrollHoursStorageKey, JSON.stringify(next));
+    setRecords(next);
+    addAuditLog(action, `${formatPayrollPeriod(period)} · ${school}`);
+  }
+
+  function addStaffRow(staffId = staffOptions[0]?.id || "") {
+    const person = staffOptions.find((staff) => staff.id === staffId) || staffOptions[0];
+    if (!person) return;
+    const nextRow = {
+      id: `hours-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      staffId: person.id,
+      staffName: person.name,
+      hours: "",
+      rate: Number(person.payRate || 0),
+      notes: "",
+    };
+    saveRecord({ ...selectedRecord, rows: [...enteredRows, nextRow] }, "Payroll staff row added");
+  }
+
+  function updateRow(rowId, patch) {
+    const nextRows = enteredRows.map((row) => {
+      if (row.id !== rowId) return row;
+      const staffId = patch.staffId || row.staffId;
+      const person = data.staff.find((staff) => staff.id === staffId || staff.profileId === staffId);
+      return {
+        ...row,
+        ...patch,
+        staffName: person?.name || row.staffName,
+        rate: Number(person?.payRate ?? row.rate ?? 0),
+      };
+    });
+    saveRecord({ ...selectedRecord, rows: nextRows }, "Payroll hours edited");
+  }
+
+  function removeRow(rowId) {
+    saveRecord({ ...selectedRecord, rows: enteredRows.filter((row) => row.id !== rowId) }, "Payroll staff row removed");
+  }
+
+  function submitMonth() {
+    saveRecord({
+      ...selectedRecord,
+      rows: enteredRows.map((row) => ({ ...row, hours: Number(row.hours || 0) })),
+      status: "Submitted",
+      submittedAt: new Date().toISOString(),
+      submittedBy: access?.currentUser?.email || access?.currentUser?.name || "Admin",
+    }, "Payroll month submitted");
+  }
+
+  if (!isAdmin) {
+    return (
+      <Panel title="Hours Tracker">
+        <p className="panel-note">Payroll hours are managed by admin only because they create the monthly salary record. Staff can see their own approved hours and pay on the Pay page.</p>
+      </Panel>
+    );
   }
 
   return (
-    <div className="stack">
+    <div className="stack payroll-console">
       <div className="toolbar">
         <div>
-          <h2>Hours Tracker</h2>
-          <p className="panel-note">Company default shown here: 15 min setup, 5 min cleanup, 30 min unpaid camp break. UK statutory rest break is 20 minutes when working over 6 hours.</p>
+          <h2>Monthly Hours</h2>
+          <p className="panel-note">Select a month and school, add the staff who worked there, then enter the exact paid hours for payroll. Submitted months stay editable.</p>
+        </div>
+        <div className="payroll-toolbar">
+          <label>Month<input type="month" value={period} onChange={(event) => setPeriod(event.target.value || currentPayrollPeriod())} /></label>
+          <label>School<select value={school} onChange={(event) => setSchool(event.target.value)}>{schoolOptions.map((site) => <option key={site}>{site}</option>)}</select></label>
         </div>
       </div>
       <div className="hr-summary">
-        <Metric icon={<Clock />} label="Assigned entries" value={`${totals.assigned}/${rotaSites.length}`} tone={totals.assigned ? "blue" : "amber"} />
-        <Metric icon={<PoundSterling />} label="Projected paid hours" value={totals.hours.toFixed(2)} tone="green" />
-        <Metric icon={<Users />} label="Staff in scope" value={staffOptions.length} tone="blue" />
+        <Metric icon={<Clock />} label="Paid hours" value={totalHours.toFixed(2)} tone={totalHours ? "green" : "amber"} />
+        <Metric icon={<PoundSterling />} label="Projected gross" value={formatCurrency(totalGross)} tone="green" />
+        <Metric icon={<Users />} label="Staff on record" value={enteredRows.length} tone="blue" />
+        <Metric icon={<ClipboardCheck />} label="Submitted sites" value={`${periodSubmitted}/${schoolOptions.length || 0}`} tone={periodSubmitted ? "blue" : "amber"} />
       </div>
-      <TableWrap>
-        <table>
-          <thead><tr><th>Site</th><th>Staff</th><th>Paid window</th><th>Break</th><th>Paid hours</th><th>Status</th></tr></thead>
-          <tbody>{rotaSites.map((site) => {
-            const entry = entries[site.id] || {};
-            const breakMinutes = Number(entry.breakMinutes ?? (durationMinutes(site.sessionStart, site.sessionEnd) > 360 ? 30 : 0));
-            const paidMinutes = site.setupMinutes + durationMinutes(site.sessionStart, site.sessionEnd) + site.cleanupMinutes - breakMinutes;
-            return (
-              <tr key={site.id}>
-                <td><strong>{site.site}</strong><br /><small>{site.type}</small></td>
-                <td><select value={entry.staff || ""} onChange={(event) => update(site.id, { staff: event.target.value })}><option value="">Choose staff</option>{staffOptions.map((staffName) => <option key={staffName}>{staffName}</option>)}</select></td>
-                <td>{addMinutes(site.sessionStart, -site.setupMinutes)}-{addMinutes(site.sessionEnd, site.cleanupMinutes)}</td>
-                <td><input type="number" min="0" step="5" value={breakMinutes} onChange={(event) => update(site.id, { breakMinutes: event.target.value })} aria-label={`${site.site} unpaid break minutes`} /></td>
-                <td><strong>{(paidMinutes / 60).toFixed(2)}</strong></td>
-                <td><Badge value={entry.staff ? "Ready" : "Unassigned"} /></td>
-              </tr>
-            );
-          })}</tbody>
-        </table>
-      </TableWrap>
+      <Panel title={`${school || "School"} · ${formatPayrollPeriod(period)}`}>
+        <div className="payroll-record-head">
+          <div>
+            <Badge value={selectedRecord.status || "Draft"} />
+            {selectedRecord.submittedAt && <small>Submitted {formatShortDate(selectedRecord.submittedAt)} by {selectedRecord.submittedBy || "admin"}</small>}
+          </div>
+          <button className="button light" type="button" onClick={() => addStaffRow()}>Add staff member</button>
+        </div>
+        <TableWrap>
+          <table>
+            <thead><tr><th>Staff member</th><th>Usual site</th><th>Paid hours this month</th><th>Rate</th><th>Gross</th><th>Notes</th><th>Action</th></tr></thead>
+            <tbody>
+              {enteredRows.length ? enteredRows.map((row) => {
+                const person = data.staff.find((staff) => staff.id === row.staffId || staff.profileId === row.staffId);
+                const rate = Number(person?.payRate ?? row.rate ?? 0);
+                const gross = Number(row.hours || 0) * rate;
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <select value={row.staffId || ""} onChange={(event) => updateRow(row.id, { staffId: event.target.value })}>
+                        {staffOptions.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}{staff.assignedHere ? "" : " · cover"}</option>)}
+                      </select>
+                    </td>
+                    <td>{person ? staffPrimaryLocation(person) : "Unassigned"}</td>
+                    <td><input type="number" min="0" step="0.25" value={row.hours} onChange={(event) => updateRow(row.id, { hours: event.target.value })} aria-label={`${person?.name || row.staffName} paid hours`} /></td>
+                    <td>{rate ? `${formatCurrency(rate)}/hr` : "No rate"}</td>
+                    <td><strong>{formatCurrency(gross)}</strong></td>
+                    <td><input type="text" value={row.notes || ""} onChange={(event) => updateRow(row.id, { notes: event.target.value })} placeholder="Optional note" /></td>
+                    <td><button className="button subtle" type="button" onClick={() => removeRow(row.id)}>Remove</button></td>
+                  </tr>
+                );
+              }) : (
+                <tr><td colSpan="7"><strong>No staff added yet.</strong> Add the staff who worked at this school for {formatPayrollPeriod(period)}.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </TableWrap>
+        <div className="payroll-submit-row">
+          <p>Submitting creates the monthly hours record used by payroll. You can still edit this record afterwards if hours change.</p>
+          <button className="button primary" type="button" onClick={submitMonth} disabled={!enteredRows.length}>Submit month</button>
+        </div>
+      </Panel>
     </div>
   );
 }
@@ -3404,18 +3521,73 @@ function Documents({ data }) {
   );
 }
 
-function Pay({ data }) {
-  const rows = data.staff.map((person) => ({ ...person, gross: person.payRate * 18, expenses: person.id === "sample-002" ? 24 : 0, deductions: person.id === "sample-001" ? 18 : 0 }));
+function Pay({ data, access }) {
+  const records = readJson(payrollHoursStorageKey, {});
+  const availablePeriods = Object.keys(records).sort().reverse();
+  const [period, setPeriod] = useState(availablePeriods[0] || currentPayrollPeriod());
+  const periodRecords = records[period] || {};
+  const isStaff = access?.role === "Staff";
+  const isAdmin = ["Admin", "Superadmin"].includes(access?.role);
+  const staffIds = new Set(data.staff.map((person) => person.id));
+  const payrollRows = data.staff.map((person) => {
+    const schoolRows = Object.entries(periodRecords).flatMap(([schoolName, record]) => (record.rows || [])
+      .filter((row) => row.staffId === person.id || row.staffId === person.profileId)
+      .map((row) => ({ ...row, schoolName, status: record.status || "Draft" })));
+    const hours = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
+    const gross = hours * Number(person.payRate || 0);
+    return { ...person, payrollEntries: schoolRows, hours, gross, expenses: 0, deductions: 0 };
+  });
+  const totalHours = payrollRows.reduce((sum, row) => sum + row.hours, 0);
+  const totalGross = payrollRows.reduce((sum, row) => sum + row.gross, 0);
+  const submittedSites = Object.values(periodRecords).filter((record) => record.status === "Submitted").length;
+
+  useEffect(() => {
+    if (availablePeriods.length && !availablePeriods.includes(period)) setPeriod(availablePeriods[0]);
+  }, [availablePeriods, period]);
+
   return (
-    <Panel title="Payroll Summary">
-      <p className="panel-note">Demo calculation: approved hours x rate, plus approved expenses, minus separate deductions.</p>
-      <TableWrap>
-        <table>
-          <thead><tr><th>Staff</th><th>Rate</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th></tr></thead>
-          <tbody>{rows.map((row) => <tr key={row.id}><td>{row.name}</td><td>£{row.payRate}/hr</td><td>£{row.gross}</td><td>£{row.expenses}</td><td>£{row.deductions}</td><td><strong>£{row.gross + row.expenses - row.deductions}</strong></td></tr>)}</tbody>
-        </table>
-      </TableWrap>
-    </Panel>
+    <div className="stack">
+      <div className="toolbar">
+        <div>
+          <h2>{isStaff ? "My Pay Summary" : "Payroll Summary"}</h2>
+          <p className="panel-note">{isStaff ? "Your approved hours, gross pay and payslip records appear here once admin has submitted the month." : "Monthly pay is calculated from submitted school hours: paid hours x rate, plus approved expenses, minus separate deductions."}</p>
+        </div>
+        <div className="payroll-toolbar">
+          <label>Month<select value={period} onChange={(event) => setPeriod(event.target.value)}>{Array.from(new Set([period, ...availablePeriods, currentPayrollPeriod()])).filter(Boolean).map((item) => <option key={item} value={item}>{formatPayrollPeriod(item)}</option>)}</select></label>
+        </div>
+      </div>
+      <div className="hr-summary">
+        <Metric icon={<Clock />} label={isStaff ? "My paid hours" : "Paid hours"} value={totalHours.toFixed(2)} tone={totalHours ? "green" : "amber"} />
+        <Metric icon={<PoundSterling />} label={isStaff ? "My gross pay" : "Gross payroll"} value={formatCurrency(totalGross)} tone="green" />
+        <Metric icon={<ClipboardCheck />} label="Submitted sites" value={isAdmin ? submittedSites : payrollRows.flatMap((row) => row.payrollEntries).filter((entry) => entry.status === "Submitted").length} tone={submittedSites ? "blue" : "amber"} />
+      </div>
+      <Panel title={`${formatPayrollPeriod(period)} Pay`}>
+        <TableWrap>
+          <table>
+            <thead><tr><th>Staff</th><th>Submitted schools</th><th>Hours</th><th>Rate</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th><th>Payslip</th></tr></thead>
+            <tbody>{payrollRows.map((row) => {
+              const submittedEntries = row.payrollEntries.filter((entry) => entry.status === "Submitted");
+              const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName)));
+              const net = row.gross + row.expenses - row.deductions;
+              return (
+                <tr key={row.id}>
+                  <td><strong>{row.name}</strong><br /><small>{row.email || "No email"}</small></td>
+                  <td>{schools.length ? schools.join(", ") : "No hours submitted"}</td>
+                  <td><strong>{row.hours.toFixed(2)}</strong></td>
+                  <td>{row.payRate ? `${formatCurrency(row.payRate)}/hr` : "No rate"}</td>
+                  <td>{formatCurrency(row.gross)}</td>
+                  <td>{formatCurrency(row.expenses)}</td>
+                  <td>{formatCurrency(row.deductions)}</td>
+                  <td><strong>{formatCurrency(net)}</strong></td>
+                  <td><Badge value={submittedEntries.length ? "Ready to upload" : "Pending hours"} /></td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </TableWrap>
+        {!payrollRows.some((row) => staffIds.has(row.id) && row.hours > 0) && <p className="panel-note">No payroll hours have been submitted for this month yet.</p>}
+      </Panel>
+    </div>
   );
 }
 

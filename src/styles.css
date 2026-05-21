@@ -6542,6 +6542,85 @@ label {
   gap: 10px;
 }
 
+.payroll-console {
+  gap: 22px;
+  grid-template-columns: 1fr;
+}
+
+.payroll-console > * {
+  grid-column: 1 / -1;
+}
+
+.payroll-console .toolbar {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(360px, 0.8fr);
+  align-items: flex-start;
+}
+
+.payroll-console .toolbar > div:first-child,
+.stack > .toolbar > div:first-child {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.toolbar .payroll-toolbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(170px, 1fr));
+  gap: 10px;
+  min-width: min(460px, 100%);
+}
+
+.payroll-toolbar label,
+.payroll-record-head label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.payroll-record-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.payroll-record-head > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.payroll-record-head small,
+.payroll-submit-row p {
+  color: var(--muted);
+}
+
+.payroll-submit-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.payroll-console .hr-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.payroll-console table select,
+.payroll-console table input {
+  min-width: 130px;
+}
+
 .user-admin {
   display: grid;
   gap: 18px;
@@ -8228,7 +8307,19 @@ th {
   .org-tree,
   .settings-grid,
   .settings-checklist,
-  .rota-grid {
+  .rota-grid,
+  .payroll-console .hr-summary,
+  .payroll-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .payroll-record-head,
+  .payroll-submit-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .payroll-console .toolbar {
     grid-template-columns: 1fr;
   }
 
