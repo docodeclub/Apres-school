@@ -148,13 +148,42 @@ export async function fetchPlatformData({ userId, role }) {
     .eq("active", true)
     .order("name", { ascending: true });
 
-  const [staffResult, sessionsResult, documentsResult, enquiriesResult, hrFilesResult, hrCategoriesResult] = await Promise.all([
+  const payrollHoursQuery = supabase
+    .from("payroll_hour_records")
+    .select(`
+      id,
+      payroll_period,
+      school_name,
+      status,
+      submitted_at,
+      updated_at,
+      payroll_hour_rows(id, staff_record_id, staff_name, paid_hours, rate, notes)
+    `)
+    .order("payroll_period", { ascending: false });
+
+  const payrollRunsQuery = supabase
+    .from("payroll_runs")
+    .select(`
+      id,
+      payroll_period,
+      status,
+      reviewed_at,
+      approved_at,
+      paid_at,
+      updated_at,
+      payroll_run_adjustments(id, staff_record_id, expenses, deductions, note)
+    `)
+    .order("payroll_period", { ascending: false });
+
+  const [staffResult, sessionsResult, documentsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult] = await Promise.all([
     staffQuery,
     sessionsQuery,
     documentsQuery,
     enquiriesQuery,
     hrFilesQuery,
     hrCategoriesQuery,
+    payrollHoursQuery,
+    payrollRunsQuery,
   ]);
 
   const firstError = [staffResult.error, sessionsResult.error, documentsResult.error, enquiriesResult.error].find(Boolean);
@@ -172,6 +201,8 @@ export async function fetchPlatformData({ userId, role }) {
     enquiries: mapEnquiries(enquiriesResult.data || []),
     hrFiles,
     hrFileCategories: hrCategoriesResult.error ? [] : hrCategoriesResult.data || [],
+    payrollHours: payrollHoursResult.error ? {} : mapPayrollHours(payrollHoursResult.data || []),
+    payrollRuns: payrollRunsResult.error ? {} : mapPayrollRuns(payrollRunsResult.data || []),
   };
 }
 
@@ -296,6 +327,177 @@ function mapEnquiries(records) {
     nextAction: parseInternalNotes(record.internal_notes).nextAction || "call/email follow-up",
     source: "supabase",
   }));
+}
+
+function mapPayrollHours(records) {
+  return records.reduce((periods, record) => {
+    const period = record.payroll_period;
+    const school = record.school_name;
+    if (!period || !school) return periods;
+    periods[period] ||= {};
+    periods[period][school] = {
+      id: record.id,
+      status: record.status || "Draft",
+      submittedAt: record.submitted_at || "",
+      updatedAt: record.updated_at || "",
+      source: "supabase",
+      rows: (record.payroll_hour_rows || []).map((row) => ({
+        id: row.id,
+        staffId: row.staff_record_id,
+        staffName: row.staff_name || "",
+        hours: Number(row.paid_hours || 0),
+        rate: Number(row.rate || 0),
+        notes: row.notes || "",
+      })),
+    };
+    return periods;
+  }, {});
+}
+
+function mapPayrollRuns(records) {
+  return records.reduce((runs, record) => {
+    runs[record.payroll_period] = {
+      id: record.id,
+      status: record.status || "Draft",
+      reviewedAt: record.reviewed_at || "",
+      approvedAt: record.approved_at || "",
+      paidAt: record.paid_at || "",
+      updatedAt: record.updated_at || "",
+      source: "supabase",
+      adjustments: (record.payroll_run_adjustments || []).reduce((items, adjustment) => {
+        items[adjustment.staff_record_id] = {
+          id: adjustment.id,
+          expenses: Number(adjustment.expenses || 0),
+          deductions: Number(adjustment.deductions || 0),
+          note: adjustment.note || "",
+        };
+        return items;
+      }, {}),
+    };
+    return runs;
+  }, {});
+}
+
+function isUuid(value) {
+  return /^[0-9a-f-]{36}$/i.test(String(value || ""));
+}
+
+export async function savePayrollHourRecord({ period, school, record }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!period || !school) throw new Error("Choose a payroll month and school.");
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const userId = userData?.user?.id || null;
+  const status = record?.status || "Draft";
+  const isSubmitted = status === "Submitted";
+
+  const { data: savedRecord, error: recordError } = await supabase
+    .from("payroll_hour_records")
+    .upsert({
+      payroll_period: period,
+      school_name: school,
+      status,
+      submitted_at: isSubmitted ? (record.submittedAt || new Date().toISOString()) : null,
+      submitted_by: isSubmitted ? userId : null,
+      updated_by: userId,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "payroll_period,school_name" })
+    .select("id, payroll_period, school_name, status, submitted_at, updated_at")
+    .single();
+
+  if (recordError) throw recordError;
+
+  const rows = (record?.rows || []).filter((row) => isUuid(row.staffId));
+  const { error: deleteError } = await supabase
+    .from("payroll_hour_rows")
+    .delete()
+    .eq("payroll_hour_record_id", savedRecord.id);
+  if (deleteError) throw deleteError;
+
+  if (rows.length) {
+    const { error: rowsError } = await supabase
+      .from("payroll_hour_rows")
+      .insert(rows.map((row) => ({
+        payroll_hour_record_id: savedRecord.id,
+        staff_record_id: row.staffId,
+        staff_name: row.staffName || null,
+        paid_hours: Number(row.hours || 0),
+        rate: Number(row.rate || 0),
+        notes: row.notes || null,
+      })));
+    if (rowsError) throw rowsError;
+  }
+
+  return {
+    id: savedRecord.id,
+    status: savedRecord.status,
+    submittedAt: savedRecord.submitted_at || "",
+    updatedAt: savedRecord.updated_at || "",
+    source: "supabase",
+    rows: rows.map((row) => ({ ...row, hours: Number(row.hours || 0), rate: Number(row.rate || 0) })),
+  };
+}
+
+export async function savePayrollRun({ period, run }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!period) throw new Error("Choose a payroll month.");
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const userId = userData?.user?.id || null;
+  const now = new Date().toISOString();
+  const status = run?.status || "Draft";
+
+  const { data: savedRun, error: runError } = await supabase
+    .from("payroll_runs")
+    .upsert({
+      payroll_period: period,
+      status,
+      reviewed_at: run.reviewedAt || run.reviewed_at || (status === "Reviewed" ? now : null),
+      reviewed_by: status === "Reviewed" ? userId : null,
+      approved_at: run.approvedAt || run.approved_at || (status === "Approved" ? now : null),
+      approved_by: status === "Approved" ? userId : null,
+      paid_at: run.paidAt || run.paid_at || (status === "Paid" ? now : null),
+      paid_by: status === "Paid" ? userId : null,
+      updated_by: userId,
+      updated_at: now,
+    }, { onConflict: "payroll_period" })
+    .select("id, payroll_period, status, reviewed_at, approved_at, paid_at, updated_at")
+    .single();
+
+  if (runError) throw runError;
+
+  const adjustmentEntries = Object.entries(run?.adjustments || {}).filter(([staffId]) => isUuid(staffId));
+  const { error: deleteError } = await supabase
+    .from("payroll_run_adjustments")
+    .delete()
+    .eq("payroll_run_id", savedRun.id);
+  if (deleteError) throw deleteError;
+
+  if (adjustmentEntries.length) {
+    const { error: adjustmentsError } = await supabase
+      .from("payroll_run_adjustments")
+      .insert(adjustmentEntries.map(([staffId, adjustment]) => ({
+        payroll_run_id: savedRun.id,
+        staff_record_id: staffId,
+        expenses: Number(adjustment.expenses || 0),
+        deductions: Number(adjustment.deductions || 0),
+        note: adjustment.note || null,
+      })));
+    if (adjustmentsError) throw adjustmentsError;
+  }
+
+  return {
+    id: savedRun.id,
+    status: savedRun.status,
+    reviewedAt: savedRun.reviewed_at || "",
+    approvedAt: savedRun.approved_at || "",
+    paidAt: savedRun.paid_at || "",
+    updatedAt: savedRun.updated_at || "",
+    source: "supabase",
+    adjustments: run?.adjustments || {},
+  };
 }
 
 export async function updateCrmEnquiry(id, patch) {

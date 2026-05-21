@@ -1731,13 +1731,15 @@ function Rota({ data, allData = data, access }) {
 
 function HoursTracker({ data, access }) {
   const isAdmin = ["Admin", "Superadmin"].includes(access?.role);
+  const usingSupabase = String(data.source || "").startsWith("Supabase");
   const schoolOptions = Array.from(new Set([
     ...rotaSites.map((site) => site.site),
     ...data.staff.flatMap((person) => staffSchoolNames(person)),
   ].filter(Boolean))).sort((a, b) => a.localeCompare(b));
   const [period, setPeriod] = useState(currentPayrollPeriod());
   const [school, setSchool] = useState(schoolOptions[0] || "");
-  const [records, setRecords] = useState(() => readJson(payrollHoursStorageKey, {}));
+  const [records, setRecords] = useState(() => usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {}));
+  const [syncStatus, setSyncStatus] = useState("");
   const selectedRecord = records[period]?.[school] || { rows: [], status: "Draft" };
   const staffOptions = data.staff
     .map((person) => ({ ...person, assignedHere: staffAssignedToSchool(person, school) }))
@@ -1755,21 +1757,43 @@ function HoursTracker({ data, access }) {
     if (schoolOptions.length && !schoolOptions.includes(school)) setSchool(schoolOptions[0]);
   }, [school, schoolOptions]);
 
+  useEffect(() => {
+    if (usingSupabase) setRecords(data.payrollHours || {});
+  }, [data.payrollHours, usingSupabase]);
+
   function saveRecord(nextRecord, action = "Payroll hours updated") {
+    const recordToSave = {
+      ...nextRecord,
+      updatedAt: new Date().toISOString(),
+      updatedBy: access?.currentUser?.email || access?.currentUser?.name || "Admin",
+    };
     const next = {
       ...records,
       [period]: {
         ...(records[period] || {}),
-        [school]: {
-          ...nextRecord,
-          updatedAt: new Date().toISOString(),
-          updatedBy: access?.currentUser?.email || access?.currentUser?.name || "Admin",
-        },
+        [school]: recordToSave,
       },
     };
     localStorage.setItem(payrollHoursStorageKey, JSON.stringify(next));
     setRecords(next);
     addAuditLog(action, `${formatPayrollPeriod(period)} · ${school}`);
+    if (!usingSupabase) return;
+    setSyncStatus("Saving to Supabase...");
+    loadSupabaseModule()
+      .then(({ savePayrollHourRecord }) => savePayrollHourRecord({ period, school, record: recordToSave }))
+      .then((savedRecord) => {
+        setRecords((current) => ({
+          ...current,
+          [period]: {
+            ...(current[period] || {}),
+            [school]: savedRecord,
+          },
+        }));
+        setSyncStatus("Saved to Supabase");
+      })
+      .catch((error) => {
+        setSyncStatus(`Supabase save failed: ${error.message || "check SQL permissions"}`);
+      });
   }
 
   function addStaffRow(staffId = staffOptions[0]?.id || "") {
@@ -1846,6 +1870,7 @@ function HoursTracker({ data, access }) {
           <div>
             <Badge value={selectedRecord.status || "Draft"} />
             {selectedRecord.submittedAt && <small>Submitted {formatShortDate(selectedRecord.submittedAt)} by {selectedRecord.submittedBy || "admin"}</small>}
+            {syncStatus && <small>{syncStatus}</small>}
           </div>
           <button className="button light" type="button" onClick={() => addStaffRow()}>Add staff member</button>
         </div>
@@ -3541,8 +3566,10 @@ function Documents({ data }) {
 }
 
 function Pay({ data, access }) {
-  const records = readJson(payrollHoursStorageKey, {});
-  const [runs, setRuns] = useState(() => readJson(payrollRunsStorageKey, {}));
+  const usingSupabase = String(data.source || "").startsWith("Supabase");
+  const records = usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {});
+  const [runs, setRuns] = useState(() => usingSupabase ? (data.payrollRuns || {}) : readJson(payrollRunsStorageKey, {}));
+  const [syncStatus, setSyncStatus] = useState("");
   const availablePeriods = Object.keys(records).sort().reverse();
   const [period, setPeriod] = useState(availablePeriods[0] || currentPayrollPeriod());
   const periodRecords = records[period] || {};
@@ -3574,18 +3601,34 @@ function Pay({ data, access }) {
     if (availablePeriods.length && !availablePeriods.includes(period)) setPeriod(availablePeriods[0]);
   }, [availablePeriods, period]);
 
+  useEffect(() => {
+    if (usingSupabase) setRuns(data.payrollRuns || {});
+  }, [data.payrollRuns, usingSupabase]);
+
   function saveRun(nextRun, action = "Payroll run updated") {
+    const runToSave = {
+      ...nextRun,
+      updatedAt: new Date().toISOString(),
+      updatedBy: access?.currentUser?.email || access?.currentUser?.name || "Admin",
+    };
     const next = {
       ...runs,
-      [period]: {
-        ...nextRun,
-        updatedAt: new Date().toISOString(),
-        updatedBy: access?.currentUser?.email || access?.currentUser?.name || "Admin",
-      },
+      [period]: runToSave,
     };
     localStorage.setItem(payrollRunsStorageKey, JSON.stringify(next));
     setRuns(next);
     addAuditLog(action, formatPayrollPeriod(period));
+    if (!usingSupabase) return;
+    setSyncStatus("Saving payroll run to Supabase...");
+    loadSupabaseModule()
+      .then(({ savePayrollRun }) => savePayrollRun({ period, run: runToSave }))
+      .then((savedRun) => {
+        setRuns((current) => ({ ...current, [period]: savedRun }));
+        setSyncStatus("Payroll run saved to Supabase");
+      })
+      .catch((error) => {
+        setSyncStatus(`Supabase save failed: ${error.message || "check SQL permissions"}`);
+      });
   }
 
   function updateAdjustment(staffId, patch) {
@@ -3663,6 +3706,7 @@ function Pay({ data, access }) {
             <div>
               <Badge value={currentRun.status || "Draft"} />
               <p>Net payroll is {formatCurrency(totalNet)} from {totalHours.toFixed(2)} approved hours, {formatCurrency(totalExpenses)} expenses and {formatCurrency(totalDeductions)} deductions.</p>
+              {syncStatus && <p>{syncStatus}</p>}
             </div>
             <div className="payroll-run-actions">
               <button className="button light" type="button" onClick={() => setRunStatus("Reviewed")} disabled={!payrollReady}>Mark reviewed</button>
