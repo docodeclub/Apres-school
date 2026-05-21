@@ -189,18 +189,26 @@ function hasRecoveryHash() {
 }
 
 const pageMeta = {
-  Home: ["Après School | Holiday Clubs, Wraparound Care and School Partnerships", "Warm, reliable holiday clubs, wraparound care and trusted school partnerships for families and schools."],
-  Bookings: ["Bookings | Après School", "Find your Après School site and continue to the correct booking platform."],
-  "Holiday Clubs": ["Holiday Clubs | Après School", "Active, creative and well-run holiday care for primary-age children."],
-  Wraparound: ["Wraparound Care | Après School", "Breakfast and after-school care that fits calmly around the school day."],
-  Schools: ["For Schools | Après School", "Reliable wraparound care and enrichment partnerships for schools."],
-  Contact: ["Contact | Après School", "Contact Après School about clubs, school partnerships and staffing."],
+  Home: ["Après School | Wraparound Care for Schools & Holiday Camps", "Wraparound care, holiday camps and extended school provision that helps schools strengthen their parent offer."],
+  Bookings: ["Book Après School Clubs & Holiday Camps", "Find your school, wraparound care site or holiday camp and continue to the correct booking platform."],
+  "Holiday Clubs": ["Holiday Camps for Schools and Families | Après School", "Active, creative holiday camps at selected school sites with clear booking routes for families."],
+  Wraparound: ["Wraparound Care for Schools | Après School", "Breakfast clubs and after-school care for schools that want reliable extended provision parents trust."],
+  Schools: ["Wraparound Care for Schools & Extended Provision | Après School", "Partner with Après School for wraparound care, holiday camps and extended provision that helps parents choose your school."],
+  Contact: ["Contact Après School | Wraparound Care & Holiday Camps", "Contact Après School about wraparound care for schools, holiday camps, school partnerships and staffing."],
   "Staff Application": ["Staff Application | Après School", "Apply to work with Après School through the staff onboarding form."],
   Magicbooking: ["Magicbooking Guide | Après School", "How parents can book Après School provision through Magicbooking."],
   "Book Pebble": ["Book Pebble Guide | Après School", "How parents can book selected Après holiday camps through Book Pebble."],
   Payments: ["Payments & Vouchers | Après School", "Payment options, childcare vouchers and booking-platform guidance."],
   Cancellations: ["Cancellations & Amendments | Après School", "Guidance for amending or cancelling Après School bookings."],
   Policies: ["Policies | Après School", "Safeguarding, behaviour, health and safety, privacy and complaints policy summaries."],
+};
+const pageKeywords = {
+  Home: "Après School, wraparound care for schools, holiday camps, extended school provision, after school club, breakfast club, school partnerships",
+  Bookings: "Après School bookings, book holiday camps, book after school club, Magicbooking, Book Pebble, school childcare bookings",
+  "Holiday Clubs": "holiday camps, school holiday clubs, holiday childcare, activity camps, school holiday provision, Après School holiday camps",
+  Wraparound: "wraparound care for schools, after school care, breakfast club, extended school day, school childcare, term-time childcare",
+  Schools: "wraparound care for schools, extended school provision, school partnerships, holiday camps for schools, after school provision, parent offer",
+  Contact: "school partnership enquiry, wraparound care enquiry, holiday camp enquiry, Après School contact",
 };
 
 function staffAssignments(person) {
@@ -628,12 +636,14 @@ export default function App() {
     const ogDescription = document.querySelector('meta[property="og:description"]');
     const twitterTitle = document.querySelector('meta[name="twitter:title"]');
     const twitterDescription = document.querySelector('meta[name="twitter:description"]');
+    const keywords = document.querySelector('meta[name="keywords"]');
     const canonical = document.querySelector('link[rel="canonical"]');
     const ogUrl = document.querySelector('meta[property="og:url"]');
     if (ogTitle) ogTitle.setAttribute("content", meta[0]);
     if (ogDescription) ogDescription.setAttribute("content", meta[1]);
     if (twitterTitle) twitterTitle.setAttribute("content", meta[0]);
     if (twitterDescription) twitterDescription.setAttribute("content", meta[1]);
+    if (keywords) keywords.setAttribute("content", pageKeywords[page] || pageKeywords.Home);
     const nextPath = pagePaths[page] || "/";
     const canonicalUrl = `https://www.apres-school.co.uk${nextPath}`;
     if (canonical) canonical.setAttribute("href", canonicalUrl);
@@ -942,7 +952,7 @@ function Home({ setPage, setPlatform }) {
   const homeServices = [
     {
       title: "Holiday Clubs",
-      text: "School-holiday days with active games, creative workshops, visiting activities and calmer moments built into the rhythm.",
+      text: "School holiday camps with active games, creative workshops, visiting activities and calmer moments built into the day.",
       detail: "Open camps at selected schools",
       target: "Holiday Clubs",
       image: APRES_IMG.scienceActivity,
@@ -952,7 +962,7 @@ function Home({ setPage, setPlatform }) {
     },
     {
       title: "Wraparound Care",
-      text: "Before and after school care with familiar adults, flexible play, a calm routine and a simple route to book.",
+      text: "Wraparound care for schools and families, with familiar adults, flexible play, calm routines and a simple route to book.",
       detail: "Breakfast and after-school care",
       target: "Wraparound",
       image: APRES_IMG.homeWraparoundPrivacy,
@@ -962,7 +972,7 @@ function Home({ setPage, setPlatform }) {
     },
     {
       title: "School Partnerships",
-      text: "Warm delivery for families, dependable operations for schools and clear systems behind every session.",
+      text: "Extended school provision that makes life easier for leaders and gives parents another reason to choose your school.",
       detail: "Provision designed with your school",
       target: "Schools",
       image: APRES_IMG.homeSchoolPrivacy,
@@ -994,9 +1004,9 @@ function Home({ setPage, setPlatform }) {
       <section className="hero">
         <div className="hero-media">
           <div className="hero-copy">
-            <h1>Out of school care children look forward to.</h1>
+            <h1>Wraparound care and holiday camps children look forward to.</h1>
             <p>
-              Breakfast clubs, after-school care and holiday camps with friendly teams, active days and simple booking routes.
+              Breakfast clubs, after-school care and holiday camps with friendly teams, active days and simple booking routes for parents and schools.
             </p>
             <div className="hero-actions">
               <button className="button book large" type="button" onClick={() => setPage("Bookings")}>Book Now</button>
@@ -1071,8 +1081,8 @@ function Home({ setPage, setPlatform }) {
         <div className="home-school-inner">
           <div>
             <p className="eyebrow">For schools</p>
-            <h2>A childcare partner that protects your day and strengthens your parent offer.</h2>
-            <p>We build provision around your timetable, spaces and families, then support it with staffing discipline, compliance records and practical communication.</p>
+            <h2>The quiet advantage that helps parents say yes to your school.</h2>
+            <p>Strong wraparound care, holiday camps and enrichment make a school feel easier for working families to choose. We build provision around your timetable, spaces and families, then support it with staffing discipline, compliance records and practical communication.</p>
             <button className="button book" type="button" onClick={() => setPage("Schools")}>Explore School Partnerships</button>
           </div>
           <div className="home-school-features">
@@ -1377,12 +1387,12 @@ function HolidayClubs({ setPage }) {
   const holidaySites = bookingSites.filter((site) => site.category === "Holiday Camps");
 
   return (
-    <PageShell eyebrow="Holiday Clubs" title="Holiday clubs children are excited to come back to.">
+    <PageShell eyebrow="Holiday Camps" title="Holiday camps children are excited to come back to.">
       <section className="image-copy-band holiday" style={{ backgroundImage: `linear-gradient(90deg, rgba(23, 23, 47, 0.82), rgba(23, 23, 47, 0.24)), url("${APRES_IMG.parachute}")` }}>
         <div>
-          <h2>Active, creative days with calm routines underneath.</h2>
+          <h2>Active, creative holiday camps with calm routines underneath.</h2>
           <p>
-            Children can move, make, reset and belong through themed activities run by friendly staff at familiar school sites.
+            Children can move, make, reset and belong through themed activities run by friendly staff at familiar school sites. For schools, holiday provision keeps families connected to your site outside term time.
           </p>
           <div className="camp-hero-pills">
             <span>Primary-age children</span>
@@ -1487,12 +1497,12 @@ function NextCampCard({ setPage }) {
 function Wraparound({ setPage }) {
   const wraparoundSites = bookingSites.filter((site) => site.category === "Wraparound");
   return (
-    <PageShell eyebrow="Wraparound Care" title="Care around the school day, without the school-day rush.">
+    <PageShell eyebrow="Wraparound Care" title="Wraparound care for schools and families.">
       <section className="wraparound-hero">
         <div className="wraparound-hero-copy">
           <p className="eyebrow">Breakfast and after-school care</p>
-          <h2>A calm club at the edges of the school day.</h2>
-          <p>Children get a warm welcome, a proper snack, space to play, quieter choices and a clear collection routine. Schools get provision that feels organised, familiar and easy for families to trust.</p>
+          <h2>Extended school provision parents can rely on.</h2>
+          <p>Children get a warm welcome, a proper snack, space to play, quieter choices and a clear collection routine. Schools get wraparound care that feels organised, familiar and easy for families to trust.</p>
           <div className="wraparound-hero-actions">
             <button className="button book large" type="button" onClick={() => setPage("Bookings")}>Book Wraparound Care</button>
             <button className="button light" type="button" onClick={() => setPage("Schools")}>For Schools</button>
@@ -1551,7 +1561,7 @@ function Wraparound({ setPage }) {
       <section className="wraparound-audience">
         {[
           ["For parents", "Reliable care without losing the warmth.", "A clear booking route, familiar adults and routines that help children finish the day well.", ["Simple booking by school", "Snack, play and calmer choices", "Clear collection routines"]],
-          ["For schools", "Provision that supports the school office.", "We work around your timetable, spaces, collection points and parent communication so the club feels part of the school site.", ["Site-specific operating model", "Safeguarding-led staffing", "Responsive parent communication"]],
+          ["For schools", "Wraparound provision that strengthens your parent offer.", "We work around your timetable, spaces, collection points and parent communication so the club feels part of the school site and easier for families to choose.", ["Site-specific operating model", "Safeguarding-led staffing", "Responsive parent communication"]],
         ].map(([eyebrow, title, text, points]) => (
           <article key={eyebrow}>
             <p className="eyebrow">{eyebrow}</p>
@@ -1909,13 +1919,13 @@ function Schools({ setPage }) {
     event.currentTarget.reset();
   }
   return (
-    <PageShell eyebrow="For Schools" title="Reliable childcare, built around your school day.">
+    <PageShell eyebrow="For Schools" title="Wraparound care that helps parents choose your school.">
       <section className="school-hero">
         <div>
           <p className="eyebrow">School partnerships</p>
           <h2>Extend your provision without stretching your school team.</h2>
           <p>
-            Après School runs warm, organised childcare and enrichment with the safeguarding mindset,
+            Après School runs warm, organised wraparound care, holiday camps and enrichment with the safeguarding mindset,
             parent communication and operational discipline schools need behind the scenes.
           </p>
           <div className="school-hero-actions">
@@ -1925,8 +1935,8 @@ function Schools({ setPage }) {
         </div>
         <div className="school-hero-card">
           <span>What schools get</span>
-          <strong>Calm clubs, clear communication and serious operating systems.</strong>
-          <p>Provision that parents enjoy using and school leaders can feel confident standing behind.</p>
+          <strong>The provision that helps parents say yes.</strong>
+          <p>Calm clubs, clear communication and serious operating systems that make school life easier for families.</p>
           <div className="school-hero-mini">
             <span>Safeguarding-led</span>
             <span>Parent-ready</span>
@@ -1947,8 +1957,8 @@ function Schools({ setPage }) {
       <section className="school-models">
         <div className="school-models-intro">
           <p className="eyebrow">Partnership models</p>
-          <h2>Choose the support your school actually needs.</h2>
-          <p>Start with one provision, or combine term-time care, holiday provision and enrichment support as demand grows.</p>
+          <h2>Extend your school provision in the way families need.</h2>
+          <p>Start with wraparound care, add holiday camps, or combine term-time care, holiday provision and enrichment support as demand grows.</p>
         </div>
         {partnershipModels.map(([Icon, title, text, tag]) => (
           <article key={title}>
@@ -1966,7 +1976,7 @@ function Schools({ setPage }) {
           <h2>Friendly for families. Reassuring for school leaders.</h2>
           <p>
             The visible experience is active, creative and child-centred. Behind it sits a practical operating
-            structure for staffing, compliance, policies, scheduling and follow-up.
+            structure for staffing, compliance, policies, scheduling and follow-up, so your extended provision feels like an asset rather than another burden.
           </p>
         </div>
         <div className="assurance-list">
