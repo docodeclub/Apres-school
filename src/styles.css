@@ -6797,12 +6797,12 @@ label {
 }
 
 .payroll-table-controls {
-  align-items: center;
+  align-items: end;
   border: 1px solid var(--line);
   border-radius: 16px;
-  display: flex;
+  display: grid;
   gap: 14px;
-  justify-content: space-between;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.9fr);
   margin-bottom: 14px;
   padding: 12px 14px;
 }
@@ -6810,6 +6810,30 @@ label {
 .payroll-table-controls p {
   color: var(--muted);
   margin: 0;
+}
+
+.payroll-table-controls small {
+  color: var(--muted);
+  display: block;
+  font-weight: 800;
+  margin-top: 5px;
+}
+
+.payroll-filter-controls {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 1fr) minmax(170px, 0.75fr) auto;
+}
+
+.payroll-filter-controls label {
+  color: var(--muted);
+  display: grid;
+  font-size: 0.76rem;
+  font-weight: 950;
+  gap: 6px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .payroll-console table small,
@@ -8764,6 +8788,7 @@ th {
   .payroll-submit-actions,
   .payroll-audit-item,
   .payroll-table-controls,
+  .payroll-filter-controls,
   .payroll-run-console {
     align-items: stretch;
     flex-direction: column;

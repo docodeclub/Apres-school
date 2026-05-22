@@ -4022,7 +4022,8 @@ function Pay({ data, access, onOpenTab }) {
   const [hrFiles, setHrFiles] = useState(data.hrFiles || []);
   const [syncStatus, setSyncStatus] = useState("");
   const [payslipStatus, setPayslipStatus] = useState("");
-  const [showAllPayRows, setShowAllPayRows] = useState(false);
+  const [payrollQuery, setPayrollQuery] = useState("");
+  const [payrollFilter, setPayrollFilter] = useState("pay-due");
   const availablePeriods = Object.keys(records).sort().reverse();
   const [period, setPeriod] = useState(availablePeriods[0] || currentPayrollPeriod());
   const periodRecords = records[period] || {};
@@ -4055,9 +4056,36 @@ function Pay({ data, access, onOpenTab }) {
   const submittedSites = periodRecordList.filter((record) => ["Submitted", "Approved"].includes(record.status)).length;
   const approvedSites = periodRecordList.filter((record) => record.status === "Approved").length;
   const payrollReady = payrollRows.some((row) => row.hours > 0 || row.monthlySalary > 0);
-  const visiblePayrollRows = isAdmin && !showAllPayRows ? payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0) : payrollRows;
   const staffToPay = payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0);
   const payslipsUploaded = staffToPay.filter((row) => row.payslips.length > 0).length;
+  const filterCounts = {
+    all: payrollRows.length,
+    "pay-due": staffToPay.length,
+    hours: payrollRows.filter((row) => row.hours > 0).length,
+    salary: payrollRows.filter((row) => row.monthlySalary > 0).length,
+    adjustments: payrollRows.filter((row) => row.expenses > 0 || row.deductions > 0 || row.payrollNote).length,
+    "missing-payslips": staffToPay.filter((row) => !row.payslips.length).length,
+  };
+  const payrollFilterOptions = [
+    ["pay-due", "Pay due"],
+    ["missing-payslips", "Missing payslips"],
+    ["hours", "With hours"],
+    ["salary", "Salaried"],
+    ["adjustments", "Adjustments"],
+    ["all", "All staff"],
+  ];
+  const payrollSearch = payrollQuery.trim().toLowerCase();
+  const visiblePayrollRows = payrollRows.filter((row) => {
+    const matchesFilter = payrollFilter === "all"
+      || (payrollFilter === "pay-due" && (row.hours > 0 || row.monthlySalary > 0))
+      || (payrollFilter === "missing-payslips" && (row.hours > 0 || row.monthlySalary > 0) && !row.payslips.length)
+      || (payrollFilter === "hours" && row.hours > 0)
+      || (payrollFilter === "salary" && row.monthlySalary > 0)
+      || (payrollFilter === "adjustments" && (row.expenses > 0 || row.deductions > 0 || row.payrollNote));
+    const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName))).join(" ");
+    const haystack = [row.name, row.fullName, row.email, row.role, staffPrimaryLocation(row), schools, row.payrollNote].filter(Boolean).join(" ").toLowerCase();
+    return matchesFilter && (!payrollSearch || haystack.includes(payrollSearch));
+  });
   const checklistItems = [
     {
       title: "Hours entered",
@@ -4318,10 +4346,17 @@ function Pay({ data, access, onOpenTab }) {
       <Panel title={`${formatPayrollPeriod(period)} Pay`}>
         {isAdmin && (
           <div className="payroll-table-controls" id="payroll-table">
-            <p>{showAllPayRows ? "Showing every active staff member." : "Showing salaried staff and staff with submitted hours only."}</p>
-            <button className="button subtle" type="button" onClick={() => setShowAllPayRows((value) => !value)}>
-              {showAllPayRows ? "Hide zero-pay staff" : "Show all staff"}
-            </button>
+            <div>
+              <p>{visiblePayrollRows.length} of {payrollRows.length} staff shown.</p>
+              <small>{payrollFilter === "missing-payslips" ? "Showing staff who need a payslip upload." : payrollFilter === "pay-due" ? "Showing staff with salary or hours this month." : "Use filters to focus this month’s payroll."}</small>
+            </div>
+            <div className="payroll-filter-controls">
+              <label>Search<input value={payrollQuery} onChange={(event) => setPayrollQuery(event.target.value)} placeholder="Search staff, email or school" /></label>
+              <label>View<select value={payrollFilter} onChange={(event) => setPayrollFilter(event.target.value)}>
+                {payrollFilterOptions.map(([value, label]) => <option key={value} value={value}>{label} ({filterCounts[value] || 0})</option>)}
+              </select></label>
+              <button className="button subtle" type="button" disabled={!payrollQuery && payrollFilter === "pay-due"} onClick={() => { setPayrollQuery(""); setPayrollFilter("pay-due"); }}>Reset</button>
+            </div>
           </div>
         )}
         <TableWrap>
