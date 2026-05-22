@@ -135,6 +135,7 @@ const nextCamp = {
 };
 const payrollHoursStorageKey = "apres-payroll-hours";
 const payrollRunsStorageKey = "apres-payroll-runs";
+const staffPayOverridesStorageKey = "apres-staff-pay-overrides";
 
 function currentPayrollPeriod() {
   return new Date().toISOString().slice(0, 7);
@@ -149,6 +150,10 @@ function formatPayrollPeriod(period) {
 
 function formatCurrency(value) {
   return `£${Number(value || 0).toFixed(2)}`;
+}
+
+function monthlySalaryFromAnnual(value) {
+  return Number(value || 0) / 12;
 }
 
 function csvValue(value) {
@@ -412,12 +417,16 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const [staffProfileTargetId, setStaffProfileTargetId] = useState("");
   const [viewRole, setViewRole] = useState(role);
   const [previewUserId, setPreviewUserId] = useState("");
+  const [staffPayOverrides, setStaffPayOverrides] = useState(() => readJson(staffPayOverridesStorageKey, {}));
   const localStaff = readOnboardedStaffProfiles();
   const canPreviewRoles = ["Admin", "Superadmin"].includes(role);
   const effectiveRole = canPreviewRoles ? viewRole : role;
   const enrichedData = {
     ...data,
-    staff: mergeStaffProfiles(data.staff, localStaff),
+    staff: mergeStaffProfiles(data.staff, localStaff).map((person) => ({
+      ...person,
+      ...(staffPayOverrides[person.id] || {}),
+    })),
     source: localStaff.length ? `${data.source} + onboarding` : data.source,
   };
   const previewUsers = canPreviewRoles ? buildPreviewUsers(enrichedData, viewRole) : [];
@@ -441,6 +450,18 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   useEffect(() => {
     if (!visibleTabs.includes(tab)) setTab(visibleTabs[0] || "Staff");
   }, [setTab, tab, visibleTabs]);
+
+  function updateStaffPayOverride(staffId, patch) {
+    const next = {
+      ...staffPayOverrides,
+      [staffId]: {
+        ...(staffPayOverrides[staffId] || {}),
+        ...patch,
+      },
+    };
+    setStaffPayOverrides(next);
+    localStorage.setItem(staffPayOverridesStorageKey, JSON.stringify(next));
+  }
 
   useEffect(() => {
     if (!canPreviewRoles || !["Staff", "Manager"].includes(viewRole)) {
@@ -500,7 +521,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "HR Files" && <HRFiles data={enrichedData} />}
         {tab === "Rota" && <Rota data={scopedData} allData={enrichedData} access={access} />}
         {tab === "Hours" && <HoursTracker data={scopedData} access={access} />}
-        {tab === "SCR" && <SCR data={scopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} />}
+        {tab === "SCR" && <SCR data={scopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
         {tab === "Documents" && <Documents data={scopedData} />}
         {tab === "Pay" && <Pay data={scopedData} access={access} />}
@@ -640,7 +661,12 @@ function StaffDashboard({ data }) {
       <Metric icon={<ClipboardCheck />} label="Compliance status" value={ownStaff?.compliance || "Review"} tone="blue" />
       <Metric icon={<BookOpen />} label="Docs to read" value={pendingDocs} tone={pendingDocs ? "amber" : "green"} />
       <Metric icon={<Upload />} label="Evidence requests" value={staffEvidenceRequests.filter((item) => ["Requested", "Rejected"].includes(item.status)).length} tone={staffEvidenceRequests.some((item) => ["Requested", "Rejected"].includes(item.status)) ? "amber" : "green"} />
-      <Metric icon={<PoundSterling />} label="Pay data" value={ownStaff?.payRate ? `£${ownStaff.payRate}/hr` : "Pending"} tone="green" />
+      <Metric
+        icon={<PoundSterling />}
+        label="Pay data"
+        value={ownStaff?.annualSalary ? `${formatCurrency(monthlySalaryFromAnnual(ownStaff.annualSalary))}/mo` : ownStaff?.payRate ? `${formatCurrency(ownStaff.payRate)}/hr` : "Pending"}
+        tone="green"
+      />
       <Panel title="My Evidence Requests"><StaffEvidenceRequestList items={staffEvidenceRequests} onSubmit={saveEvidenceSubmission} /></Panel>
       <Panel title="My Upcoming Sessions"><SessionList data={data} personal /></Panel>
       <Panel title="My Trophy Cabinet"><RewardList data={data} /></Panel>
@@ -2014,7 +2040,7 @@ function HoursTracker({ data, access }) {
   );
 }
 
-function SCR({ data, access, targetStaffId, onTargetHandled }) {
+function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay }) {
   const [checklistState, setChecklistState] = useState(() => readScrChecklistState());
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const [evidenceFilter, setEvidenceFilter] = useState("Action needed");
@@ -3687,11 +3713,13 @@ function Pay({ data, access }) {
       .filter((row) => row.staffId === person.id || row.staffId === person.profileId)
       .map((row) => ({ ...row, schoolName, status: record.status || "Draft" })));
     const hours = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
-    const gross = hours * Number(person.payRate || 0);
+    const hourlyGross = hours * Number(person.payRate || 0);
+    const monthlySalary = monthlySalaryFromAnnual(person.annualSalary);
+    const gross = monthlySalary + hourlyGross;
     const adjustment = currentRun.adjustments?.[person.id] || {};
     const expenses = Number(adjustment.expenses || 0);
     const deductions = Number(adjustment.deductions || 0);
-    return { ...person, payrollEntries: schoolRows, hours, gross, expenses, deductions, payrollNote: adjustment.note || "" };
+    return { ...person, payrollEntries: schoolRows, hours, monthlySalary, hourlyGross, gross, expenses, deductions, payrollNote: adjustment.note || "" };
   });
   const totalHours = payrollRows.reduce((sum, row) => sum + row.hours, 0);
   const totalGross = payrollRows.reduce((sum, row) => sum + row.gross, 0);
@@ -3699,8 +3727,8 @@ function Pay({ data, access }) {
   const totalDeductions = payrollRows.reduce((sum, row) => sum + row.deductions, 0);
   const totalNet = totalGross + totalExpenses - totalDeductions;
   const submittedSites = Object.values(periodRecords).filter((record) => ["Submitted", "Approved"].includes(record.status)).length;
-  const payrollReady = payrollRows.some((row) => row.hours > 0);
-  const visiblePayrollRows = isAdmin && !showAllPayRows ? payrollRows.filter((row) => row.hours > 0) : payrollRows;
+  const payrollReady = payrollRows.some((row) => row.hours > 0 || row.monthlySalary > 0);
+  const visiblePayrollRows = isAdmin && !showAllPayRows ? payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0) : payrollRows;
 
   useEffect(() => {
     if (availablePeriods.length && !availablePeriods.includes(period)) setPeriod(availablePeriods[0]);
@@ -3774,7 +3802,7 @@ function Pay({ data, access }) {
 
   function exportPayroll() {
     const rows = [
-      ["Period", "Run status", "Staff", "Email", "Schools", "Hours", "Rate", "Gross", "Expenses", "Deductions", "Net", "Payslip status", "Notes"],
+      ["Period", "Run status", "Staff", "Email", "Schools", "Additional hours", "Hourly rate", "Hourly gross", "Annual salary", "Monthly salary", "Gross", "Expenses", "Deductions", "Net", "Payslip status", "Notes"],
       ...payrollRows.map((row) => {
         const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName))).join("; ");
         const submittedEntries = row.payrollEntries.filter((entry) => ["Submitted", "Approved"].includes(entry.status));
@@ -3787,6 +3815,9 @@ function Pay({ data, access }) {
           schools || "No hours submitted",
           row.hours.toFixed(2),
           Number(row.payRate || 0).toFixed(2),
+          row.hourlyGross.toFixed(2),
+          Number(row.annualSalary || 0).toFixed(2),
+          row.monthlySalary.toFixed(2),
           row.gross.toFixed(2),
           row.expenses.toFixed(2),
           row.deductions.toFixed(2),
@@ -3822,7 +3853,7 @@ function Pay({ data, access }) {
           <div className="payroll-run-console">
             <div>
               <Badge value={currentRun.status || "Draft"} />
-              <p>Net payroll is {formatCurrency(totalNet)} from {totalHours.toFixed(2)} approved hours, {formatCurrency(totalExpenses)} expenses and {formatCurrency(totalDeductions)} deductions.</p>
+              <p>Net payroll is {formatCurrency(totalNet)} from base monthly salary, {totalHours.toFixed(2)} additional approved hours, {formatCurrency(totalExpenses)} expenses and {formatCurrency(totalDeductions)} deductions.</p>
               {runLocked && <p className="panel-note">This paid payroll run is locked. {canMarkPaid ? "Unlock it only if a correction is needed." : "A Superadmin must unlock it before changes can be made."}</p>}
               {syncStatus && <p>{syncStatus}</p>}
             </div>
@@ -3841,15 +3872,15 @@ function Pay({ data, access }) {
       <Panel title={`${formatPayrollPeriod(period)} Pay`}>
         {isAdmin && (
           <div className="payroll-table-controls">
-            <p>{showAllPayRows ? "Showing every active staff member." : "Showing staff with submitted hours only."}</p>
+            <p>{showAllPayRows ? "Showing every active staff member." : "Showing salaried staff and staff with submitted hours only."}</p>
             <button className="button subtle" type="button" onClick={() => setShowAllPayRows((value) => !value)}>
-              {showAllPayRows ? "Hide zero-hour staff" : "Show all staff"}
+              {showAllPayRows ? "Hide zero-pay staff" : "Show all staff"}
             </button>
           </div>
         )}
         <TableWrap>
           <table>
-            <thead><tr><th>Staff</th><th>Submitted schools</th><th>Hours</th><th>Rate</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th><th>Payslip</th>{isAdmin && <th>Payroll note</th>}</tr></thead>
+            <thead><tr><th>Staff</th><th>Submitted schools</th><th>Additional hours</th><th>Pay basis</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th><th>Payslip</th>{isAdmin && <th>Payroll note</th>}</tr></thead>
             <tbody>{visiblePayrollRows.map((row) => {
               const submittedEntries = row.payrollEntries.filter((entry) => ["Submitted", "Approved"].includes(entry.status));
               const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName)));
@@ -3859,8 +3890,11 @@ function Pay({ data, access }) {
                   <td><strong>{row.name}</strong><br /><small>{row.email || "No email"}</small></td>
                   <td>{schools.length ? schools.join(", ") : "No hours submitted"}</td>
                   <td><strong>{row.hours.toFixed(2)}</strong></td>
-                  <td>{row.payRate ? `${formatCurrency(row.payRate)}/hr` : "No rate"}</td>
-                  <td>{formatCurrency(row.gross)}</td>
+                  <td>
+                    {row.annualSalary ? <><strong>{formatCurrency(row.monthlySalary)}/mo</strong><br /><small>{formatCurrency(row.annualSalary)} annual salary</small></> : null}
+                    {row.payRate ? <><br /><small>{formatCurrency(row.payRate)}/hr extra hours</small></> : !row.annualSalary ? "No rate" : null}
+                  </td>
+                  <td>{formatCurrency(row.gross)}{row.hourlyGross ? <><br /><small>{formatCurrency(row.hourlyGross)} extra hours</small></> : null}</td>
                   <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.expenses || ""} onChange={(event) => updateAdjustment(row.id, { expenses: event.target.value })} aria-label={`${row.name} expenses`} disabled={runLocked} /> : formatCurrency(row.expenses)}</td>
                   <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.deductions || ""} onChange={(event) => updateAdjustment(row.id, { deductions: event.target.value })} aria-label={`${row.name} deductions`} disabled={runLocked} /> : formatCurrency(row.deductions)}</td>
                   <td><strong>{formatCurrency(net)}</strong></td>
@@ -3871,7 +3905,7 @@ function Pay({ data, access }) {
             })}
             {!visiblePayrollRows.length && (
               <tr>
-                <td colSpan={isAdmin ? 10 : 9}><strong>No submitted payroll hours for this month yet.</strong> Use the Hours page to enter a school month, then return here to review payroll.</td>
+                <td colSpan={isAdmin ? 10 : 9}><strong>No payroll records for this month yet.</strong> Add salary details on staff profiles or use the Hours page to enter school hours.</td>
               </tr>
             )}</tbody>
             <tfoot>
@@ -3889,7 +3923,7 @@ function Pay({ data, access }) {
             </tfoot>
           </table>
         </TableWrap>
-        {!payrollRows.some((row) => staffIds.has(row.id) && row.hours > 0) && <p className="panel-note">No payroll hours have been submitted for this month yet.</p>}
+        {!payrollRows.some((row) => staffIds.has(row.id) && (row.hours > 0 || row.monthlySalary > 0)) && <p className="panel-note">No salary or hourly payroll values are ready for this month yet.</p>}
       </Panel>
     </div>
   );
@@ -4565,6 +4599,8 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
           evidenceRequests={buildStaffProfileEvidenceRequests(selectedPerson, evidenceRequests)}
           onRequestEvidence={onRequestEvidence}
           onClearEvidenceRequest={onClearEvidenceRequest}
+          access={access}
+          onUpdateStaffPay={onUpdateStaffPay}
         />
       )}
       <TableWrap>
@@ -4606,11 +4642,17 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   );
 }
 
-function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction, actionItems = [], evidenceRequests = [], onRequestEvidence, onClearEvidenceRequest }) {
+function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction, actionItems = [], evidenceRequests = [], onRequestEvidence, onClearEvidenceRequest, access, onUpdateStaffPay }) {
   const [notes, setNotes] = useState(() => readJson(staffProfileNotesStorageKey, {}));
   const [accountState, setAccountState] = useState(() => readUserAdminState());
   const [photoUrl, setPhotoUrl] = useState(person.photoUrl || person.profilePhotoUrl || "");
   const [photoStatus, setPhotoStatus] = useState("");
+  const [payForm, setPayForm] = useState(() => ({
+    payRate: person.payRate || "",
+    annualSalary: person.annualSalary || "",
+    contractType: person.contractType || "",
+  }));
+  const [payStatus, setPayStatus] = useState("");
   const [accountStatus, setAccountStatus] = useState("");
   const [accountBusy, setAccountBusy] = useState(false);
   const [hrFileTab, setHrFileTab] = useState("All");
@@ -4627,6 +4669,8 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     return staffSchoolNames(person).some((school) => label.includes(school.toLowerCase()));
   }).slice(0, 3);
   const avatar = photoUrl || person.photoUrl || person.profilePhotoUrl || defaultStaffAvatar;
+  const canEditPay = ["Admin", "Superadmin"].includes(access?.role);
+  const monthlySalary = monthlySalaryFromAnnual(person.annualSalary);
   const profileStats = [
     ["SCR", checkStatus],
     ["Next action", nextAction],
@@ -4677,6 +4721,12 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   useEffect(() => {
     setPhotoUrl(person.photoUrl || person.profilePhotoUrl || "");
     setPhotoStatus("");
+    setPayForm({
+      payRate: person.payRate || "",
+      annualSalary: person.annualSalary || "",
+      contractType: person.contractType || "",
+    });
+    setPayStatus("");
     setHrFileTab("All");
     const missingKey = actionItems.map((item) => String(item).toLowerCase()).includes("dbs")
       ? "dbs"
@@ -4687,7 +4737,29 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           : scrEvidenceRequestOptions[0][0];
     setRequestEvidenceKey(missingKey);
     setRequestNote("");
-  }, [person.id, person.photoUrl, person.profilePhotoUrl]);
+  }, [person.id, person.photoUrl, person.profilePhotoUrl, person.payRate, person.annualSalary, person.contractType]);
+
+  async function savePayDetails(event) {
+    event.preventDefault();
+    if (!canEditPay) return;
+    const patch = {
+      payRate: Number(payForm.payRate || 0),
+      annualSalary: Number(payForm.annualSalary || 0),
+      contractType: payForm.contractType || "Not recorded",
+    };
+    onUpdateStaffPay?.(person.id, patch);
+    setPayStatus("Saving pay details...");
+    try {
+      if (hasSupabaseConfig) {
+        const { updateStaffPayDetails } = await loadSupabaseModule();
+        await updateStaffPayDetails(person.id, patch);
+      }
+      setPayStatus("Pay details saved.");
+      addAuditLog("Staff pay details updated", `${person.name}: ${patch.annualSalary ? `${formatCurrency(patch.annualSalary)} annual` : "no annual salary"} · ${patch.payRate ? `${formatCurrency(patch.payRate)}/hr` : "no hourly rate"}`);
+    } catch (error) {
+      setPayStatus(`Saved locally, but live database update failed: ${error.message}`);
+    }
+  }
 
   async function resetProfileAccountPassword() {
     const email = accountUser?.email || person.email || "";
@@ -4914,12 +4986,28 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
         </section>
         <section>
           <h4>Pay & contract</h4>
-          <dl>
-            <div><dt>Hourly rate</dt><dd>{person.payRate ? `£${person.payRate}/hr` : "Not recorded"}</dd></div>
-            <div><dt>Annual salary</dt><dd>{person.annualSalary ? `£${person.annualSalary}` : "Not recorded"}</dd></div>
-            <div><dt>Contract</dt><dd>{person.contractType || "Not recorded"}</dd></div>
-            <div><dt>Start date</dt><dd>{person.startDate || "Not recorded"}</dd></div>
-          </dl>
+          {canEditPay ? (
+            <form className="staff-pay-form" onSubmit={savePayDetails}>
+              <label>Hourly rate<input type="number" min="0" step="0.01" value={payForm.payRate} onChange={(event) => setPayForm((current) => ({ ...current, payRate: event.target.value }))} /></label>
+              <label>Annual salary<input type="number" min="0" step="0.01" value={payForm.annualSalary} onChange={(event) => setPayForm((current) => ({ ...current, annualSalary: event.target.value }))} /></label>
+              <label>Contract type<input type="text" value={payForm.contractType} onChange={(event) => setPayForm((current) => ({ ...current, contractType: event.target.value }))} placeholder="ZH, TTO, salaried..." /></label>
+              <div className="staff-pay-summary">
+                <span>Monthly salary</span>
+                <strong>{formatCurrency(monthlySalaryFromAnnual(payForm.annualSalary))}</strong>
+                <small>Annual salary divided by 12. Extra approved hours are added in Payroll.</small>
+              </div>
+              <button className="button light" type="submit">Save pay details</button>
+              {payStatus && <small>{payStatus}</small>}
+            </form>
+          ) : (
+            <dl>
+              <div><dt>Hourly rate</dt><dd>{person.payRate ? `${formatCurrency(person.payRate)}/hr` : "Not recorded"}</dd></div>
+              <div><dt>Annual salary</dt><dd>{person.annualSalary ? formatCurrency(person.annualSalary) : "Not recorded"}</dd></div>
+              <div><dt>Monthly salary</dt><dd>{monthlySalary ? formatCurrency(monthlySalary) : "Not recorded"}</dd></div>
+              <div><dt>Contract</dt><dd>{person.contractType || "Not recorded"}</dd></div>
+              <div><dt>Start date</dt><dd>{person.startDate || "Not recorded"}</dd></div>
+            </dl>
+          )}
         </section>
         <section>
           <h4>Assigned sites</h4>

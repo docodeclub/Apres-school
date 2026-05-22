@@ -6743,6 +6743,13 @@ label {
   margin: 0;
 }
 
+.payroll-console table small,
+.table-wrap table small {
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .payroll-console .hr-summary {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -7694,6 +7701,51 @@ tfoot td {
   color: var(--ink);
   font-weight: 850;
   overflow-wrap: anywhere;
+}
+
+.staff-pay-form {
+  display: grid;
+  gap: 10px;
+}
+
+.staff-pay-form label {
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.staff-pay-form input {
+  width: 100%;
+}
+
+.staff-pay-summary {
+  border: 1px solid rgba(72, 103, 216, 0.16);
+  border-radius: 14px;
+  background: #f8fbff;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.staff-pay-summary span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.staff-pay-summary strong {
+  color: var(--royal-dark);
+  font-size: 1.25rem;
+}
+
+.staff-pay-summary small,
+.staff-pay-form > small {
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .compliance-check-grid {

@@ -741,6 +741,49 @@ export async function uploadStaffProfilePhoto(staffRecordId, file) {
   };
 }
 
+export async function updateStaffPayDetails(staffRecordId, details = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!staffRecordId) throw new Error("Choose a staff member.");
+
+  const payRate = Number(details.payRate || 0);
+  const annualSalary = Number(details.annualSalary || 0);
+  const contractType = details.contractType || null;
+
+  const { data, error } = await supabase
+    .from("staff_records")
+    .update({
+      pay_rate: payRate || null,
+      annual_salary: annualSalary || null,
+      contract_type: contractType,
+    })
+    .eq("id", staffRecordId)
+    .select("id, pay_rate, annual_salary, contract_type")
+    .single();
+
+  if (error) throw error;
+
+  const { error: payDetailError } = await supabase
+    .from("staff_pay_details")
+    .upsert({
+      staff_record_id: staffRecordId,
+      hourly_rate: payRate || null,
+      annual_salary: annualSalary || null,
+      contract_type: contractType,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "staff_record_id" });
+
+  if (payDetailError) {
+    console.warn("Unable to mirror staff pay details", payDetailError);
+  }
+
+  return {
+    staffRecordId: data.id,
+    payRate: Number(data.pay_rate || 0),
+    annualSalary: Number(data.annual_salary || 0),
+    contractType: data.contract_type || "",
+  };
+}
+
 export async function sendCoverMoveNotifications(payload) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.functions.invoke(coverMoveFunctionName, {
