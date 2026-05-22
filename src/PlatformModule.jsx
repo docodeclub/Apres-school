@@ -173,6 +173,10 @@ function mergePayrollHourRecords(remote = {}, local = {}) {
         schoolRecords[school] = remoteRecord;
         return schoolRecords;
       }
+      if (localRecord.localDraft) {
+        schoolRecords[school] = localRecord;
+        return schoolRecords;
+      }
       const remoteTime = new Date(remoteRecord.updatedAt || remoteRecord.submittedAt || 0).getTime() || 0;
       const localTime = new Date(localRecord.updatedAt || localRecord.submittedAt || 0).getTime() || 0;
       schoolRecords[school] = localTime >= remoteTime ? localRecord : remoteRecord;
@@ -1361,6 +1365,8 @@ function UserManagement({ data }) {
 function HRHierarchy({ data, onUpdateStaffSite }) {
   const [state, setState] = useState(() => readHierarchyState());
   const [selectedManager, setSelectedManager] = useState("");
+  const [query, setQuery] = useState("");
+  const [siteFilter, setSiteFilter] = useState("All sites");
   const users = mergeUserRecords(data.staff, readUserAdminState());
   const schoolOptions = Array.from(new Set([
     "Organisation-wide",
@@ -1388,6 +1394,17 @@ function HRHierarchy({ data, onUpdateStaffSite }) {
   const managerOptions = rows.filter((person) => ["Manager", "Admin", "Superadmin"].includes(person.role));
   const activeManager = selectedManager || managerOptions[0]?.id || "";
   const directReports = rows.filter((person) => person.reportsTo === activeManager);
+  const filteredRows = rows.filter((person) => {
+    const matchesSite = siteFilter === "All sites" || person.scope === siteFilter;
+    const haystack = [person.name, person.email, person.role, person.scope, person.managerName].join(" ").toLowerCase();
+    return matchesSite && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
+  });
+  const unmappedStaff = rows.filter((person) => person.role === "Staff" && !person.reportsTo).length;
+  const siteCoverage = schoolOptions.filter((site) => site !== "Organisation-wide").map((site) => ({
+    site,
+    managers: rows.filter((person) => person.scope === site && ["Manager", "Admin", "Superadmin"].includes(person.role)).length,
+    staff: rows.filter((person) => person.scope === site).length,
+  }));
 
   function save(next) {
     setState(next);
@@ -1426,8 +1443,23 @@ function HRHierarchy({ data, onUpdateStaffSite }) {
       <div className="hr-summary">
         <Metric icon={<Users />} label="People mapped" value={rows.length} tone="blue" />
         <Metric icon={<ShieldCheck />} label="Managers" value={managerOptions.length} tone="green" />
-        <Metric icon={<ClipboardCheck />} label="Unassigned reports" value={rows.filter((person) => person.role === "Staff" && !person.reportsTo).length} tone="amber" />
+        <Metric icon={<ClipboardCheck />} label="Unassigned reports" value={unmappedStaff} tone="amber" />
       </div>
+      <section className="hr-command-centre">
+        <div>
+          <p className="eyebrow">HR command centre</p>
+          <h3>Managers, usual sites and staff reporting lines in one place.</h3>
+          <p>Use this as the working view for line management, site responsibility and quick staff lookup before deeper SCR or HR file checks.</p>
+        </div>
+        <div className="hr-site-coverage">
+          {siteCoverage.map((site) => (
+            <article key={site.site}>
+              <strong>{site.site}</strong>
+              <span>{site.managers} manager{site.managers === 1 ? "" : "s"} · {site.staff} staff</span>
+            </article>
+          ))}
+        </div>
+      </section>
       <section className="hr-org">
         <div className="crm-card-head">
           <div>
@@ -1466,10 +1498,21 @@ function HRHierarchy({ data, onUpdateStaffSite }) {
           {!directReports.length && <EmptyList title="No direct reports" text="Assign staff to this manager in the table below." />}
         </div>
       </section>
+      <section className="hr-directory-controls">
+        <div>
+          <h3>Staff Directory</h3>
+          <p className="panel-note">Filter staff by name, email, role, manager or usual site.</p>
+        </div>
+        <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search staff or manager" /></label>
+        <label>Usual site<select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
+          <option>All sites</option>
+          {schoolOptions.map((site) => <option key={site} value={site}>{site}</option>)}
+        </select></label>
+      </section>
       <TableWrap>
         <table>
           <thead><tr><th>Staff</th><th>Role</th><th>Reports to</th><th>Scope/site</th><th>Direct reports</th><th>Status</th></tr></thead>
-          <tbody>{rows.map((person) => (
+          <tbody>{filteredRows.map((person) => (
             <tr key={person.id}>
               <td><strong>{person.name}</strong><br /><small>{person.email}</small></td>
               <td><Badge value={person.role} /></td>
@@ -1489,6 +1532,7 @@ function HRHierarchy({ data, onUpdateStaffSite }) {
             </tr>
           ))}</tbody>
         </table>
+        {!filteredRows.length && <EmptyList title="No staff found" text="Change the search or site filter to show more staff." />}
       </TableWrap>
     </div>
   );
@@ -2016,6 +2060,7 @@ function HoursTracker({ data, access }) {
     .map((person) => ({ ...person, assignedHere: staffAssignedToSchool(person, school) }))
     .sort((a, b) => Number(b.assignedHere) - Number(a.assignedHere) || String(a.name || "").localeCompare(String(b.name || "")));
   const enteredRows = selectedRecord.rows || [];
+  const hasIncompletePayrollRows = enteredRows.some((row) => !isUuid(row.staffId));
   const canUnlockPayroll = access?.role === "Superadmin";
   const schoolLocked = selectedRecord.status === "Approved";
   const totalHours = enteredRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
@@ -2064,6 +2109,7 @@ function HoursTracker({ data, access }) {
     const { debounce = false } = options;
     const recordToSave = {
       ...nextRecord,
+      localDraft: usingSupabase,
       updatedAt: new Date().toISOString(),
       updatedBy: access?.currentUser?.email || access?.currentUser?.name || "Admin",
     };
@@ -2078,6 +2124,10 @@ function HoursTracker({ data, access }) {
     setRecords(next);
     addAuditLog(action, `${formatPayrollPeriod(period)} · ${school}`);
     if (!usingSupabase) return;
+    if ((recordToSave.rows || []).some((row) => !isUuid(row.staffId))) {
+      setSyncStatus("Saved locally · choose staff before syncing to Supabase");
+      return;
+    }
     const saveToken = remoteSaveRef.current.token + 1;
     remoteSaveRef.current.token = saveToken;
     if (remoteSaveRef.current.timer) clearTimeout(remoteSaveRef.current.timer);
@@ -2087,19 +2137,20 @@ function HoursTracker({ data, access }) {
       .then(({ savePayrollHourRecord }) => savePayrollHourRecord({ period, school, record: recordToSave, action }))
       .then((savedRecord) => {
         if (remoteSaveRef.current.token !== saveToken) return;
-        setRecords((current) => ({
-          ...current,
-          [period]: {
-            ...(current[period] || {}),
-            [school]: savedRecord,
-          },
-        }));
-        const savedNext = mergePayrollHourRecords(readJson(payrollHoursStorageKey, {}), {
-          [period]: {
-            [school]: savedRecord,
-          },
+        const cleanSavedRecord = { ...savedRecord, localDraft: false, syncedAt: new Date().toISOString() };
+        setRecords((current) => {
+          const currentRecord = current?.[period]?.[school];
+          if (currentRecord?.updatedAt && currentRecord.updatedAt !== recordToSave.updatedAt) return current;
+          const nextRecords = {
+            ...current,
+            [period]: {
+              ...(current[period] || {}),
+              [school]: cleanSavedRecord,
+            },
+          };
+          localStorage.setItem(payrollHoursStorageKey, JSON.stringify(nextRecords));
+          return nextRecords;
         });
-        localStorage.setItem(payrollHoursStorageKey, JSON.stringify(savedNext));
         setSyncStatus("Saved to Supabase");
       })
       .catch((error) => {
@@ -2237,6 +2288,7 @@ function HoursTracker({ data, access }) {
             <Badge value={selectedRecord.status || "Draft"} />
             {selectedRecord.submittedAt && <small>Submitted {formatShortDate(selectedRecord.submittedAt)} by {selectedRecord.submittedBy || "admin"}</small>}
             {schoolLocked && <small>Approved records are locked for payroll. {canUnlockPayroll ? "Unlock this school to make a correction." : "Ask a Superadmin to unlock corrections."}</small>}
+            {hasIncompletePayrollRows && <small>Choose a staff member for every payroll row before submitting or syncing to Supabase.</small>}
             {syncStatus && <small>{syncStatus}</small>}
           </div>
           <div className="payroll-submit-actions">
@@ -2277,8 +2329,8 @@ function HoursTracker({ data, access }) {
         <div className="payroll-submit-row">
           <p>Submitting creates the monthly hours record used by payroll. Approving confirms this school is ready for the monthly payroll run.</p>
           <div className="payroll-submit-actions">
-            <button className="button light" type="button" onClick={submitMonth} disabled={!enteredRows.length || schoolLocked}>Submit month</button>
-            <button className="button primary" type="button" onClick={approveSchoolMonth} disabled={!enteredRows.length || schoolLocked}>Approve school</button>
+            <button className="button light" type="button" onClick={submitMonth} disabled={!enteredRows.length || schoolLocked || hasIncompletePayrollRows}>Submit month</button>
+            <button className="button primary" type="button" onClick={approveSchoolMonth} disabled={!enteredRows.length || schoolLocked || hasIncompletePayrollRows}>Approve school</button>
           </div>
         </div>
       </Panel>
