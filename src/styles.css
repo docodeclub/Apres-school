@@ -7080,6 +7080,86 @@ tfoot td {
   align-items: start;
 }
 
+.schools-directory-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.school-ops-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 14px 36px rgba(38, 63, 169, 0.08);
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.school-ops-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.school-ops-head span,
+.school-ops-meta span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.school-ops-head h3 {
+  color: var(--royal-dark);
+  font-size: clamp(1.25rem, 2vw, 1.65rem);
+  line-height: 1.12;
+  margin: 6px 0 0;
+}
+
+.school-ops-card p {
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.school-ops-meta {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.school-ops-meta div {
+  background: #f8fbff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.school-ops-meta strong {
+  color: var(--ink);
+  display: block;
+  line-height: 1.35;
+  margin-top: 5px;
+}
+
+.school-ops-staff {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.school-ops-staff small {
+  background: rgba(49, 75, 184, 0.08);
+  border-radius: 999px;
+  color: var(--blue);
+  font-weight: 900;
+  padding: 7px 10px;
+}
+
 .hr-files-workspace .toolbar {
   align-items: start;
 }
@@ -8498,6 +8578,8 @@ th {
   .settings-grid,
   .settings-checklist,
   .rota-grid,
+  .schools-directory-grid,
+  .school-ops-meta,
   .payroll-review-grid,
   .payroll-console .hr-summary,
   .payroll-toolbar {

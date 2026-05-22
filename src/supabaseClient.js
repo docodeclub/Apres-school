@@ -223,6 +223,7 @@ function mapStaffRecords(records) {
     return {
       id: record.id,
       profileId: record.profile_id,
+      fullName: profile?.full_name || record.preferred_name || "Staff member",
       name: record.preferred_name || profile?.full_name || "Staff member",
       email: profile?.email || "",
       accessRole: normalizeRole(profile?.role),
@@ -781,6 +782,26 @@ export async function updateStaffPayDetails(staffRecordId, details = {}) {
     payRate: Number(data.pay_rate || 0),
     annualSalary: Number(data.annual_salary || 0),
     contractType: data.contract_type || "",
+  };
+}
+
+export async function updateStaffSiteDetails(staffRecordId, location) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!staffRecordId) throw new Error("Choose a staff member.");
+  const primarySite = String(location || "").trim() || null;
+
+  const { data, error } = await supabase
+    .from("staff_records")
+    .update({ primary_site: primarySite })
+    .eq("id", staffRecordId)
+    .select("id, primary_site")
+    .single();
+
+  if (error) throw error;
+
+  return {
+    staffRecordId: data.id,
+    location: data.primary_site || "",
   };
 }
 

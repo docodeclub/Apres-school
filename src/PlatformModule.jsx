@@ -101,11 +101,11 @@ const Users = makeIcon("US");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Users", "HR", "HR Files", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
   ["People", ["Users", "SCR", "HR", "HR Files"]],
-  ["Sites", ["Rota", "Hours", "Sessions", "Ofsted"]],
+  ["Sites", ["Schools", "Rota", "Hours", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
   ["Finance", ["Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
@@ -116,6 +116,7 @@ const platformTabHints = {
   Users: "Invite staff and reset access",
   HR: "Reporting lines and manager structure",
   "HR Files": "Contracts, payslips and staff documents",
+  Schools: "School sites, provision and operational notes",
   SCR: "Single Central Register and safer recruitment",
   Rota: "Site rota, cover and staffing requirements",
   Hours: "Approved hours, setup, session and clean-up time",
@@ -136,6 +137,7 @@ const nextCamp = {
 const payrollHoursStorageKey = "apres-payroll-hours";
 const payrollRunsStorageKey = "apres-payroll-runs";
 const staffPayOverridesStorageKey = "apres-staff-pay-overrides";
+const staffSiteOverridesStorageKey = "apres-staff-site-overrides";
 
 function currentPayrollPeriod() {
   return new Date().toISOString().slice(0, 7);
@@ -154,6 +156,30 @@ function formatCurrency(value) {
 
 function monthlySalaryFromAnnual(value) {
   return Number(value || 0) / 12;
+}
+
+function mergePayrollHourRecords(remote = {}, local = {}) {
+  const periods = new Set([...Object.keys(remote || {}), ...Object.keys(local || {})]);
+  return Array.from(periods).reduce((merged, period) => {
+    const schools = new Set([...Object.keys(remote?.[period] || {}), ...Object.keys(local?.[period] || {})]);
+    merged[period] = Array.from(schools).reduce((schoolRecords, school) => {
+      const remoteRecord = remote?.[period]?.[school];
+      const localRecord = local?.[period]?.[school];
+      if (!remoteRecord) {
+        schoolRecords[school] = localRecord;
+        return schoolRecords;
+      }
+      if (!localRecord) {
+        schoolRecords[school] = remoteRecord;
+        return schoolRecords;
+      }
+      const remoteTime = new Date(remoteRecord.updatedAt || remoteRecord.submittedAt || 0).getTime() || 0;
+      const localTime = new Date(localRecord.updatedAt || localRecord.submittedAt || 0).getTime() || 0;
+      schoolRecords[school] = localTime >= remoteTime ? localRecord : remoteRecord;
+      return schoolRecords;
+    }, {});
+    return merged;
+  }, {});
 }
 
 function csvValue(value) {
@@ -218,6 +244,15 @@ function staffPrimaryLocation(person) {
 
 function staffAssignedToSchool(person, school) {
   return staffSchoolNames(person).includes(canonicalSchoolName(school));
+}
+
+function staffOptionLabel(staff) {
+  const parts = [
+    staff.fullName || staff.name,
+    staff.email,
+    staffPrimaryLocation(staff),
+  ].filter(Boolean);
+  return parts.join(" · ");
 }
 
 function staffIdentityFromEmail(email, role = "Staff") {
@@ -452,6 +487,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const [viewRole, setViewRole] = useState(role);
   const [previewUserId, setPreviewUserId] = useState("");
   const [staffPayOverrides, setStaffPayOverrides] = useState(() => readJson(staffPayOverridesStorageKey, {}));
+  const [staffSiteOverrides, setStaffSiteOverrides] = useState(() => readJson(staffSiteOverridesStorageKey, {}));
   const localStaff = readOnboardedStaffProfiles();
   const canPreviewRoles = ["Admin", "Superadmin"].includes(role);
   const effectiveRole = canPreviewRoles ? viewRole : role;
@@ -460,6 +496,12 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
     staff: mergeStaffProfiles(data.staff, localStaff).map((person) => ({
       ...person,
       ...(staffPayOverrides[person.id] || {}),
+      ...(staffSiteOverrides[person.id]
+        ? {
+            location: staffSiteOverrides[person.id].location,
+            siteAssignments: [{ school: staffSiteOverrides[person.id].location, role: person.role, startDate: person.startDate || "", endDate: "", status: "Active" }],
+          }
+        : {}),
     })),
     source: localStaff.length ? `${data.source} + onboarding` : data.source,
   };
@@ -495,6 +537,26 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
     };
     setStaffPayOverrides(next);
     localStorage.setItem(staffPayOverridesStorageKey, JSON.stringify(next));
+  }
+
+  function updateStaffSiteOverride(staffId, location) {
+    if (!staffId || !location) return;
+    const next = {
+      ...staffSiteOverrides,
+      [staffId]: {
+        location,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    setStaffSiteOverrides(next);
+    localStorage.setItem(staffSiteOverridesStorageKey, JSON.stringify(next));
+    if (!hasSupabaseConfig) return;
+    loadSupabaseModule()
+      .then(({ updateStaffSiteDetails }) => updateStaffSiteDetails(staffId, location))
+      .catch((error) => {
+        console.warn("Unable to save staff usual site", error);
+        addAuditLog("Staff site save failed", `${staffId}: ${error.message || "Supabase rejected the update"}`);
+      });
   }
 
   useEffect(() => {
@@ -551,7 +613,8 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
-        {tab === "HR" && <HRHierarchy data={enrichedData} access={access} />}
+        {tab === "HR" && <HRHierarchy data={enrichedData} access={access} onUpdateStaffSite={updateStaffSiteOverride} />}
+        {tab === "Schools" && <SchoolsOperations data={enrichedData} />}
         {tab === "HR Files" && <HRFiles data={enrichedData} />}
         {tab === "Rota" && <Rota data={scopedData} allData={enrichedData} access={access} />}
         {tab === "Hours" && <HoursTracker data={scopedData} access={access} />}
@@ -1295,16 +1358,27 @@ function UserManagement({ data }) {
   );
 }
 
-function HRHierarchy({ data }) {
+function HRHierarchy({ data, onUpdateStaffSite }) {
   const [state, setState] = useState(() => readHierarchyState());
   const [selectedManager, setSelectedManager] = useState("");
   const users = mergeUserRecords(data.staff, readUserAdminState());
+  const schoolOptions = Array.from(new Set([
+    "Organisation-wide",
+    ...rotaSites.map((site) => canonicalSchoolName(site.site)),
+    ...data.staff.flatMap((person) => staffSchoolNames(person)),
+  ].filter(Boolean))).sort((a, b) => {
+    if (a === "Organisation-wide") return -1;
+    if (b === "Organisation-wide") return 1;
+    return sortPayrollSites(a, b);
+  });
   const rows = users.map((user) => {
     const staffProfile = data.staff.find((person) => (person.profileId || person.id) === user.id) || {};
     const reportsTo = state[user.id]?.reportsTo ?? defaultReportsTo(user, users);
-    const scope = state[user.id]?.scope || staffPrimaryLocation(staffProfile) || "Organisation-wide";
+    const rawScope = state[user.id]?.scope || staffPrimaryLocation(staffProfile) || "Organisation-wide";
+    const scope = rawScope === "Unassigned" ? "Organisation-wide" : canonicalSchoolName(rawScope);
     return {
       ...user,
+      staffRecordId: user.staffRecordId || staffProfile.id,
       reportsTo,
       scope,
       updatedAt: state[user.id]?.updatedAt,
@@ -1331,6 +1405,9 @@ function HRHierarchy({ data }) {
       },
     };
     save(next);
+    if (Object.prototype.hasOwnProperty.call(patch, "scope") && patch.scope && patch.scope !== "Organisation-wide") {
+      onUpdateStaffSite?.(person?.staffRecordId || person?.id, patch.scope);
+    }
     addAuditLog("HR hierarchy updated", `${person?.name || id}: ${Object.keys(patch).join(", ")}`);
   }
 
@@ -1402,13 +1479,119 @@ function HRHierarchy({ data }) {
                   {rows.filter((option) => option.id !== person.id).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
                 </select>
               </td>
-              <td><input value={person.scope} onChange={(event) => updatePerson(person.id, { scope: event.target.value })} aria-label={`${person.name} scope`} /></td>
+              <td>
+                <select value={person.scope} onChange={(event) => updatePerson(person.id, { scope: event.target.value })} aria-label={`${person.name} usual site`}>
+                  {schoolOptions.map((site) => <option key={site} value={site}>{site}</option>)}
+                </select>
+              </td>
               <td>{childrenOf(person.id).length}</td>
               <td><Badge value={person.updatedAt ? "Updated" : "Default"} /></td>
             </tr>
           ))}</tbody>
         </table>
       </TableWrap>
+    </div>
+  );
+}
+
+function SchoolsOperations({ data }) {
+  const schoolProfiles = [
+    {
+      name: "Willington Prep",
+      area: "Wimbledon",
+      provision: ["After-school care", "Holiday camps"],
+      times: "After-school 15:30-18:00",
+      booking: "Magicbooking",
+      manager: "Lindsay",
+      note: "Core wraparound site with holiday camp provision and established school routines.",
+    },
+    {
+      name: "King's House School",
+      area: "Richmond",
+      provision: ["After-school care", "Holiday camps"],
+      times: "After-school 15:15-18:00",
+      booking: "Magicbooking / camp route",
+      manager: "Rama",
+      note: "School partnership with a structured after-school offer and camp availability when scheduled.",
+    },
+    {
+      name: "Shrewsbury House School",
+      area: "Surbiton",
+      provision: ["Breakfast club", "After-school care"],
+      times: "Breakfast 07:30-08:00 · After-school 15:00-18:00",
+      booking: "Magicbooking",
+      manager: "Abi",
+      note: "Combined breakfast and after-school provision with clear daily handover routines.",
+    },
+    {
+      name: "Ripley Court School",
+      area: "Ripley",
+      provision: ["After-school care"],
+      times: "After-school 15:00-18:00",
+      booking: "Magicbooking",
+      manager: "Idy / Wendy",
+      note: "After-school provision with named site leadership and cover planning.",
+    },
+    {
+      name: "The Rowans School",
+      area: "Wimbledon",
+      provision: ["Holiday camps"],
+      times: "Camp timings vary by programme",
+      booking: "Pebble",
+      manager: "Camp lead assigned per camp",
+      note: "Holiday camp site used for selected camp dates and seasonal programmes.",
+    },
+  ];
+  const activeSites = schoolProfiles.filter((school) => school.provision.length).length;
+  const wraparoundSites = schoolProfiles.filter((school) => school.provision.some((item) => item.toLowerCase().includes("after") || item.toLowerCase().includes("breakfast"))).length;
+  const campSites = schoolProfiles.filter((school) => school.provision.some((item) => item.toLowerCase().includes("camp"))).length;
+
+  function assignedStaffFor(siteName) {
+    return data.staff.filter((person) => staffAssignedToSchool(person, siteName));
+  }
+
+  return (
+    <div className="stack schools-operations">
+      <div className="toolbar">
+        <div>
+          <h2>Schools</h2>
+          <p className="panel-note">Operational snapshot of each partner school, provision type, booking route and named site leadership.</p>
+        </div>
+        <Badge value="Internal site directory" />
+      </div>
+      <div className="hr-summary">
+        <Metric icon={<LayoutDashboard />} label="Active school records" value={activeSites} tone="blue" />
+        <Metric icon={<Clock />} label="Wraparound sites" value={wraparoundSites} tone="green" />
+        <Metric icon={<CalendarDays />} label="Camp sites" value={campSites} tone="amber" />
+      </div>
+      <section className="schools-directory-grid">
+        {schoolProfiles.map((school) => {
+          const assigned = assignedStaffFor(school.name);
+          return (
+            <article className="school-ops-card" key={school.name}>
+              <div className="school-ops-head">
+                <div>
+                  <span>{school.area}</span>
+                  <h3>{school.name}</h3>
+                </div>
+                <Badge value={school.booking} />
+              </div>
+              <p>{school.note}</p>
+              <div className="school-ops-meta">
+                <div><span>Provision</span><strong>{school.provision.join(" · ")}</strong></div>
+                <div><span>Hours</span><strong>{school.times}</strong></div>
+                <div><span>Named manager</span><strong>{school.manager}</strong></div>
+                <div><span>Assigned staff</span><strong>{assigned.length}</strong></div>
+              </div>
+              <div className="school-ops-staff">
+                {assigned.slice(0, 5).map((person) => <small key={person.id}>{person.fullName || person.name}</small>)}
+                {assigned.length > 5 && <small>+{assigned.length - 5} more</small>}
+                {!assigned.length && <small>No staff currently assigned</small>}
+              </div>
+            </article>
+          );
+        })}
+      </section>
     </div>
   );
 }
@@ -1825,7 +2008,7 @@ function HoursTracker({ data, access }) {
     .sort(sortPayrollSites);
   const [period, setPeriod] = useState(currentPayrollPeriod());
   const [school, setSchool] = useState(schoolOptions[0] || "");
-  const [records, setRecords] = useState(() => usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {}));
+  const [records, setRecords] = useState(() => mergePayrollHourRecords(usingSupabase ? (data.payrollHours || {}) : {}, readJson(payrollHoursStorageKey, {})));
   const [syncStatus, setSyncStatus] = useState("");
   const remoteSaveRef = useRef({ timer: null, token: 0 });
   const selectedRecord = records[period]?.[school] || { rows: [], status: "Draft" };
@@ -1870,7 +2053,7 @@ function HoursTracker({ data, access }) {
   }, [school, schoolOptions]);
 
   useEffect(() => {
-    if (usingSupabase) setRecords(data.payrollHours || {});
+    if (usingSupabase) setRecords(mergePayrollHourRecords(data.payrollHours || {}, readJson(payrollHoursStorageKey, {})));
   }, [data.payrollHours, usingSupabase]);
 
   useEffect(() => () => {
@@ -1911,6 +2094,12 @@ function HoursTracker({ data, access }) {
             [school]: savedRecord,
           },
         }));
+        const savedNext = mergePayrollHourRecords(readJson(payrollHoursStorageKey, {}), {
+          [period]: {
+            [school]: savedRecord,
+          },
+        });
+        localStorage.setItem(payrollHoursStorageKey, JSON.stringify(savedNext));
         setSyncStatus("Saved to Supabase");
       })
       .catch((error) => {
@@ -1926,16 +2115,15 @@ function HoursTracker({ data, access }) {
     }
   }
 
-  function addStaffRow(staffId = staffOptions[0]?.id || "") {
+  function addStaffRow(staffId = "") {
     if (schoolLocked) return;
-    const person = staffOptions.find((staff) => staff.id === staffId) || staffOptions[0];
-    if (!person) return;
+    const person = staffOptions.find((staff) => staff.id === staffId || staff.profileId === staffId);
     const nextRow = {
       id: `hours-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      staffId: person.id,
-      staffName: person.name,
+      staffId: person?.id || "",
+      staffName: person?.name || "",
       hours: "",
-      rate: Number(person.payRate || 0),
+      rate: Number(person?.payRate || 0),
       notes: "",
     };
     saveRecord({ ...selectedRecord, rows: [...enteredRows, nextRow] }, "Payroll staff row added", { debounce: true });
@@ -1945,13 +2133,17 @@ function HoursTracker({ data, access }) {
     if (schoolLocked) return;
     const nextRows = enteredRows.map((row) => {
       if (row.id !== rowId) return row;
-      const staffId = patch.staffId || row.staffId;
+      const staffId = patch.staffId !== undefined ? patch.staffId : row.staffId;
       const person = data.staff.find((staff) => staff.id === staffId || staff.profileId === staffId);
       return {
         ...row,
         ...patch,
-        staffName: person?.name || row.staffName,
-        rate: patch.rate !== undefined ? Number(patch.rate || 0) : Number(person?.payRate ?? row.rate ?? 0),
+        staffName: patch.staffId !== undefined ? (person?.name || "") : (person?.name || row.staffName),
+        rate: patch.rate !== undefined
+          ? Number(patch.rate || 0)
+          : patch.staffId !== undefined
+            ? Number(person?.payRate || 0)
+            : Number(row.rate ?? person?.payRate ?? 0),
       };
     });
     saveRecord({ ...selectedRecord, rows: nextRows }, "Payroll hours autosaved", { debounce: true });
@@ -2058,18 +2250,19 @@ function HoursTracker({ data, access }) {
             <tbody>
               {enteredRows.length ? enteredRows.map((row) => {
                 const person = data.staff.find((staff) => staff.id === row.staffId || staff.profileId === row.staffId);
-                const rate = Number(person?.payRate ?? row.rate ?? 0);
+                const rate = Number(row.rate ?? person?.payRate ?? 0);
                 const gross = Number(row.hours || 0) * rate;
                 return (
                   <tr key={row.id}>
                     <td>
                       <select value={row.staffId || ""} onChange={(event) => updateRow(row.id, { staffId: event.target.value })} disabled={schoolLocked}>
-                        {staffOptions.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}{staff.assignedHere ? "" : " · cover"}</option>)}
+                        <option value="">Select staff member</option>
+                        {staffOptions.map((staff) => <option key={staff.id} value={staff.id}>{staffOptionLabel(staff)}{staff.assignedHere ? "" : " · cover"}</option>)}
                       </select>
                     </td>
-                    <td>{person ? staffPrimaryLocation(person) : "Unassigned"}</td>
-                    <td><input type="number" min="0" step="0.25" value={row.hours} onChange={(event) => updateRow(row.id, { hours: event.target.value })} aria-label={`${person?.name || row.staffName} paid hours`} disabled={schoolLocked} /></td>
-                    <td><input type="number" min="0" step="0.01" value={row.rate ?? rate} onChange={(event) => updateRow(row.id, { rate: event.target.value })} aria-label={`${person?.name || row.staffName} hourly rate`} disabled={schoolLocked} /></td>
+                    <td>{person ? staffPrimaryLocation(person) : "Choose staff"}</td>
+                    <td><input type="number" min="0" step="0.25" value={row.hours} onChange={(event) => updateRow(row.id, { hours: event.target.value })} aria-label={`${person?.name || row.staffName || "staff"} paid hours`} disabled={schoolLocked} /></td>
+                    <td><input type="number" min="0" step="0.01" value={row.rate ?? rate} onChange={(event) => updateRow(row.id, { rate: event.target.value })} aria-label={`${person?.name || row.staffName || "staff"} hourly rate`} disabled={schoolLocked} /></td>
                     <td><strong>{formatCurrency(gross)}</strong></td>
                     <td><input type="text" value={row.notes || ""} onChange={(event) => updateRow(row.id, { notes: event.target.value })} placeholder="Optional note" disabled={schoolLocked} /></td>
                     <td><button className="button subtle" type="button" onClick={() => removeRow(row.id)} disabled={schoolLocked}>Remove</button></td>
@@ -5691,6 +5884,7 @@ function iconFor(item) {
     Users: <Users />,
     HR: <Users />,
     "HR Files": <FileText />,
+    Schools: <LayoutDashboard />,
     Audit: <FileText />,
     Settings: <ShieldCheck />,
   };
