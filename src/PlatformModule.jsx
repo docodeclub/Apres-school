@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const hasSupabaseConfig = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 let supabaseModulePromise;
@@ -1827,6 +1827,7 @@ function HoursTracker({ data, access }) {
   const [school, setSchool] = useState(schoolOptions[0] || "");
   const [records, setRecords] = useState(() => usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {}));
   const [syncStatus, setSyncStatus] = useState("");
+  const remoteSaveRef = useRef({ timer: null, token: 0 });
   const selectedRecord = records[period]?.[school] || { rows: [], status: "Draft" };
   const staffOptions = data.staff
     .map((person) => ({ ...person, assignedHere: staffAssignedToSchool(person, school) }))
@@ -1837,7 +1838,7 @@ function HoursTracker({ data, access }) {
   const totalHours = enteredRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
   const totalGross = enteredRows.reduce((sum, row) => {
     const person = data.staff.find((staff) => staff.id === row.staffId || staff.profileId === row.staffId);
-    return sum + Number(row.hours || 0) * Number(person?.payRate || row.rate || 0);
+    return sum + Number(row.hours || 0) * Number(row.rate ?? person?.payRate ?? 0);
   }, 0);
   const periodRecords = Object.values(records[period] || {});
   const payrollReviewRows = schoolOptions.map((site) => {
@@ -1846,7 +1847,7 @@ function HoursTracker({ data, access }) {
     const hours = rows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
     const gross = rows.reduce((sum, row) => {
       const person = data.staff.find((staff) => staff.id === row.staffId || staff.profileId === row.staffId);
-      return sum + Number(row.hours || 0) * Number(person?.payRate || row.rate || 0);
+      return sum + Number(row.hours || 0) * Number(row.rate ?? person?.payRate ?? 0);
     }, 0);
     return {
       school: site,
@@ -1872,7 +1873,12 @@ function HoursTracker({ data, access }) {
     if (usingSupabase) setRecords(data.payrollHours || {});
   }, [data.payrollHours, usingSupabase]);
 
-  function saveRecord(nextRecord, action = "Payroll hours updated") {
+  useEffect(() => () => {
+    if (remoteSaveRef.current.timer) clearTimeout(remoteSaveRef.current.timer);
+  }, []);
+
+  function saveRecord(nextRecord, action = "Payroll hours updated", options = {}) {
+    const { debounce = false } = options;
     const recordToSave = {
       ...nextRecord,
       updatedAt: new Date().toISOString(),
@@ -1889,10 +1895,15 @@ function HoursTracker({ data, access }) {
     setRecords(next);
     addAuditLog(action, `${formatPayrollPeriod(period)} · ${school}`);
     if (!usingSupabase) return;
-    setSyncStatus("Saving to Supabase...");
-    loadSupabaseModule()
+    const saveToken = remoteSaveRef.current.token + 1;
+    remoteSaveRef.current.token = saveToken;
+    if (remoteSaveRef.current.timer) clearTimeout(remoteSaveRef.current.timer);
+    const remoteSave = () => {
+      setSyncStatus("Saving to Supabase...");
+      loadSupabaseModule()
       .then(({ savePayrollHourRecord }) => savePayrollHourRecord({ period, school, record: recordToSave, action }))
       .then((savedRecord) => {
+        if (remoteSaveRef.current.token !== saveToken) return;
         setRecords((current) => ({
           ...current,
           [period]: {
@@ -1903,8 +1914,16 @@ function HoursTracker({ data, access }) {
         setSyncStatus("Saved to Supabase");
       })
       .catch((error) => {
+        if (remoteSaveRef.current.token !== saveToken) return;
         setSyncStatus(`Supabase save failed: ${error.message || "check SQL permissions"}`);
       });
+    };
+    if (debounce) {
+      setSyncStatus("Saved locally · syncing shortly");
+      remoteSaveRef.current.timer = setTimeout(remoteSave, 700);
+    } else {
+      remoteSave();
+    }
   }
 
   function addStaffRow(staffId = staffOptions[0]?.id || "") {
@@ -1919,7 +1938,7 @@ function HoursTracker({ data, access }) {
       rate: Number(person.payRate || 0),
       notes: "",
     };
-    saveRecord({ ...selectedRecord, rows: [...enteredRows, nextRow] }, "Payroll staff row added");
+    saveRecord({ ...selectedRecord, rows: [...enteredRows, nextRow] }, "Payroll staff row added", { debounce: true });
   }
 
   function updateRow(rowId, patch) {
@@ -1932,15 +1951,15 @@ function HoursTracker({ data, access }) {
         ...row,
         ...patch,
         staffName: person?.name || row.staffName,
-        rate: Number(person?.payRate ?? row.rate ?? 0),
+        rate: patch.rate !== undefined ? Number(patch.rate || 0) : Number(person?.payRate ?? row.rate ?? 0),
       };
     });
-    saveRecord({ ...selectedRecord, rows: nextRows }, "Payroll hours edited");
+    saveRecord({ ...selectedRecord, rows: nextRows }, "Payroll hours autosaved", { debounce: true });
   }
 
   function removeRow(rowId) {
     if (schoolLocked) return;
-    saveRecord({ ...selectedRecord, rows: enteredRows.filter((row) => row.id !== rowId) }, "Payroll staff row removed");
+    saveRecord({ ...selectedRecord, rows: enteredRows.filter((row) => row.id !== rowId) }, "Payroll staff row removed", { debounce: true });
   }
 
   function submitMonth() {
@@ -2050,7 +2069,7 @@ function HoursTracker({ data, access }) {
                     </td>
                     <td>{person ? staffPrimaryLocation(person) : "Unassigned"}</td>
                     <td><input type="number" min="0" step="0.25" value={row.hours} onChange={(event) => updateRow(row.id, { hours: event.target.value })} aria-label={`${person?.name || row.staffName} paid hours`} disabled={schoolLocked} /></td>
-                    <td>{rate ? `${formatCurrency(rate)}/hr` : "No rate"}</td>
+                    <td><input type="number" min="0" step="0.01" value={row.rate ?? rate} onChange={(event) => updateRow(row.id, { rate: event.target.value })} aria-label={`${person?.name || row.staffName} hourly rate`} disabled={schoolLocked} /></td>
                     <td><strong>{formatCurrency(gross)}</strong></td>
                     <td><input type="text" value={row.notes || ""} onChange={(event) => updateRow(row.id, { notes: event.target.value })} placeholder="Optional note" disabled={schoolLocked} /></td>
                     <td><button className="button subtle" type="button" onClick={() => removeRow(row.id)} disabled={schoolLocked}>Remove</button></td>
@@ -3747,7 +3766,7 @@ function Pay({ data, access }) {
       .filter((row) => row.staffId === person.id || row.staffId === person.profileId)
       .map((row) => ({ ...row, schoolName, status: record.status || "Draft" })));
     const hours = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
-    const hourlyGross = hours * Number(person.payRate || 0);
+    const hourlyGross = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? person.payRate ?? 0), 0);
     const monthlySalary = monthlySalaryFromAnnual(person.annualSalary);
     const gross = monthlySalary + hourlyGross;
     const adjustment = currentRun.adjustments?.[person.id] || {};
