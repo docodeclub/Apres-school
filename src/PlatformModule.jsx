@@ -1772,6 +1772,8 @@ function HoursTracker({ data, access }) {
     .map((person) => ({ ...person, assignedHere: staffAssignedToSchool(person, school) }))
     .sort((a, b) => Number(b.assignedHere) - Number(a.assignedHere) || String(a.name || "").localeCompare(String(b.name || "")));
   const enteredRows = selectedRecord.rows || [];
+  const canUnlockPayroll = access?.role === "Superadmin";
+  const schoolLocked = selectedRecord.status === "Approved";
   const totalHours = enteredRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
   const totalGross = enteredRows.reduce((sum, row) => {
     const person = data.staff.find((staff) => staff.id === row.staffId || staff.profileId === row.staffId);
@@ -1846,6 +1848,7 @@ function HoursTracker({ data, access }) {
   }
 
   function addStaffRow(staffId = staffOptions[0]?.id || "") {
+    if (schoolLocked) return;
     const person = staffOptions.find((staff) => staff.id === staffId) || staffOptions[0];
     if (!person) return;
     const nextRow = {
@@ -1860,6 +1863,7 @@ function HoursTracker({ data, access }) {
   }
 
   function updateRow(rowId, patch) {
+    if (schoolLocked) return;
     const nextRows = enteredRows.map((row) => {
       if (row.id !== rowId) return row;
       const staffId = patch.staffId || row.staffId;
@@ -1875,10 +1879,12 @@ function HoursTracker({ data, access }) {
   }
 
   function removeRow(rowId) {
+    if (schoolLocked) return;
     saveRecord({ ...selectedRecord, rows: enteredRows.filter((row) => row.id !== rowId) }, "Payroll staff row removed");
   }
 
   function submitMonth() {
+    if (schoolLocked) return;
     saveRecord({
       ...selectedRecord,
       rows: enteredRows.map((row) => ({ ...row, hours: Number(row.hours || 0) })),
@@ -1889,6 +1895,7 @@ function HoursTracker({ data, access }) {
   }
 
   function approveSchoolMonth() {
+    if (schoolLocked) return;
     saveRecord({
       ...selectedRecord,
       rows: enteredRows.map((row) => ({ ...row, hours: Number(row.hours || 0) })),
@@ -1896,6 +1903,16 @@ function HoursTracker({ data, access }) {
       approvedAt: new Date().toISOString(),
       approvedBy: access?.currentUser?.email || access?.currentUser?.name || "Admin",
     }, "Payroll school month approved");
+  }
+
+  function unlockSchoolMonth() {
+    if (!canUnlockPayroll || !schoolLocked) return;
+    saveRecord({
+      ...selectedRecord,
+      status: "Submitted",
+      unlockedAt: new Date().toISOString(),
+      unlockedBy: access?.currentUser?.email || access?.currentUser?.name || "Superadmin",
+    }, "Payroll school month unlocked");
   }
 
   if (!isAdmin) {
@@ -1948,9 +1965,13 @@ function HoursTracker({ data, access }) {
           <div>
             <Badge value={selectedRecord.status || "Draft"} />
             {selectedRecord.submittedAt && <small>Submitted {formatShortDate(selectedRecord.submittedAt)} by {selectedRecord.submittedBy || "admin"}</small>}
+            {schoolLocked && <small>Approved records are locked for payroll. {canUnlockPayroll ? "Unlock this school to make a correction." : "Ask a Superadmin to unlock corrections."}</small>}
             {syncStatus && <small>{syncStatus}</small>}
           </div>
-          <button className="button light" type="button" onClick={() => addStaffRow()}>Add staff member</button>
+          <div className="payroll-submit-actions">
+            {canUnlockPayroll && schoolLocked && <button className="button subtle" type="button" onClick={unlockSchoolMonth}>Unlock school</button>}
+            <button className="button light" type="button" onClick={() => addStaffRow()} disabled={schoolLocked}>Add staff member</button>
+          </div>
         </div>
         <TableWrap>
           <table>
@@ -1963,16 +1984,16 @@ function HoursTracker({ data, access }) {
                 return (
                   <tr key={row.id}>
                     <td>
-                      <select value={row.staffId || ""} onChange={(event) => updateRow(row.id, { staffId: event.target.value })}>
+                      <select value={row.staffId || ""} onChange={(event) => updateRow(row.id, { staffId: event.target.value })} disabled={schoolLocked}>
                         {staffOptions.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}{staff.assignedHere ? "" : " · cover"}</option>)}
                       </select>
                     </td>
                     <td>{person ? staffPrimaryLocation(person) : "Unassigned"}</td>
-                    <td><input type="number" min="0" step="0.25" value={row.hours} onChange={(event) => updateRow(row.id, { hours: event.target.value })} aria-label={`${person?.name || row.staffName} paid hours`} /></td>
+                    <td><input type="number" min="0" step="0.25" value={row.hours} onChange={(event) => updateRow(row.id, { hours: event.target.value })} aria-label={`${person?.name || row.staffName} paid hours`} disabled={schoolLocked} /></td>
                     <td>{rate ? `${formatCurrency(rate)}/hr` : "No rate"}</td>
                     <td><strong>{formatCurrency(gross)}</strong></td>
-                    <td><input type="text" value={row.notes || ""} onChange={(event) => updateRow(row.id, { notes: event.target.value })} placeholder="Optional note" /></td>
-                    <td><button className="button subtle" type="button" onClick={() => removeRow(row.id)}>Remove</button></td>
+                    <td><input type="text" value={row.notes || ""} onChange={(event) => updateRow(row.id, { notes: event.target.value })} placeholder="Optional note" disabled={schoolLocked} /></td>
+                    <td><button className="button subtle" type="button" onClick={() => removeRow(row.id)} disabled={schoolLocked}>Remove</button></td>
                   </tr>
                 );
               }) : (
@@ -1984,8 +2005,8 @@ function HoursTracker({ data, access }) {
         <div className="payroll-submit-row">
           <p>Submitting creates the monthly hours record used by payroll. Approving confirms this school is ready for the monthly payroll run.</p>
           <div className="payroll-submit-actions">
-            <button className="button light" type="button" onClick={submitMonth} disabled={!enteredRows.length}>Submit month</button>
-            <button className="button primary" type="button" onClick={approveSchoolMonth} disabled={!enteredRows.length || selectedRecord.status === "Approved"}>Approve school</button>
+            <button className="button light" type="button" onClick={submitMonth} disabled={!enteredRows.length || schoolLocked}>Submit month</button>
+            <button className="button primary" type="button" onClick={approveSchoolMonth} disabled={!enteredRows.length || schoolLocked}>Approve school</button>
           </div>
         </div>
       </Panel>
@@ -3659,6 +3680,7 @@ function Pay({ data, access }) {
   const isAdmin = ["Admin", "Superadmin"].includes(access?.role);
   const canMarkPaid = access?.role === "Superadmin";
   const currentRun = runs[period] || { status: "Draft", adjustments: {} };
+  const runLocked = currentRun.status === "Paid";
   const staffIds = new Set(data.staff.map((person) => person.id));
   const payrollRows = data.staff.map((person) => {
     const schoolRows = Object.entries(periodRecords).flatMap(([schoolName, record]) => (record.rows || [])
@@ -3715,6 +3737,7 @@ function Pay({ data, access }) {
   }
 
   function updateAdjustment(staffId, patch) {
+    if (runLocked) return;
     const nextAdjustment = {
       ...(currentRun.adjustments?.[staffId] || {}),
       ...patch,
@@ -3729,6 +3752,7 @@ function Pay({ data, access }) {
   }
 
   function setRunStatus(status) {
+    if (runLocked) return;
     const timestampKey = status === "Reviewed" ? "reviewedAt" : status === "Approved" ? "approvedAt" : "paidAt";
     saveRun({
       ...currentRun,
@@ -3736,6 +3760,16 @@ function Pay({ data, access }) {
       [timestampKey]: new Date().toISOString(),
       [`${status.toLowerCase()}By`]: access?.currentUser?.email || access?.currentUser?.name || "Admin",
     }, `Payroll ${status.toLowerCase()}`);
+  }
+
+  function unlockPayrollRun() {
+    if (!canMarkPaid || !runLocked) return;
+    saveRun({
+      ...currentRun,
+      status: "Approved",
+      unlockedAt: new Date().toISOString(),
+      unlockedBy: access?.currentUser?.email || access?.currentUser?.name || "Superadmin",
+    }, "Payroll run unlocked");
   }
 
   function exportPayroll() {
@@ -3789,12 +3823,14 @@ function Pay({ data, access }) {
             <div>
               <Badge value={currentRun.status || "Draft"} />
               <p>Net payroll is {formatCurrency(totalNet)} from {totalHours.toFixed(2)} approved hours, {formatCurrency(totalExpenses)} expenses and {formatCurrency(totalDeductions)} deductions.</p>
+              {runLocked && <p className="panel-note">This paid payroll run is locked. {canMarkPaid ? "Unlock it only if a correction is needed." : "A Superadmin must unlock it before changes can be made."}</p>}
               {syncStatus && <p>{syncStatus}</p>}
             </div>
             <div className="payroll-run-actions">
-              <button className="button light" type="button" onClick={() => setRunStatus("Reviewed")} disabled={!payrollReady}>Mark reviewed</button>
-              <button className="button light" type="button" onClick={() => setRunStatus("Approved")} disabled={!payrollReady || currentRun.status === "Paid"}>Approve payroll</button>
-              <button className="button primary" type="button" onClick={() => setRunStatus("Paid")} disabled={!payrollReady || !canMarkPaid || currentRun.status !== "Approved"}>Mark paid</button>
+              {canMarkPaid && runLocked && <button className="button subtle" type="button" onClick={unlockPayrollRun}>Unlock run</button>}
+              <button className="button light" type="button" onClick={() => setRunStatus("Reviewed")} disabled={!payrollReady || runLocked}>Mark reviewed</button>
+              <button className="button light" type="button" onClick={() => setRunStatus("Approved")} disabled={!payrollReady || runLocked}>Approve payroll</button>
+              <button className="button primary" type="button" onClick={() => setRunStatus("Paid")} disabled={!payrollReady || !canMarkPaid || currentRun.status !== "Approved" || runLocked}>Mark paid</button>
               <button className="button subtle" type="button" onClick={exportPayroll} disabled={!payrollReady}>Export CSV</button>
             </div>
           </div>
@@ -3825,11 +3861,11 @@ function Pay({ data, access }) {
                   <td><strong>{row.hours.toFixed(2)}</strong></td>
                   <td>{row.payRate ? `${formatCurrency(row.payRate)}/hr` : "No rate"}</td>
                   <td>{formatCurrency(row.gross)}</td>
-                  <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.expenses || ""} onChange={(event) => updateAdjustment(row.id, { expenses: event.target.value })} aria-label={`${row.name} expenses`} /> : formatCurrency(row.expenses)}</td>
-                  <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.deductions || ""} onChange={(event) => updateAdjustment(row.id, { deductions: event.target.value })} aria-label={`${row.name} deductions`} /> : formatCurrency(row.deductions)}</td>
+                  <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.expenses || ""} onChange={(event) => updateAdjustment(row.id, { expenses: event.target.value })} aria-label={`${row.name} expenses`} disabled={runLocked} /> : formatCurrency(row.expenses)}</td>
+                  <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.deductions || ""} onChange={(event) => updateAdjustment(row.id, { deductions: event.target.value })} aria-label={`${row.name} deductions`} disabled={runLocked} /> : formatCurrency(row.deductions)}</td>
                   <td><strong>{formatCurrency(net)}</strong></td>
                   <td><Badge value={submittedEntries.length ? "Ready to upload" : "Pending hours"} /></td>
-                  {isAdmin && <td><input type="text" value={row.payrollNote} onChange={(event) => updateAdjustment(row.id, { note: event.target.value })} placeholder="Private payroll note" /></td>}
+                  {isAdmin && <td><input type="text" value={row.payrollNote} onChange={(event) => updateAdjustment(row.id, { note: event.target.value })} placeholder="Private payroll note" disabled={runLocked} /></td>}
                 </tr>
               );
             })}
