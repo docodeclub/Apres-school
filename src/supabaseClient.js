@@ -175,7 +175,15 @@ export async function fetchPlatformData({ userId, role }) {
     `)
     .order("payroll_period", { ascending: false });
 
-  const [staffResult, sessionsResult, documentsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult] = await Promise.all([
+  const payrollAuditQuery = normalizeRole(role) === "Staff"
+    ? Promise.resolve({ data: [], error: null })
+    : supabase
+        .from("payroll_audit_events")
+        .select("id, payroll_period, school_name, action, detail, actor_id, metadata, created_at, profiles(full_name, email)")
+        .order("created_at", { ascending: false })
+        .limit(120);
+
+  const [staffResult, sessionsResult, documentsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult] = await Promise.all([
     staffQuery,
     sessionsQuery,
     documentsQuery,
@@ -184,6 +192,7 @@ export async function fetchPlatformData({ userId, role }) {
     hrCategoriesQuery,
     payrollHoursQuery,
     payrollRunsQuery,
+    payrollAuditQuery,
   ]);
 
   const firstError = [staffResult.error, sessionsResult.error, documentsResult.error, enquiriesResult.error].find(Boolean);
@@ -203,6 +212,7 @@ export async function fetchPlatformData({ userId, role }) {
     hrFileCategories: hrCategoriesResult.error ? [] : hrCategoriesResult.data || [],
     payrollHours: payrollHoursResult.error ? {} : mapPayrollHours(payrollHoursResult.data || []),
     payrollRuns: payrollRunsResult.error ? {} : mapPayrollRuns(payrollRunsResult.data || []),
+    payrollAudit: payrollAuditResult.error ? [] : mapPayrollAudit(payrollAuditResult.data || []),
   };
 }
 
@@ -378,11 +388,45 @@ function mapPayrollRuns(records) {
   }, {});
 }
 
+function mapPayrollAudit(records) {
+  return records.map((record) => {
+    const profile = Array.isArray(record.profiles) ? record.profiles[0] : record.profiles;
+    return {
+      id: record.id,
+      period: record.payroll_period,
+      school: record.school_name || "",
+      action: record.action,
+      detail: record.detail || "",
+      actor: profile?.full_name || profile?.email || "Admin",
+      actorEmail: profile?.email || "",
+      createdAt: record.created_at,
+      metadata: record.metadata || {},
+    };
+  });
+}
+
 function isUuid(value) {
   return /^[0-9a-f-]{36}$/i.test(String(value || ""));
 }
 
-export async function savePayrollHourRecord({ period, school, record }) {
+async function recordPayrollAudit({ period, school = null, action, detail = "", metadata = {}, actorId = null }) {
+  if (!supabase || !period || !action) return;
+  const { error } = await supabase
+    .from("payroll_audit_events")
+    .insert({
+      payroll_period: period,
+      school_name: school,
+      action,
+      detail,
+      actor_id: actorId,
+      metadata,
+    });
+  if (error) {
+    console.warn("Payroll audit event failed", error);
+  }
+}
+
+export async function savePayrollHourRecord({ period, school, record, action = "Payroll hours updated" }) {
   if (!supabase) throw new Error("Supabase is not configured.");
   if (!period || !school) throw new Error("Choose a payroll month and school.");
 
@@ -429,6 +473,19 @@ export async function savePayrollHourRecord({ period, school, record }) {
     if (rowsError) throw rowsError;
   }
 
+  await recordPayrollAudit({
+    period,
+    school,
+    action,
+    detail: `${school} · ${rows.length} staff · ${rows.reduce((sum, row) => sum + Number(row.hours || 0), 0).toFixed(2)} hours`,
+    actorId: userId,
+    metadata: {
+      status,
+      staffCount: rows.length,
+      totalHours: rows.reduce((sum, row) => sum + Number(row.hours || 0), 0),
+    },
+  });
+
   return {
     id: savedRecord.id,
     status: savedRecord.status,
@@ -439,7 +496,7 @@ export async function savePayrollHourRecord({ period, school, record }) {
   };
 }
 
-export async function savePayrollRun({ period, run }) {
+export async function savePayrollRun({ period, run, action = "Payroll run updated" }) {
   if (!supabase) throw new Error("Supabase is not configured.");
   if (!period) throw new Error("Choose a payroll month.");
 
@@ -487,6 +544,17 @@ export async function savePayrollRun({ period, run }) {
       })));
     if (adjustmentsError) throw adjustmentsError;
   }
+
+  await recordPayrollAudit({
+    period,
+    action,
+    detail: `${status} · ${adjustmentEntries.length} adjustment${adjustmentEntries.length === 1 ? "" : "s"}`,
+    actorId: userId,
+    metadata: {
+      status,
+      adjustmentCount: adjustmentEntries.length,
+    },
+  });
 
   return {
     id: savedRun.id,

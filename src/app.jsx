@@ -48,6 +48,7 @@ async function loadMockPlatformData() {
     rewards,
     payrollHours: {},
     payrollRuns: {},
+    payrollAudit: [],
     source: "Demo data",
     loading: false,
     error: "",

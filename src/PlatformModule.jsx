@@ -1829,7 +1829,7 @@ function HoursTracker({ data, access }) {
     if (!usingSupabase) return;
     setSyncStatus("Saving to Supabase...");
     loadSupabaseModule()
-      .then(({ savePayrollHourRecord }) => savePayrollHourRecord({ period, school, record: recordToSave }))
+      .then(({ savePayrollHourRecord }) => savePayrollHourRecord({ period, school, record: recordToSave, action }))
       .then((savedRecord) => {
         setRecords((current) => ({
           ...current,
@@ -1937,6 +1937,12 @@ function HoursTracker({ data, access }) {
         </div>
         <p className="panel-note">{periodApproved}/{schoolOptions.length || 0} sites approved. Use each card to check the school month before approving the payroll run.</p>
       </Panel>
+      <PayrollAuditTrail
+        events={data.payrollAudit}
+        period={period}
+        school={school}
+        title={`${formatPayrollPeriod(period)} Payroll Audit`}
+      />
       <Panel title={`${school || "School"} · ${formatPayrollPeriod(period)}`}>
         <div className="payroll-record-head">
           <div>
@@ -3698,7 +3704,7 @@ function Pay({ data, access }) {
     if (!usingSupabase) return;
     setSyncStatus("Saving payroll run to Supabase...");
     loadSupabaseModule()
-      .then(({ savePayrollRun }) => savePayrollRun({ period, run: runToSave }))
+      .then(({ savePayrollRun }) => savePayrollRun({ period, run: runToSave, action }))
       .then((savedRun) => {
         setRuns((current) => ({ ...current, [period]: savedRun }));
         setSyncStatus("Payroll run saved to Supabase");
@@ -3795,6 +3801,7 @@ function Pay({ data, access }) {
           {!canMarkPaid && <p className="panel-note">Only Superadmin can mark a payroll run as paid.</p>}
         </Panel>
       )}
+      {isAdmin && <PayrollAuditTrail events={data.payrollAudit} period={period} title={`${formatPayrollPeriod(period)} Payroll Audit`} />}
       <Panel title={`${formatPayrollPeriod(period)} Pay`}>
         {isAdmin && (
           <div className="payroll-table-controls">
@@ -3849,6 +3856,35 @@ function Pay({ data, access }) {
         {!payrollRows.some((row) => staffIds.has(row.id) && row.hours > 0) && <p className="panel-note">No payroll hours have been submitted for this month yet.</p>}
       </Panel>
     </div>
+  );
+}
+
+function PayrollAuditTrail({ events = [], period, school = "", title = "Payroll Audit" }) {
+  const filtered = (events || [])
+    .filter((event) => event.period === period)
+    .filter((event) => !school || !event.school || event.school === school)
+    .slice(0, 8);
+
+  return (
+    <Panel title={title}>
+      <div className="payroll-audit-list">
+        {filtered.length ? filtered.map((event) => (
+          <article className="payroll-audit-item" key={event.id}>
+            <div>
+              <Badge value={event.school || "Run"} />
+              <strong>{event.action}</strong>
+              <p>{event.detail || "Payroll record updated."}</p>
+            </div>
+            <small>{event.actor} · {formatShortDate(event.createdAt?.slice(0, 10))}</small>
+          </article>
+        )) : (
+          <article className="empty-row">
+            <strong>No payroll audit events yet.</strong>
+            <p>Edits, submissions, approvals and paid-status changes will appear here.</p>
+          </article>
+        )}
+      </div>
+    </Panel>
   );
 }
 

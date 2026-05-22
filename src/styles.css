@@ -6664,6 +6664,49 @@ label {
   line-height: 1.4;
 }
 
+.payroll-audit-list {
+  display: grid;
+  gap: 10px;
+}
+
+.payroll-audit-item,
+.empty-row {
+  align-items: center;
+  background: #f8fbff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 14px;
+}
+
+.payroll-audit-item > div {
+  display: grid;
+  gap: 7px;
+}
+
+.payroll-audit-item strong,
+.empty-row strong {
+  color: var(--ink);
+}
+
+.payroll-audit-item p,
+.empty-row p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.payroll-audit-item small {
+  color: var(--muted);
+  font-weight: 800;
+  text-align: right;
+}
+
+.empty-row {
+  grid-template-columns: 1fr;
+}
+
 .payroll-run-console {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -8412,6 +8455,7 @@ th {
   .payroll-record-head,
   .payroll-submit-row,
   .payroll-submit-actions,
+  .payroll-audit-item,
   .payroll-table-controls,
   .payroll-run-console {
     align-items: stretch;
