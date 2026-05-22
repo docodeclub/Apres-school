@@ -4210,16 +4210,27 @@ function Pay({ data, access, onOpenTab }) {
     }, "Payroll run unlocked");
   }
 
-  function exportPayroll() {
+  function payrollExportScopeLabel() {
+    const filterLabel = payrollFilterOptions.find(([value]) => value === payrollFilter)?.[1] || "Filtered";
+    return payrollQuery.trim() ? `${filterLabel} search` : filterLabel;
+  }
+
+  function safePayrollFilePart(value) {
+    return String(value || "payroll").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "payroll";
+  }
+
+  function exportPayroll(rowsToExport = payrollRows, scopeLabel = "full payroll") {
     const rows = [
-      ["Period", "Run status", "Staff", "Email", "Schools", "Additional hours", "Hourly rate", "Hourly gross", "Annual salary", "Monthly salary", "Gross", "Expenses", "Deductions", "Net", "Payslip status", "Notes"],
-      ...payrollRows.map((row) => {
+      ["Period", "Run status", "Export scope", "Staff", "Email", "Schools", "Additional hours", "Hourly rate", "Hourly gross", "Annual salary", "Monthly salary", "Gross", "Expenses", "Deductions", "Net", "Payslip status", "Payslip count", "Notes"],
+      ...rowsToExport.map((row) => {
         const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName))).join("; ");
         const submittedEntries = row.payrollEntries.filter((entry) => ["Submitted", "Approved"].includes(entry.status));
         const net = row.gross + row.expenses - row.deductions;
+        const payslipStatus = row.payslips.length ? "Uploaded" : submittedEntries.length ? "Ready to upload" : "Pending hours";
         return [
           formatPayrollPeriod(period),
           currentRun.status || "Draft",
+          scopeLabel,
           row.name,
           row.email || "",
           schools || "No hours submitted",
@@ -4232,13 +4243,14 @@ function Pay({ data, access, onOpenTab }) {
           row.expenses.toFixed(2),
           row.deductions.toFixed(2),
           net.toFixed(2),
-          submittedEntries.length ? "Ready to upload" : "Pending hours",
+          payslipStatus,
+          row.payslips.length,
           row.payrollNote || "",
         ];
       }),
     ];
-    downloadCsv(`apres-payroll-${period}.csv`, rows);
-    addAuditLog("Payroll exported", formatPayrollPeriod(period));
+    downloadCsv(`apres-payroll-${period}-${safePayrollFilePart(scopeLabel)}.csv`, rows);
+    addAuditLog(scopeLabel === "full payroll" ? "Payroll exported" : "Payroll filtered export", `${formatPayrollPeriod(period)} · ${scopeLabel} · ${rowsToExport.length} staff`);
   }
 
   async function uploadPayslip(person, file) {
@@ -4336,7 +4348,7 @@ function Pay({ data, access, onOpenTab }) {
               <button className="button light" type="button" onClick={() => setRunStatus("Reviewed")} disabled={!payrollReady || runLocked}>Mark reviewed</button>
               <button className="button light" type="button" onClick={() => setRunStatus("Approved")} disabled={!payrollReady || runLocked}>Approve payroll</button>
               <button className="button primary" type="button" onClick={() => setRunStatus("Paid")} disabled={!payrollReady || !canMarkPaid || currentRun.status !== "Approved" || runLocked}>Mark paid</button>
-              <button className="button subtle" type="button" onClick={exportPayroll} disabled={!payrollReady}>Export CSV</button>
+              <button className="button subtle" type="button" onClick={() => exportPayroll(payrollRows, "full payroll")} disabled={!payrollReady}>Export full CSV</button>
             </div>
           </div>
           {!canMarkPaid && <p className="panel-note">Only Superadmin can mark a payroll run as paid.</p>}
@@ -4355,6 +4367,7 @@ function Pay({ data, access, onOpenTab }) {
               <label>View<select value={payrollFilter} onChange={(event) => setPayrollFilter(event.target.value)}>
                 {payrollFilterOptions.map(([value, label]) => <option key={value} value={value}>{label} ({filterCounts[value] || 0})</option>)}
               </select></label>
+              <button className="button light" type="button" disabled={!visiblePayrollRows.length} onClick={() => exportPayroll(visiblePayrollRows, payrollExportScopeLabel())}>Export shown</button>
               <button className="button subtle" type="button" disabled={!payrollQuery && payrollFilter === "pay-due"} onClick={() => { setPayrollQuery(""); setPayrollFilter("pay-due"); }}>Reset</button>
             </div>
           </div>

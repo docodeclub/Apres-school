@@ -6823,7 +6823,7 @@ label {
   align-items: end;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(180px, 1fr) minmax(170px, 0.75fr) auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(170px, 0.75fr) auto auto;
 }
 
 .payroll-filter-controls label {
