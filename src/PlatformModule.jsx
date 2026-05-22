@@ -4324,6 +4324,12 @@ function Pay({ data, access, onOpenTab }) {
     addAuditLog(scopeLabel === "full payroll" ? "Payroll exported" : "Payroll filtered export", `${formatPayrollPeriod(period)} · ${scopeLabel} · ${rowsToExport.length} staff`);
   }
 
+  async function exportPayrollPdf() {
+    const { exportPayrollSummary } = await import("./pdfExports.js");
+    exportPayrollSummary(payrollRows, period, currentRun);
+    addAuditLog("Payroll PDF exported", formatPayrollPeriod(period));
+  }
+
   async function uploadPayslip(person, file) {
     if (!isAdmin || !person?.id || !file) return;
     const payslipCategory = (data.hrFileCategories || []).find((category) => String(category.name || "").toLowerCase().includes("payslip"))
@@ -4440,6 +4446,7 @@ function Pay({ data, access, onOpenTab }) {
               <button className="button light" type="button" onClick={() => setRunStatus("Approved")} disabled={!payrollReady || runLocked}>Approve payroll</button>
               <button className="button primary" type="button" onClick={() => setRunStatus("Paid")} disabled={!payrollReady || !canMarkPaid || currentRun.status !== "Approved" || runLocked || payrollCloseBlockers.length > 0}>Mark paid</button>
               <button className="button subtle" type="button" onClick={() => exportPayroll(payrollRows, "full payroll")} disabled={!payrollReady}>Export full CSV</button>
+              <button className="button subtle" type="button" onClick={exportPayrollPdf} disabled={!payrollReady}>Export PDF</button>
             </div>
           </div>
           <div className={`payroll-close-warnings${payrollCloseBlockers.length ? " has-blockers" : ""}`}>

@@ -36,6 +36,21 @@ function slug(value) {
   return clean(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "record";
 }
 
+function money(value) {
+  return `GBP ${Number(value || 0).toFixed(2)}`;
+}
+
+function formatPeriod(period) {
+  if (!period || !/^\d{4}-\d{2}$/.test(String(period))) return clean(period || "Payroll period");
+  const [year, month] = String(period).split("-");
+  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+
+function formatDate(value) {
+  if (!value) return "Not recorded";
+  return new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 class PdfDoc {
   constructor(title) {
     this.title = clean(title);
@@ -411,4 +426,98 @@ export function exportSchoolAssuranceLetter(staff = [], schoolName = "Partner Sc
   doc.line(160, 770, 360, 770, MUTED);
   doc.text(`Date: ${dateStamp()}`, PAGE.margin, 800, 9, MUTED);
   downloadPdf(`apres-school-assurance-${slug(schoolName)}-${fileStamp()}.pdf`, doc);
+}
+
+export function exportPayrollSummary(rows = [], period = "", run = {}, options = {}) {
+  const payrollRows = Array.isArray(rows) ? rows : [];
+  const periodLabel = formatPeriod(period);
+  const totalHours = payrollRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
+  const totalGross = payrollRows.reduce((sum, row) => sum + Number(row.gross || 0), 0);
+  const totalExpenses = payrollRows.reduce((sum, row) => sum + Number(row.expenses || 0), 0);
+  const totalDeductions = payrollRows.reduce((sum, row) => sum + Number(row.deductions || 0), 0);
+  const totalNet = totalGross + totalExpenses - totalDeductions;
+  const staffToPay = payrollRows.filter((row) => Number(row.hours || 0) > 0 || Number(row.monthlySalary || 0) > 0);
+  const payslipsUploaded = staffToPay.filter((row) => (row.payslips || []).length > 0).length;
+  const doc = new PdfDoc(`${periodLabel} Payroll Summary`).addPage();
+  doc.pageHeader("Payroll Summary", `Period: ${periodLabel}`);
+  doc.text(`${periodLabel} Payroll Summary`, PAGE.margin, 116, 20, BLUE);
+  let y = doc.wrap("Internal payroll record generated from Apres School payroll data. Check live records before submitting payment externally.", PAGE.margin, 142, 500, 9.5, MUTED);
+
+  const kpiY = y + 16;
+  doc.kpi("Staff due pay", String(staffToPay.length), PAGE.margin, kpiY, 116);
+  doc.kpi("Paid hours", totalHours.toFixed(2), 171, kpiY, 116);
+  doc.kpi("Gross payroll", money(totalGross), 300, kpiY, 116);
+  doc.kpi("Net payroll", money(totalNet), 429, kpiY, 124);
+
+  y = kpiY + 92;
+  doc.sectionTitle("Run Status", PAGE.margin, y);
+  y = doc.table(
+    ["Status", "Reviewed", "Approved", "Paid", "Payslips"],
+    [[
+      run.status || "Draft",
+      run.reviewedAt ? formatDate(run.reviewedAt) : "Not reviewed",
+      run.approvedAt ? formatDate(run.approvedAt) : "Not approved",
+      run.paidAt ? formatDate(run.paidAt) : "Not paid",
+      `${payslipsUploaded}/${staffToPay.length} uploaded`,
+    ]],
+    PAGE.margin,
+    y + 18,
+    [82, 105, 105, 105, 113],
+    { rowHeight: 34 },
+  );
+
+  y += 32;
+  doc.sectionTitle("Financial Totals", PAGE.margin, y);
+  y = doc.table(
+    ["Gross", "Expenses", "Deductions", "Net"],
+    [[money(totalGross), money(totalExpenses), money(totalDeductions), money(totalNet)]],
+    PAGE.margin,
+    y + 18,
+    [128, 128, 128, 126],
+    { rowHeight: 34 },
+  );
+
+  const exportRows = payrollRows
+    .filter((row) => options.includeAllStaff || Number(row.hours || 0) > 0 || Number(row.monthlySalary || 0) > 0)
+    .map((row) => {
+      const net = Number(row.gross || 0) + Number(row.expenses || 0) - Number(row.deductions || 0);
+      const schools = Array.from(new Set((row.payrollEntries || []).map((entry) => entry.schoolName).filter(Boolean))).join(", ");
+      return [
+        row.name || "Staff",
+        schools || "Salary / no site hours",
+        Number(row.hours || 0).toFixed(2),
+        money(row.gross || 0),
+        money(net),
+        (row.payslips || []).length ? "Uploaded" : "Missing",
+      ];
+    });
+
+  const chunks = [];
+  for (let index = 0; index < exportRows.length; index += 17) chunks.push(exportRows.slice(index, index + 17));
+  chunks.forEach((chunk, index) => {
+    if (index === 0) {
+      y += 34;
+    } else {
+      doc.addPage();
+      doc.pageHeader("Payroll Summary", `Period: ${periodLabel}`);
+      y = 116;
+    }
+    doc.sectionTitle(index === 0 ? "Staff Payroll Rows" : "Staff Payroll Rows Continued", PAGE.margin, y);
+    y = doc.table(
+      ["Staff", "Schools", "Hours", "Gross", "Net", "Payslip"],
+      chunk,
+      PAGE.margin,
+      y + 18,
+      [105, 125, 52, 78, 78, 72],
+      { rowHeight: 34 },
+    );
+  });
+
+  if (!exportRows.length) {
+    y += 34;
+    doc.wrap("No staff payroll rows are currently due pay for this period.", PAGE.margin, y, 500, 10, MUTED);
+  }
+
+  doc.text("Generated from Apres School internal payroll records.", PAGE.margin, 804, 8, MUTED);
+  downloadPdf(`apres-payroll-summary-${slug(periodLabel)}-${fileStamp()}.pdf`, doc);
 }
