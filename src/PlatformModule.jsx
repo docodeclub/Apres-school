@@ -192,6 +192,14 @@ function canonicalSchoolName(value) {
   return aliases[normalised] || text;
 }
 
+function sortPayrollSites(a, b) {
+  const order = ["Willington Prep", "King's House School", "Shrewsbury House School", "Ripley Court School", "Holiday Camp"];
+  const aIndex = order.indexOf(a);
+  const bIndex = order.indexOf(b);
+  if (aIndex !== -1 || bIndex !== -1) return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
+  return a.localeCompare(b);
+}
+
 function staffSchoolNames(person) {
   return staffAssignments(person).map((assignment) => canonicalSchoolName(assignment.school)).filter(Boolean);
 }
@@ -1754,7 +1762,7 @@ function HoursTracker({ data, access }) {
     .flatMap((periodRecords) => Object.keys(periodRecords || {}).map(canonicalSchoolName));
   const schoolOptions = Array.from(new Set([...canonicalRotaSites, ...savedPayrollSites]))
     .filter((site) => !["Admin", "Manager", "Staff", "Superadmin"].includes(site))
-    .sort((a, b) => a.localeCompare(b));
+    .sort(sortPayrollSites);
   const [period, setPeriod] = useState(currentPayrollPeriod());
   const [school, setSchool] = useState(schoolOptions[0] || "");
   const [records, setRecords] = useState(() => usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {}));
