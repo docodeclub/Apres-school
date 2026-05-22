@@ -4024,6 +4024,7 @@ function Pay({ data, access, onOpenTab }) {
   const [payslipStatus, setPayslipStatus] = useState("");
   const [payrollQuery, setPayrollQuery] = useState("");
   const [payrollFilter, setPayrollFilter] = useState("pay-due");
+  const [historyStaffId, setHistoryStaffId] = useState("");
   const availablePeriods = Object.keys(records).sort().reverse();
   const [period, setPeriod] = useState(availablePeriods[0] || currentPayrollPeriod());
   const periodRecords = records[period] || {};
@@ -4206,10 +4207,46 @@ function Pay({ data, access, onOpenTab }) {
       text: `${formatCurrency(adjustmentNet)} net adjustment from expenses and deductions.`,
     },
   ];
+  const selectedHistoryStaff = data.staff.find((person) => person.id === historyStaffId) || data.staff[0] || null;
+  const historyPeriods = Array.from(new Set([period, ...availablePeriods, currentPayrollPeriod()])).filter(Boolean).sort().reverse();
+  const selectedStaffPayrollHistory = selectedHistoryStaff ? historyPeriods.map((historyPeriod) => {
+    const historyRecords = records[historyPeriod] || {};
+    const historyRun = runs[historyPeriod] || { status: "Draft", adjustments: {} };
+    const payrollEntries = Object.entries(historyRecords).flatMap(([schoolName, record]) => (record.rows || [])
+      .filter((row) => row.staffId === selectedHistoryStaff.id || row.staffId === selectedHistoryStaff.profileId)
+      .map((row) => ({ ...row, schoolName, status: record.status || "Draft" })));
+    const hours = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
+    const hourlyGross = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? selectedHistoryStaff.payRate ?? 0), 0);
+    const monthlySalary = monthlySalaryFromAnnual(selectedHistoryStaff.annualSalary);
+    const adjustment = historyRun.adjustments?.[selectedHistoryStaff.id] || {};
+    const expenses = Number(adjustment.expenses || 0);
+    const deductions = Number(adjustment.deductions || 0);
+    const gross = monthlySalary + hourlyGross;
+    const payslips = staffPayslips(hrFiles, selectedHistoryStaff.id).filter((file) => String(file.issueDate || "").startsWith(historyPeriod) || String(file.title || "").toLowerCase().includes(formatPayrollPeriod(historyPeriod).toLowerCase()));
+    return {
+      period: historyPeriod,
+      status: historyRun.status || "Draft",
+      schools: Array.from(new Set(payrollEntries.map((entry) => entry.schoolName).filter(Boolean))),
+      hours,
+      monthlySalary,
+      gross,
+      expenses,
+      deductions,
+      net: gross + expenses - deductions,
+      payslips,
+      note: adjustment.note || "",
+    };
+  }).filter((row) => row.hours > 0 || row.monthlySalary > 0 || row.expenses > 0 || row.deductions > 0 || row.note || row.payslips.length) : [];
 
   useEffect(() => {
     if (availablePeriods.length && !availablePeriods.includes(period)) setPeriod(availablePeriods[0]);
   }, [availablePeriods, period]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (!data.staff.length) return;
+    if (!historyStaffId || !data.staff.some((person) => person.id === historyStaffId)) setHistoryStaffId(data.staff[0].id);
+  }, [data.staff, historyStaffId, isAdmin]);
 
   useEffect(() => {
     if (usingSupabase) setRuns(data.payrollRuns || {});
@@ -4508,6 +4545,47 @@ function Pay({ data, access, onOpenTab }) {
             ))}
             {!monthlyPayslipFiles.length && <EmptyList title="No payslips uploaded for this month" text="Upload payslips from the payroll table once the month has been reviewed." />}
           </div>
+        </Panel>
+      )}
+      {isAdmin && (
+        <Panel title="Staff Payroll History">
+          <div className="payroll-history-head">
+            <div>
+              <p>Open a staff member's month-by-month payroll record without leaving payroll.</p>
+              <small>Shows saved periods with hours, salary, adjustments, payslip status and private payroll notes.</small>
+            </div>
+            <label>
+              Staff member
+              <select value={selectedHistoryStaff?.id || ""} onChange={(event) => setHistoryStaffId(event.target.value)}>
+                {data.staff.map((person) => (
+                  <option key={person.id} value={person.id}>{person.name} · {person.email || staffPrimaryLocation(person)}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <TableWrap>
+            <table>
+              <thead><tr><th>Month</th><th>Schools</th><th>Hours</th><th>Salary</th><th>Gross</th><th>Adjustments</th><th>Net</th><th>Payslip</th><th>Note</th></tr></thead>
+              <tbody>
+                {selectedStaffPayrollHistory.map((row) => (
+                  <tr key={row.period}>
+                    <td><strong>{formatPayrollPeriod(row.period)}</strong><br /><small>{row.status}</small></td>
+                    <td>{row.schools.length ? row.schools.join(", ") : "Salary / no site hours"}</td>
+                    <td>{row.hours.toFixed(2)}</td>
+                    <td>{row.monthlySalary ? formatCurrency(row.monthlySalary) : "-"}</td>
+                    <td>{formatCurrency(row.gross)}</td>
+                    <td>{row.expenses || row.deductions ? `${formatCurrency(row.expenses)} expenses / ${formatCurrency(row.deductions)} deductions` : "-"}</td>
+                    <td><strong>{formatCurrency(row.net)}</strong></td>
+                    <td>{row.payslips.length ? row.payslips.slice(0, 2).map((file) => file.fileUrl ? <a className="payslip-view-link" href={file.fileUrl} key={file.id} target="_blank" rel="noreferrer">Open PDF</a> : <span key={file.id}>PDF uploaded</span>) : <Badge value="Missing" />}</td>
+                    <td>{row.note || "-"}</td>
+                  </tr>
+                ))}
+                {!selectedStaffPayrollHistory.length && (
+                  <tr><td colSpan="9"><strong>No payroll history yet.</strong> This staff member does not have salary, hours, adjustments or payslips in the saved payroll periods.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </TableWrap>
         </Panel>
       )}
       {isAdmin && <PayrollAuditTrail events={data.payrollAudit} period={period} title={`${formatPayrollPeriod(period)} Payroll Audit`} />}
