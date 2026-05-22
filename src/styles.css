@@ -6761,6 +6761,37 @@ table input[type="text"] {
   min-width: 130px;
 }
 
+.payslip-cell {
+  align-items: flex-start;
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.payslip-cell a,
+.payslip-cell span {
+  color: var(--blue);
+  font-size: 0.88rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.payslip-upload-button {
+  cursor: pointer;
+  justify-self: start;
+  min-height: 34px;
+  padding: 8px 12px;
+}
+
+.payslip-upload-button input {
+  clip: rect(0 0 0 0);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
 tfoot td {
   border-top: 2px solid var(--line);
   background: #f8fbff;

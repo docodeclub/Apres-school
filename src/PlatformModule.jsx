@@ -259,6 +259,12 @@ function staffOptionLabel(staff) {
   return parts.join(" · ");
 }
 
+function payrollRecordStatus(record) {
+  if (!record) return "Not started";
+  if (record.localDraft) return "Local draft";
+  return record.status || "Draft";
+}
+
 function staffIdentityFromEmail(email, role = "Staff") {
   const normalized = String(email || "").trim().toLowerCase();
   const known = {
@@ -695,6 +701,7 @@ function StaffDashboard({ data, access, userEmail }) {
   const ownStaffWithScr = ownStaff ? applyScrChecklistState([ownStaff])[0] : null;
   const staffRenewalItems = ownStaffWithScr ? buildScrRenewalItems([ownStaffWithScr]) : [];
   const staffEvidenceRequests = ownStaffWithScr ? buildStaffEvidenceRequests(ownStaffWithScr, staffRenewalItems, renewalRequests) : [];
+  const payslips = ownStaff ? staffPayslips(data.hrFiles, ownStaff.id).slice(0, 6) : [];
   function saveEvidenceSubmission(item, submission) {
     const checklistState = readScrChecklistState();
     const currentProfile = checklistState[item.staffId] || ownStaffWithScr?.scrChecklist || {};
@@ -769,6 +776,21 @@ function StaffDashboard({ data, access, userEmail }) {
         tone="green"
       />
       <Panel title="My Evidence Requests"><StaffEvidenceRequestList items={staffEvidenceRequests} onSubmit={saveEvidenceSubmission} /></Panel>
+      <Panel title="My Payslips">
+        <div className="list">
+          {payslips.map((file) => (
+            <article className="list-item" key={file.id}>
+              <div>
+                <strong>{file.title}</strong>
+                <span>{file.issueDate ? formatShortDate(file.issueDate) : file.uploadedAt ? formatShortDate(file.uploadedAt.slice(0, 10)) : "Date pending"}</span>
+                {file.notes && <small>{file.notes}</small>}
+              </div>
+              {file.fileUrl ? <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open</a> : <Badge value={file.storagePath ? "Private file" : "No file"} />}
+            </article>
+          ))}
+          {!payslips.length && <EmptyList title="No payslips yet" text="Payslips will appear here after admin uploads them." />}
+        </div>
+      </Panel>
       <Panel title="My Upcoming Sessions"><SessionList data={data} personal /></Panel>
       <Panel title="My Trophy Cabinet"><RewardList data={data} /></Panel>
       <Panel title="My Actions"><ActionList items={["Read assigned policy updates", "Confirm any annual declaration requests", "Upload evidence only when asked by admin"]} /></Panel>
@@ -2079,7 +2101,7 @@ function HoursTracker({ data, access }) {
     }, 0);
     return {
       school: site,
-      status: record?.status || "Not started",
+      status: payrollRecordStatus(record),
       rows,
       staffCount: rows.length,
       hours,
@@ -2286,6 +2308,8 @@ function HoursTracker({ data, access }) {
         <div className="payroll-record-head">
           <div>
             <Badge value={selectedRecord.status || "Draft"} />
+            {selectedRecord.localDraft && <Badge value="Local draft" />}
+            {selectedRecord.source === "supabase" && !selectedRecord.localDraft && <Badge value="Synced" />}
             {selectedRecord.submittedAt && <small>Submitted {formatShortDate(selectedRecord.submittedAt)} by {selectedRecord.submittedBy || "admin"}</small>}
             {schoolLocked && <small>Approved records are locked for payroll. {canUnlockPayroll ? "Unlock this school to make a correction." : "Ask a Superadmin to unlock corrections."}</small>}
             {hasIncompletePayrollRows && <small>Choose a staff member for every payroll row before submitting or syncing to Supabase.</small>}
@@ -3995,7 +4019,9 @@ function Pay({ data, access }) {
   const usingSupabase = String(data.source || "").startsWith("Supabase");
   const records = usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {});
   const [runs, setRuns] = useState(() => usingSupabase ? (data.payrollRuns || {}) : readJson(payrollRunsStorageKey, {}));
+  const [hrFiles, setHrFiles] = useState(data.hrFiles || []);
   const [syncStatus, setSyncStatus] = useState("");
+  const [payslipStatus, setPayslipStatus] = useState("");
   const [showAllPayRows, setShowAllPayRows] = useState(false);
   const availablePeriods = Object.keys(records).sort().reverse();
   const [period, setPeriod] = useState(availablePeriods[0] || currentPayrollPeriod());
@@ -4017,7 +4043,8 @@ function Pay({ data, access }) {
     const adjustment = currentRun.adjustments?.[person.id] || {};
     const expenses = Number(adjustment.expenses || 0);
     const deductions = Number(adjustment.deductions || 0);
-    return { ...person, payrollEntries: schoolRows, hours, monthlySalary, hourlyGross, gross, expenses, deductions, payrollNote: adjustment.note || "" };
+    const payslips = staffPayslips(hrFiles, person.id);
+    return { ...person, payrollEntries: schoolRows, hours, monthlySalary, hourlyGross, gross, expenses, deductions, payrollNote: adjustment.note || "", payslips };
   });
   const totalHours = payrollRows.reduce((sum, row) => sum + row.hours, 0);
   const totalGross = payrollRows.reduce((sum, row) => sum + row.gross, 0);
@@ -4035,6 +4062,10 @@ function Pay({ data, access }) {
   useEffect(() => {
     if (usingSupabase) setRuns(data.payrollRuns || {});
   }, [data.payrollRuns, usingSupabase]);
+
+  useEffect(() => {
+    setHrFiles(data.hrFiles || []);
+  }, [data.hrFiles]);
 
   function saveRun(nextRun, action = "Payroll run updated") {
     const runToSave = {
@@ -4129,6 +4160,45 @@ function Pay({ data, access }) {
     addAuditLog("Payroll exported", formatPayrollPeriod(period));
   }
 
+  async function uploadPayslip(person, file) {
+    if (!isAdmin || !person?.id || !file) return;
+    const payslipCategory = (data.hrFileCategories || []).find((category) => String(category.name || "").toLowerCase().includes("payslip"))
+      || fallbackHrFileCategories.find((category) => category.name === "Payslip");
+    const payload = {
+      staffRecordId: person.id,
+      categoryId: isUuid(payslipCategory?.id) ? payslipCategory.id : "",
+      category: payslipCategory?.name || "Payslip",
+      sensitivity: payslipCategory?.sensitivity || "restricted",
+      title: `${formatPayrollPeriod(period)} payslip`,
+      issueDate: `${period}-01`,
+      expiryDate: "",
+      notes: `Payslip for ${formatPayrollPeriod(period)} payroll run.`,
+      status: "active",
+    };
+    const localRecord = {
+      id: `payslip-${Date.now()}-${person.id}`,
+      ...payload,
+      staffName: person.name,
+      staffEmail: person.email || "",
+      uploadedAt: new Date().toISOString(),
+      storagePath: "Pending upload",
+    };
+    setHrFiles((current) => [localRecord, ...current]);
+    setPayslipStatus(`Uploading ${person.name}'s payslip...`);
+    addAuditLog("Payslip upload started", `${person.name}: ${formatPayrollPeriod(period)}`);
+    try {
+      if (!hasSupabaseConfig) throw new Error("Supabase is not configured.");
+      const { uploadHrFile } = await loadSupabaseModule();
+      const saved = await uploadHrFile(payload, file);
+      setHrFiles((current) => current.map((item) => item.id === localRecord.id ? saved : item));
+      setPayslipStatus(`${person.name}'s payslip uploaded.`);
+      addAuditLog("Payslip uploaded", `${person.name}: ${formatPayrollPeriod(period)}`);
+    } catch (error) {
+      setHrFiles((current) => current.map((item) => item.id === localRecord.id ? { ...item, storagePath: "", syncError: error.message || "Upload failed" } : item));
+      setPayslipStatus(`Payslip upload failed: ${error.message || "check Supabase Storage permissions"}`);
+    }
+  }
+
   return (
     <div className="stack">
       <div className="toolbar">
@@ -4154,6 +4224,7 @@ function Pay({ data, access }) {
               <p>Net payroll is {formatCurrency(totalNet)} from base monthly salary, {totalHours.toFixed(2)} additional approved hours, {formatCurrency(totalExpenses)} expenses and {formatCurrency(totalDeductions)} deductions.</p>
               {runLocked && <p className="panel-note">This paid payroll run is locked. {canMarkPaid ? "Unlock it only if a correction is needed." : "A Superadmin must unlock it before changes can be made."}</p>}
               {syncStatus && <p>{syncStatus}</p>}
+              {payslipStatus && <p>{payslipStatus}</p>}
             </div>
             <div className="payroll-run-actions">
               {canMarkPaid && runLocked && <button className="button subtle" type="button" onClick={unlockPayrollRun}>Unlock run</button>}
@@ -4196,7 +4267,30 @@ function Pay({ data, access }) {
                   <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.expenses || ""} onChange={(event) => updateAdjustment(row.id, { expenses: event.target.value })} aria-label={`${row.name} expenses`} disabled={runLocked} /> : formatCurrency(row.expenses)}</td>
                   <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.deductions || ""} onChange={(event) => updateAdjustment(row.id, { deductions: event.target.value })} aria-label={`${row.name} deductions`} disabled={runLocked} /> : formatCurrency(row.deductions)}</td>
                   <td><strong>{formatCurrency(net)}</strong></td>
-                  <td><Badge value={submittedEntries.length ? "Ready to upload" : "Pending hours"} /></td>
+                  <td>
+                    <div className="payslip-cell">
+                      {row.payslips.length ? (
+                        row.payslips.slice(0, 2).map((file) => file.fileUrl
+                          ? <a key={file.id} href={file.fileUrl} target="_blank" rel="noreferrer">{file.title}</a>
+                          : <span key={file.id}>{file.title} · {file.storagePath === "Pending upload" ? "Uploading" : "Private file"}</span>)
+                      ) : <Badge value={submittedEntries.length ? "Ready to upload" : "Pending hours"} />}
+                      {isAdmin && (
+                        <label className="button subtle payslip-upload-button">
+                          Upload
+                          <input
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            disabled={runLocked}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              uploadPayslip(row, file);
+                              event.target.value = "";
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </td>
                   {isAdmin && <td><input type="text" value={row.payrollNote} onChange={(event) => updateAdjustment(row.id, { note: event.target.value })} placeholder="Private payroll note" disabled={runLocked} /></td>}
                 </tr>
               );
@@ -5374,6 +5468,12 @@ function staffHrFileBucket(file) {
   if (category.includes("letter") || category.includes("communication")) return "Letters";
   if (category.includes("disciplinary") || category.includes("dbs") || category.includes("right to work") || category.includes("restricted")) return "Restricted";
   return "Other";
+}
+
+function staffPayslips(files = [], staffId) {
+  return (files || [])
+    .filter((file) => file.staffRecordId === staffId && staffHrFileBucket(file) === "Payslips" && file.status !== "archived")
+    .sort((a, b) => String(b.issueDate || b.uploadedAt || "").localeCompare(String(a.issueDate || a.uploadedAt || "")));
 }
 
 function buildStaffHrFileTabs(files) {
