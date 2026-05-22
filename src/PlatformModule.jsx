@@ -4059,13 +4059,18 @@ function Pay({ data, access, onOpenTab }) {
   const staffToPay = payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0);
   const staffPayslipFiles = isStaff ? payrollRows.flatMap((row) => row.payslips).slice(0, 8) : [];
   const payslipsUploaded = staffToPay.filter((row) => row.payslips.length > 0).length;
+  const missingPayslipRows = staffToPay.filter((row) => !row.payslips.length);
+  const hourlyRows = payrollRows.filter((row) => row.hours > 0);
+  const salaryRows = payrollRows.filter((row) => row.monthlySalary > 0);
+  const adjustmentRows = payrollRows.filter((row) => row.expenses > 0 || row.deductions > 0 || row.payrollNote);
+  const adjustmentNet = adjustmentRows.reduce((sum, row) => sum + row.expenses - row.deductions, 0);
   const filterCounts = {
     all: payrollRows.length,
     "pay-due": staffToPay.length,
-    hours: payrollRows.filter((row) => row.hours > 0).length,
-    salary: payrollRows.filter((row) => row.monthlySalary > 0).length,
-    adjustments: payrollRows.filter((row) => row.expenses > 0 || row.deductions > 0 || row.payrollNote).length,
-    "missing-payslips": staffToPay.filter((row) => !row.payslips.length).length,
+    hours: hourlyRows.length,
+    salary: salaryRows.length,
+    adjustments: adjustmentRows.length,
+    "missing-payslips": missingPayslipRows.length,
   };
   const payrollFilterOptions = [
     ["pay-due", "Pay due"],
@@ -4136,6 +4141,32 @@ function Pay({ data, access, onOpenTab }) {
     },
   ];
   const checklistComplete = checklistItems.filter((item) => item.done).length;
+  const payrollSummaryCards = [
+    {
+      filter: "missing-payslips",
+      label: "Missing payslips",
+      value: missingPayslipRows.length,
+      text: staffToPay.length ? `${payslipsUploaded}/${staffToPay.length} uploaded for staff due pay.` : "No payroll rows need payslips yet.",
+    },
+    {
+      filter: "hours",
+      label: "Hourly staff",
+      value: hourlyRows.length,
+      text: `${totalHours.toFixed(2)} additional hour${totalHours === 1 ? "" : "s"} entered this month.`,
+    },
+    {
+      filter: "salary",
+      label: "Salaried staff",
+      value: salaryRows.length,
+      text: `${formatCurrency(salaryRows.reduce((sum, row) => sum + row.monthlySalary, 0))} base salary this month.`,
+    },
+    {
+      filter: "adjustments",
+      label: "Adjustments",
+      value: adjustmentRows.length,
+      text: `${formatCurrency(adjustmentNet)} net adjustment from expenses and deductions.`,
+    },
+  ];
 
   useEffect(() => {
     if (availablePeriods.length && !availablePeriods.includes(period)) setPeriod(availablePeriods[0]);
@@ -4310,6 +4341,26 @@ function Pay({ data, access, onOpenTab }) {
         <Metric icon={<ClipboardCheck />} label="Submitted sites" value={isAdmin ? submittedSites : payrollRows.flatMap((row) => row.payrollEntries).filter((entry) => ["Submitted", "Approved"].includes(entry.status)).length} tone={submittedSites ? "blue" : "amber"} />
         {isAdmin && <Metric icon={<CheckCircle2 />} label="Run status" value={currentRun.status || "Draft"} tone={currentRun.status === "Paid" ? "green" : currentRun.status === "Draft" ? "amber" : "blue"} />}
       </div>
+      {isAdmin && (
+        <section className="payroll-review-grid payroll-summary-grid" aria-label="Payroll month summary">
+          {payrollSummaryCards.map((card) => (
+            <button
+              className={`payroll-review-card${payrollFilter === card.filter ? " active" : ""}`}
+              key={card.filter}
+              type="button"
+              onClick={() => {
+                setPayrollFilter(card.filter);
+                setPayrollQuery("");
+                document.getElementById("payroll-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            >
+              <span>{card.label}</span>
+              <strong>{card.value}</strong>
+              <small>{card.text}</small>
+            </button>
+          ))}
+        </section>
+      )}
       {isAdmin && (
         <section className="payroll-checklist-panel">
           <div className="payroll-checklist-head">
