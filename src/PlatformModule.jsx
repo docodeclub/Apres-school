@@ -1778,7 +1778,29 @@ function HoursTracker({ data, access }) {
     return sum + Number(row.hours || 0) * Number(person?.payRate || row.rate || 0);
   }, 0);
   const periodRecords = Object.values(records[period] || {});
-  const periodSubmitted = periodRecords.filter((record) => record.status === "Submitted").length;
+  const payrollReviewRows = schoolOptions.map((site) => {
+    const record = records[period]?.[site];
+    const rows = record?.rows || [];
+    const hours = rows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
+    const gross = rows.reduce((sum, row) => {
+      const person = data.staff.find((staff) => staff.id === row.staffId || staff.profileId === row.staffId);
+      return sum + Number(row.hours || 0) * Number(person?.payRate || row.rate || 0);
+    }, 0);
+    return {
+      school: site,
+      status: record?.status || "Not started",
+      rows,
+      staffCount: rows.length,
+      hours,
+      gross,
+      updatedAt: record?.updatedAt || "",
+      submittedAt: record?.submittedAt || "",
+    };
+  });
+  const periodSubmitted = payrollReviewRows.filter((record) => ["Submitted", "Approved"].includes(record.status)).length;
+  const periodApproved = payrollReviewRows.filter((record) => record.status === "Approved").length;
+  const periodTotalHours = payrollReviewRows.reduce((sum, record) => sum + record.hours, 0);
+  const periodTotalGross = payrollReviewRows.reduce((sum, record) => sum + record.gross, 0);
 
   useEffect(() => {
     if (schoolOptions.length && !schoolOptions.includes(school)) setSchool(schoolOptions[0]);
@@ -1866,6 +1888,16 @@ function HoursTracker({ data, access }) {
     }, "Payroll month submitted");
   }
 
+  function approveSchoolMonth() {
+    saveRecord({
+      ...selectedRecord,
+      rows: enteredRows.map((row) => ({ ...row, hours: Number(row.hours || 0) })),
+      status: "Approved",
+      approvedAt: new Date().toISOString(),
+      approvedBy: access?.currentUser?.email || access?.currentUser?.name || "Admin",
+    }, "Payroll school month approved");
+  }
+
   if (!isAdmin) {
     return (
       <Panel title="Hours Tracker">
@@ -1887,11 +1919,24 @@ function HoursTracker({ data, access }) {
         </div>
       </div>
       <div className="hr-summary">
-        <Metric icon={<Clock />} label="Paid hours" value={totalHours.toFixed(2)} tone={totalHours ? "green" : "amber"} />
-        <Metric icon={<PoundSterling />} label="Projected gross" value={formatCurrency(totalGross)} tone="green" />
-        <Metric icon={<Users />} label="Staff on record" value={enteredRows.length} tone="blue" />
+        <Metric icon={<Clock />} label="Month hours" value={periodTotalHours.toFixed(2)} tone={periodTotalHours ? "green" : "amber"} />
+        <Metric icon={<PoundSterling />} label="Month gross" value={formatCurrency(periodTotalGross)} tone="green" />
+        <Metric icon={<Users />} label="Selected school staff" value={enteredRows.length} tone="blue" />
         <Metric icon={<ClipboardCheck />} label="Submitted sites" value={`${periodSubmitted}/${schoolOptions.length || 0}`} tone={periodSubmitted ? "blue" : "amber"} />
       </div>
+      <Panel title={`${formatPayrollPeriod(period)} Site Review`}>
+        <div className="payroll-review-grid">
+          {payrollReviewRows.map((record) => (
+            <button className={`payroll-review-card ${record.school === school ? "active" : ""}`} type="button" key={record.school} onClick={() => setSchool(record.school)}>
+              <span>{record.school}</span>
+              <Badge value={record.status} />
+              <strong>{record.hours.toFixed(2)} hrs · {formatCurrency(record.gross)}</strong>
+              <small>{record.staffCount ? `${record.staffCount} staff on record` : "No staff added yet"}</small>
+            </button>
+          ))}
+        </div>
+        <p className="panel-note">{periodApproved}/{schoolOptions.length || 0} sites approved. Use each card to check the school month before approving the payroll run.</p>
+      </Panel>
       <Panel title={`${school || "School"} · ${formatPayrollPeriod(period)}`}>
         <div className="payroll-record-head">
           <div>
@@ -1931,8 +1976,11 @@ function HoursTracker({ data, access }) {
           </table>
         </TableWrap>
         <div className="payroll-submit-row">
-          <p>Submitting creates the monthly hours record used by payroll. You can still edit this record afterwards if hours change.</p>
-          <button className="button primary" type="button" onClick={submitMonth} disabled={!enteredRows.length}>Submit month</button>
+          <p>Submitting creates the monthly hours record used by payroll. Approving confirms this school is ready for the monthly payroll run.</p>
+          <div className="payroll-submit-actions">
+            <button className="button light" type="button" onClick={submitMonth} disabled={!enteredRows.length}>Submit month</button>
+            <button className="button primary" type="button" onClick={approveSchoolMonth} disabled={!enteredRows.length || selectedRecord.status === "Approved"}>Approve school</button>
+          </div>
         </div>
       </Panel>
     </div>
@@ -3622,7 +3670,7 @@ function Pay({ data, access }) {
   const totalExpenses = payrollRows.reduce((sum, row) => sum + row.expenses, 0);
   const totalDeductions = payrollRows.reduce((sum, row) => sum + row.deductions, 0);
   const totalNet = totalGross + totalExpenses - totalDeductions;
-  const submittedSites = Object.values(periodRecords).filter((record) => record.status === "Submitted").length;
+  const submittedSites = Object.values(periodRecords).filter((record) => ["Submitted", "Approved"].includes(record.status)).length;
   const payrollReady = payrollRows.some((row) => row.hours > 0);
   const visiblePayrollRows = isAdmin && !showAllPayRows ? payrollRows.filter((row) => row.hours > 0) : payrollRows;
 
@@ -3689,7 +3737,7 @@ function Pay({ data, access }) {
       ["Period", "Run status", "Staff", "Email", "Schools", "Hours", "Rate", "Gross", "Expenses", "Deductions", "Net", "Payslip status", "Notes"],
       ...payrollRows.map((row) => {
         const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName))).join("; ");
-        const submittedEntries = row.payrollEntries.filter((entry) => entry.status === "Submitted");
+        const submittedEntries = row.payrollEntries.filter((entry) => ["Submitted", "Approved"].includes(entry.status));
         const net = row.gross + row.expenses - row.deductions;
         return [
           formatPayrollPeriod(period),
@@ -3726,7 +3774,7 @@ function Pay({ data, access }) {
       <div className="hr-summary">
         <Metric icon={<Clock />} label={isStaff ? "My paid hours" : "Paid hours"} value={totalHours.toFixed(2)} tone={totalHours ? "green" : "amber"} />
         <Metric icon={<PoundSterling />} label={isStaff ? "My gross pay" : "Gross payroll"} value={formatCurrency(totalGross)} tone="green" />
-        <Metric icon={<ClipboardCheck />} label="Submitted sites" value={isAdmin ? submittedSites : payrollRows.flatMap((row) => row.payrollEntries).filter((entry) => entry.status === "Submitted").length} tone={submittedSites ? "blue" : "amber"} />
+        <Metric icon={<ClipboardCheck />} label="Submitted sites" value={isAdmin ? submittedSites : payrollRows.flatMap((row) => row.payrollEntries).filter((entry) => ["Submitted", "Approved"].includes(entry.status)).length} tone={submittedSites ? "blue" : "amber"} />
         {isAdmin && <Metric icon={<CheckCircle2 />} label="Run status" value={currentRun.status || "Draft"} tone={currentRun.status === "Paid" ? "green" : currentRun.status === "Draft" ? "amber" : "blue"} />}
       </div>
       {isAdmin && (
@@ -3760,7 +3808,7 @@ function Pay({ data, access }) {
           <table>
             <thead><tr><th>Staff</th><th>Submitted schools</th><th>Hours</th><th>Rate</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th><th>Payslip</th>{isAdmin && <th>Payroll note</th>}</tr></thead>
             <tbody>{visiblePayrollRows.map((row) => {
-              const submittedEntries = row.payrollEntries.filter((entry) => entry.status === "Submitted");
+              const submittedEntries = row.payrollEntries.filter((entry) => ["Submitted", "Approved"].includes(entry.status));
               const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName)));
               const net = row.gross + row.expenses - row.deductions;
               return (

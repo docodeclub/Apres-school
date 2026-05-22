@@ -6614,6 +6614,56 @@ label {
   padding-top: 18px;
 }
 
+.payroll-submit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.payroll-review-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.payroll-review-card {
+  align-items: flex-start;
+  background: #f8fbff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  color: var(--ink);
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  min-height: 150px;
+  padding: 16px;
+  text-align: left;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.payroll-review-card:hover,
+.payroll-review-card.active {
+  border-color: rgba(49, 75, 184, 0.45);
+  box-shadow: 0 18px 42px rgba(30, 48, 105, 0.12);
+  transform: translateY(-2px);
+}
+
+.payroll-review-card span {
+  color: var(--blue);
+  font-weight: 950;
+}
+
+.payroll-review-card strong {
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.payroll-review-card small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .payroll-run-console {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -8353,6 +8403,7 @@ th {
   .settings-grid,
   .settings-checklist,
   .rota-grid,
+  .payroll-review-grid,
   .payroll-console .hr-summary,
   .payroll-toolbar {
     grid-template-columns: 1fr;
@@ -8360,6 +8411,7 @@ th {
 
   .payroll-record-head,
   .payroll-submit-row,
+  .payroll-submit-actions,
   .payroll-table-controls,
   .payroll-run-console {
     align-items: stretch;
