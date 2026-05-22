@@ -6731,6 +6731,73 @@ label {
   justify-content: flex-end;
 }
 
+.payroll-close-warnings {
+  background: #f8fbff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px;
+}
+
+.payroll-close-warnings.has-blockers {
+  background: #fff8f4;
+  border-color: rgba(234, 88, 12, 0.24);
+}
+
+.payroll-close-warnings p {
+  color: var(--ink);
+  font-weight: 950;
+  margin: 0;
+}
+
+.payroll-close-warnings small {
+  color: var(--muted);
+  display: block;
+  font-weight: 800;
+  margin-top: 5px;
+}
+
+.payroll-close-warning-list {
+  display: grid;
+  gap: 10px;
+}
+
+.payroll-close-warning-list article {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px;
+}
+
+.payroll-close-warning-list article.blocker {
+  border-color: rgba(234, 88, 12, 0.28);
+}
+
+.payroll-close-warning-list article.review {
+  border-color: rgba(49, 75, 184, 0.2);
+}
+
+.payroll-close-warning-list article > div {
+  display: grid;
+  gap: 6px;
+}
+
+.payroll-close-warning-list strong {
+  color: var(--ink);
+}
+
+.payroll-close-warning-list span {
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .payroll-checklist-panel {
   background: #fff;
   border: 1px solid var(--line);
@@ -8894,6 +8961,7 @@ th {
   .payroll-filter-controls,
   .payslip-admin-panel,
   .payslip-admin-item,
+  .payroll-close-warning-list article,
   .payroll-run-console {
     align-items: stretch;
     flex-direction: column;

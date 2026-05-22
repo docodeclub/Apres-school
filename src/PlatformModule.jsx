@@ -4055,6 +4055,7 @@ function Pay({ data, access, onOpenTab }) {
   const periodRecordList = Object.values(periodRecords);
   const submittedSites = periodRecordList.filter((record) => ["Submitted", "Approved"].includes(record.status)).length;
   const approvedSites = periodRecordList.filter((record) => record.status === "Approved").length;
+  const unapprovedHourSites = periodRecordList.filter((record) => (record.rows || []).some((row) => Number(row.hours || 0) > 0) && record.status !== "Approved");
   const payrollReady = payrollRows.some((row) => row.hours > 0 || row.monthlySalary > 0);
   const staffToPay = payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0);
   const staffPayslipFiles = isStaff ? payrollRows.flatMap((row) => row.payslips).slice(0, 8) : [];
@@ -4147,6 +4148,38 @@ function Pay({ data, access, onOpenTab }) {
     },
   ];
   const checklistComplete = checklistItems.filter((item) => item.done).length;
+  const payrollCloseWarnings = [
+    missingPayslipRows.length ? {
+      type: "blocker",
+      title: "Missing payslips",
+      text: `${missingPayslipRows.length} staff member${missingPayslipRows.length === 1 ? "" : "s"} due pay still need a payslip uploaded.`,
+      action: "View missing",
+      onClick: () => {
+        setPayrollFilter("missing-payslips");
+        setPayrollQuery("");
+        document.getElementById("payroll-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      },
+    } : null,
+    unapprovedHourSites.length ? {
+      type: "blocker",
+      title: "Unapproved hours",
+      text: `${unapprovedHourSites.length} site hour record${unapprovedHourSites.length === 1 ? "" : "s"} must be approved before payroll is paid.`,
+      action: "Review Hours",
+      onClick: () => onOpenTab?.("Hours"),
+    } : null,
+    adjustmentRows.length ? {
+      type: "review",
+      title: "Adjustments present",
+      text: `${adjustmentRows.length} staff member${adjustmentRows.length === 1 ? " has" : "s have"} expenses, deductions or payroll notes. Net adjustment: ${formatCurrency(adjustmentNet)}.`,
+      action: "View adjustments",
+      onClick: () => {
+        setPayrollFilter("adjustments");
+        setPayrollQuery("");
+        document.getElementById("payroll-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      },
+    } : null,
+  ].filter(Boolean);
+  const payrollCloseBlockers = payrollCloseWarnings.filter((warning) => warning.type === "blocker");
   const payrollSummaryCards = [
     {
       filter: "missing-payslips",
@@ -4405,8 +4438,27 @@ function Pay({ data, access, onOpenTab }) {
               {canMarkPaid && runLocked && <button className="button subtle" type="button" onClick={unlockPayrollRun}>Unlock run</button>}
               <button className="button light" type="button" onClick={() => setRunStatus("Reviewed")} disabled={!payrollReady || runLocked}>Mark reviewed</button>
               <button className="button light" type="button" onClick={() => setRunStatus("Approved")} disabled={!payrollReady || runLocked}>Approve payroll</button>
-              <button className="button primary" type="button" onClick={() => setRunStatus("Paid")} disabled={!payrollReady || !canMarkPaid || currentRun.status !== "Approved" || runLocked}>Mark paid</button>
+              <button className="button primary" type="button" onClick={() => setRunStatus("Paid")} disabled={!payrollReady || !canMarkPaid || currentRun.status !== "Approved" || runLocked || payrollCloseBlockers.length > 0}>Mark paid</button>
               <button className="button subtle" type="button" onClick={() => exportPayroll(payrollRows, "full payroll")} disabled={!payrollReady}>Export full CSV</button>
+            </div>
+          </div>
+          <div className={`payroll-close-warnings${payrollCloseBlockers.length ? " has-blockers" : ""}`}>
+            <div>
+              <p>{payrollCloseBlockers.length ? "Payroll cannot be marked paid yet." : "Payroll close checks"}</p>
+              <small>{payrollCloseWarnings.length ? "Resolve blockers before closing the run. Review notes are shown for awareness." : "No close warnings for this payroll run."}</small>
+            </div>
+            <div className="payroll-close-warning-list">
+              {payrollCloseWarnings.map((warning) => (
+                <article className={warning.type === "blocker" ? "blocker" : "review"} key={warning.title}>
+                  <div>
+                    <Badge value={warning.type === "blocker" ? "Blocker" : "Review"} />
+                    <strong>{warning.title}</strong>
+                    <span>{warning.text}</span>
+                  </div>
+                  <button className="button subtle" type="button" onClick={warning.onClick}>{warning.action}</button>
+                </article>
+              ))}
+              {!payrollCloseWarnings.length && <Badge value="Clear to close" />}
             </div>
           </div>
           {!canMarkPaid && <p className="panel-note">Only Superadmin can mark a payroll run as paid.</p>}
