@@ -220,6 +220,40 @@ function staffAssignedToSchool(person, school) {
   return staffSchoolNames(person).includes(canonicalSchoolName(school));
 }
 
+function staffIdentityFromEmail(email, role = "Staff") {
+  const normalized = String(email || "").trim().toLowerCase();
+  const known = {
+    "luke@apres-school.co.uk": { name: "Luke Currie", role: "Managing Director" },
+    "lindsay@apres-school.co.uk": { name: "Lindsay", role: "General Manager" },
+    "kelly@apres-school.co.uk": { name: "Kelly", role: "Operations and Parent Improvement Manager" },
+  };
+  const mapped = known[normalized];
+  const fallbackName = normalized
+    ? normalized.split("@")[0].split(/[._-]+/).filter(Boolean).map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join(" ")
+    : "Staff member";
+  return {
+    id: `account-${normalized || "current"}`,
+    profileId: `account-${normalized || "current"}`,
+    name: mapped?.name || fallbackName,
+    email: normalized,
+    role: mapped?.role || role,
+    accessRole: role,
+    location: "Leadership",
+    compliance: "Account only",
+    contractType: "Not recorded",
+  };
+}
+
+function resolveOwnStaffRecord(data, access, userEmail) {
+  const current = access?.currentUser || {};
+  const email = String(current.email || userEmail || "").toLowerCase();
+  return data.staff.find((person) => person.id === current.staffRecordId)
+    || data.staff.find((person) => person.profileId && person.profileId === current.id)
+    || data.staff.find((person) => person.id === current.id)
+    || data.staff.find((person) => String(person.email || "").toLowerCase() === email)
+    || staffIdentityFromEmail(email, access?.role || current.role || "Staff");
+}
+
 function hasValidDate(value) {
   if (!value || ["pending", "not required"].includes(String(value).toLowerCase())) return false;
   return true;
@@ -514,7 +548,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
           data={enrichedData}
           access={access}
         />
-        {tab === "Staff" && <StaffDashboard data={scopedData} />}
+        {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && <HRHierarchy data={enrichedData} access={access} />}
@@ -587,9 +621,9 @@ function PlatformHeader({ role, actualRole, canPreviewRoles, viewRole, setViewRo
   );
 }
 
-function StaffDashboard({ data }) {
+function StaffDashboard({ data, access, userEmail }) {
   const pendingDocs = data.documents.reduce((total, doc) => total + Math.max(0, Number(doc.assigned || 0) - Number(doc.read || 0)), 0);
-  const ownStaff = data.staff[0];
+  const ownStaff = resolveOwnStaffRecord(data, access, userEmail);
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const ownStaffWithScr = ownStaff ? applyScrChecklistState([ownStaff])[0] : null;
   const staffRenewalItems = ownStaffWithScr ? buildScrRenewalItems([ownStaffWithScr]) : [];
