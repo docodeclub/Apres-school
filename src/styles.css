@@ -6869,6 +6869,45 @@ table input[type="text"] {
   line-height: 1.35;
 }
 
+.payslip-view-link {
+  align-items: center;
+  background: #eef3ff;
+  border: 1px solid #d8e2ff;
+  border-radius: 999px;
+  display: inline-flex;
+  justify-content: center;
+  padding: 8px 12px;
+  text-decoration: none;
+}
+
+.staff-payslip-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.staff-payslip-card {
+  align-items: start;
+  background: #f8fbff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.staff-payslip-card h3 {
+  color: var(--ink);
+  font-size: 1rem;
+  margin: 10px 0 0;
+}
+
+.staff-payslip-card p {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 8px 0 0;
+}
+
 .payslip-upload-button {
   cursor: pointer;
   justify-self: start;

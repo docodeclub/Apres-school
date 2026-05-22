@@ -4057,6 +4057,7 @@ function Pay({ data, access, onOpenTab }) {
   const approvedSites = periodRecordList.filter((record) => record.status === "Approved").length;
   const payrollReady = payrollRows.some((row) => row.hours > 0 || row.monthlySalary > 0);
   const staffToPay = payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0);
+  const staffPayslipFiles = isStaff ? payrollRows.flatMap((row) => row.payslips).slice(0, 8) : [];
   const payslipsUploaded = staffToPay.filter((row) => row.payslips.length > 0).length;
   const filterCounts = {
     all: payrollRows.length,
@@ -4355,6 +4356,25 @@ function Pay({ data, access, onOpenTab }) {
         </Panel>
       )}
       {isAdmin && <PayrollAuditTrail events={data.payrollAudit} period={period} title={`${formatPayrollPeriod(period)} Payroll Audit`} />}
+      {isStaff && (
+        <Panel title="My Payslips">
+          <div className="staff-payslip-grid">
+            {staffPayslipFiles.map((file) => (
+              <article className="staff-payslip-card" key={file.id}>
+                <div>
+                  <Badge value={file.issueDate ? formatShortDate(file.issueDate) : file.uploadedAt ? formatShortDate(file.uploadedAt.slice(0, 10)) : "Payslip"} />
+                  <h3>{file.title || "Payslip"}</h3>
+                  {file.notes && <p>{file.notes}</p>}
+                </div>
+                {file.fileUrl
+                  ? <a className="button primary" href={file.fileUrl} target="_blank" rel="noreferrer">View PDF</a>
+                  : <Badge value={file.storagePath ? "PDF uploaded" : "File pending"} />}
+              </article>
+            ))}
+            {!staffPayslipFiles.length && <EmptyList title="No payslips yet" text="Payslips will appear here after admin uploads them." />}
+          </div>
+        </Panel>
+      )}
       <Panel title={`${formatPayrollPeriod(period)} Pay`}>
         {isAdmin && (
           <div className="payroll-table-controls" id="payroll-table">
@@ -4396,8 +4416,8 @@ function Pay({ data, access, onOpenTab }) {
                     <div className="payslip-cell">
                       {row.payslips.length ? (
                         row.payslips.slice(0, 2).map((file) => file.fileUrl
-                          ? <a key={file.id} href={file.fileUrl} target="_blank" rel="noreferrer">{file.title}</a>
-                          : <span key={file.id}>{file.title} · {file.storagePath === "Pending upload" ? "Uploading" : "Private file"}</span>)
+                          ? <a key={file.id} className="payslip-view-link" href={file.fileUrl} target="_blank" rel="noreferrer">{isAdmin ? file.title : "View PDF"}</a>
+                          : <span key={file.id}>{file.title} · {file.storagePath === "Pending upload" ? "Uploading" : isAdmin ? "Private file" : "PDF uploaded"}</span>)
                       ) : <Badge value={submittedEntries.length ? "Ready to upload" : "Pending hours"} />}
                       {isAdmin && (
                         <label className="button subtle payslip-upload-button">
