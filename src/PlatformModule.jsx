@@ -4058,6 +4058,12 @@ function Pay({ data, access, onOpenTab }) {
   const payrollReady = payrollRows.some((row) => row.hours > 0 || row.monthlySalary > 0);
   const staffToPay = payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0);
   const staffPayslipFiles = isStaff ? payrollRows.flatMap((row) => row.payslips).slice(0, 8) : [];
+  const monthlyPayslipFiles = payrollRows.flatMap((row) => row.payslips.map((file) => ({
+    ...file,
+    staffName: row.name,
+    staffEmail: row.email || "",
+    staffNetPay: row.gross + row.expenses - row.deductions,
+  }))).filter((file) => String(file.issueDate || "").startsWith(period) || String(file.title || "").toLowerCase().includes(formatPayrollPeriod(period).toLowerCase()));
   const payslipsUploaded = staffToPay.filter((row) => row.payslips.length > 0).length;
   const missingPayslipRows = staffToPay.filter((row) => !row.payslips.length);
   const hourlyRows = payrollRows.filter((row) => row.hours > 0);
@@ -4404,6 +4410,45 @@ function Pay({ data, access, onOpenTab }) {
             </div>
           </div>
           {!canMarkPaid && <p className="panel-note">Only Superadmin can mark a payroll run as paid.</p>}
+        </Panel>
+      )}
+      {isAdmin && (
+        <Panel title={`${formatPayrollPeriod(period)} Payslips Uploaded`}>
+          <div className="payslip-admin-panel">
+            <div>
+              <p>{monthlyPayslipFiles.length} payslip{monthlyPayslipFiles.length === 1 ? "" : "s"} uploaded for this payroll month.</p>
+              <small>{missingPayslipRows.length ? `${missingPayslipRows.length} staff member${missingPayslipRows.length === 1 ? "" : "s"} still need a payslip.` : "Every staff member due pay has a payslip recorded."}</small>
+            </div>
+            <button
+              className="button subtle"
+              type="button"
+              onClick={() => {
+                setPayrollFilter("missing-payslips");
+                setPayrollQuery("");
+                document.getElementById("payroll-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              disabled={!missingPayslipRows.length}
+            >
+              View missing
+            </button>
+          </div>
+          <div className="payslip-admin-list">
+            {monthlyPayslipFiles.map((file) => (
+              <article className="payslip-admin-item" key={file.id}>
+                <div>
+                  <strong>{file.staffName}</strong>
+                  <span>{file.staffEmail || "No email"} · {formatCurrency(file.staffNetPay)}</span>
+                </div>
+                <div>
+                  <small>{file.issueDate ? formatShortDate(file.issueDate) : file.uploadedAt ? formatShortDate(file.uploadedAt.slice(0, 10)) : "Date pending"}</small>
+                  {file.fileUrl
+                    ? <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open PDF</a>
+                    : <Badge value={file.storagePath ? "Private file" : "File pending"} />}
+                </div>
+              </article>
+            ))}
+            {!monthlyPayslipFiles.length && <EmptyList title="No payslips uploaded for this month" text="Upload payslips from the payroll table once the month has been reviewed." />}
+          </div>
         </Panel>
       )}
       {isAdmin && <PayrollAuditTrail events={data.payrollAudit} period={period} title={`${formatPayrollPeriod(period)} Payroll Audit`} />}

@@ -6912,6 +6912,66 @@ table input[type="text"] {
   margin: 8px 0 0;
 }
 
+.payslip-admin-panel {
+  align-items: center;
+  background: #f8fbff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 12px;
+  padding: 14px;
+}
+
+.payslip-admin-panel p {
+  color: var(--ink);
+  font-weight: 950;
+  margin: 0;
+}
+
+.payslip-admin-panel small {
+  color: var(--muted);
+  display: block;
+  font-weight: 800;
+  margin-top: 5px;
+}
+
+.payslip-admin-list {
+  display: grid;
+  gap: 10px;
+}
+
+.payslip-admin-item {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px 14px;
+}
+
+.payslip-admin-item > div {
+  display: grid;
+  gap: 5px;
+}
+
+.payslip-admin-item > div:last-child {
+  align-items: center;
+  grid-template-columns: auto auto;
+}
+
+.payslip-admin-item strong {
+  color: var(--blue);
+}
+
+.payslip-admin-item span,
+.payslip-admin-item small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .payslip-upload-button {
   cursor: pointer;
   justify-self: start;
@@ -8832,9 +8892,16 @@ th {
   .payroll-audit-item,
   .payroll-table-controls,
   .payroll-filter-controls,
+  .payslip-admin-panel,
+  .payslip-admin-item,
   .payroll-run-console {
     align-items: stretch;
     flex-direction: column;
+    grid-template-columns: 1fr;
+  }
+
+  .payslip-admin-item > div:last-child {
+    justify-items: start;
     grid-template-columns: 1fr;
   }
 
