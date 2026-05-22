@@ -631,7 +631,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "SCR" && <SCR data={scopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
         {tab === "Documents" && <Documents data={scopedData} />}
-        {tab === "Pay" && <Pay data={scopedData} access={access} onOpenTab={setTab} />}
+        {tab === "Pay" && <Pay data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
         {tab === "Rewards" && <Rewards data={scopedData} />}
         {tab === "Sessions" && <Sessions data={scopedData} />}
         {tab === "Incidents" && <Incidents />}
@@ -4015,7 +4015,7 @@ function Documents({ data }) {
   );
 }
 
-function Pay({ data, access, onOpenTab }) {
+function Pay({ data, access, onOpenTab, onOpenStaffProfile }) {
   const usingSupabase = String(data.source || "").startsWith("Supabase");
   const records = usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {});
   const [runs, setRuns] = useState(() => usingSupabase ? (data.payrollRuns || {}) : readJson(payrollRunsStorageKey, {}));
@@ -4634,7 +4634,12 @@ function Pay({ data, access, onOpenTab }) {
               const net = row.gross + row.expenses - row.deductions;
               return (
                 <tr key={row.id}>
-                  <td><strong>{row.name}</strong><br /><small>{row.email || "No email"}</small></td>
+                  <td>
+                    {isAdmin
+                      ? <button className="payroll-staff-link" type="button" onClick={() => onOpenStaffProfile?.(row.id)}>{row.name}</button>
+                      : <strong>{row.name}</strong>}
+                    <br /><small>{row.email || "No email"}</small>
+                  </td>
                   <td>{schools.length ? schools.join(", ") : "No hours submitted"}</td>
                   <td><strong>{row.hours.toFixed(2)}</strong></td>
                   <td>

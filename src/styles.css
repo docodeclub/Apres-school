@@ -6949,6 +6949,24 @@ label {
   line-height: 1.35;
 }
 
+.payroll-staff-link {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--blue);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 950;
+  padding: 0;
+  text-align: left;
+}
+
+.payroll-staff-link:hover,
+.payroll-staff-link:focus-visible {
+  color: var(--royal-dark);
+  text-decoration: underline;
+}
+
 .payroll-console .hr-summary {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
