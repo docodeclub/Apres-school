@@ -631,7 +631,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "SCR" && <SCR data={scopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
         {tab === "Documents" && <Documents data={scopedData} />}
-        {tab === "Pay" && <Pay data={scopedData} access={access} />}
+        {tab === "Pay" && <Pay data={scopedData} access={access} onOpenTab={setTab} />}
         {tab === "Rewards" && <Rewards data={scopedData} />}
         {tab === "Sessions" && <Sessions data={scopedData} />}
         {tab === "Incidents" && <Incidents />}
@@ -4015,7 +4015,7 @@ function Documents({ data }) {
   );
 }
 
-function Pay({ data, access }) {
+function Pay({ data, access, onOpenTab }) {
   const usingSupabase = String(data.source || "").startsWith("Supabase");
   const records = usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {});
   const [runs, setRuns] = useState(() => usingSupabase ? (data.payrollRuns || {}) : readJson(payrollRunsStorageKey, {}));
@@ -4051,9 +4051,62 @@ function Pay({ data, access }) {
   const totalExpenses = payrollRows.reduce((sum, row) => sum + row.expenses, 0);
   const totalDeductions = payrollRows.reduce((sum, row) => sum + row.deductions, 0);
   const totalNet = totalGross + totalExpenses - totalDeductions;
-  const submittedSites = Object.values(periodRecords).filter((record) => ["Submitted", "Approved"].includes(record.status)).length;
+  const periodRecordList = Object.values(periodRecords);
+  const submittedSites = periodRecordList.filter((record) => ["Submitted", "Approved"].includes(record.status)).length;
+  const approvedSites = periodRecordList.filter((record) => record.status === "Approved").length;
   const payrollReady = payrollRows.some((row) => row.hours > 0 || row.monthlySalary > 0);
   const visiblePayrollRows = isAdmin && !showAllPayRows ? payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0) : payrollRows;
+  const staffToPay = payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0);
+  const payslipsUploaded = staffToPay.filter((row) => row.payslips.length > 0).length;
+  const checklistItems = [
+    {
+      title: "Hours entered",
+      text: submittedSites ? `${submittedSites} site${submittedSites === 1 ? "" : "s"} submitted for ${formatPayrollPeriod(period)}.` : "Enter and submit hours for each active school.",
+      done: submittedSites > 0,
+      action: "Open Hours",
+      onClick: () => onOpenTab?.("Hours"),
+    },
+    {
+      title: "Site hours approved",
+      text: approvedSites ? `${approvedSites} site${approvedSites === 1 ? "" : "s"} approved.` : "Approve school hours before final payroll approval.",
+      done: approvedSites > 0 && approvedSites >= submittedSites,
+      action: "Review Hours",
+      onClick: () => onOpenTab?.("Hours"),
+    },
+    {
+      title: "Payroll reviewed",
+      text: currentRun.reviewedAt ? `Reviewed ${formatShortDate(currentRun.reviewedAt.slice(0, 10))}.` : "Check salary, hours, expenses and deductions.",
+      done: ["Reviewed", "Approved", "Paid"].includes(currentRun.status),
+      action: "Mark reviewed",
+      onClick: () => setRunStatus("Reviewed"),
+      disabled: !payrollReady || runLocked,
+    },
+    {
+      title: "Payroll approved",
+      text: currentRun.approvedAt ? `Approved ${formatShortDate(currentRun.approvedAt.slice(0, 10))}.` : "Approve the payroll run once the totals look right.",
+      done: ["Approved", "Paid"].includes(currentRun.status),
+      action: "Approve",
+      onClick: () => setRunStatus("Approved"),
+      disabled: !payrollReady || runLocked,
+    },
+    {
+      title: "Payslips uploaded",
+      text: staffToPay.length ? `${payslipsUploaded}/${staffToPay.length} payslip${staffToPay.length === 1 ? "" : "s"} uploaded.` : "Payroll rows will appear once salary or hours exist.",
+      done: staffToPay.length > 0 && payslipsUploaded >= staffToPay.length,
+      action: "Upload below",
+      onClick: () => document.getElementById("payroll-table")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      disabled: !staffToPay.length,
+    },
+    {
+      title: "Payroll paid",
+      text: currentRun.paidAt ? `Marked paid ${formatShortDate(currentRun.paidAt.slice(0, 10))}.` : "Only Superadmin can mark payroll as paid.",
+      done: currentRun.status === "Paid",
+      action: "Mark paid",
+      onClick: () => setRunStatus("Paid"),
+      disabled: !payrollReady || !canMarkPaid || currentRun.status !== "Approved" || runLocked,
+    },
+  ];
+  const checklistComplete = checklistItems.filter((item) => item.done).length;
 
   useEffect(() => {
     if (availablePeriods.length && !availablePeriods.includes(period)) setPeriod(availablePeriods[0]);
@@ -4200,7 +4253,7 @@ function Pay({ data, access }) {
   }
 
   return (
-    <div className="stack">
+    <div className="stack payroll-console">
       <div className="toolbar">
         <div>
           <h2>{isStaff ? "My Pay Summary" : "Payroll Summary"}</h2>
@@ -4216,6 +4269,30 @@ function Pay({ data, access }) {
         <Metric icon={<ClipboardCheck />} label="Submitted sites" value={isAdmin ? submittedSites : payrollRows.flatMap((row) => row.payrollEntries).filter((entry) => ["Submitted", "Approved"].includes(entry.status)).length} tone={submittedSites ? "blue" : "amber"} />
         {isAdmin && <Metric icon={<CheckCircle2 />} label="Run status" value={currentRun.status || "Draft"} tone={currentRun.status === "Paid" ? "green" : currentRun.status === "Draft" ? "amber" : "blue"} />}
       </div>
+      {isAdmin && (
+        <section className="payroll-checklist-panel">
+          <div className="payroll-checklist-head">
+            <div>
+              <p className="eyebrow">Monthly payroll checklist</p>
+              <h3>{checklistComplete}/{checklistItems.length} steps complete for {formatPayrollPeriod(period)}.</h3>
+              <p>Use this to close the month cleanly: enter hours, review totals, upload payslips and mark the run paid.</p>
+            </div>
+            <Progress value={Math.round((checklistComplete / checklistItems.length) * 100)} label={`${checklistComplete}/${checklistItems.length} complete`} />
+          </div>
+          <div className="payroll-checklist-grid">
+            {checklistItems.map((item) => (
+              <article className={item.done ? "complete" : "open"} key={item.title}>
+                <div>
+                  <Badge value={item.done ? "Done" : "Open"} />
+                  <h4>{item.title}</h4>
+                  <p>{item.text}</p>
+                </div>
+                <button className="button subtle" type="button" onClick={item.onClick} disabled={item.done || item.disabled}>{item.action}</button>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       {isAdmin && (
         <Panel title={`${formatPayrollPeriod(period)} Payroll Run`}>
           <div className="payroll-run-console">
@@ -4240,7 +4317,7 @@ function Pay({ data, access }) {
       {isAdmin && <PayrollAuditTrail events={data.payrollAudit} period={period} title={`${formatPayrollPeriod(period)} Payroll Audit`} />}
       <Panel title={`${formatPayrollPeriod(period)} Pay`}>
         {isAdmin && (
-          <div className="payroll-table-controls">
+          <div className="payroll-table-controls" id="payroll-table">
             <p>{showAllPayRows ? "Showing every active staff member." : "Showing salaried staff and staff with submitted hours only."}</p>
             <button className="button subtle" type="button" onClick={() => setShowAllPayRows((value) => !value)}>
               {showAllPayRows ? "Hide zero-pay staff" : "Show all staff"}

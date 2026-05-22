@@ -6727,6 +6727,75 @@ label {
   justify-content: flex-end;
 }
 
+.payroll-checklist-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 16px 42px rgba(38, 63, 169, 0.09);
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.payroll-checklist-head {
+  align-items: center;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.35fr);
+}
+
+.payroll-checklist-head h3 {
+  color: var(--royal-dark);
+  font-size: clamp(1.35rem, 2vw, 1.9rem);
+  line-height: 1.1;
+  margin: 4px 0 8px;
+}
+
+.payroll-checklist-head p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.payroll-checklist-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.payroll-checklist-grid article {
+  align-content: space-between;
+  background: #f8fbff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  display: grid;
+  gap: 14px;
+  min-height: 190px;
+  padding: 16px;
+}
+
+.payroll-checklist-grid article.complete {
+  background: #f6fff9;
+  border-color: rgba(37, 133, 83, 0.22);
+}
+
+.payroll-checklist-grid h4 {
+  color: var(--ink);
+  font-size: 1.06rem;
+  line-height: 1.2;
+  margin: 10px 0 6px;
+}
+
+.payroll-checklist-grid p {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.payroll-checklist-grid .button {
+  justify-self: start;
+}
+
 .payroll-table-controls {
   align-items: center;
   border: 1px solid var(--line);
@@ -8683,6 +8752,8 @@ th {
   .schools-directory-grid,
   .school-ops-meta,
   .payroll-review-grid,
+  .payroll-checklist-head,
+  .payroll-checklist-grid,
   .payroll-console .hr-summary,
   .payroll-toolbar {
     grid-template-columns: 1fr;
