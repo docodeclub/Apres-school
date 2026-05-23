@@ -78,8 +78,21 @@ export async function fetchPlatformData({ userId, role }) {
       annual_salary,
       photo_storage_path,
       photo_url,
+      archived_at,
+      leaving_reason,
+      left_at,
       profiles(full_name, email, role),
-      scr_checks(admin_review, dbs, safeguarding, first_aid)
+      scr_checks(
+        right_to_work,
+        identity_checks,
+        dbs,
+        safeguarding,
+        first_aid,
+        annual_declarations,
+        recruitment_checks,
+        admin_review,
+        updated_at
+      )
     `)
     .order("created_at", { ascending: false });
 
@@ -183,7 +196,39 @@ export async function fetchPlatformData({ userId, role }) {
         .order("created_at", { ascending: false })
         .limit(120);
 
-  const [staffResult, sessionsResult, documentsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult] = await Promise.all([
+  const hrReportingQuery = isStaff
+    ? Promise.resolve({ data: [], error: null })
+    : supabase
+        .from("hr_reporting_lines")
+        .select("id, staff_record_id, manager_staff_record_id, scope, effective_from, effective_to, changed_by, created_at")
+        .is("effective_to", null);
+  const scrEvidenceRequestsQuery = supabase
+    .from("scr_evidence_requests")
+    .select(`
+      id,
+      staff_record_id,
+      evidence_key,
+      status,
+      note,
+      evidence_reference,
+      evidence_expiry_date,
+      submission_note,
+      rejection_reason,
+      requested_at,
+      requested_by_name,
+      submitted_at,
+      submitted_by_name,
+      resubmitted_at,
+      reviewed_at,
+      reviewed_by_name,
+      cleared_at,
+      cleared_by_name,
+      history,
+      updated_at
+    `)
+    .order("updated_at", { ascending: false });
+
+  const [staffResult, sessionsResult, documentsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult, hrReportingResult, scrEvidenceRequestsResult] = await Promise.all([
     staffQuery,
     sessionsQuery,
     documentsQuery,
@@ -193,6 +238,8 @@ export async function fetchPlatformData({ userId, role }) {
     payrollHoursQuery,
     payrollRunsQuery,
     payrollAuditQuery,
+    hrReportingQuery,
+    scrEvidenceRequestsQuery,
   ]);
 
   const firstError = [staffResult.error, sessionsResult.error, documentsResult.error, enquiriesResult.error].find(Boolean);
@@ -213,6 +260,8 @@ export async function fetchPlatformData({ userId, role }) {
     payrollHours: payrollHoursResult.error ? {} : mapPayrollHours(payrollHoursResult.data || []),
     payrollRuns: payrollRunsResult.error ? {} : mapPayrollRuns(payrollRunsResult.data || []),
     payrollAudit: payrollAuditResult.error ? [] : mapPayrollAudit(payrollAuditResult.data || []),
+    hrReportingLines: hrReportingResult.error ? {} : mapHrReportingLines(hrReportingResult.data || []),
+    scrRenewalRequests: scrEvidenceRequestsResult.error ? {} : mapScrEvidenceRequests(scrEvidenceRequestsResult.data || []),
   };
 }
 
@@ -232,14 +281,88 @@ function mapStaffRecords(records) {
       compliance: scr?.admin_review?.status || "Review needed",
       dbsRenewal: scr?.dbs?.renewalDate || scr?.dbs?.renewal_date || "Not recorded",
       safeguardingExpiry: scr?.safeguarding?.expiryDate || scr?.safeguarding?.expiry_date || "Not recorded",
+      allergyAwarenessExpiry: scr?.admin_review?.allergy?.expiryDate || scr?.admin_review?.allergy?.expiry_date || "Not recorded",
       firstAidExpiry: scr?.first_aid?.expiryDate || scr?.first_aid?.expiry_date || "Not required",
+      scrChecklist: mapScrChecklist(scr),
       payRate: Number(record.pay_rate || 0),
       annualSalary: Number(record.annual_salary || 0),
       contractType: record.contract_type || record.employment_type || "Not recorded",
       photoStoragePath: record.photo_storage_path || "",
       photoUrl: record.photo_url || "",
+      archivedAt: record.archived_at || "",
+      leavingReason: record.leaving_reason || "",
+      leftAt: record.left_at || "",
+      formerRecord: record.archived_at || record.left_at ? {
+        id: record.id,
+        staffRecordId: record.id,
+        userId: record.profile_id,
+        name: record.preferred_name || profile?.full_name || "Staff member",
+        email: profile?.email || "",
+        role: record.job_role || profile?.role || "Staff",
+        scope: record.primary_site || record.employment_type || "Assigned sites",
+        reason: record.leaving_reason || "Not recorded",
+        dismissedAt: record.left_at || record.archived_at,
+      } : null,
     };
   });
+}
+
+function mapScrChecklist(scr = {}) {
+  const adminReview = scr?.admin_review || {};
+  const checklist = adminReview.checklist || {};
+  const evidence = {
+    ...(checklist.evidence || {}),
+    ...(adminReview.evidence || {}),
+  };
+  const dbsEvidence = evidence.dbs || {};
+  const safeguardingEvidence = evidence.safeguarding || {};
+  const firstAidEvidence = evidence.firstAid || {};
+  return {
+    ...checklist,
+    evidence,
+    note: checklist.note || adminReview.note || "",
+    approvedAt: checklist.approvedAt || adminReview.approvedAt || adminReview.approved_at || "",
+    approvedBy: checklist.approvedBy || adminReview.approvedBy || adminReview.approved_by || "",
+    rightToWork: checklist.rightToWork ?? Boolean(Object.keys(scr?.right_to_work || {}).length),
+    identity: checklist.identity ?? Boolean(Object.keys(scr?.identity_checks || {}).length),
+    dbs: checklist.dbs ?? Boolean(dbsEvidence.reference || scr?.dbs?.number || scr?.dbs?.status),
+    barredList: checklist.barredList ?? Boolean(scr?.dbs?.barredList || scr?.dbs?.barred_list),
+    safeguarding: checklist.safeguarding ?? Boolean(safeguardingEvidence.reference || scr?.safeguarding?.completedAt || scr?.safeguarding?.completed_at),
+    allergy: checklist.allergy ?? Boolean(evidence.allergy?.reference || adminReview.allergy?.completedAt || adminReview.allergy?.completed_at),
+    firstAid: checklist.firstAid ?? Boolean(firstAidEvidence.reference || scr?.first_aid?.qualification),
+    references: checklist.references ?? Boolean(scr?.recruitment_checks?.references || scr?.recruitment_checks?.referencesStatus),
+    declarations: checklist.declarations ?? Boolean(scr?.annual_declarations?.annualDeclarationDate || scr?.annual_declarations?.status),
+    updatedAt: checklist.updatedAt || scr?.updated_at || "",
+  };
+}
+
+function mapScrEvidenceRequests(records) {
+  return records.reduce((requests, record) => {
+    if (!record.id) return requests;
+    requests[record.id] = {
+      status: record.status || "Requested",
+      staffRecordId: record.staff_record_id,
+      evidenceKey: record.evidence_key,
+      note: record.note || "",
+      evidenceReference: record.evidence_reference || "",
+      evidenceExpiryDate: record.evidence_expiry_date || "",
+      submissionNote: record.submission_note || "",
+      rejectionReason: record.rejection_reason || "",
+      requestedAt: record.requested_at || "",
+      requestedBy: record.requested_by_name || "Admin",
+      submittedAt: record.submitted_at || "",
+      submittedBy: record.submitted_by_name || "",
+      resubmittedAt: record.resubmitted_at || "",
+      reviewedAt: record.reviewed_at || "",
+      reviewedBy: record.reviewed_by_name || "",
+      clearedAt: record.cleared_at || "",
+      clearedBy: record.cleared_by_name || "",
+      history: Array.isArray(record.history) ? record.history : [],
+      source: "supabase",
+      updatedAt: record.updated_at || "",
+    };
+    return requests;
+  }, {});
 }
 
 async function attachStaffPhotoUrls(staff) {
@@ -386,6 +509,23 @@ function mapPayrollRuns(records) {
       }, {}),
     };
     return runs;
+  }, {});
+}
+
+function mapHrReportingLines(records) {
+  return records.reduce((lines, record) => {
+    if (!record.staff_record_id) return lines;
+    lines[record.staff_record_id] = {
+      id: record.id,
+      staffRecordId: record.staff_record_id,
+      managerStaffRecordId: record.manager_staff_record_id || "",
+      scope: record.scope || "",
+      effectiveFrom: record.effective_from || "",
+      effectiveTo: record.effective_to || "",
+      changedBy: record.changed_by || "",
+      createdAt: record.created_at || "",
+    };
+    return lines;
   }, {});
 }
 
@@ -802,6 +942,221 @@ export async function updateStaffSiteDetails(staffRecordId, location) {
   return {
     staffRecordId: data.id,
     location: data.primary_site || "",
+  };
+}
+
+export async function updateHrReportingLine({ staffRecordId, managerStaffRecordId = "", scope = "" }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!staffRecordId) throw new Error("Choose a staff member.");
+
+  const { data: authData } = await supabase.auth.getUser();
+  const payload = {
+    staff_record_id: staffRecordId,
+    manager_staff_record_id: managerStaffRecordId || null,
+    scope: String(scope || "").trim() || "Organisation-wide",
+    effective_from: new Date().toISOString().slice(0, 10),
+    effective_to: null,
+    changed_by: authData?.user?.id || null,
+  };
+
+  const { data: existing, error: lookupError } = await supabase
+    .from("hr_reporting_lines")
+    .select("id")
+    .eq("staff_record_id", staffRecordId)
+    .is("effective_to", null)
+    .maybeSingle();
+
+  if (lookupError) throw lookupError;
+
+  const query = existing?.id
+    ? supabase.from("hr_reporting_lines").update(payload).eq("id", existing.id).select("id, staff_record_id, manager_staff_record_id, scope").single()
+    : supabase.from("hr_reporting_lines").insert(payload).select("id, staff_record_id, manager_staff_record_id, scope").single();
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return {
+    id: data.id,
+    staffRecordId: data.staff_record_id,
+    managerStaffRecordId: data.manager_staff_record_id || "",
+    scope: data.scope || "",
+  };
+}
+
+export async function dismissStaffRecord({ staffRecordId, reason = "" }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!staffRecordId) throw new Error("Choose a staff member.");
+
+  const dismissedAt = new Date().toISOString();
+  const { data: authData } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from("staff_records")
+    .update({
+      archived_at: dismissedAt,
+      left_at: dismissedAt,
+      leaving_reason: String(reason || "").trim() || "Not recorded",
+      archived_by: authData?.user?.id || null,
+    })
+    .eq("id", staffRecordId)
+    .select("id, archived_at, left_at, leaving_reason")
+    .single();
+
+  if (error) throw error;
+
+  const { error: reportingError } = await supabase
+    .from("hr_reporting_lines")
+    .update({ archived_at: dismissedAt, effective_to: dismissedAt.slice(0, 10) })
+    .eq("staff_record_id", staffRecordId)
+    .is("effective_to", null);
+
+  if (reportingError) console.warn("Unable to archive HR reporting line", reportingError);
+
+  return {
+    staffRecordId: data.id,
+    reason: data.leaving_reason || "",
+    dismissedAt: data.left_at || data.archived_at || dismissedAt,
+  };
+}
+
+export async function restoreStaffRecord(staffRecordId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!staffRecordId) throw new Error("Choose a staff member.");
+
+  const { data, error } = await supabase
+    .from("staff_records")
+    .update({
+      archived_at: null,
+      left_at: null,
+      leaving_reason: null,
+      archived_by: null,
+    })
+    .eq("id", staffRecordId)
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  return { staffRecordId: data.id };
+}
+
+function scrChecklistPayload(checklist = {}) {
+  const evidence = checklist.evidence || {};
+  return {
+    right_to_work: {
+      checked: Boolean(checklist.rightToWork),
+      ...(evidence.rightToWork || {}),
+    },
+    identity_checks: {
+      checked: Boolean(checklist.identity),
+      ...(evidence.identity || {}),
+    },
+    dbs: {
+      checked: Boolean(checklist.dbs),
+      renewalDate: evidence.dbs?.expiryDate || "",
+      ...(evidence.dbs || {}),
+      barredList: Boolean(checklist.barredList),
+    },
+    safeguarding: {
+      checked: Boolean(checklist.safeguarding),
+      expiryDate: evidence.safeguarding?.expiryDate || "",
+      ...(evidence.safeguarding || {}),
+    },
+    first_aid: {
+      checked: Boolean(checklist.firstAid),
+      expiryDate: evidence.firstAid?.expiryDate || "",
+      ...(evidence.firstAid || {}),
+    },
+    annual_declarations: {
+      checked: Boolean(checklist.declarations),
+      ...(evidence.declarations || {}),
+    },
+    recruitment_checks: {
+      references: Boolean(checklist.references),
+      ...(evidence.references || {}),
+    },
+    admin_review: {
+      status: checklist.approvedAt ? "Compliant" : "Review needed",
+      checklist,
+      evidence,
+      allergy: {
+        checked: Boolean(checklist.allergy),
+        expiryDate: evidence.allergy?.expiryDate || "",
+        ...(evidence.allergy || {}),
+      },
+      note: checklist.note || "",
+      approvedAt: checklist.approvedAt || "",
+      approvedBy: checklist.approvedBy || "",
+      updatedAt: checklist.updatedAt || new Date().toISOString(),
+    },
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function saveScrChecklist(staffRecordId, checklist = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!staffRecordId) throw new Error("Choose a staff member.");
+
+  const { data, error } = await supabase
+    .from("scr_checks")
+    .upsert({
+      staff_record_id: staffRecordId,
+      ...scrChecklistPayload(checklist),
+    }, { onConflict: "staff_record_id" })
+    .select("staff_record_id, admin_review, updated_at")
+    .single();
+
+  if (error) throw error;
+  return {
+    staffRecordId: data.staff_record_id,
+    scrChecklist: mapScrChecklist({ admin_review: data.admin_review, updated_at: data.updated_at }),
+  };
+}
+
+export async function saveScrEvidenceRequest({ id, staffRecordId, evidenceKey, request = {} }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!id || !staffRecordId || !evidenceKey) throw new Error("Evidence request is missing required details.");
+
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData?.user?.id || null;
+  const status = request.status || "Requested";
+  const payload = {
+    id,
+    staff_record_id: staffRecordId,
+    evidence_key: evidenceKey,
+    status,
+    note: request.note || null,
+    evidence_reference: request.evidenceReference || null,
+    evidence_expiry_date: request.evidenceExpiryDate || null,
+    submission_note: request.submissionNote || null,
+    rejection_reason: request.rejectionReason || null,
+    requested_at: request.requestedAt || null,
+    requested_by: status === "Requested" ? userId : null,
+    requested_by_name: request.requestedBy || null,
+    submitted_at: request.submittedAt || null,
+    submitted_by_name: request.submittedBy || null,
+    resubmitted_at: request.resubmittedAt || null,
+    reviewed_at: request.reviewedAt || null,
+    reviewed_by: ["Approved", "Rejected"].includes(status) ? userId : null,
+    reviewed_by_name: request.reviewedBy || null,
+    cleared_at: request.clearedAt || null,
+    cleared_by: status === "Cleared" ? userId : null,
+    cleared_by_name: request.clearedBy || null,
+    history: request.history || [],
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from("scr_evidence_requests")
+    .upsert(payload, { onConflict: "id" })
+    .select("id, staff_record_id, evidence_key, status, updated_at")
+    .single();
+
+  if (error) throw error;
+  return {
+    id: data.id,
+    staffRecordId: data.staff_record_id,
+    evidenceKey: data.evidence_key,
+    status: data.status,
+    updatedAt: data.updated_at,
   };
 }
 

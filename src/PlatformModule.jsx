@@ -138,6 +138,7 @@ const payrollHoursStorageKey = "apres-payroll-hours";
 const payrollRunsStorageKey = "apres-payroll-runs";
 const staffPayOverridesStorageKey = "apres-staff-pay-overrides";
 const staffSiteOverridesStorageKey = "apres-staff-site-overrides";
+const formerStaffStorageKey = "apres-former-staff";
 
 function currentPayrollPeriod() {
   return new Date().toISOString().slice(0, 7);
@@ -248,6 +249,10 @@ function staffPrimaryLocation(person) {
 
 function staffAssignedToSchool(person, school) {
   return staffSchoolNames(person).includes(canonicalSchoolName(school));
+}
+
+function isFormerStaffRecord(person = {}) {
+  return Boolean(person.formerRecord || person.archivedAt || person.leftAt || person.status === "Former staff");
 }
 
 function staffOptionLabel(staff) {
@@ -498,12 +503,13 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const [previewUserId, setPreviewUserId] = useState("");
   const [staffPayOverrides, setStaffPayOverrides] = useState(() => readJson(staffPayOverridesStorageKey, {}));
   const [staffSiteOverrides, setStaffSiteOverrides] = useState(() => readJson(staffSiteOverridesStorageKey, {}));
+  const [formerStaffRecords, setFormerStaffRecords] = useState(() => readJson(formerStaffStorageKey, {}));
   const localStaff = readOnboardedStaffProfiles();
   const canPreviewRoles = ["Admin", "Superadmin"].includes(role);
   const effectiveRole = canPreviewRoles ? viewRole : role;
-  const enrichedData = {
-    ...data,
-    staff: mergeStaffProfiles(data.staff, localStaff).map((person) => ({
+  const mergedStaff = mergeStaffProfiles(data.staff, localStaff).map((person) => {
+    const localFormerRecord = formerStaffRecords[person.id] || formerStaffRecords[person.profileId];
+    return {
       ...person,
       ...(staffPayOverrides[person.id] || {}),
       ...(staffSiteOverrides[person.id]
@@ -512,13 +518,32 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
             siteAssignments: [{ school: staffSiteOverrides[person.id].location, role: person.role, startDate: person.startDate || "", endDate: "", status: "Active" }],
           }
         : {}),
-    })),
+      formerRecord: person.formerRecord || localFormerRecord || null,
+    };
+  });
+  const enrichedData = {
+    ...data,
+    staff: mergedStaff.filter((person) => !person.formerRecord),
+    allStaff: mergedStaff,
     source: localStaff.length ? `${data.source} + onboarding` : data.source,
   };
   const previewUsers = canPreviewRoles ? buildPreviewUsers(enrichedData, viewRole) : [];
   const selectedPreviewUser = previewUsers.find((user) => user.id === previewUserId) || null;
   const access = buildAccessContext(effectiveRole, userEmail, enrichedData, canPreviewRoles ? previewUserId : "");
   const scopedData = access.data;
+  const staffProfileTarget = staffProfileTargetId
+    ? (enrichedData.allStaff || []).find((person) => person.id === staffProfileTargetId || person.profileId === staffProfileTargetId)
+    : null;
+  const includeTargetStaff = (baseData) => {
+    if (!staffProfileTarget || (baseData.staff || []).some((person) => person.id === staffProfileTarget.id)) return baseData;
+    return {
+      ...baseData,
+      staff: [staffProfileTarget, ...(baseData.staff || [])],
+      allStaff: enrichedData.allStaff || [staffProfileTarget, ...(baseData.staff || [])],
+    };
+  };
+  const targetedScopedData = includeTargetStaff(scopedData);
+  const targetedEnrichedData = includeTargetStaff(enrichedData);
   const visibleTabs = effectiveRole === "Staff"
     ? ["Staff", "Documents", "Pay", "Rewards", "Sessions"]
     : effectiveRole === "Manager"
@@ -560,12 +585,25 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
     };
     setStaffSiteOverrides(next);
     localStorage.setItem(staffSiteOverridesStorageKey, JSON.stringify(next));
-    if (!hasSupabaseConfig) return;
+    if (!hasSupabaseConfig || !isUuid(staffId)) return;
     loadSupabaseModule()
       .then(({ updateStaffSiteDetails }) => updateStaffSiteDetails(staffId, location))
       .catch((error) => {
         console.warn("Unable to save staff usual site", error);
         addAuditLog("Staff site save failed", `${staffId}: ${error.message || "Supabase rejected the update"}`);
+      });
+  }
+
+  function updateHrReportingOverride({ staffRecordId, managerStaffRecordId = "", scope = "" }) {
+    if (!staffRecordId || !hasSupabaseConfig || !isUuid(staffRecordId)) return;
+    loadSupabaseModule()
+      .then(({ updateHrReportingLine }) => updateHrReportingLine({ staffRecordId, managerStaffRecordId, scope }))
+      .then((savedLine) => {
+        addAuditLog("HR reporting line saved", `${savedLine.staffRecordId}: ${savedLine.scope || "Organisation-wide"}`);
+      })
+      .catch((error) => {
+        console.warn("Unable to save HR reporting line", error);
+        addAuditLog("HR reporting line save failed", `${staffRecordId}: ${error.message || "Supabase rejected the update"}`);
       });
   }
 
@@ -623,15 +661,28 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
-        {tab === "HR" && <HRHierarchy data={enrichedData} access={access} onUpdateStaffSite={updateStaffSiteOverride} />}
+        {tab === "HR" && (
+          <HRHierarchy
+            data={enrichedData}
+            access={access}
+            onUpdateStaffSite={updateStaffSiteOverride}
+            onUpdateHrLine={updateHrReportingOverride}
+            formerStaffRecords={formerStaffRecords}
+            onFormerStaffChange={setFormerStaffRecords}
+            onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }}
+            onOpenHrFiles={(staffId) => { setStaffProfileTargetId(staffId); setTab("HR Files"); }}
+            onOpenScr={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }}
+            onOpenPay={(staffId) => { setStaffProfileTargetId(staffId); setTab("Pay"); }}
+          />
+        )}
         {tab === "Schools" && <SchoolsOperations data={enrichedData} />}
-        {tab === "HR Files" && <HRFiles data={enrichedData} />}
+        {tab === "HR Files" && <HRFiles data={targetedEnrichedData} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} />}
         {tab === "Rota" && <Rota data={scopedData} allData={enrichedData} access={access} />}
         {tab === "Hours" && <HoursTracker data={scopedData} access={access} />}
-        {tab === "SCR" && <SCR data={scopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} />}
+        {tab === "SCR" && <SCR data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
         {tab === "Documents" && <Documents data={scopedData} />}
-        {tab === "Pay" && <Pay data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
+        {tab === "Pay" && <Pay data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
         {tab === "Rewards" && <Rewards data={scopedData} />}
         {tab === "Sessions" && <Sessions data={scopedData} />}
         {tab === "Incidents" && <Incidents />}
@@ -702,6 +753,10 @@ function StaffDashboard({ data, access, userEmail }) {
   const staffRenewalItems = ownStaffWithScr ? buildScrRenewalItems([ownStaffWithScr]) : [];
   const staffEvidenceRequests = ownStaffWithScr ? buildStaffEvidenceRequests(ownStaffWithScr, staffRenewalItems, renewalRequests) : [];
   const payslips = ownStaff ? staffPayslips(data.hrFiles, ownStaff.id).slice(0, 6) : [];
+  useEffect(() => {
+    if (!data.scrRenewalRequests || !Object.keys(data.scrRenewalRequests).length) return;
+    setRenewalRequests((current) => ({ ...current, ...data.scrRenewalRequests }));
+  }, [data.scrRenewalRequests]);
   function saveEvidenceSubmission(item, submission) {
     const checklistState = readScrChecklistState();
     const currentProfile = checklistState[item.staffId] || ownStaffWithScr?.scrChecklist || {};
@@ -726,6 +781,7 @@ function StaffDashboard({ data, access, userEmail }) {
       },
     };
     saveScrChecklistState(nextChecklistState);
+    persistScrChecklistRecord(item.staffId, nextChecklistState[item.staffId], "SCR evidence submission saved");
     const nextRequests = {
       ...renewalRequests,
       [item.id]: {
@@ -743,6 +799,7 @@ function StaffDashboard({ data, access, userEmail }) {
     };
     setRenewalRequests(nextRequests);
     localStorage.setItem(scrRenewalRequestsStorageKey, JSON.stringify(nextRequests));
+    persistScrEvidenceRequestRecord(item.id, item.staffId, item.evidenceKey, nextRequests[item.id], "SCR evidence submission synced");
     addAuditLog("SCR evidence submitted", `${item.title}: ${submission.reference}`);
   }
   return (
@@ -827,6 +884,10 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
     ["CRM", "New enquiries and school outreach", "CRM"],
     ["Hours", "Paid windows and approvals", "Hours"],
   ];
+  useEffect(() => {
+    if (!data.scrRenewalRequests || !Object.keys(data.scrRenewalRequests).length) return;
+    setRenewalRequests((current) => ({ ...current, ...data.scrRenewalRequests }));
+  }, [data.scrRenewalRequests]);
   function saveRenewalRequests(next) {
     setRenewalRequests(next);
     localStorage.setItem(scrRenewalRequestsStorageKey, JSON.stringify(next));
@@ -844,6 +905,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
       },
     };
     saveRenewalRequests(next);
+    persistScrEvidenceRequestRecord(item.id, item.staffId, item.evidenceKey, next[item.id], "SCR evidence request synced");
     addAuditLog("SCR evidence requested", `${item.title}: ${item.meta}`);
   }
   function clearEvidenceRequest(item) {
@@ -859,6 +921,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
       },
     };
     saveRenewalRequests(next);
+    persistScrEvidenceRequestRecord(item.id, item.staffId, item.evidenceKey, next[item.id], "SCR evidence request cleared");
     addAuditLog("SCR evidence request cleared", item.title);
   }
   function reviewSubmittedEvidence(item, decision, note = "") {
@@ -886,6 +949,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
       },
     };
     saveScrChecklistState(nextChecklistState);
+    persistScrChecklistRecord(item.staffId, nextChecklistState[item.staffId], decision === "approve" ? "SCR evidence approval synced" : "SCR evidence rejection synced");
     const nextRequests = {
       ...renewalRequests,
       [item.id]: {
@@ -899,6 +963,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
       },
     };
     saveRenewalRequests(nextRequests);
+    persistScrEvidenceRequestRecord(item.id, item.staffId, item.evidenceKey, nextRequests[item.id], decision === "approve" ? "SCR evidence approval request synced" : "SCR evidence rejection request synced");
     addAuditLog(decision === "approve" ? "SCR evidence approved" : "SCR evidence rejected", `${item.staffName}: ${item.check}`);
   }
   return (
@@ -1384,25 +1449,46 @@ function UserManagement({ data }) {
   );
 }
 
-function HRHierarchy({ data, onUpdateStaffSite }) {
+function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecords, onFormerStaffChange, onOpenStaffProfile, onOpenHrFiles, onOpenScr, onOpenPay }) {
   const [state, setState] = useState(() => readHierarchyState());
-  const [selectedManager, setSelectedManager] = useState("");
+  const [localFormerStaff, setLocalFormerStaff] = useState(() => readJson(formerStaffStorageKey, {}));
   const [query, setQuery] = useState("");
   const [siteFilter, setSiteFilter] = useState("All sites");
-  const users = mergeUserRecords(data.staff, readUserAdminState());
+  const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [selectedFormerStaffId, setSelectedFormerStaffId] = useState("");
+  const [dismissTargetId, setDismissTargetId] = useState("");
+  const [dismissReason, setDismissReason] = useState("Resigned");
+  const staffSource = data.allStaff || data.staff;
+  const formerStaff = formerStaffRecords || localFormerStaff;
+  const setFormerStaff = onFormerStaffChange || setLocalFormerStaff;
+  const users = mergeUserRecords(staffSource, readUserAdminState());
+  const leavingReasons = [
+    "Resigned",
+    "End of fixed-term contract",
+    "End of zero-hours engagement",
+    "Moved away",
+    "No longer available",
+    "Performance or probation outcome",
+    "Dismissed",
+    "Redundancy",
+    "Other",
+  ];
   const schoolOptions = Array.from(new Set([
     "Organisation-wide",
     ...rotaSites.map((site) => canonicalSchoolName(site.site)),
-    ...data.staff.flatMap((person) => staffSchoolNames(person)),
+    ...staffSource.flatMap((person) => staffSchoolNames(person)),
   ].filter(Boolean))).sort((a, b) => {
     if (a === "Organisation-wide") return -1;
     if (b === "Organisation-wide") return 1;
     return sortPayrollSites(a, b);
   });
+  const userIdByStaffRecordId = new Map(users.map((user) => [user.staffRecordId, user.id]).filter(([staffRecordId]) => staffRecordId));
   const rows = users.map((user) => {
-    const staffProfile = data.staff.find((person) => (person.profileId || person.id) === user.id) || {};
-    const reportsTo = state[user.id]?.reportsTo ?? defaultReportsTo(user, users);
-    const rawScope = state[user.id]?.scope || staffPrimaryLocation(staffProfile) || "Organisation-wide";
+    const staffProfile = staffSource.find((person) => (person.profileId || person.id) === user.id) || {};
+    const persistedLine = data.hrReportingLines?.[user.staffRecordId || staffProfile.id] || {};
+    const persistedReportsTo = persistedLine.managerStaffRecordId ? (userIdByStaffRecordId.get(persistedLine.managerStaffRecordId) || "") : "";
+    const reportsTo = (state[user.id]?.reportsTo ?? persistedReportsTo) || defaultReportsTo(user, users);
+    const rawScope = state[user.id]?.scope || persistedLine.scope || staffPrimaryLocation(staffProfile) || "Organisation-wide";
     const scope = rawScope === "Unassigned" ? "Organisation-wide" : canonicalSchoolName(rawScope);
     return {
       ...user,
@@ -1413,20 +1499,67 @@ function HRHierarchy({ data, onUpdateStaffSite }) {
       managerName: users.find((person) => person.id === reportsTo)?.name || "No manager assigned",
     };
   });
-  const managerOptions = rows.filter((person) => ["Manager", "Admin", "Superadmin"].includes(person.role));
-  const activeManager = selectedManager || managerOptions[0]?.id || "";
-  const directReports = rows.filter((person) => person.reportsTo === activeManager);
-  const filteredRows = rows.filter((person) => {
+  const rowsWithLeaverStatus = rows.map((person) => {
+    const staffProfile = staffSource.find((staff) => staff.id === person.staffRecordId || staff.profileId === person.id || staff.id === person.id);
+    const formerRecord = staffProfile?.formerRecord || formerStaff[person.id] || formerStaff[person.staffRecordId];
+    return { ...person, formerRecord };
+  });
+  const baseActiveRows = rowsWithLeaverStatus.filter((person) => !person.formerRecord);
+  const activeIds = new Set(baseActiveRows.map((person) => person.id));
+  const activeRows = baseActiveRows.map((person) => (
+    person.reportsTo && !activeIds.has(person.reportsTo)
+      ? { ...person, reportsTo: "", managerName: "No manager assigned" }
+      : person
+  ));
+  const formerRows = rowsWithLeaverStatus
+    .filter((person) => person.formerRecord)
+    .sort((a, b) => new Date(b.formerRecord?.dismissedAt || 0) - new Date(a.formerRecord?.dismissedAt || 0));
+  const managerOptions = activeRows.filter((person) => ["Manager", "Admin", "Superadmin"].includes(person.role));
+  const selectedStaff = activeRows.find((person) => person.id === selectedStaffId) || activeRows[0] || null;
+  const dismissTarget = activeRows.find((person) => person.id === dismissTargetId) || null;
+  const selectedStaffProfile = selectedStaff ? staffSource.find((person) => person.id === selectedStaff.staffRecordId || person.profileId === selectedStaff.id || person.id === selectedStaff.id) : null;
+  const selectedStaffFiles = selectedStaff ? (data.hrFiles || []).filter((file) => file.staffRecordId === selectedStaff.staffRecordId) : [];
+  const selectedStaffPayslips = selectedStaffProfile ? staffPayslips(data.hrFiles, selectedStaffProfile.id) : [];
+  const selectedStaffRestrictedFiles = selectedStaffFiles.filter((file) => file.sensitivity === "restricted" || staffHrFileBucket(file) === "Restricted");
+  const selectedStaffScr = selectedStaffProfile ? staffScrOperationalSummary(selectedStaffProfile) : null;
+  const selectedStaffPay = selectedStaffProfile ? staffPayrollOperationalSummary(data, selectedStaffProfile) : null;
+  const selectedDirectReports = selectedStaff ? activeRows.filter((person) => person.reportsTo === selectedStaff.id) : [];
+  const selectedFormerStaff = formerRows.find((person) => person.id === selectedFormerStaffId || person.staffRecordId === selectedFormerStaffId) || formerRows[0] || null;
+  const selectedFormerRecord = selectedFormerStaff?.formerRecord || {};
+  const selectedFormerProfile = selectedFormerStaff ? staffSource.find((person) => person.id === selectedFormerStaff.staffRecordId || person.profileId === selectedFormerStaff.id || person.id === selectedFormerStaff.id) : null;
+  const selectedFormerFiles = selectedFormerStaff ? (data.hrFiles || []).filter((file) => file.staffRecordId === selectedFormerStaff.staffRecordId) : [];
+  const selectedFormerPayslips = selectedFormerProfile ? staffPayslips(data.hrFiles, selectedFormerProfile.id) : [];
+  const selectedFormerScr = selectedFormerProfile ? staffScrOperationalSummary(selectedFormerProfile) : null;
+  const selectedFormerPay = selectedFormerProfile ? staffPayrollOperationalSummary({ ...data, staff: staffSource }, selectedFormerProfile) : null;
+  const filteredRows = activeRows.filter((person) => {
     const matchesSite = siteFilter === "All sites" || person.scope === siteFilter;
     const haystack = [person.name, person.email, person.role, person.scope, person.managerName].join(" ").toLowerCase();
     return matchesSite && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
   });
-  const unmappedStaff = rows.filter((person) => person.role === "Staff" && !person.reportsTo).length;
+  const unmappedStaff = activeRows.filter((person) => person.role !== "Superadmin" && !person.reportsTo).length;
   const siteCoverage = schoolOptions.filter((site) => site !== "Organisation-wide").map((site) => ({
     site,
-    managers: rows.filter((person) => person.scope === site && ["Manager", "Admin", "Superadmin"].includes(person.role)).length,
-    staff: rows.filter((person) => person.scope === site).length,
+    managers: activeRows.filter((person) => person.scope === site && ["Manager", "Admin", "Superadmin"].includes(person.role)).length,
+    staff: activeRows.filter((person) => person.scope === site).length,
+    files: (data.hrFiles || []).filter((file) => activeRows.some((person) => person.staffRecordId === file.staffRecordId && person.scope === site)).length,
   }));
+  const staffWithNoFiles = activeRows.filter((person) => person.role !== "Superadmin" && !(data.hrFiles || []).some((file) => file.staffRecordId === person.staffRecordId)).length;
+
+  useEffect(() => {
+    if (activeRows.length && (!selectedStaffId || !activeRows.some((person) => person.id === selectedStaffId))) {
+      setSelectedStaffId(activeRows[0].id);
+    }
+  }, [activeRows, selectedStaffId]);
+
+  useEffect(() => {
+    if (!formerRows.length) {
+      if (selectedFormerStaffId) setSelectedFormerStaffId("");
+      return;
+    }
+    if (!selectedFormerStaffId || !formerRows.some((person) => person.id === selectedFormerStaffId || person.staffRecordId === selectedFormerStaffId)) {
+      setSelectedFormerStaffId(formerRows[0].id);
+    }
+  }, [formerRows, selectedFormerStaffId]);
 
   function save(next) {
     setState(next);
@@ -1434,7 +1567,10 @@ function HRHierarchy({ data, onUpdateStaffSite }) {
   }
 
   function updatePerson(id, patch) {
-    const person = rows.find((item) => item.id === id);
+    const person = activeRows.find((item) => item.id === id);
+    const nextReportsTo = Object.prototype.hasOwnProperty.call(patch, "reportsTo") ? patch.reportsTo : person?.reportsTo;
+    const nextScope = Object.prototype.hasOwnProperty.call(patch, "scope") ? patch.scope : person?.scope;
+    const manager = activeRows.find((item) => item.id === nextReportsTo);
     const next = {
       ...state,
       [id]: {
@@ -1447,115 +1583,371 @@ function HRHierarchy({ data, onUpdateStaffSite }) {
     if (Object.prototype.hasOwnProperty.call(patch, "scope") && patch.scope && patch.scope !== "Organisation-wide") {
       onUpdateStaffSite?.(person?.staffRecordId || person?.id, patch.scope);
     }
+    if (person?.staffRecordId) {
+      onUpdateHrLine?.({
+        staffRecordId: person.staffRecordId,
+        managerStaffRecordId: manager?.staffRecordId || "",
+        scope: nextScope || "Organisation-wide",
+      });
+    }
     addAuditLog("HR hierarchy updated", `${person?.name || id}: ${Object.keys(patch).join(", ")}`);
   }
 
   function childrenOf(managerId) {
-    return rows.filter((person) => person.reportsTo === managerId);
+    return activeRows.filter((person) => person.reportsTo === managerId);
+  }
+
+  function openDismissModal(person) {
+    setDismissTargetId(person.id);
+    setDismissReason("Resigned");
+  }
+
+  function dismissStaffMember() {
+    if (!dismissTarget) return;
+    const key = dismissTarget.staffRecordId || dismissTarget.id;
+    const record = {
+      id: key,
+      userId: dismissTarget.id,
+      staffRecordId: dismissTarget.staffRecordId,
+      name: dismissTarget.name,
+      email: dismissTarget.email,
+      role: dismissTarget.role,
+      scope: dismissTarget.scope,
+      reportsTo: dismissTarget.reportsTo,
+      managerName: dismissTarget.managerName,
+      reason: dismissReason,
+      dismissedAt: new Date().toISOString(),
+    };
+    const next = {
+      ...formerStaff,
+      [key]: record,
+      [dismissTarget.id]: record,
+    };
+    setFormerStaff(next);
+    localStorage.setItem(formerStaffStorageKey, JSON.stringify(next));
+    addAuditLog("Staff moved to former staff", `${dismissTarget.name}: ${dismissReason}`);
+    setSelectedFormerStaffId(dismissTarget.id);
+    if (hasSupabaseConfig && isUuid(dismissTarget.staffRecordId)) {
+      loadSupabaseModule()
+        .then(({ dismissStaffRecord }) => dismissStaffRecord({ staffRecordId: dismissTarget.staffRecordId, reason: dismissReason }))
+        .then((savedRecord) => {
+          addAuditLog("Former staff saved to Supabase", `${dismissTarget.name}: ${savedRecord.reason || dismissReason}`);
+        })
+        .catch((error) => {
+          console.warn("Unable to save former staff record", error);
+          addAuditLog("Former staff save failed", `${dismissTarget.name}: ${error.message || "Supabase rejected the update"}`);
+        });
+    }
+    const nextActive = activeRows.find((person) => person.id !== dismissTarget.id);
+    setSelectedStaffId(nextActive?.id || "");
+    setDismissTargetId("");
+  }
+
+  function restoreStaffMember(person) {
+    const next = { ...formerStaff };
+    delete next[person.id];
+    delete next[person.staffRecordId];
+    setFormerStaff(next);
+    localStorage.setItem(formerStaffStorageKey, JSON.stringify(next));
+    addAuditLog("Former staff restored", person.name);
+    if (selectedFormerStaffId === person.id || selectedFormerStaffId === person.staffRecordId) {
+      const nextFormer = formerRows.find((item) => item.id !== person.id && item.staffRecordId !== person.staffRecordId);
+      setSelectedFormerStaffId(nextFormer?.id || "");
+    }
+    if (hasSupabaseConfig && isUuid(person.staffRecordId)) {
+      loadSupabaseModule()
+        .then(({ restoreStaffRecord }) => restoreStaffRecord(person.staffRecordId))
+        .then(() => {
+          addAuditLog("Former staff restored in Supabase", person.name);
+        })
+        .catch((error) => {
+          console.warn("Unable to restore former staff record", error);
+          addAuditLog("Former staff restore failed", `${person.name}: ${error.message || "Supabase rejected the update"}`);
+        });
+    }
+    setSelectedStaffId(person.id);
+  }
+
+  function initials(person) {
+    return String(person?.name || person?.fullName || "AS")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() || "AS";
   }
 
   return (
-    <div className="stack">
+    <div className="stack hr-workspace">
       <div className="toolbar">
         <div>
-          <h2>HR Hierarchy</h2>
-          <p className="panel-note">Map line management, site responsibility and escalation routes for staff operations.</p>
+          <h2>People Ops</h2>
+          <p className="panel-note">A working HR view for line management, usual sites, staff records and people actions.</p>
         </div>
+        <Badge value="Private HR workspace" />
       </div>
       <div className="hr-summary">
-        <Metric icon={<Users />} label="People mapped" value={rows.length} tone="blue" />
+        <Metric icon={<Users />} label="Active people" value={activeRows.length} tone="blue" />
         <Metric icon={<ShieldCheck />} label="Managers" value={managerOptions.length} tone="green" />
-        <Metric icon={<ClipboardCheck />} label="Unassigned reports" value={unmappedStaff} tone="amber" />
+        <Metric icon={<ClipboardCheck />} label="No line manager" value={unmappedStaff} tone={unmappedStaff ? "amber" : "green"} />
+        <Metric icon={<FileText />} label="No HR files" value={staffWithNoFiles} tone={staffWithNoFiles ? "amber" : "green"} />
       </div>
-      <section className="hr-command-centre">
+      <section className="hr-ops-grid">
+        <aside className="hr-spotlight">
+          {selectedStaff ? (
+            <>
+              <div className="hr-spotlight-head">
+                <div className="hr-avatar">{initials(selectedStaff)}</div>
+                <div>
+                  <p className="eyebrow">Selected profile</p>
+                  <h3>{selectedStaff.name}</h3>
+                  <span>{selectedStaff.email || "No email recorded"}</span>
+                </div>
+              </div>
+              <div className="hr-profile-facts">
+                <div><span>Role</span><strong>{selectedStaff.role}</strong></div>
+                <div><span>Usual site</span><strong>{selectedStaff.scope}</strong></div>
+                <div><span>Reports to</span><strong>{selectedStaff.managerName}</strong></div>
+                <div><span>Direct reports</span><strong>{selectedDirectReports.length}</strong></div>
+                <div><span>HR files</span><strong>{selectedStaffFiles.length}</strong></div>
+                <div><span>Contract</span><strong>{selectedStaffProfile?.contractType || selectedStaffProfile?.employmentType || "Not recorded"}</strong></div>
+              </div>
+              <div className="hr-action-grid" aria-label={`${selectedStaff.name} operational actions`}>
+                <button type="button" onClick={() => selectedStaffProfile && onOpenStaffProfile?.(selectedStaffProfile.id)}>
+                  <ShieldCheck size={18} />
+                  <span><strong>Open staff profile</strong><small>SCR, pay details and staff record</small></span>
+                </button>
+                <button type="button" onClick={() => selectedStaffProfile && onOpenHrFiles?.(selectedStaffProfile.id)}>
+                  <FileText size={18} />
+                  <span><strong>HR files</strong><small>{selectedStaffFiles.length} files · {selectedStaffRestrictedFiles.length} restricted</small></span>
+                </button>
+                <button type="button" onClick={() => selectedStaffProfile && onOpenScr?.(selectedStaffProfile.id)}>
+                  <ClipboardCheck size={18} />
+                  <span><strong>SCR</strong><small>{selectedStaffScr?.status || "Review"} · {selectedStaffScr?.nextAction || "Check profile"}</small></span>
+                </button>
+                <button type="button" onClick={() => selectedStaffProfile && onOpenPay?.(selectedStaffProfile.id)}>
+                  <PoundSterling size={18} />
+                  <span><strong>Pay</strong><small>{selectedStaffPay?.latestPeriod ? `${formatPayrollPeriod(selectedStaffPay.latestPeriod)} · ${formatCurrency(selectedStaffPay.latestGross)}` : "Open payroll history"}</small></span>
+                </button>
+                <button className="hr-danger-action" type="button" onClick={() => openDismissModal(selectedStaff)}>
+                  <X size={18} />
+                  <span><strong>Dismiss</strong><small>Move to Former Staff and retain records</small></span>
+                </button>
+              </div>
+              <div className="hr-operational-snapshot">
+                <article>
+                  <span>SCR readiness</span>
+                  <strong>{selectedStaffScr?.status || "Review needed"}</strong>
+                  <small>{selectedStaffScr?.nextAction || "Open SCR profile to review evidence."}</small>
+                </article>
+                <article>
+                  <span>Documents</span>
+                  <strong>{selectedStaffFiles.length} HR file{selectedStaffFiles.length === 1 ? "" : "s"}</strong>
+                  <small>{selectedStaffPayslips.length} payslip{selectedStaffPayslips.length === 1 ? "" : "s"} · {selectedStaffRestrictedFiles.length} restricted</small>
+                </article>
+                <article>
+                  <span>Pay basis</span>
+                  <strong>{selectedStaffPay?.basis || "Not recorded"}</strong>
+                  <small>{selectedStaffPay?.latestPeriod ? `${formatPayrollPeriod(selectedStaffPay.latestPeriod)} payroll: ${formatCurrency(selectedStaffPay.latestGross)}` : "No submitted payroll period found."}</small>
+                </article>
+              </div>
+              <div className="hr-profile-controls">
+                <label>Line manager<select value={selectedStaff.reportsTo || ""} onChange={(event) => updatePerson(selectedStaff.id, { reportsTo: event.target.value })}>
+                  <option value="">No manager</option>
+                  {activeRows.filter((option) => option.id !== selectedStaff.id).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                </select></label>
+                <label>Usual site<select value={selectedStaff.scope} onChange={(event) => updatePerson(selectedStaff.id, { scope: event.target.value })}>
+                  {schoolOptions.map((site) => <option key={site} value={site}>{site}</option>)}
+                </select></label>
+              </div>
+              <div className="hr-direct-report-strip">
+                <span>Direct reports</span>
+                {selectedDirectReports.slice(0, 6).map((person) => (
+                  <button type="button" key={person.id} onClick={() => setSelectedStaffId(person.id)}>{person.name}</button>
+                ))}
+                {!selectedDirectReports.length && <small>No direct reports assigned.</small>}
+              </div>
+            </>
+          ) : (
+            <EmptyList title="No staff records" text="Staff records will appear here once added." />
+          )}
+        </aside>
+        <div className="hr-directory-panel">
+          <div className="hr-directory-controls">
+            <div>
+              <h3>Staff Directory</h3>
+              <p className="panel-note">Search, select and update the core HR routing fields.</p>
+            </div>
+            <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search staff, email, manager or site" /></label>
+            <label>Site<select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
+              <option>All sites</option>
+              {schoolOptions.map((site) => <option key={site} value={site}>{site}</option>)}
+            </select></label>
+          </div>
+          <div className="hr-person-list">
+            {filteredRows.map((person) => (
+              <article className={`hr-person-row ${selectedStaff?.id === person.id ? "active" : ""}`} key={person.id}>
+                <button className="hr-person-main" type="button" onClick={() => setSelectedStaffId(person.id)}>
+                  <span className="hr-mini-avatar">{initials(person)}</span>
+                  <span>
+                    <strong>{person.name}</strong>
+                    <small>{person.email || "No email"} · {person.role}</small>
+                  </span>
+                </button>
+                <span>{person.managerName}</span>
+                <span>{person.scope}</span>
+                <Badge value={person.updatedAt ? "Updated" : childrenOf(person.id).length ? `${childrenOf(person.id).length} reports` : "Profile"} />
+              </article>
+            ))}
+            {!filteredRows.length && <EmptyList title="No staff found" text="Change the search or site filter to show more staff." />}
+          </div>
+        </div>
+      </section>
+      <section className="hr-site-board">
         <div>
-          <p className="eyebrow">HR command centre</p>
-          <h3>Managers, usual sites and staff reporting lines in one place.</h3>
-          <p>Use this as the working view for line management, site responsibility and quick staff lookup before deeper SCR or HR file checks.</p>
+          <p className="eyebrow">Site coverage</p>
+          <h3>Named people by school</h3>
+          <p>Use this to spot thin management coverage, missing assignments and where HR files are concentrated.</p>
         </div>
         <div className="hr-site-coverage">
           {siteCoverage.map((site) => (
             <article key={site.site}>
               <strong>{site.site}</strong>
-              <span>{site.managers} manager{site.managers === 1 ? "" : "s"} · {site.staff} staff</span>
+              <span>{site.managers} manager{site.managers === 1 ? "" : "s"} · {site.staff} staff · {site.files} files</span>
             </article>
           ))}
+        </div>
+      </section>
+      <section className="hr-former-section">
+        <div className="crm-card-head">
+          <div>
+            <span>Former staff</span>
+            <h3>Archived staff records</h3>
+            <p>Leavers are removed from current HR views but their SCR, HR files and pay history remain available.</p>
+          </div>
+          <Badge value={`${formerRows.length} archived`} />
+        </div>
+        {selectedFormerStaff && (
+          <div className="former-profile-panel">
+            <div className="former-profile-head">
+              <div className="hr-avatar">{initials(selectedFormerStaff)}</div>
+              <div>
+                <p className="eyebrow">Retained leaver record</p>
+                <h4>{selectedFormerRecord.name || selectedFormerStaff.name}</h4>
+                <span>{selectedFormerRecord.email || selectedFormerStaff.email || "No email recorded"}</span>
+              </div>
+              <Badge value={selectedFormerRecord.reason || "Reason not recorded"} />
+            </div>
+            <div className="former-profile-grid">
+              <article>
+                <span>Left</span>
+                <strong>{selectedFormerRecord.dismissedAt ? formatDateTime(selectedFormerRecord.dismissedAt) : "Date not recorded"}</strong>
+                <small>{selectedFormerRecord.scope || selectedFormerStaff.scope || "Usual site not recorded"}</small>
+              </article>
+              <article>
+                <span>SCR status</span>
+                <strong>{selectedFormerScr?.status || "Retained"}</strong>
+                <small>{selectedFormerScr?.nextAction || "SCR history remains on file."}</small>
+              </article>
+              <article>
+                <span>HR files</span>
+                <strong>{selectedFormerFiles.length}</strong>
+                <small>{selectedFormerPayslips.length} payslip{selectedFormerPayslips.length === 1 ? "" : "s"} retained</small>
+              </article>
+              <article>
+                <span>Latest pay</span>
+                <strong>{selectedFormerPay?.latestPeriod ? formatPayrollPeriod(selectedFormerPay.latestPeriod) : "No run"}</strong>
+                <small>{selectedFormerPay?.latestGross ? formatCurrency(selectedFormerPay.latestGross) : "No submitted payroll found"}</small>
+              </article>
+            </div>
+            <div className="former-record-actions">
+              <button type="button" onClick={() => selectedFormerProfile && onOpenHrFiles?.(selectedFormerProfile.id)}>Open HR files</button>
+              <button type="button" onClick={() => selectedFormerProfile && onOpenScr?.(selectedFormerProfile.id)}>Open SCR history</button>
+              <button type="button" onClick={() => selectedFormerProfile && onOpenPay?.(selectedFormerProfile.id)}>Open pay history</button>
+              <button type="button" onClick={() => restoreStaffMember(selectedFormerStaff)}>Restore to current staff</button>
+            </div>
+            <div className="former-retained-files">
+              {selectedFormerFiles.slice(0, 4).map((file) => (
+                <a key={file.id} href={file.fileUrl || undefined} target="_blank" rel="noreferrer" aria-disabled={!file.fileUrl}>
+                  <span>{file.category || "HR file"}</span>
+                  <strong>{file.title}</strong>
+                  <small>{file.issueDate ? formatShortDate(file.issueDate) : file.uploadedAt ? formatShortDate(file.uploadedAt.slice(0, 10)) : "Date not recorded"}</small>
+                </a>
+              ))}
+              {!selectedFormerFiles.length && <small>No retained HR files are attached yet.</small>}
+            </div>
+          </div>
+        )}
+        <div className="former-staff-list">
+          {formerRows.map((person) => {
+            const record = person.formerRecord || {};
+            return (
+              <article className={`former-staff-row ${selectedFormerStaff?.id === person.id ? "active" : ""}`} key={`${person.id}-former`}>
+                <button className="hr-person-main" type="button" onClick={() => setSelectedFormerStaffId(person.id)}>
+                  <span className="hr-mini-avatar">{initials(person)}</span>
+                  <span>
+                    <strong>{record.name || person.name}</strong>
+                    <small>{record.email || person.email || "No email"} · {record.role || person.role}</small>
+                  </span>
+                </button>
+                <span>{record.scope || person.scope}</span>
+                <span>{record.reason || "Reason not recorded"}</span>
+                <span>{record.dismissedAt ? formatDateTime(record.dismissedAt) : "Date not recorded"}</span>
+                <div className="former-staff-actions">
+                  <button type="button" onClick={() => setSelectedFormerStaffId(person.id)}>View record</button>
+                  <button type="button" onClick={() => person.staffRecordId && onOpenHrFiles?.(person.staffRecordId)}>HR files</button>
+                  <button type="button" onClick={() => person.staffRecordId && onOpenScr?.(person.staffRecordId)}>SCR</button>
+                  <button type="button" onClick={() => person.staffRecordId && onOpenPay?.(person.staffRecordId)}>Pay</button>
+                  <button type="button" onClick={() => restoreStaffMember(person)}>Restore</button>
+                </div>
+              </article>
+            );
+          })}
+          {!formerRows.length && <EmptyList title="No former staff yet" text="Dismissed staff will be archived here with their reason for leaving and record links." />}
         </div>
       </section>
       <section className="hr-org">
         <div className="crm-card-head">
           <div>
-            <span>Org chart</span>
-            <h3>Reporting structure</h3>
-            <p>Top-level leads show first, with direct reports nested underneath.</p>
+            <span>Reporting structure</span>
+            <h3>Line management map</h3>
+            <p>Senior leaders and people without managers show first, with their direct reports below.</p>
           </div>
         </div>
         <div className="org-tree">
-          {rows.filter((person) => !person.reportsTo || person.role === "Superadmin").map((person) => (
+          {activeRows.filter((person) => !person.reportsTo || person.role === "Superadmin").map((person) => (
             <article className="org-node" key={person.id}>
               <strong>{person.name}</strong>
               <span>{person.role} · {person.scope}</span>
               <div>
                 {childrenOf(person.id).map((child) => (
-                  <small key={child.id}>{child.name} · {child.role}</small>
+                  <button type="button" key={child.id} onClick={() => setSelectedStaffId(child.id)}>{child.name} · {child.role}</button>
                 ))}
               </div>
             </article>
           ))}
         </div>
       </section>
-      <section className="hr-manager-panel">
-        <div>
-          <h3>Manager Scope Preview</h3>
-          <p className="panel-note">Useful later for manager dashboards filtered to direct reports.</p>
+      {dismissTarget && (
+        <div className="platform-modal-backdrop" role="presentation">
+          <section className="hr-dismiss-modal" role="dialog" aria-modal="true" aria-labelledby="dismiss-staff-title">
+            <button className="modal-close" type="button" aria-label="Close dismiss staff dialog" onClick={() => setDismissTargetId("")}><X size={18} /></button>
+            <p className="eyebrow">Move to former staff</p>
+            <h3 id="dismiss-staff-title">Dismiss {dismissTarget.name}</h3>
+            <p>This will remove them from current HR views while keeping their SCR, HR files, pay records and audit history stored.</p>
+            <label className="dismiss-reason-form">Reason for leaving:
+              <select value={dismissReason} onChange={(event) => setDismissReason(event.target.value)}>
+                {leavingReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+              </select>
+            </label>
+            <div className="dismiss-modal-actions">
+              <button className="button light" type="button" onClick={() => setDismissTargetId("")}>Cancel</button>
+              <button className="button danger" type="button" onClick={dismissStaffMember}>Move to Former Staff</button>
+            </div>
+          </section>
         </div>
-        <label>Manager<select value={activeManager} onChange={(event) => setSelectedManager(event.target.value)}>{managerOptions.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
-        <div className="list">
-          {directReports.map((person) => (
-            <article className="list-item" key={person.id}>
-              <div><strong>{person.name}</strong><span>{person.role} · {person.scope}</span></div>
-              <Badge value="Direct report" />
-            </article>
-          ))}
-          {!directReports.length && <EmptyList title="No direct reports" text="Assign staff to this manager in the table below." />}
-        </div>
-      </section>
-      <section className="hr-directory-controls">
-        <div>
-          <h3>Staff Directory</h3>
-          <p className="panel-note">Filter staff by name, email, role, manager or usual site.</p>
-        </div>
-        <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search staff or manager" /></label>
-        <label>Usual site<select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
-          <option>All sites</option>
-          {schoolOptions.map((site) => <option key={site} value={site}>{site}</option>)}
-        </select></label>
-      </section>
-      <TableWrap>
-        <table>
-          <thead><tr><th>Staff</th><th>Role</th><th>Reports to</th><th>Scope/site</th><th>Direct reports</th><th>Status</th></tr></thead>
-          <tbody>{filteredRows.map((person) => (
-            <tr key={person.id}>
-              <td><strong>{person.name}</strong><br /><small>{person.email}</small></td>
-              <td><Badge value={person.role} /></td>
-              <td>
-                <select value={person.reportsTo || ""} onChange={(event) => updatePerson(person.id, { reportsTo: event.target.value })}>
-                  <option value="">No manager</option>
-                  {rows.filter((option) => option.id !== person.id).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
-                </select>
-              </td>
-              <td>
-                <select value={person.scope} onChange={(event) => updatePerson(person.id, { scope: event.target.value })} aria-label={`${person.name} usual site`}>
-                  {schoolOptions.map((site) => <option key={site} value={site}>{site}</option>)}
-                </select>
-              </td>
-              <td>{childrenOf(person.id).length}</td>
-              <td><Badge value={person.updatedAt ? "Updated" : "Default"} /></td>
-            </tr>
-          ))}</tbody>
-        </table>
-        {!filteredRows.length && <EmptyList title="No staff found" text="Change the search or site filter to show more staff." />}
-      </TableWrap>
+      )}
     </div>
   );
 }
@@ -1673,7 +2065,7 @@ const fallbackHrFileCategories = [
   { id: "id-lanyard", name: "ID / Lanyard", sensitivity: "confidential" },
 ];
 
-function HRFiles({ data }) {
+function HRFiles({ data, targetStaffId = "", onTargetHandled }) {
   const [files, setFiles] = useState(data.hrFiles || []);
   const [query, setQuery] = useState("");
   const [staffFilter, setStaffFilter] = useState("All");
@@ -1696,6 +2088,12 @@ function HRFiles({ data }) {
   useEffect(() => {
     setFiles(data.hrFiles || []);
   }, [data.hrFiles]);
+
+  useEffect(() => {
+    if (!targetStaffId) return;
+    setStaffFilter(targetStaffId);
+    onTargetHandled?.();
+  }, [targetStaffId, onTargetHandled]);
 
   useEffect(() => {
     if (!hasSupabaseConfig) return undefined;
@@ -2376,24 +2774,32 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
   const staffWithAssignments = data.staff.map((person) => ({
     ...person,
     siteAssignments: assignmentState[person.id] || staffAssignments(person),
-    scrChecklist: checklistState[person.id] || person.scrChecklist || {},
+    scrChecklist: {
+      ...(person.scrChecklist || {}),
+      ...(checklistState[person.id] || {}),
+      evidence: {
+        ...(person.scrChecklist?.evidence || {}),
+        ...(checklistState[person.id]?.evidence || {}),
+      },
+    },
     ...(checklistState[person.id]?.approvedAt
       ? { compliance: "Compliant", onboardingStatus: "SCR approved" }
       : {}),
   }));
   const scrData = { ...data, staff: staffWithAssignments };
-  const totalStaff = scrData.staff.length;
-  const compliantStaff = scrData.staff.filter((person) => person.compliance === "Compliant").length;
+  const activeScrStaff = scrData.staff.filter((person) => !isFormerStaffRecord(person));
+  const totalStaff = activeScrStaff.length;
+  const compliantStaff = activeScrStaff.filter((person) => person.compliance === "Compliant").length;
   const reviewStaff = Math.max(totalStaff - compliantStaff, 0);
   const completion = totalStaff ? Math.round((compliantStaff / totalStaff) * 100) : 100;
   const issueDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const [summaryStaffId, setSummaryStaffId] = useState(data.staff[0]?.id || "");
-  const samplePerson = scrData.staff.find((person) => person.id === summaryStaffId) || scrData.staff[0] || {};
+  const samplePerson = activeScrStaff.find((person) => person.id === summaryStaffId) || activeScrStaff[0] || {};
   const schoolOptions = assignmentSchools;
   const [assuranceSchool, setAssuranceSchool] = useState(schoolOptions[0] || "Partner School");
   const [includeEvidenceAppendix, setIncludeEvidenceAppendix] = useState(false);
-  const assuranceStaff = scrData.staff.filter((person) => staffAssignedToSchool(person, assuranceSchool));
-  const selectedAssuranceStaff = assuranceStaff.length ? assuranceStaff : scrData.staff;
+  const assuranceStaff = activeScrStaff.filter((person) => staffAssignedToSchool(person, assuranceSchool));
+  const selectedAssuranceStaff = assuranceStaff.length ? assuranceStaff : activeScrStaff;
   const assuranceStatements = [
     "Enhanced DBS details, barred list checks and update-service status are recorded against each staff member.",
     "Right to work, identity checks and proof-of-address evidence can be tracked with verifier and review dates.",
@@ -2402,11 +2808,16 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
     "References, employment gaps, overseas checks and qualification evidence are captured for safer recruitment.",
     "Annual medical, criminal and childcare disqualification declarations are prompted and reconfirmed digitally.",
   ];
-  const onboardingProfiles = scrData.staff.filter((person) => person.onboardingStatus);
-  const renewalItems = buildScrRenewalItems(scrData.staff);
-  const evidenceWorkflowItems = buildEvidenceWorkflowItems(scrData.staff, renewalItems, renewalRequests);
-  const submittedEvidence = buildSubmittedEvidenceReviews(scrData.staff, renewalRequests);
+  const onboardingProfiles = activeScrStaff.filter((person) => person.onboardingStatus);
+  const renewalItems = buildScrRenewalItems(activeScrStaff);
+  const evidenceWorkflowItems = buildEvidenceWorkflowItems(activeScrStaff, renewalItems, renewalRequests);
+  const submittedEvidence = buildSubmittedEvidenceReviews(activeScrStaff, renewalRequests);
+  useEffect(() => {
+    if (!data.scrRenewalRequests || !Object.keys(data.scrRenewalRequests).length) return;
+    setRenewalRequests((current) => ({ ...current, ...data.scrRenewalRequests }));
+  }, [data.scrRenewalRequests]);
   function updateAssignment(staffId, index, patch) {
+    if (isFormerStaffRecord(scrData.staff.find((person) => person.id === staffId))) return;
     setAssignmentState((current) => {
       const assignments = [...(current[staffId] || [])];
       assignments[index] = { ...assignments[index], ...patch };
@@ -2414,6 +2825,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
     });
   }
   function addAssignment(staffId) {
+    if (isFormerStaffRecord(scrData.staff.find((person) => person.id === staffId))) return;
     setAssignmentState((current) => {
       const assignments = current[staffId] || [];
       const staffPerson = scrData.staff.find((person) => person.id === staffId);
@@ -2424,32 +2836,45 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
     });
   }
   function removeAssignment(staffId, index) {
+    if (isFormerStaffRecord(scrData.staff.find((person) => person.id === staffId))) return;
     setAssignmentState((current) => ({
       ...current,
       [staffId]: (current[staffId] || []).filter((_, itemIndex) => itemIndex !== index),
     }));
   }
   function updateChecklist(staffId, patch) {
+    if (isFormerStaffRecord(scrData.staff.find((person) => person.id === staffId))) return;
     setChecklistState((current) => {
+      const remoteChecklist = scrData.staff.find((person) => person.id === staffId)?.scrChecklist || {};
       const next = {
         ...current,
         [staffId]: {
+          ...remoteChecklist,
           ...current[staffId],
           ...patch,
+          evidence: {
+            ...(remoteChecklist.evidence || {}),
+            ...(current[staffId]?.evidence || {}),
+            ...(patch.evidence || {}),
+          },
           updatedAt: new Date().toISOString(),
         },
       };
       saveScrChecklistState(next);
+      persistScrChecklistRecord(staffId, next[staffId]);
       return next;
     });
     addAuditLog("SCR checklist updated", `${staffId}: ${Object.keys(patch).join(", ")}`);
   }
   function approveScrProfile(staffId) {
     const person = scrData.staff.find((item) => item.id === staffId);
+    if (isFormerStaffRecord(person)) return;
     setChecklistState((current) => {
+      const remoteChecklist = person?.scrChecklist || {};
       const next = {
         ...current,
         [staffId]: {
+          ...remoteChecklist,
           ...current[staffId],
           approvedAt: new Date().toISOString(),
           approvedBy: "Admin",
@@ -2457,6 +2882,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
         },
       };
       saveScrChecklistState(next);
+      persistScrChecklistRecord(staffId, next[staffId], "SCR profile approval synced");
       return next;
     });
     approveOnboardedStaffProfile(staffId);
@@ -2467,6 +2893,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
     localStorage.setItem(scrRenewalRequestsStorageKey, JSON.stringify(next));
   }
   function requestProfileEvidence(person, evidenceKey, note = "") {
+    if (isFormerStaffRecord(person)) return;
     const id = `${person.id}-${evidenceKey}`;
     const check = scrEvidenceLabel(evidenceKey);
     const requestNote = note.trim() || `${check} evidence requested from staff profile.`;
@@ -2481,9 +2908,12 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
       }, "Requested", access?.currentUser?.name || "Admin", requestNote),
     };
     saveRenewalRequests(next);
+    persistScrEvidenceRequestRecord(id, person.id, evidenceKey, next[id]);
     addAuditLog("SCR evidence requested", `${person.name}: ${check}`);
   }
   function clearProfileEvidenceRequest(request) {
+    const person = scrData.staff.find((item) => item.id === request.staffId);
+    if (isFormerStaffRecord(person)) return;
     const next = {
       ...renewalRequests,
       [request.id]: appendScrRequestHistory({
@@ -2494,9 +2924,11 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
       }, "Cleared", access?.currentUser?.name || "Admin", "Admin cleared this evidence request from the staff profile."),
     };
     saveRenewalRequests(next);
+    persistScrEvidenceRequestRecord(request.id, request.staffId, request.evidenceKey, next[request.id], "SCR evidence request cleared");
     addAuditLog("SCR evidence request cleared", `${request.check}: ${request.staffId}`);
   }
   function reviewSubmittedEvidence(item, decision, note = "") {
+    if (isFormerStaffRecord(scrData.staff.find((person) => person.id === item.staffId))) return;
     const rejectionReason = note.trim() || "Please check the evidence reference, date or document and resubmit for review.";
     const currentProfile = checklistState[item.staffId] || scrData.staff.find((person) => person.id === item.staffId)?.scrChecklist || {};
     const currentEvidence = currentProfile.evidence || {};
@@ -2521,6 +2953,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
     };
     setChecklistState(nextChecklistState);
     saveScrChecklistState(nextChecklistState);
+    persistScrChecklistRecord(item.staffId, nextChecklistState[item.staffId], decision === "approve" ? "SCR evidence approval synced" : "SCR evidence rejection synced");
     const nextRequests = {
       ...renewalRequests,
       [item.id]: appendScrRequestHistory({
@@ -2532,6 +2965,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
       }, decision === "approve" ? "Approved" : "Sent back", access?.currentUser?.name || "Admin", decision === "approve" ? "Evidence approved." : rejectionReason),
     };
     saveRenewalRequests(nextRequests);
+    persistScrEvidenceRequestRecord(item.id, item.staffId, item.evidenceKey, nextRequests[item.id], decision === "approve" ? "SCR evidence approval request synced" : "SCR evidence rejection request synced");
     addAuditLog(decision === "approve" ? "SCR evidence approved" : "SCR evidence rejected", `${item.staffName}: ${item.check}`);
   }
   async function downloadStaffSummary() {
@@ -2543,7 +2977,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
     exportSchoolAssuranceLetter(selectedAssuranceStaff, assuranceSchool, { includeEvidenceAppendix, evidenceRequests: renewalRequests });
   }
   const requirementRows = schoolOptions.map((school) => {
-    const assigned = scrData.staff.filter((person) => staffAssignedToSchool(person, school));
+    const assigned = activeScrStaff.filter((person) => staffAssignedToSchool(person, school));
     const checks = [
       ["First aider", "firstAid"],
       ["EYFS Level 3+", "eyfs"],
@@ -2613,7 +3047,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
           <label>
             Staff member
             <select value={samplePerson.id || ""} onChange={(event) => setSummaryStaffId(event.target.value)}>
-              {scrData.staff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+              {activeScrStaff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
             </select>
           </label>
           <div className="scr-record-preview">
@@ -2676,7 +3110,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
       <SCRRenewalPanel items={renewalItems} />
       {!!onboardingProfiles.length && <SCROnboardingQueue staff={onboardingProfiles} onUpdate={updateChecklist} onApprove={approveScrProfile} />}
       <SCRAssignmentsPanel
-        staff={scrData.staff}
+        staff={activeScrStaff}
         schools={assignmentSchools}
         onAdd={addAssignment}
         onRemove={removeAssignment}
@@ -4015,7 +4449,7 @@ function Documents({ data }) {
   );
 }
 
-function Pay({ data, access, onOpenTab, onOpenStaffProfile }) {
+function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onOpenStaffProfile }) {
   const usingSupabase = String(data.source || "").startsWith("Supabase");
   const records = usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {});
   const [runs, setRuns] = useState(() => usingSupabase ? (data.payrollRuns || {}) : readJson(payrollRunsStorageKey, {}));
@@ -4025,13 +4459,17 @@ function Pay({ data, access, onOpenTab, onOpenStaffProfile }) {
   const [payrollQuery, setPayrollQuery] = useState("");
   const [payrollFilter, setPayrollFilter] = useState("pay-due");
   const [historyStaffId, setHistoryStaffId] = useState("");
-  const availablePeriods = Object.keys(records).sort().reverse();
+  const [selectedPayslipId, setSelectedPayslipId] = useState("");
+  const payslipPeriods = Array.from(new Set((hrFiles || []).map((file) => payslipPeriod(file)).filter(Boolean))).sort().reverse();
+  const availablePeriods = Array.from(new Set([...Object.keys(records), ...payslipPeriods])).sort().reverse();
   const [period, setPeriod] = useState(availablePeriods[0] || currentPayrollPeriod());
-  const periodRecords = records[period] || {};
   const isStaff = access?.role === "Staff";
   const isAdmin = ["Admin", "Superadmin"].includes(access?.role);
   const canMarkPaid = access?.role === "Superadmin";
   const currentRun = runs[period] || { status: "Draft", adjustments: {} };
+  const payRunIsPublished = (run) => run?.status === "Paid";
+  const showStaffPayCalculation = !isStaff || payRunIsPublished(currentRun);
+  const periodRecords = showStaffPayCalculation ? (records[period] || {}) : {};
   const runLocked = currentRun.status === "Paid";
   const staffIds = new Set(data.staff.map((person) => person.id));
   const payrollRows = data.staff.map((person) => {
@@ -4040,13 +4478,14 @@ function Pay({ data, access, onOpenTab, onOpenStaffProfile }) {
       .map((row) => ({ ...row, schoolName, status: record.status || "Draft" })));
     const hours = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
     const hourlyGross = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? person.payRate ?? 0), 0);
-    const monthlySalary = monthlySalaryFromAnnual(person.annualSalary);
+    const monthlySalary = showStaffPayCalculation ? monthlySalaryFromAnnual(person.annualSalary) : 0;
     const gross = monthlySalary + hourlyGross;
-    const adjustment = currentRun.adjustments?.[person.id] || {};
+    const adjustment = showStaffPayCalculation ? (currentRun.adjustments?.[person.id] || {}) : {};
     const expenses = Number(adjustment.expenses || 0);
     const deductions = Number(adjustment.deductions || 0);
-    const payslips = staffPayslips(hrFiles, person.id);
-    return { ...person, payrollEntries: schoolRows, hours, monthlySalary, hourlyGross, gross, expenses, deductions, payrollNote: adjustment.note || "", payslips };
+    const allPayslips = staffPayslips(hrFiles, person.id);
+    const payslips = allPayslips.filter((file) => payslipMatchesPeriod(file, period));
+    return { ...person, payrollEntries: schoolRows, hours, monthlySalary, hourlyGross, gross, expenses, deductions, payrollNote: adjustment.note || "", payslips, allPayslips };
   });
   const totalHours = payrollRows.reduce((sum, row) => sum + row.hours, 0);
   const totalGross = payrollRows.reduce((sum, row) => sum + row.gross, 0);
@@ -4059,13 +4498,15 @@ function Pay({ data, access, onOpenTab, onOpenStaffProfile }) {
   const unapprovedHourSites = periodRecordList.filter((record) => (record.rows || []).some((row) => Number(row.hours || 0) > 0) && record.status !== "Approved");
   const payrollReady = payrollRows.some((row) => row.hours > 0 || row.monthlySalary > 0);
   const staffToPay = payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0);
-  const staffPayslipFiles = isStaff ? payrollRows.flatMap((row) => row.payslips).slice(0, 8) : [];
+  const staffPayslipFiles = isStaff ? payrollRows.flatMap((row) => row.allPayslips || []) : [];
+  const periodStaffPayslipFiles = staffPayslipFiles.filter((file) => payslipMatchesPeriod(file, period));
+  const selectedStaffPayslip = staffPayslipFiles.find((file) => file.id === selectedPayslipId) || periodStaffPayslipFiles[0] || staffPayslipFiles[0] || null;
   const monthlyPayslipFiles = payrollRows.flatMap((row) => row.payslips.map((file) => ({
     ...file,
     staffName: row.name,
     staffEmail: row.email || "",
     staffNetPay: row.gross + row.expenses - row.deductions,
-  }))).filter((file) => String(file.issueDate || "").startsWith(period) || String(file.title || "").toLowerCase().includes(formatPayrollPeriod(period).toLowerCase()));
+  })));
   const payslipsUploaded = staffToPay.filter((row) => row.payslips.length > 0).length;
   const missingPayslipRows = staffToPay.filter((row) => !row.payslips.length);
   const hourlyRows = payrollRows.filter((row) => row.hours > 0);
@@ -4209,6 +4650,53 @@ function Pay({ data, access, onOpenTab, onOpenStaffProfile }) {
   ];
   const selectedHistoryStaff = data.staff.find((person) => person.id === historyStaffId) || data.staff[0] || null;
   const historyPeriods = Array.from(new Set([period, ...availablePeriods, currentPayrollPeriod()])).filter(Boolean).sort().reverse();
+  const currentStaffMember = isStaff ? data.staff[0] || null : null;
+  const staffMonthlyPayHistory = currentStaffMember ? historyPeriods.map((historyPeriod) => {
+    const historyRun = runs[historyPeriod] || { status: "Draft", adjustments: {} };
+    const historyPayslips = staffPayslips(hrFiles, currentStaffMember.id).filter((file) => payslipMatchesPeriod(file, historyPeriod));
+    const historyPublished = payRunIsPublished(historyRun);
+    if (!historyPublished && !historyPayslips.length) return null;
+    const historyRecords = historyPublished ? (records[historyPeriod] || {}) : {};
+    const payrollEntries = Object.entries(historyRecords).flatMap(([schoolName, record]) => (record.rows || [])
+      .filter((row) => row.staffId === currentStaffMember.id || row.staffId === currentStaffMember.profileId)
+      .map((row) => ({ ...row, schoolName, status: record.status || "Draft" })));
+    const hours = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
+    const hourlyGross = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? currentStaffMember.payRate ?? 0), 0);
+    const monthlySalary = historyPublished ? monthlySalaryFromAnnual(currentStaffMember.annualSalary) : 0;
+    const adjustment = historyPublished ? (historyRun.adjustments?.[currentStaffMember.id] || {}) : {};
+    const expenses = Number(adjustment.expenses || 0);
+    const deductions = Number(adjustment.deductions || 0);
+    const gross = monthlySalary + hourlyGross;
+    const schools = Array.from(new Set(payrollEntries.map((entry) => entry.schoolName).filter(Boolean)));
+    return {
+      period: historyPeriod,
+      status: historyPublished ? historyRun.status || "Paid" : "Payslip issued",
+      schools,
+      hours,
+      hourlyGross,
+      monthlySalary,
+      gross,
+      expenses,
+      deductions,
+      net: gross + expenses - deductions,
+      payslips: historyPayslips,
+      note: historyPublished ? adjustment.note || "" : "",
+    };
+  }).filter((row) => row && (row.hours > 0 || row.monthlySalary > 0 || row.expenses > 0 || row.deductions > 0 || row.note || row.payslips.length)) : [];
+  const staffSelectedMonth = staffMonthlyPayHistory.find((row) => row.period === period) || {
+    period,
+    status: currentRun.status || "Draft",
+    schools: [],
+    hours: totalHours,
+    hourlyGross: payrollRows.reduce((sum, row) => sum + row.hourlyGross, 0),
+    monthlySalary: payrollRows.reduce((sum, row) => sum + row.monthlySalary, 0),
+    gross: totalGross,
+    expenses: totalExpenses,
+    deductions: totalDeductions,
+    net: totalNet,
+    payslips: periodStaffPayslipFiles,
+    note: "",
+  };
   const selectedStaffPayrollHistory = selectedHistoryStaff ? historyPeriods.map((historyPeriod) => {
     const historyRecords = records[historyPeriod] || {};
     const historyRun = runs[historyPeriod] || { status: "Draft", adjustments: {} };
@@ -4222,7 +4710,7 @@ function Pay({ data, access, onOpenTab, onOpenStaffProfile }) {
     const expenses = Number(adjustment.expenses || 0);
     const deductions = Number(adjustment.deductions || 0);
     const gross = monthlySalary + hourlyGross;
-    const payslips = staffPayslips(hrFiles, selectedHistoryStaff.id).filter((file) => String(file.issueDate || "").startsWith(historyPeriod) || String(file.title || "").toLowerCase().includes(formatPayrollPeriod(historyPeriod).toLowerCase()));
+    const payslips = staffPayslips(hrFiles, selectedHistoryStaff.id).filter((file) => payslipMatchesPeriod(file, historyPeriod));
     return {
       period: historyPeriod,
       status: historyRun.status || "Draft",
@@ -4251,6 +4739,16 @@ function Pay({ data, access, onOpenTab, onOpenStaffProfile }) {
   useEffect(() => {
     if (usingSupabase) setRuns(data.payrollRuns || {});
   }, [data.payrollRuns, usingSupabase]);
+
+  useEffect(() => {
+    if (!targetStaffId) return;
+    const person = data.staff.find((item) => item.id === targetStaffId || item.profileId === targetStaffId);
+    if (!person) return;
+    setHistoryStaffId(person.id);
+    setPayrollQuery(person.email || person.name || "");
+    setPayrollFilter("all");
+    onTargetHandled?.();
+  }, [data.staff, onTargetHandled, targetStaffId]);
 
   useEffect(() => {
     setHrFiles(data.hrFiles || []);
@@ -4590,26 +5088,94 @@ function Pay({ data, access, onOpenTab, onOpenStaffProfile }) {
       )}
       {isAdmin && <PayrollAuditTrail events={data.payrollAudit} period={period} title={`${formatPayrollPeriod(period)} Payroll Audit`} />}
       {isStaff && (
-        <Panel title="My Payslips">
-          <div className="staff-payslip-grid">
-            {staffPayslipFiles.map((file) => (
-              <article className="staff-payslip-card" key={file.id}>
-                <div>
-                  <Badge value={file.issueDate ? formatShortDate(file.issueDate) : file.uploadedAt ? formatShortDate(file.uploadedAt.slice(0, 10)) : "Payslip"} />
-                  <h3>{file.title || "Payslip"}</h3>
-                  {file.notes && <p>{file.notes}</p>}
-                </div>
-                {file.fileUrl
-                  ? <a className="button primary" href={file.fileUrl} target="_blank" rel="noreferrer">View PDF</a>
-                  : <Badge value={file.storagePath ? "PDF uploaded" : "File pending"} />}
+        <section className="staff-pay-history-panel">
+          <div className="staff-pay-history-head">
+            <div>
+              <p className="eyebrow">Pay history</p>
+              <h3>Month-by-month pay records</h3>
+              <p>Each month groups your submitted hours, salary, gross pay, adjustments, notes and payslips.</p>
+            </div>
+            <Badge value={`${staffMonthlyPayHistory.length} month${staffMonthlyPayHistory.length === 1 ? "" : "s"}`} />
+          </div>
+          <div className="staff-pay-month-grid">
+            {staffMonthlyPayHistory.map((row) => (
+              <article className={`staff-pay-month-card${row.period === period ? " active" : ""}`} key={row.period}>
+                <button type="button" onClick={() => setPeriod(row.period)}>
+                  <span>{formatPayrollPeriod(row.period)}</span>
+                  <strong>{formatCurrency(row.gross)}</strong>
+                  <small>{row.hours.toFixed(2)} hours · {row.payslips.length ? `${row.payslips.length} payslip${row.payslips.length === 1 ? "" : "s"}` : "No payslip yet"}</small>
+                </button>
               </article>
             ))}
-            {!staffPayslipFiles.length && <EmptyList title="No payslips yet" text="Payslips will appear here after admin uploads them." />}
+            {!staffMonthlyPayHistory.length && <EmptyList title="No pay history yet" text="Your pay history will appear once a month has been submitted or a payslip has been uploaded." />}
+          </div>
+        </section>
+      )}
+      {isStaff && (
+        <Panel title={`${formatPayrollPeriod(period)} Pay Detail`}>
+          <div className="staff-pay-detail-grid">
+            <article>
+              <span>Gross pay</span>
+              <strong>{formatCurrency(staffSelectedMonth.gross)}</strong>
+              <small>{staffSelectedMonth.monthlySalary ? `${formatCurrency(staffSelectedMonth.monthlySalary)} salary` : "No salary recorded"}{staffSelectedMonth.hourlyGross ? ` · ${formatCurrency(staffSelectedMonth.hourlyGross)} additional hours` : ""}</small>
+            </article>
+            <article>
+              <span>Hours</span>
+              <strong>{staffSelectedMonth.hours.toFixed(2)}</strong>
+              <small>{staffSelectedMonth.schools.length ? staffSelectedMonth.schools.join(", ") : "No site hours submitted for this month"}</small>
+            </article>
+            <article>
+              <span>Adjustments</span>
+              <strong>{formatCurrency(staffSelectedMonth.expenses - staffSelectedMonth.deductions)}</strong>
+              <small>{formatCurrency(staffSelectedMonth.expenses)} expenses · {formatCurrency(staffSelectedMonth.deductions)} deductions</small>
+            </article>
+            <article>
+              <span>Net summary</span>
+              <strong>{formatCurrency(staffSelectedMonth.net)}</strong>
+              <small>{staffSelectedMonth.status || "Draft"} payroll status</small>
+            </article>
+          </div>
+          <div className="staff-pay-notes">
+            <div>
+              <span>Notes</span>
+              <p>{staffSelectedMonth.note || "No payroll note has been added for this month."}</p>
+            </div>
+            <Badge value={staffSelectedMonth.payslips.length ? `${staffSelectedMonth.payslips.length} payslip${staffSelectedMonth.payslips.length === 1 ? "" : "s"}` : "No payslip"} />
           </div>
         </Panel>
       )}
-      <Panel title={`${formatPayrollPeriod(period)} Pay`}>
-        {isAdmin && (
+      {isStaff && (
+        <Panel title="My Payslip">
+          {staffPayslipFiles.length ? (
+            <div className="staff-payslip-picker">
+              <label>
+                Payslip
+                <select value={selectedStaffPayslip?.id || ""} onChange={(event) => setSelectedPayslipId(event.target.value)}>
+                  {staffPayslipFiles.map((file) => (
+                    <option key={file.id} value={file.id}>
+                      {formatPayrollPeriod(payslipPeriod(file))} - {file.title || "Payslip"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="staff-payslip-preview">
+                <div>
+                  <Badge value={selectedStaffPayslip?.issueDate ? formatShortDate(selectedStaffPayslip.issueDate) : selectedStaffPayslip?.uploadedAt ? formatShortDate(selectedStaffPayslip.uploadedAt.slice(0, 10)) : "Payslip"} />
+                  <strong>{selectedStaffPayslip?.title || "Payslip"}</strong>
+                  {selectedStaffPayslip?.notes && <span>{selectedStaffPayslip.notes}</span>}
+                </div>
+                {selectedStaffPayslip?.fileUrl
+                  ? <a className="button primary" href={selectedStaffPayslip.fileUrl} target="_blank" rel="noreferrer">View payslip</a>
+                  : <Badge value={selectedStaffPayslip?.storagePath ? "PDF uploaded" : "File pending"} />}
+              </div>
+            </div>
+          ) : (
+            <EmptyList title="No payslips yet" text="Payslips will appear here after admin uploads them." />
+          )}
+        </Panel>
+      )}
+      {isAdmin && (
+        <Panel title={`${formatPayrollPeriod(period)} Pay`}>
           <div className="payroll-table-controls" id="payroll-table">
             <div>
               <p>{visiblePayrollRows.length} of {payrollRows.length} staff shown.</p>
@@ -4624,63 +5190,58 @@ function Pay({ data, access, onOpenTab, onOpenStaffProfile }) {
               <button className="button subtle" type="button" disabled={!payrollQuery && payrollFilter === "pay-due"} onClick={() => { setPayrollQuery(""); setPayrollFilter("pay-due"); }}>Reset</button>
             </div>
           </div>
-        )}
-        <TableWrap>
-          <table>
-            <thead><tr><th>Staff</th><th>Submitted schools</th><th>Additional hours</th><th>Pay basis</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th><th>Payslip</th>{isAdmin && <th>Payroll note</th>}</tr></thead>
-            <tbody>{visiblePayrollRows.map((row) => {
-              const submittedEntries = row.payrollEntries.filter((entry) => ["Submitted", "Approved"].includes(entry.status));
-              const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName)));
-              const net = row.gross + row.expenses - row.deductions;
-              return (
-                <tr key={row.id}>
-                  <td>
-                    {isAdmin
-                      ? <button className="payroll-staff-link" type="button" onClick={() => onOpenStaffProfile?.(row.id)}>{row.name}</button>
-                      : <strong>{row.name}</strong>}
-                    <br /><small>{row.email || "No email"}</small>
-                  </td>
-                  <td>{schools.length ? schools.join(", ") : "No hours submitted"}</td>
-                  <td><strong>{row.hours.toFixed(2)}</strong></td>
-                  <td>
-                    {row.annualSalary ? <><strong>{formatCurrency(row.monthlySalary)}/mo</strong><br /><small>{formatCurrency(row.annualSalary)} annual salary</small></> : null}
-                    {row.payRate ? <><br /><small>{formatCurrency(row.payRate)}/hr extra hours</small></> : !row.annualSalary ? "No rate" : null}
-                  </td>
-                  <td>{formatCurrency(row.gross)}{row.hourlyGross ? <><br /><small>{formatCurrency(row.hourlyGross)} extra hours</small></> : null}</td>
-                  <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.expenses || ""} onChange={(event) => updateAdjustment(row.id, { expenses: event.target.value })} aria-label={`${row.name} expenses`} disabled={runLocked} /> : formatCurrency(row.expenses)}</td>
-                  <td>{isAdmin ? <input type="number" min="0" step="0.01" value={row.deductions || ""} onChange={(event) => updateAdjustment(row.id, { deductions: event.target.value })} aria-label={`${row.name} deductions`} disabled={runLocked} /> : formatCurrency(row.deductions)}</td>
+          <TableWrap>
+            <table>
+              <thead><tr><th>Staff</th><th>Submitted schools</th><th>Additional hours</th><th>Pay basis</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th><th>Payslip</th><th>Payroll note</th></tr></thead>
+              <tbody>{visiblePayrollRows.map((row) => {
+                const submittedEntries = row.payrollEntries.filter((entry) => ["Submitted", "Approved"].includes(entry.status));
+                const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName)));
+                const net = row.gross + row.expenses - row.deductions;
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <button className="payroll-staff-link" type="button" onClick={() => onOpenStaffProfile?.(row.id)}>{row.name}</button>
+                      <br /><small>{row.email || "No email"}</small>
+                    </td>
+                    <td>{schools.length ? schools.join(", ") : "No hours submitted"}</td>
+                    <td><strong>{row.hours.toFixed(2)}</strong></td>
+                    <td>
+                      {row.annualSalary ? <><strong>{formatCurrency(row.monthlySalary)}/mo</strong><br /><small>{formatCurrency(row.annualSalary)} annual salary</small></> : null}
+                      {row.payRate ? <><br /><small>{formatCurrency(row.payRate)}/hr extra hours</small></> : !row.annualSalary ? "No rate" : null}
+                    </td>
+                    <td>{formatCurrency(row.gross)}{row.hourlyGross ? <><br /><small>{formatCurrency(row.hourlyGross)} extra hours</small></> : null}</td>
+                    <td><input type="number" min="0" step="0.01" value={row.expenses || ""} onChange={(event) => updateAdjustment(row.id, { expenses: event.target.value })} aria-label={`${row.name} expenses`} disabled={runLocked} /></td>
+                    <td><input type="number" min="0" step="0.01" value={row.deductions || ""} onChange={(event) => updateAdjustment(row.id, { deductions: event.target.value })} aria-label={`${row.name} deductions`} disabled={runLocked} /></td>
                   <td><strong>{formatCurrency(net)}</strong></td>
                   <td>
                     <div className="payslip-cell">
                       {row.payslips.length ? (
                         row.payslips.slice(0, 2).map((file) => file.fileUrl
-                          ? <a key={file.id} className="payslip-view-link" href={file.fileUrl} target="_blank" rel="noreferrer">{isAdmin ? file.title : "View PDF"}</a>
-                          : <span key={file.id}>{file.title} · {file.storagePath === "Pending upload" ? "Uploading" : isAdmin ? "Private file" : "PDF uploaded"}</span>)
+                          ? <a key={file.id} className="payslip-view-link" href={file.fileUrl} target="_blank" rel="noreferrer">{file.title}</a>
+                          : <span key={file.id}>{file.title} · {file.storagePath === "Pending upload" ? "Uploading" : "Private file"}</span>)
                       ) : <Badge value={submittedEntries.length ? "Ready to upload" : "Pending hours"} />}
-                      {isAdmin && (
-                        <label className="button subtle payslip-upload-button">
-                          Upload
-                          <input
-                            type="file"
-                            accept="application/pdf,.pdf"
-                            disabled={runLocked}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              uploadPayslip(row, file);
-                              event.target.value = "";
-                            }}
-                          />
-                        </label>
-                      )}
+                      <label className="button subtle payslip-upload-button">
+                        Upload
+                        <input
+                          type="file"
+                          accept="application/pdf,.pdf"
+                          disabled={runLocked}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            uploadPayslip(row, file);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
                     </div>
                   </td>
-                  {isAdmin && <td><input type="text" value={row.payrollNote} onChange={(event) => updateAdjustment(row.id, { note: event.target.value })} placeholder="Private payroll note" disabled={runLocked} /></td>}
+                  <td><input type="text" value={row.payrollNote} onChange={(event) => updateAdjustment(row.id, { note: event.target.value })} placeholder="Private payroll note" disabled={runLocked} /></td>
                 </tr>
               );
             })}
             {!visiblePayrollRows.length && (
               <tr>
-                <td colSpan={isAdmin ? 10 : 9}><strong>No payroll records for this month yet.</strong> Add salary details on staff profiles or use the Hours page to enter school hours.</td>
+                <td colSpan="10"><strong>No payroll records for this month yet.</strong> Add salary details on staff profiles or use the Hours page to enter school hours.</td>
               </tr>
             )}</tbody>
             <tfoot>
@@ -4693,13 +5254,14 @@ function Pay({ data, access, onOpenTab, onOpenStaffProfile }) {
                 <td><strong>{formatCurrency(totalDeductions)}</strong></td>
                 <td><strong>{formatCurrency(totalNet)}</strong></td>
                 <td />
-                {isAdmin && <td />}
+                <td />
               </tr>
             </tfoot>
           </table>
         </TableWrap>
         {!payrollRows.some((row) => staffIds.has(row.id) && (row.hours > 0 || row.monthlySalary > 0)) && <p className="panel-note">No salary or hourly payroll values are ready for this month yet.</p>}
       </Panel>
+      )}
     </div>
   );
 }
@@ -5228,6 +5790,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     return staffUsers.find((item) => item.id === reportsTo)?.name || "Unassigned";
   }
   function checkStatus(person) {
+    if (isFormerStaffRecord(person)) return "Archived";
     const status = String(person.compliance || "").toLowerCase();
     if (status.includes("compliant")) return "Compliant";
     if (status.includes("expiring")) return "Expiring soon";
@@ -5236,11 +5799,13 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     return "Review needed";
   }
   function actionText(person) {
+    if (isFormerStaffRecord(person)) return "Retained record";
     const missing = actionItems(person);
     if (!missing.length) return checkStatus(person) === "Compliant" ? "No action" : "Check evidence";
     return `Check ${missing.slice(0, 2).join(" / ")}${missing.length > 2 ? ` +${missing.length - 2}` : ""}`;
   }
   function actionItems(person) {
+    if (isFormerStaffRecord(person)) return [];
     return [
       !hasValidDate(person.dbsRenewal) && "DBS",
       !hasValidDate(person.safeguardingExpiry) && "Safeguarding",
@@ -5249,6 +5814,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     ].filter(Boolean);
   }
   function priorityProfile(person) {
+    if (isFormerStaffRecord(person)) return { score: 0, reason: "Archived staff record", tier: "Clear" };
     const personRequests = Object.entries(evidenceRequests)
       .filter(([id]) => id.startsWith(`${person.id}-`))
       .map(([, request]) => request);
@@ -5293,13 +5859,16 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     const status = checkStatus(person);
     acc.All += 1;
     acc[status] = (acc[status] || 0) + 1;
-    if (status !== "Compliant") acc["Action needed"] += 1;
+    if (status !== "Compliant" && status !== "Archived") acc["Action needed"] += 1;
     return acc;
-  }, { "Action needed": 0, All: 0, Compliant: 0, "Review needed": 0, Missing: 0, "Expiring soon": 0, Rejected: 0 });
-  const statusOptions = ["Action needed", "All", "Compliant", "Review needed", "Missing", "Expiring soon", "Rejected"];
+  }, { "Action needed": 0, All: 0, Compliant: 0, "Review needed": 0, Missing: 0, "Expiring soon": 0, Rejected: 0, Archived: 0 });
+  const hasArchivedStaff = data.staff.some((person) => isFormerStaffRecord(person));
+  const statusOptions = ["Action needed", "All", "Compliant", "Review needed", "Missing", "Expiring soon", "Rejected", ...(hasArchivedStaff ? ["Archived"] : [])];
   const visibleRows = data.staff.filter((person) => {
     const status = checkStatus(person);
-    const matchesStatus = priorityView ? priorityProfile(person).score > 0 : statusFilter === "All" || (statusFilter === "Action needed" ? status !== "Compliant" : status === statusFilter);
+    const matchesStatus = priorityView
+      ? !isFormerStaffRecord(person) && priorityProfile(person).score > 0
+      : statusFilter === "All" || (statusFilter === "Action needed" ? status !== "Compliant" && status !== "Archived" : status === statusFilter);
     const matchesSite = siteFilter === "All" || staffSchoolNames(person).includes(siteFilter);
     const haystack = [person.name, person.email, person.role, person.location, person.compliance, managerName(person), staffPrimaryLocation(person)].filter(Boolean).join(" ").toLowerCase();
     return matchesStatus && matchesSite && (!search || haystack.includes(search));
@@ -5313,8 +5882,9 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     .filter((item) => item.priority.score > 0)
     .sort((a, b) => b.priority.score - a.priority.score)
     .slice(0, 4);
-  const actionCount = data.staff.filter((person) => checkStatus(person) !== "Compliant").length;
-  const compliantCount = data.staff.length - actionCount;
+  const activeStaff = data.staff.filter((person) => !isFormerStaffRecord(person));
+  const actionCount = activeStaff.filter((person) => checkStatus(person) !== "Compliant").length;
+  const compliantCount = activeStaff.length - actionCount;
   const selectedPerson = data.staff.find((person) => person.id === selectedId) || rows[0] || data.staff[0];
   const filtersActive = query || statusFilter !== "Action needed" || siteFilter !== "All" || priorityView;
   useEffect(() => {
@@ -5328,7 +5898,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
         <div>
           <p className="eyebrow">Live staff register</p>
           <h3>Find the next compliance action quickly.</h3>
-          <p>{rows.length} of {data.staff.length} staff shown · {actionCount} need review · {compliantCount} currently compliant.</p>
+          <p>{rows.length} of {data.staff.length} records shown · {actionCount} active staff need review · {compliantCount} currently compliant.</p>
           {!!priorityRows.length && (
             <div className="scr-priority-strip" aria-label="SCR priority view">
               {priorityRows.map(({ person, priority }) => (
@@ -5387,7 +5957,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
               return (
               <tr
                 key={person.id}
-                className={selectedPerson?.id === person.id ? "selected-row" : ""}
+                className={`${selectedPerson?.id === person.id ? "selected-row" : ""} ${isFormerStaffRecord(person) ? "archived-row" : ""}`.trim()}
                 onClick={() => setSelectedId(person.id)}
                 tabIndex={0}
                 onKeyDown={(event) => {
@@ -5405,7 +5975,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
                 <td><span className={`scr-priority-pill ${priority.tier.toLowerCase()}`}>{priority.tier}</span><br /><small>{priority.reason}</small></td>
                 <td><strong>{actionText(person)}</strong></td>
                 {!compact && <><td>{person.dbsRenewal}</td><td>{person.safeguardingExpiry}</td><td>{person.firstAidExpiry}</td></>}
-                <td><button className="button subtle" type="button" onClick={(event) => { event.stopPropagation(); setSelectedId(person.id); }}>{selectedPerson?.id === person.id ? "Open" : "View"}</button></td>
+                <td><button className="button subtle" type="button" onClick={(event) => { event.stopPropagation(); setSelectedId(person.id); }}>{isFormerStaffRecord(person) ? "View retained" : selectedPerson?.id === person.id ? "Open" : "View"}</button></td>
               </tr>
               );
             })}
@@ -5433,6 +6003,8 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   const [hrFileTab, setHrFileTab] = useState("All");
   const [requestEvidenceKey, setRequestEvidenceKey] = useState(() => scrEvidenceRequestOptions[0][0]);
   const [requestNote, setRequestNote] = useState("");
+  const archivedRecord = person.formerRecord || {};
+  const isArchivedProfile = isFormerStaffRecord(person);
   const note = notes[person.id] || "";
   const assignments = staffAssignments(person);
   const accountUser = mergeUserRecords(data.staff || [], accountState).find((user) => user.id === (person.profileId || person.id) || user.staffRecordId === person.id);
@@ -5444,13 +6016,13 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     return staffSchoolNames(person).some((school) => label.includes(school.toLowerCase()));
   }).slice(0, 3);
   const avatar = photoUrl || person.photoUrl || person.profilePhotoUrl || defaultStaffAvatar;
-  const canEditPay = ["Admin", "Superadmin"].includes(access?.role);
+  const canEditPay = ["Admin", "Superadmin"].includes(access?.role) && !isArchivedProfile;
   const monthlySalary = monthlySalaryFromAnnual(person.annualSalary);
   const profileStats = [
+    ["Record", isArchivedProfile ? "Archived" : "Active"],
     ["SCR", checkStatus],
     ["Next action", nextAction],
     ["Manager", managerName || "Unassigned"],
-    ["Account", accountUser?.status || "Not invited"],
   ];
   const requestByEvidenceKey = Object.fromEntries(evidenceRequests.map((request) => [request.evidenceKey, request]));
   const evidenceDateFields = {
@@ -5537,6 +6109,10 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   }
 
   async function resetProfileAccountPassword() {
+    if (isArchivedProfile) {
+      setAccountStatus("Archived staff records are retained read-only. Restore the staff member before changing account access.");
+      return;
+    }
     const email = accountUser?.email || person.email || "";
     if (!isRealStaffEmail(email)) {
       setAccountStatus("Add a real email before generating account access.");
@@ -5614,6 +6190,11 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   async function uploadProfilePhoto(event) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (isArchivedProfile) {
+      setPhotoStatus("Archived profile photos are retained read-only.");
+      event.target.value = "";
+      return;
+    }
     if (!hasSupabaseConfig) {
       setPhotoStatus("Photo upload needs Supabase on the live platform.");
       return;
@@ -5634,19 +6215,22 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
 
   function submitEvidenceRequest(event) {
     event.preventDefault();
+    if (isArchivedProfile) return;
     onRequestEvidence?.(person, requestEvidenceKey, requestNote);
     setRequestNote("");
   }
 
   return (
-    <article className="staff-profile-panel">
+    <article className={`staff-profile-panel ${isArchivedProfile ? "archived" : ""}`}>
       <div className="staff-profile-identity">
         <div className="staff-photo-control">
           <img src={avatar} alt={`${person.name} profile`} />
-          <label className="button light">
-            <Upload size={16} /> Upload photo
-            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadProfilePhoto} />
-          </label>
+          {!isArchivedProfile ? (
+            <label className="button light">
+              <Upload size={16} /> Upload photo
+              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadProfilePhoto} />
+            </label>
+          ) : <small>Photo retained with archived record.</small>}
           {photoStatus && <small>{photoStatus}</small>}
         </div>
         <div>
@@ -5660,11 +6244,25 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           </div>
         </div>
       </div>
+      {isArchivedProfile && (
+        <section className="archived-scr-banner">
+          <div>
+            <p className="eyebrow">Archived staff record</p>
+            <h4>Retained for SCR, HR and payroll evidence.</h4>
+            <p>{person.name} is no longer included in live staffing or compliance actions. Evidence is available here for review, but active controls are locked until the staff member is restored.</p>
+          </div>
+          <dl>
+            <div><dt>Left</dt><dd>{person.leftAt ? formatShortDate(person.leftAt.slice(0, 10)) : archivedRecord.archivedAt ? formatShortDate(archivedRecord.archivedAt.slice(0, 10)) : "Date not recorded"}</dd></div>
+            <div><dt>Reason</dt><dd>{person.leavingReason || archivedRecord.reason || "Not recorded"}</dd></div>
+            <div><dt>Last site</dt><dd>{staffPrimaryLocation(person)}</dd></div>
+          </dl>
+        </section>
+      )}
       <section className="staff-profile-account-card">
         <div>
           <p className="eyebrow">Account access</p>
           <h4>{accountUser?.status || "Not invited"}</h4>
-          <p>{accountUser?.email || person.email || "Email not recorded"} · {accountUser?.role || "Staff"} access</p>
+          <p>{accountUser?.email || person.email || "Email not recorded"} · {accountUser?.role || "Staff"} access{isArchivedProfile ? " · archived record" : ""}</p>
         </div>
         <div className="staff-profile-account-actions">
           {accountUser?.temporaryPassword ? (
@@ -5675,7 +6273,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           ) : (
             <small>No temporary password is currently visible.</small>
           )}
-          <button className="button light" type="button" disabled={accountBusy} onClick={resetProfileAccountPassword}>{accountBusy ? "Working..." : "Reset password"}</button>
+          <button className="button light" type="button" disabled={accountBusy || isArchivedProfile} onClick={resetProfileAccountPassword}>{accountBusy ? "Working..." : "Reset password"}</button>
         </div>
         {accountStatus && <p className="account-message">{accountStatus}</p>}
       </section>
@@ -5691,7 +6289,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
         <div>
           <p className="eyebrow">Next action</p>
           <h4>{nextAction}</h4>
-          <p>{actionItems.length ? "Work through these items before issuing assurance or marking the profile ready." : "No immediate SCR action is flagged for this staff member."}</p>
+          <p>{isArchivedProfile ? "This is a retained evidence record and is excluded from live SCR actions." : actionItems.length ? "Work through these items before issuing assurance or marking the profile ready." : "No immediate SCR action is flagged for this staff member."}</p>
         </div>
         <div className="scr-action-tags">
           {(actionItems.length ? actionItems : ["No action"]).map((item) => <span key={item}>{item}</span>)}
@@ -5701,20 +6299,20 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
         <div>
           <p className="eyebrow">Evidence requests</p>
           <h4>Request missing or updated SCR evidence.</h4>
-          <p>Requests logged here appear in the staff member’s evidence request area and can be tracked by admin until submitted, approved or cleared.</p>
+          <p>{isArchivedProfile ? "Evidence requests are locked because this staff member has left. Restore the record before requesting new evidence." : "Requests logged here appear in the staff member’s evidence request area and can be tracked by admin until submitted, approved or cleared."}</p>
         </div>
         <form className="scr-profile-request-form" onSubmit={submitEvidenceRequest}>
           <label>
             Evidence type
-            <select value={requestEvidenceKey} onChange={(event) => setRequestEvidenceKey(event.target.value)}>
+            <select value={requestEvidenceKey} onChange={(event) => setRequestEvidenceKey(event.target.value)} disabled={isArchivedProfile}>
               {scrEvidenceRequestOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           </label>
           <label>
             Note to staff
-            <textarea rows="2" value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Please upload your renewed certificate or reference." />
+            <textarea rows="2" value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Please upload your renewed certificate or reference." disabled={isArchivedProfile} />
           </label>
-          <button className="button dark" type="submit" disabled={!onRequestEvidence}><Upload size={16} /> Request Evidence</button>
+          <button className="button dark" type="submit" disabled={!onRequestEvidence || isArchivedProfile}><Upload size={16} /> Request Evidence</button>
         </form>
         <div className="scr-profile-request-list">
           {evidenceRequests.length ? evidenceRequests.map((request) => (
@@ -5726,7 +6324,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
                 {!!request.history.length && <EvidenceHistoryTimeline events={request.history} />}
               </div>
               {request.status !== "Submitted" && (
-                <button className="button light" type="button" onClick={() => onClearEvidenceRequest?.(request)} disabled={!onClearEvidenceRequest}>Clear</button>
+                <button className="button light" type="button" onClick={() => onClearEvidenceRequest?.(request)} disabled={!onClearEvidenceRequest || isArchivedProfile}>Clear</button>
               )}
             </article>
           )) : <span className="muted-inline">No active evidence requests for this staff member.</span>}
@@ -5839,7 +6437,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           </div>
         </section>
       </div>
-      <label className="staff-profile-notes">Internal notes<textarea value={note} onChange={(event) => updateNote(event.target.value)} rows="3" placeholder="Manager notes, HR follow-up, contract reminders..." /></label>
+      <label className="staff-profile-notes">Internal notes<textarea value={note} onChange={(event) => updateNote(event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only in SCR." : "Manager notes, HR follow-up, contract reminders..."} disabled={isArchivedProfile} /></label>
     </article>
   );
 }
@@ -5857,6 +6455,86 @@ function staffPayslips(files = [], staffId) {
   return (files || [])
     .filter((file) => file.staffRecordId === staffId && staffHrFileBucket(file) === "Payslips" && file.status !== "archived")
     .sort((a, b) => String(b.issueDate || b.uploadedAt || "").localeCompare(String(a.issueDate || a.uploadedAt || "")));
+}
+
+function payslipPeriod(file) {
+  const issuePeriod = String(file?.issueDate || "").match(/^(\d{4}-\d{2})/)?.[1];
+  if (issuePeriod) return issuePeriod;
+  const text = `${file?.title || ""} ${file?.notes || ""}`.toLowerCase();
+  const monthNames = [
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+  ];
+  const year = text.match(/\b(20\d{2})\b/)?.[1];
+  const monthIndex = monthNames.findIndex((month) => text.includes(month));
+  if (!year || monthIndex < 0) return "";
+  return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+}
+
+function payslipMatchesPeriod(file, period) {
+  return payslipPeriod(file) === period;
+}
+
+function staffScrOperationalSummary(person = {}) {
+  const status = String(person.compliance || "").toLowerCase();
+  const missing = [
+    !hasValidDate(person.dbsRenewal) && "DBS",
+    !hasValidDate(person.safeguardingExpiry) && "Safeguarding",
+    !hasValidDate(person.allergyAwarenessExpiry) && "Allergy",
+    !person.scrChecklist?.approvedAt && person.compliance !== "Compliant" && "Admin review",
+  ].filter(Boolean);
+  const label = status.includes("compliant")
+    ? "Compliant"
+    : status.includes("expiring")
+      ? "Expiring soon"
+      : status.includes("rejected")
+        ? "Rejected"
+        : status.includes("missing")
+          ? "Missing"
+          : "Review needed";
+  return {
+    status: label,
+    nextAction: missing.length ? `Check ${missing.slice(0, 2).join(" / ")}${missing.length > 2 ? ` +${missing.length - 2}` : ""}` : "No immediate SCR action",
+  };
+}
+
+function staffPayrollOperationalSummary(data = {}, person = {}) {
+  const periods = Array.from(new Set([
+    ...Object.keys(data.payrollHours || {}),
+    ...Object.keys(data.payrollRuns || {}),
+    ...(data.hrFiles || []).filter((file) => file.staffRecordId === person.id).map((file) => payslipPeriod(file)).filter(Boolean),
+  ])).filter(Boolean).sort().reverse();
+  const latestPeriod = periods.find((period) => {
+    const periodRecords = data.payrollHours?.[period] || {};
+    const hasHours = Object.values(periodRecords).some((record) => (record.rows || []).some((row) => row.staffId === person.id || row.staffId === person.profileId));
+    const hasAdjustment = Boolean(data.payrollRuns?.[period]?.adjustments?.[person.id]);
+    const hasPayslip = (data.hrFiles || []).some((file) => file.staffRecordId === person.id && payslipMatchesPeriod(file, period));
+    return hasHours || hasAdjustment || hasPayslip || Number(person.annualSalary || 0) > 0;
+  }) || "";
+  const periodRecords = latestPeriod ? (data.payrollHours?.[latestPeriod] || {}) : {};
+  const payrollEntries = Object.entries(periodRecords).flatMap(([schoolName, record]) => (record.rows || [])
+    .filter((row) => row.staffId === person.id || row.staffId === person.profileId)
+    .map((row) => ({ ...row, schoolName })));
+  const hours = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
+  const hourlyGross = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? person.payRate ?? 0), 0);
+  const monthlySalary = monthlySalaryFromAnnual(person.annualSalary);
+  const latestGross = latestPeriod ? monthlySalary + hourlyGross : monthlySalary;
+  const basis = person.annualSalary
+    ? `${formatCurrency(monthlySalary)}/mo salary`
+    : person.payRate
+      ? `${formatCurrency(person.payRate)}/hr`
+      : "Not recorded";
+  return { latestPeriod, hours, latestGross, basis };
 }
 
 function buildStaffHrFileTabs(files) {
@@ -6021,6 +6699,28 @@ function readScrChecklistState() {
 
 function saveScrChecklistState(next) {
   localStorage.setItem(scrChecklistStorageKey, JSON.stringify(next));
+}
+
+function persistScrChecklistRecord(staffId, checklist, action = "SCR checklist synced") {
+  if (!hasSupabaseConfig || !isUuid(staffId)) return;
+  loadSupabaseModule()
+    .then(({ saveScrChecklist }) => saveScrChecklist(staffId, checklist))
+    .then(() => addAuditLog(action, `${staffId}: saved to Supabase`))
+    .catch((error) => {
+      console.warn("Unable to save SCR checklist", error);
+      addAuditLog("SCR checklist Supabase save failed", `${staffId}: ${error.message || "Supabase rejected the update"}`);
+    });
+}
+
+function persistScrEvidenceRequestRecord(id, staffId, evidenceKey, request, action = "SCR evidence request synced") {
+  if (!hasSupabaseConfig || !isUuid(staffId)) return;
+  loadSupabaseModule()
+    .then(({ saveScrEvidenceRequest }) => saveScrEvidenceRequest({ id, staffRecordId: staffId, evidenceKey, request }))
+    .then(() => addAuditLog(action, `${id}: saved to Supabase`))
+    .catch((error) => {
+      console.warn("Unable to save SCR evidence request", error);
+      addAuditLog("SCR evidence request Supabase save failed", `${id}: ${error.message || "Supabase rejected the update"}`);
+    });
 }
 
 function buildPreviewUsers(data, viewRole) {
