@@ -81,7 +81,7 @@ export async function fetchPlatformData({ userId, role }) {
       archived_at,
       leaving_reason,
       left_at,
-      profiles(full_name, email, role),
+      profiles!staff_records_profile_id_fkey(full_name, email, role),
       scr_checks(
         right_to_work,
         identity_checks,
@@ -149,7 +149,7 @@ export async function fetchPlatformData({ userId, role }) {
       notes,
       uploaded_at,
       hr_file_categories(id, name, sensitivity),
-      staff_records(preferred_name, profiles(full_name, email))
+      staff_records(preferred_name, profiles!staff_records_profile_id_fkey(full_name, email))
     `)
     .is("archived_at", null)
     .order("uploaded_at", { ascending: false })
@@ -769,7 +769,7 @@ export async function createHrFile(payload) {
       notes,
       uploaded_at,
       hr_file_categories(id, name, sensitivity),
-      staff_records(preferred_name, profiles(full_name, email))
+      staff_records(preferred_name, profiles!staff_records_profile_id_fkey(full_name, email))
     `)
     .single();
 
