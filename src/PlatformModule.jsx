@@ -712,10 +712,16 @@ function PlatformHeader({ role, actualRole, canPreviewRoles, viewRole, setViewRo
             Previewing the platform as {previewingPerson ? `${selectedPreviewUser.name} (${viewRole})` : viewRole}. Your real account remains {actualRole}.
           </p>
         )}
-        <p className="platform-source">{data.loading ? "Loading live records..." : `${data.source}${data.error ? " · using demo fallback" : ""}`}</p>
+        <p className="platform-source">{data.loading ? "Loading live records..." : data.source}</p>
         {access?.isScoped && <p className="platform-source">Manager scope: {access.directReports.length} direct reports · own team records only</p>}
         {access?.isStaffScoped && <p className="platform-source">Staff scope: personal records only</p>}
         {data.error && <p className="platform-warning">{data.error}</p>}
+        {Boolean(data.warnings?.length) && (
+          <p className="platform-warning">
+            Some live sections need attention: {data.warnings.slice(0, 2).join(" · ")}
+            {data.warnings.length > 2 ? ` · ${data.warnings.length - 2} more` : ""}
+          </p>
+        )}
       </div>
       <div className="header-tools">
         {canPreviewRoles && (

@@ -52,6 +52,7 @@ async function loadMockPlatformData() {
     source: "Demo data",
     loading: false,
     error: "",
+    warnings: [],
   }));
   return mockPlatformDataPromise;
 }
@@ -324,6 +325,7 @@ const mockPlatformData = {
   source: "Loading",
   loading: false,
   error: "",
+  warnings: [],
 };
 const demoLoginEnabled = import.meta.env.DEV && !hasSupabaseConfig;
 const demoLogins = [
@@ -804,6 +806,7 @@ export default function App() {
           source: "Supabase",
           loading: false,
           error: "",
+          warnings: nextData.warnings || [],
         });
       })
       .catch((error) => {
@@ -812,8 +815,10 @@ export default function App() {
           if (!active) return;
           setPlatformData({
             ...demoData,
+            source: "Local demo data",
             loading: false,
-            error: error.message || "Unable to load live platform data.",
+            error: `Live staff records could not load, so this view is showing local demo data. ${error.message || "Unable to load live platform data."}`,
+            warnings: [],
           });
         });
       });

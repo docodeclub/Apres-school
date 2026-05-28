@@ -149,7 +149,7 @@ export async function fetchPlatformData({ userId, role }) {
       notes,
       uploaded_at,
       hr_file_categories(id, name, sensitivity),
-      staff_records(preferred_name, profiles!staff_records_profile_id_fkey(full_name, email))
+      staff_records!staff_hr_files_staff_record_id_fkey(preferred_name, profiles!staff_records_profile_id_fkey(full_name, email))
     `)
     .is("archived_at", null)
     .order("uploaded_at", { ascending: false })
@@ -192,7 +192,7 @@ export async function fetchPlatformData({ userId, role }) {
     ? Promise.resolve({ data: [], error: null })
     : supabase
         .from("payroll_audit_events")
-        .select("id, payroll_period, school_name, action, detail, actor_id, metadata, created_at, profiles(full_name, email)")
+        .select("id, payroll_period, school_name, action, detail, actor_id, metadata, created_at, profiles!payroll_audit_events_actor_id_fkey(full_name, email)")
         .order("created_at", { ascending: false })
         .limit(120);
 
@@ -242,8 +242,22 @@ export async function fetchPlatformData({ userId, role }) {
     scrEvidenceRequestsQuery,
   ]);
 
-  const firstError = [staffResult.error, sessionsResult.error, documentsResult.error, enquiriesResult.error].find(Boolean);
-  if (firstError) throw firstError;
+  if (staffResult.error) throw staffResult.error;
+
+  const warnings = [
+    ["Sessions", sessionsResult.error],
+    ["Documents", documentsResult.error],
+    ["Enquiries", enquiriesResult.error],
+    ["HR files", hrFilesResult.error],
+    ["HR file categories", hrCategoriesResult.error],
+    ["Payroll hours", payrollHoursResult.error],
+    ["Payroll runs", payrollRunsResult.error],
+    ["Payroll audit", payrollAuditResult.error],
+    ["HR hierarchy", hrReportingResult.error],
+    ["SCR evidence requests", scrEvidenceRequestsResult.error],
+  ]
+    .filter(([, error]) => Boolean(error))
+    .map(([label, error]) => `${label}: ${error.message || "Unable to load"}`);
 
   const staff = mapStaffRecords(staffResult.data || []);
   await attachStaffPhotoUrls(staff);
@@ -262,6 +276,7 @@ export async function fetchPlatformData({ userId, role }) {
     payrollAudit: payrollAuditResult.error ? [] : mapPayrollAudit(payrollAuditResult.data || []),
     hrReportingLines: hrReportingResult.error ? {} : mapHrReportingLines(hrReportingResult.data || []),
     scrRenewalRequests: scrEvidenceRequestsResult.error ? {} : mapScrEvidenceRequests(scrEvidenceRequestsResult.data || []),
+    warnings,
   };
 }
 
@@ -769,7 +784,7 @@ export async function createHrFile(payload) {
       notes,
       uploaded_at,
       hr_file_categories(id, name, sensitivity),
-      staff_records(preferred_name, profiles!staff_records_profile_id_fkey(full_name, email))
+      staff_records!staff_hr_files_staff_record_id_fkey(preferred_name, profiles!staff_records_profile_id_fkey(full_name, email))
     `)
     .single();
 
