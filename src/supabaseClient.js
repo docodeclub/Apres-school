@@ -122,7 +122,7 @@ export async function fetchPlatformData({ userId, role }) {
       category,
       source_url,
       archived_at,
-      document_assignments(acknowledged_at, due_at, staff_record_id)
+      document_assignments(id, acknowledged_at, due_at, staff_record_id)
     `)
     .is("archived_at", null)
     .limit(30);
@@ -461,6 +461,12 @@ function mapDocuments(records) {
       read,
       missing: Math.max(0, assigned - read),
       linked: Boolean(record.source_url),
+      assignments: assignments.map((assignment) => ({
+        id: assignment.id,
+        staffRecordId: assignment.staff_record_id,
+        acknowledgedAt: assignment.acknowledged_at || "",
+        dueAt: assignment.due_at || "",
+      })),
       status: assigned && read < assigned ? `Chase ${assigned - read}` : "Complete",
     };
   });
@@ -758,6 +764,26 @@ export async function updateDocumentSourceUrl(id, sourceUrl) {
     .eq("id", id);
   if (error) throw error;
   return { id, sourceUrl };
+}
+
+export async function acknowledgeDocumentAssignment({ documentVersionId, staffRecordId }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!documentVersionId || !staffRecordId) throw new Error("Document assignment not found.");
+  const acknowledgedAt = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("document_assignments")
+    .update({ acknowledged_at: acknowledgedAt })
+    .eq("document_version_id", documentVersionId)
+    .eq("staff_record_id", staffRecordId)
+    .select("id, document_version_id, staff_record_id, acknowledged_at")
+    .single();
+  if (error) throw error;
+  return {
+    id: data.id,
+    documentVersionId: data.document_version_id,
+    staffRecordId: data.staff_record_id,
+    acknowledgedAt: data.acknowledged_at || acknowledgedAt,
+  };
 }
 
 export async function createHrFile(payload) {

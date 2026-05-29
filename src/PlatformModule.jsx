@@ -4405,13 +4405,29 @@ function Documents({ data, access }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("attention");
   const canManageDocuments = ["Admin", "Superadmin"].includes(access?.role);
+  const isStaffView = access?.role === "Staff";
+  const staffRecordId = access?.currentUser?.staffRecordId || access?.currentUser?.id || "";
+  const [acknowledged, setAcknowledged] = useState({});
   const documents = data.documents || [];
-  const totalAssigned = documents.reduce((total, doc) => total + Number(doc.assigned || 0), 0);
-  const totalRead = documents.reduce((total, doc) => total + Number(doc.read || 0), 0);
+  const documentState = documents.map((doc) => {
+    const assignment = (doc.assignments || []).find((item) => item.staffRecordId === staffRecordId);
+    const staffAcknowledged = Boolean(assignment?.acknowledgedAt || acknowledged[doc.id]);
+    const assigned = isStaffView && assignment ? 1 : Number(doc.assigned || 0);
+    const read = isStaffView && assignment ? (staffAcknowledged ? 1 : 0) : Number(doc.read || 0);
+    return {
+      ...doc,
+      assigned,
+      read,
+      staffAssignment: assignment || null,
+      staffAcknowledged,
+    };
+  });
+  const totalAssigned = documentState.reduce((total, doc) => total + Number(doc.assigned || 0), 0);
+  const totalRead = documentState.reduce((total, doc) => total + Number(doc.read || 0), 0);
   const missingAcknowledgements = Math.max(0, totalAssigned - totalRead);
-  const linkedCount = documents.filter((doc) => Boolean(links[doc.name] || doc.url)).length;
-  const missingLinkCount = documents.length - linkedCount;
-  const visibleDocuments = documents
+  const linkedCount = documentState.filter((doc) => Boolean(links[doc.name] || doc.url)).length;
+  const missingLinkCount = documentState.length - linkedCount;
+  const visibleDocuments = documentState
     .filter((doc) => {
       const search = `${doc.name} ${doc.category || ""} ${doc.version || ""}`.toLowerCase();
       if (query && !search.includes(query.toLowerCase())) return false;
@@ -4452,15 +4468,34 @@ function Documents({ data, access }) {
       setLinkStatus(error.message || "Unable to save policy link to Supabase.");
     }
   }
+  async function acknowledgeDocument(doc) {
+    if (!doc.staffAssignment || !staffRecordId) {
+      setLinkStatus("No personal document assignment was found for this policy.");
+      return;
+    }
+    if (!hasSupabaseConfig || !isUuid(doc.id) || !isUuid(staffRecordId)) {
+      setAcknowledged((current) => ({ ...current, [doc.id]: new Date().toISOString() }));
+      setLinkStatus(`${doc.name} marked as read on this device.`);
+      return;
+    }
+    try {
+      const { acknowledgeDocumentAssignment } = await loadSupabaseModule();
+      const saved = await acknowledgeDocumentAssignment({ documentVersionId: doc.id, staffRecordId });
+      setAcknowledged((current) => ({ ...current, [doc.id]: saved.acknowledgedAt || new Date().toISOString() }));
+      setLinkStatus(`${doc.name} acknowledged.`);
+    } catch (error) {
+      setLinkStatus(error.message || "Unable to save acknowledgement.");
+    }
+  }
   return (
     <Panel title="Document & Policy Library">
-      <p className="panel-note">Live policy documents, source links and staff acknowledgement progress in one place.</p>
+      <p className="panel-note">{isStaffView ? "Open each assigned policy and confirm once you have read it." : "Live policy documents, source links and staff acknowledgement progress in one place."}</p>
       {linkStatus && <p className="panel-note">{linkStatus}</p>}
       <div className="documents-console">
         <div className="documents-summary">
-          <Metric icon={<FileText />} label="Documents" value={documents.length} tone="blue" />
-          <Metric icon={<CheckCircle2 />} label="Policy links" value={`${linkedCount}/${documents.length}`} tone={missingLinkCount ? "amber" : "green"} />
-          <Metric icon={<ClipboardCheck />} label="Acknowledgements due" value={missingAcknowledgements} tone={missingAcknowledgements ? "amber" : "green"} />
+          <Metric icon={<FileText />} label={isStaffView ? "Assigned policies" : "Documents"} value={documentState.length} tone="blue" />
+          <Metric icon={<CheckCircle2 />} label="Policy links" value={`${linkedCount}/${documentState.length}`} tone={missingLinkCount ? "amber" : "green"} />
+          <Metric icon={<ClipboardCheck />} label={isStaffView ? "To acknowledge" : "Acknowledgements due"} value={missingAcknowledgements} tone={missingAcknowledgements ? "amber" : "green"} />
         </div>
         <div className="documents-toolbar">
           <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search policies" /></label>
@@ -4500,12 +4535,13 @@ function Documents({ data, access }) {
                 </div>
                 <div className="document-progress-block">
                   <Progress value={percent} label={`${read}/${assigned} read`} />
-                  <small>{missing ? `${missing} acknowledgement${missing === 1 ? "" : "s"} outstanding` : "All assigned staff have acknowledged"}</small>
+                  <small>{isStaffView ? (doc.staffAcknowledged ? "You have acknowledged this policy" : "Please confirm once read") : (missing ? `${missing} acknowledgement${missing === 1 ? "" : "s"} outstanding` : "All assigned staff have acknowledged")}</small>
                 </div>
                 <div className="document-actions">
                   <Badge value={link ? "Linked" : "Link needed"} />
-                  <Badge value={missing ? `Chase ${missing}` : "Complete"} />
+                  <Badge value={isStaffView ? (doc.staffAcknowledged ? "Acknowledged" : "Read required") : (missing ? `Chase ${missing}` : "Complete")} />
                   {link ? <a className="button light" href={link} target="_blank" rel="noreferrer">Open policy</a> : <span className="muted-inline">No source link yet</span>}
+                  {isStaffView && link && !doc.staffAcknowledged && <button className="button book" type="button" onClick={() => acknowledgeDocument(doc)}>I have read this</button>}
                   {canManageDocuments && missing > 0 && <button className="button subtle" type="button" onClick={() => setLinkStatus(`${doc.name}: ${missing} acknowledgement${missing === 1 ? "" : "s"} outstanding.`)}>Chase</button>}
                 </div>
               </article>
