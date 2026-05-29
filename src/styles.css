@@ -7697,6 +7697,71 @@ tfoot td {
   font-weight: 800;
 }
 
+.document-readers-panel {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(38, 63, 169, 0.16);
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(243, 247, 255, 0.9), rgba(255, 255, 255, 0.95)),
+    #fff;
+  padding: 18px;
+  box-shadow: 0 14px 34px rgba(38, 63, 169, 0.08);
+}
+
+.document-readers-header,
+.document-reader-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.document-readers-header {
+  align-items: flex-start;
+}
+
+.document-readers-header h3 {
+  margin: 4px 0 6px;
+  color: var(--royal);
+  font-size: 1.35rem;
+}
+
+.document-readers-header span,
+.document-reader-row span,
+.document-reader-row small {
+  color: var(--muted);
+}
+
+.document-reader-list {
+  display: grid;
+  gap: 8px;
+}
+
+.document-reader-row {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 12px 14px;
+}
+
+.document-reader-row > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.document-reader-row > div:last-child {
+  justify-items: end;
+  text-align: right;
+}
+
+.document-reader-row strong,
+.document-reader-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1100px) {
   .document-card-row {
     grid-template-columns: 1fr;
@@ -7716,6 +7781,16 @@ tfoot td {
 
   .document-link-cell {
     grid-template-columns: 1fr;
+  }
+
+  .document-readers-header,
+  .document-reader-row {
+    display: grid;
+  }
+
+  .document-reader-row > div:last-child {
+    justify-items: start;
+    text-align: left;
   }
 }
 

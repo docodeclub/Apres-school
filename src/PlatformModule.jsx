@@ -4404,11 +4404,13 @@ function Documents({ data, access }) {
   const [linkStatus, setLinkStatus] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("attention");
+  const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const canManageDocuments = ["Admin", "Superadmin"].includes(access?.role);
   const isStaffView = access?.role === "Staff";
   const staffRecordId = access?.currentUser?.staffRecordId || access?.currentUser?.id || "";
   const [acknowledged, setAcknowledged] = useState({});
   const documents = data.documents || [];
+  const staffById = new Map((data.staff || []).map((person) => [person.id, person]));
   const documentState = documents.map((doc) => {
     const assignment = (doc.assignments || []).find((item) => item.staffRecordId === staffRecordId);
     const staffAcknowledged = Boolean(assignment?.acknowledgedAt || acknowledged[doc.id]);
@@ -4448,6 +4450,20 @@ function Documents({ data, access }) {
       const bMissing = Math.max(0, Number(b.assigned || 0) - Number(b.read || 0));
       return Number(aLink) - Number(bLink) || bMissing - aMissing || String(a.name).localeCompare(String(b.name));
     });
+  const selectedDocument = documentState.find((doc) => doc.id === selectedDocumentId) || visibleDocuments[0] || null;
+  const selectedAssignments = selectedDocument
+    ? (selectedDocument.assignments || []).map((assignment) => {
+        const person = staffById.get(assignment.staffRecordId) || {};
+        return {
+          ...assignment,
+          name: person.name || person.fullName || "Staff member",
+          email: person.email || "",
+          location: person.location || "Site not recorded",
+          acknowledged: Boolean(assignment.acknowledgedAt),
+        };
+      }).sort((a, b) => Number(a.acknowledged) - Number(b.acknowledged) || String(a.name).localeCompare(String(b.name)))
+    : [];
+  const selectedOutstanding = selectedAssignments.filter((assignment) => !assignment.acknowledged);
   function updateDocumentLink(name, value) {
     const next = { ...links, [name]: value.trim() };
     if (!next[name]) delete next[name];
@@ -4542,6 +4558,7 @@ function Documents({ data, access }) {
                   <Badge value={isStaffView ? (doc.staffAcknowledged ? "Acknowledged" : "Read required") : (missing ? `Chase ${missing}` : "Complete")} />
                   {link ? <a className="button light" href={link} target="_blank" rel="noreferrer">Open policy</a> : <span className="muted-inline">No source link yet</span>}
                   {isStaffView && link && !doc.staffAcknowledged && <button className="button book" type="button" onClick={() => acknowledgeDocument(doc)}>I have read this</button>}
+                  {canManageDocuments && <button className="button subtle" type="button" onClick={() => setSelectedDocumentId(doc.id)}>View readers</button>}
                   {canManageDocuments && missing > 0 && <button className="button subtle" type="button" onClick={() => setLinkStatus(`${doc.name}: ${missing} acknowledgement${missing === 1 ? "" : "s"} outstanding.`)}>Chase</button>}
                 </div>
               </article>
@@ -4549,6 +4566,39 @@ function Documents({ data, access }) {
           })}
           {!visibleDocuments.length && <EmptyList title="No documents match" text="Change the filter or search to see more records." />}
         </div>
+        {canManageDocuments && selectedDocument && (
+          <section className="document-readers-panel">
+            <div className="document-readers-header">
+              <div>
+                <p className="eyebrow">Acknowledgement drill-down</p>
+                <h3>{selectedDocument.name}</h3>
+                <span>{selectedOutstanding.length ? `${selectedOutstanding.length} staff still need to read this policy.` : "Everyone assigned has acknowledged this policy."}</span>
+              </div>
+              <Badge value={`${selectedDocument.read}/${selectedDocument.assigned} read`} />
+            </div>
+            <div className="document-reader-list">
+              {selectedAssignments.map((assignment) => (
+                <article className="document-reader-row" key={assignment.id || assignment.staffRecordId}>
+                  <div>
+                    <strong>{assignment.name}</strong>
+                    <span>{assignment.email || "Email not recorded"} · {assignment.location}</span>
+                  </div>
+                  <div>
+                    <Badge value={assignment.acknowledged ? "Read" : "Outstanding"} />
+                    <small>
+                      {assignment.acknowledged
+                        ? `Acknowledged ${formatShortDate(assignment.acknowledgedAt)}`
+                        : assignment.dueAt
+                          ? `Due ${formatShortDate(assignment.dueAt)}`
+                          : "No due date"}
+                    </small>
+                  </div>
+                </article>
+              ))}
+              {!selectedAssignments.length && <EmptyList title="No assignments" text="This policy has no staff assignments yet." />}
+            </div>
+          </section>
+        )}
       </div>
     </Panel>
   );
