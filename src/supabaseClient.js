@@ -454,10 +454,13 @@ function mapDocuments(records) {
     return {
       id: record.id,
       name: record.title,
+      category: record.category || "Policy",
       version: record.version,
       url: record.source_url || "",
       assigned,
       read,
+      missing: Math.max(0, assigned - read),
+      linked: Boolean(record.source_url),
       status: assigned && read < assigned ? `Chase ${assigned - read}` : "Complete",
     };
   });

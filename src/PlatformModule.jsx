@@ -681,7 +681,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Hours" && <HoursTracker data={scopedData} access={access} />}
         {tab === "SCR" && <SCR data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
-        {tab === "Documents" && <Documents data={scopedData} />}
+        {tab === "Documents" && <Documents data={scopedData} access={access} />}
         {tab === "Pay" && <Pay data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
         {tab === "Rewards" && <Rewards data={scopedData} />}
         {tab === "Sessions" && <Sessions data={scopedData} />}
@@ -4399,9 +4399,39 @@ function SCRRequirementPanel({ rows }) {
   );
 }
 
-function Documents({ data }) {
+function Documents({ data, access }) {
   const [links, setLinks] = useState(() => readJson(documentLinksStorageKey, {}));
   const [linkStatus, setLinkStatus] = useState("");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("attention");
+  const canManageDocuments = ["Admin", "Superadmin"].includes(access?.role);
+  const documents = data.documents || [];
+  const totalAssigned = documents.reduce((total, doc) => total + Number(doc.assigned || 0), 0);
+  const totalRead = documents.reduce((total, doc) => total + Number(doc.read || 0), 0);
+  const missingAcknowledgements = Math.max(0, totalAssigned - totalRead);
+  const linkedCount = documents.filter((doc) => Boolean(links[doc.name] || doc.url)).length;
+  const missingLinkCount = documents.length - linkedCount;
+  const visibleDocuments = documents
+    .filter((doc) => {
+      const search = `${doc.name} ${doc.category || ""} ${doc.version || ""}`.toLowerCase();
+      if (query && !search.includes(query.toLowerCase())) return false;
+      const link = links[doc.name] || doc.url || "";
+      const assigned = Number(doc.assigned || 0);
+      const read = Number(doc.read || 0);
+      const missing = Math.max(0, assigned - read);
+      if (filter === "needs-link") return !link;
+      if (filter === "needs-ack") return missing > 0;
+      if (filter === "complete") return link && assigned > 0 && missing === 0;
+      if (filter === "attention") return !link || missing > 0;
+      return true;
+    })
+    .sort((a, b) => {
+      const aLink = Boolean(links[a.name] || a.url);
+      const bLink = Boolean(links[b.name] || b.url);
+      const aMissing = Math.max(0, Number(a.assigned || 0) - Number(a.read || 0));
+      const bMissing = Math.max(0, Number(b.assigned || 0) - Number(b.read || 0));
+      return Number(aLink) - Number(bLink) || bMissing - aMissing || String(a.name).localeCompare(String(b.name));
+    });
   function updateDocumentLink(name, value) {
     const next = { ...links, [name]: value.trim() };
     if (!next[name]) delete next[name];
@@ -4424,33 +4454,66 @@ function Documents({ data }) {
   }
   return (
     <Panel title="Document & Policy Library">
-      <p className="panel-note">Add the Google Doc link for each live policy so staff and admins can open the source document from the library.</p>
+      <p className="panel-note">Live policy documents, source links and staff acknowledgement progress in one place.</p>
       {linkStatus && <p className="panel-note">{linkStatus}</p>}
-      <TableWrap>
-        <table>
-          <thead><tr><th>Document</th><th>Version</th><th>Google Doc link</th><th>Progress</th><th>Status</th></tr></thead>
-          <tbody>{data.documents.map((doc) => {
+      <div className="documents-console">
+        <div className="documents-summary">
+          <Metric icon={<FileText />} label="Documents" value={documents.length} tone="blue" />
+          <Metric icon={<CheckCircle2 />} label="Policy links" value={`${linkedCount}/${documents.length}`} tone={missingLinkCount ? "amber" : "green"} />
+          <Metric icon={<ClipboardCheck />} label="Acknowledgements due" value={missingAcknowledgements} tone={missingAcknowledgements ? "amber" : "green"} />
+        </div>
+        <div className="documents-toolbar">
+          <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search policies" /></label>
+          <label>View<select value={filter} onChange={(event) => setFilter(event.target.value)}>
+            <option value="attention">Needs attention</option>
+            <option value="needs-link">Needs link</option>
+            <option value="needs-ack">Needs acknowledgement</option>
+            <option value="complete">Complete</option>
+            <option value="all">All documents</option>
+          </select></label>
+        </div>
+        <div className="document-list">
+          {visibleDocuments.map((doc) => {
             const assigned = Number(doc.assigned || 0);
             const read = Number(doc.read || 0);
             const percent = assigned ? Math.round((read / assigned) * 100) : 100;
             const link = links[doc.name] || doc.url || "";
+            const missing = Math.max(0, assigned - read);
             return (
-              <tr key={doc.id || doc.name}>
-                <td>{doc.name}</td>
-                <td>{doc.version}</td>
-                <td>
-                  <div className="document-link-cell">
-                    <input value={link} onChange={(event) => updateDocumentLink(doc.name, event.target.value)} onBlur={() => saveDocumentLink(doc)} placeholder="Paste Google Doc link" />
-                    {link && <a className="button light" href={link} target="_blank" rel="noreferrer">Open</a>}
+              <article className="document-card-row" key={doc.id || doc.name}>
+                <div className="document-title-block">
+                  <div className="document-icon"><FileText size={20} /></div>
+                  <div>
+                    <strong>{doc.name}</strong>
+                    <span>{doc.category || "Policy"} · Version {doc.version || "Not recorded"}</span>
                   </div>
-                </td>
-                <td><Progress value={percent} label={`${read}/${assigned} read`} /></td>
-                <td><Badge value={doc.status} /></td>
-              </tr>
+                </div>
+                <div className="document-link-cell">
+                  {canManageDocuments ? (
+                    <>
+                      <input value={link} onChange={(event) => updateDocumentLink(doc.name, event.target.value)} onBlur={() => saveDocumentLink(doc)} placeholder="Paste Google Doc link" />
+                      <button className="button subtle" type="button" onClick={() => saveDocumentLink(doc)}>Save</button>
+                    </>
+                  ) : (
+                    <span className={link ? "document-link-ready" : "document-link-missing"}>{link ? "Policy link ready" : "Link pending"}</span>
+                  )}
+                </div>
+                <div className="document-progress-block">
+                  <Progress value={percent} label={`${read}/${assigned} read`} />
+                  <small>{missing ? `${missing} acknowledgement${missing === 1 ? "" : "s"} outstanding` : "All assigned staff have acknowledged"}</small>
+                </div>
+                <div className="document-actions">
+                  <Badge value={link ? "Linked" : "Link needed"} />
+                  <Badge value={missing ? `Chase ${missing}` : "Complete"} />
+                  {link ? <a className="button light" href={link} target="_blank" rel="noreferrer">Open policy</a> : <span className="muted-inline">No source link yet</span>}
+                  {canManageDocuments && missing > 0 && <button className="button subtle" type="button" onClick={() => setLinkStatus(`${doc.name}: ${missing} acknowledgement${missing === 1 ? "" : "s"} outstanding.`)}>Chase</button>}
+                </div>
+              </article>
             );
-          })}</tbody>
-        </table>
-      </TableWrap>
+          })}
+          {!visibleDocuments.length && <EmptyList title="No documents match" text="Change the filter or search to see more records." />}
+        </div>
+      </div>
     </Panel>
   );
 }
