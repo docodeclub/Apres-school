@@ -7762,6 +7762,67 @@ tfoot td {
   overflow-wrap: anywhere;
 }
 
+.document-reader-person {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+}
+
+.document-reader-person input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--royal);
+  flex: 0 0 auto;
+}
+
+.document-chase-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid rgba(238, 164, 78, 0.32);
+  border-radius: 18px;
+  background: #fffaf3;
+  padding: 16px;
+}
+
+.document-chase-panel h4 {
+  margin: 3px 0 5px;
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.document-chase-panel span,
+.document-chase-preview p {
+  color: var(--muted);
+}
+
+.document-chase-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.document-chase-preview {
+  grid-column: 1 / -1;
+  border: 1px solid rgba(38, 63, 169, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 12px 14px;
+}
+
+.document-chase-preview strong,
+.document-chase-preview p {
+  display: block;
+  margin: 0;
+}
+
+.document-chase-preview strong {
+  margin-bottom: 5px;
+  color: var(--royal);
+}
+
 @media (max-width: 1100px) {
   .document-card-row {
     grid-template-columns: 1fr;
@@ -7791,6 +7852,14 @@ tfoot td {
   .document-reader-row > div:last-child {
     justify-items: start;
     text-align: left;
+  }
+
+  .document-chase-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .document-chase-actions {
+    justify-content: flex-start;
   }
 }
 

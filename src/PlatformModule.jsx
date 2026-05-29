@@ -4405,6 +4405,7 @@ function Documents({ data, access }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("attention");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const [selectedChaseIds, setSelectedChaseIds] = useState([]);
   const canManageDocuments = ["Admin", "Superadmin"].includes(access?.role);
   const isStaffView = access?.role === "Staff";
   const staffRecordId = access?.currentUser?.staffRecordId || access?.currentUser?.id || "";
@@ -4464,11 +4465,51 @@ function Documents({ data, access }) {
       }).sort((a, b) => Number(a.acknowledged) - Number(b.acknowledged) || String(a.name).localeCompare(String(b.name)))
     : [];
   const selectedOutstanding = selectedAssignments.filter((assignment) => !assignment.acknowledged);
+  const chaseRecipients = selectedOutstanding.filter((assignment) => selectedChaseIds.includes(assignment.staffRecordId));
+  const selectedDocumentLink = selectedDocument ? (links[selectedDocument.name] || selectedDocument.url || "") : "";
+  const chaseSubject = selectedDocument ? `Please read and acknowledge ${selectedDocument.name}` : "Policy acknowledgement reminder";
+  const chaseMessage = selectedDocument
+    ? [
+        `Hi,`,
+        ``,
+        `Please can you read and acknowledge ${selectedDocument.name} in your Après School staff area.`,
+        selectedDocumentLink ? `Policy link: ${selectedDocumentLink}` : `You can find this policy in the Document & Policy Library.`,
+        `Staff login: https://www.apres-school.co.uk/staff-login`,
+        ``,
+        `Keeping policies acknowledged helps us stay compliant across our sites and ready for Ofsted or school assurance checks.`,
+        ``,
+        `Thank you,`,
+        `Après School`,
+      ].join("\n")
+    : "";
+  const chaseEmailHref = chaseRecipients.length
+    ? `mailto:${chaseRecipients.map((assignment) => assignment.email).filter(Boolean).join(",")}?subject=${encodeURIComponent(chaseSubject)}&body=${encodeURIComponent(chaseMessage)}`
+    : "";
+  useEffect(() => {
+    setSelectedChaseIds(selectedOutstanding.map((assignment) => assignment.staffRecordId));
+  }, [selectedDocument?.id]);
   function updateDocumentLink(name, value) {
     const next = { ...links, [name]: value.trim() };
     if (!next[name]) delete next[name];
     setLinks(next);
     localStorage.setItem(documentLinksStorageKey, JSON.stringify(next));
+  }
+  function toggleChaseRecipient(staffId) {
+    setSelectedChaseIds((current) => (
+      current.includes(staffId)
+        ? current.filter((id) => id !== staffId)
+        : [...current, staffId]
+    ));
+  }
+  async function copyChaseMessage() {
+    const recipientLines = chaseRecipients.map((assignment) => `${assignment.name}${assignment.email ? ` <${assignment.email}>` : ""}`).join("\n");
+    const text = [`Recipients:`, recipientLines || "No recipients selected", ``, `Subject: ${chaseSubject}`, ``, chaseMessage].join("\n");
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      setLinkStatus(`${chaseRecipients.length} policy reminder${chaseRecipients.length === 1 ? "" : "s"} copied.`);
+      return;
+    }
+    setLinkStatus("Clipboard is not available in this browser.");
   }
   async function saveDocumentLink(doc) {
     const link = links[doc.name] ?? doc.url ?? "";
@@ -4559,7 +4600,7 @@ function Documents({ data, access }) {
                   {link ? <a className="button light" href={link} target="_blank" rel="noreferrer">Open policy</a> : <span className="muted-inline">No source link yet</span>}
                   {isStaffView && link && !doc.staffAcknowledged && <button className="button book" type="button" onClick={() => acknowledgeDocument(doc)}>I have read this</button>}
                   {canManageDocuments && <button className="button subtle" type="button" onClick={() => setSelectedDocumentId(doc.id)}>View readers</button>}
-                  {canManageDocuments && missing > 0 && <button className="button subtle" type="button" onClick={() => setLinkStatus(`${doc.name}: ${missing} acknowledgement${missing === 1 ? "" : "s"} outstanding.`)}>Chase</button>}
+                  {canManageDocuments && missing > 0 && <button className="button subtle" type="button" onClick={() => { setSelectedDocumentId(doc.id); setLinkStatus(`${doc.name}: choose staff below, then copy or open the reminder.`); }}>Chase</button>}
                 </div>
               </article>
             );
@@ -4579,9 +4620,19 @@ function Documents({ data, access }) {
             <div className="document-reader-list">
               {selectedAssignments.map((assignment) => (
                 <article className="document-reader-row" key={assignment.id || assignment.staffRecordId}>
-                  <div>
-                    <strong>{assignment.name}</strong>
-                    <span>{assignment.email || "Email not recorded"} · {assignment.location}</span>
+                  <div className="document-reader-person">
+                    {!assignment.acknowledged && (
+                      <input
+                        aria-label={`Select ${assignment.name} for reminder`}
+                        checked={selectedChaseIds.includes(assignment.staffRecordId)}
+                        onChange={() => toggleChaseRecipient(assignment.staffRecordId)}
+                        type="checkbox"
+                      />
+                    )}
+                    <div>
+                      <strong>{assignment.name}</strong>
+                      <span>{assignment.email || "Email not recorded"} · {assignment.location}</span>
+                    </div>
                   </div>
                   <div>
                     <Badge value={assignment.acknowledged ? "Read" : "Outstanding"} />
@@ -4597,6 +4648,25 @@ function Documents({ data, access }) {
               ))}
               {!selectedAssignments.length && <EmptyList title="No assignments" text="This policy has no staff assignments yet." />}
             </div>
+            {selectedOutstanding.length > 0 && (
+              <div className="document-chase-panel">
+                <div>
+                  <p className="eyebrow">Reminder workflow</p>
+                  <h4>{chaseRecipients.length} selected for chase</h4>
+                  <span>Select outstanding staff above, then copy a ready-to-send message or open an email draft.</span>
+                </div>
+                <div className="document-chase-actions">
+                  <button className="button subtle" type="button" onClick={() => setSelectedChaseIds(selectedOutstanding.map((assignment) => assignment.staffRecordId))}>Select all</button>
+                  <button className="button subtle" type="button" onClick={() => setSelectedChaseIds([])}>Clear</button>
+                  <button className="button book" type="button" onClick={copyChaseMessage} disabled={!chaseRecipients.length}>Copy reminder</button>
+                  {chaseEmailHref ? <a className="button light" href={chaseEmailHref}>Open email</a> : <span className="muted-inline">No email recipients selected</span>}
+                </div>
+                <div className="document-chase-preview">
+                  <strong>{chaseSubject}</strong>
+                  <p>{chaseMessage.split("\n").slice(2, 5).join(" ")}</p>
+                </div>
+              </div>
+            )}
           </section>
         )}
       </div>
