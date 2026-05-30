@@ -6350,7 +6350,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   const [requestNote, setRequestNote] = useState("");
   const archivedRecord = person.formerRecord || {};
   const isArchivedProfile = isFormerStaffRecord(person);
-  const note = notes[person.id] || "";
+  const profileNotes = normalizeStaffProfileNotes(notes[person.id]);
   const assignments = staffAssignments(person);
   const accountUser = mergeUserRecords(data.staff || [], accountState).find((user) => user.id === (person.profileId || person.id) || user.staffRecordId === person.id);
   const hrFiles = (data.hrFiles || []).filter((file) => file.staffRecordId === person.id);
@@ -6585,10 +6585,15 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     }
   }
 
-  function updateNote(value) {
+  function updateNote(field, value) {
+    const nextStaffNotes = {
+      ...profileNotes,
+      [field]: value,
+      updatedAt: new Date().toISOString(),
+    };
     const next = {
       ...notes,
-      [person.id]: value,
+      [person.id]: nextStaffNotes,
     };
     setNotes(next);
     localStorage.setItem(staffProfileNotesStorageKey, JSON.stringify(next));
@@ -6898,9 +6903,35 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           </div>
         </section>
       </div>
-      <label className="staff-profile-notes">Internal notes<textarea value={note} onChange={(event) => updateNote(event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only in SCR." : "Manager notes, HR follow-up, contract reminders..."} disabled={isArchivedProfile} /></label>
+      <section className="staff-profile-notes">
+        <div className="staff-profile-notes-head">
+          <div>
+            <p className="eyebrow">Internal notes</p>
+            <h4>Structured notes for this staff record</h4>
+          </div>
+          <Badge value={profileNotes.updatedAt ? `Saved ${formatShortDate(profileNotes.updatedAt)}` : "Local notes"} />
+        </div>
+        <div className="staff-profile-notes-grid">
+          <label>Manager notes<textarea value={profileNotes.manager} onChange={(event) => updateNote("manager", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Day-to-day context, line management, check-ins..."} disabled={isArchivedProfile} /></label>
+          <label>Contract notes<textarea value={profileNotes.contract} onChange={(event) => updateNote("contract", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Contract type, agreed changes, hours pattern, review dates..."} disabled={isArchivedProfile} /></label>
+          <label>Safeguarding / compliance notes<textarea value={profileNotes.compliance} onChange={(event) => updateNote("compliance", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "SCR follow-up, evidence context, training notes..."} disabled={isArchivedProfile} /></label>
+          <label>Payroll notes<textarea value={profileNotes.payroll} onChange={(event) => updateNote("payroll", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Pay agreements, extra hours context, payroll reminders..."} disabled={isArchivedProfile} /></label>
+        </div>
+      </section>
     </article>
   );
+}
+
+function normalizeStaffProfileNotes(note) {
+  if (!note) return { manager: "", contract: "", compliance: "", payroll: "", updatedAt: "" };
+  if (typeof note === "string") return { manager: note, contract: "", compliance: "", payroll: "", updatedAt: "" };
+  return {
+    manager: note.manager || "",
+    contract: note.contract || "",
+    compliance: note.compliance || "",
+    payroll: note.payroll || "",
+    updatedAt: note.updatedAt || "",
+  };
 }
 
 function staffHrFileBucket(file) {
