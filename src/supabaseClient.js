@@ -127,6 +127,14 @@ export async function fetchPlatformData({ userId, role }) {
     .is("archived_at", null)
     .limit(30);
 
+  const documentChaseEventsQuery = normalizeRole(role) === "Staff"
+    ? Promise.resolve({ data: [], error: null })
+    : supabase
+        .from("document_chase_events")
+        .select("id, document_version_id, actor_id, recipient_staff_record_ids, recipient_count, channel, message, metadata, created_at, profiles!document_chase_events_actor_id_fkey(full_name, email)")
+        .order("created_at", { ascending: false })
+        .limit(120);
+
   const enquiriesQuery = isStaff
     ? Promise.resolve({ data: [], error: null })
     : supabase
@@ -228,10 +236,11 @@ export async function fetchPlatformData({ userId, role }) {
     `)
     .order("updated_at", { ascending: false });
 
-  const [staffResult, sessionsResult, documentsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult, hrReportingResult, scrEvidenceRequestsResult] = await Promise.all([
+  const [staffResult, sessionsResult, documentsResult, documentChaseEventsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult, hrReportingResult, scrEvidenceRequestsResult] = await Promise.all([
     staffQuery,
     sessionsQuery,
     documentsQuery,
+    documentChaseEventsQuery,
     enquiriesQuery,
     hrFilesQuery,
     hrCategoriesQuery,
@@ -267,7 +276,7 @@ export async function fetchPlatformData({ userId, role }) {
   return {
     staff,
     sessions: mapSessions(sessionsResult.data || []),
-    documents: mapDocuments(documentsResult.data || []),
+    documents: mapDocuments(documentsResult.data || [], documentChaseEventsResult.error ? [] : documentChaseEventsResult.data || []),
     enquiries: mapEnquiries(enquiriesResult.data || []),
     hrFiles,
     hrFileCategories: hrCategoriesResult.error ? [] : hrCategoriesResult.data || [],
@@ -446,9 +455,32 @@ function mapSessions(records) {
   });
 }
 
-function mapDocuments(records) {
+function mapDocuments(records, chaseEvents = []) {
+  const chasesByDocument = chaseEvents.reduce((groups, event) => {
+    const documentId = event.document_version_id;
+    if (!documentId) return groups;
+    groups[documentId] ||= [];
+    groups[documentId].push(event);
+    return groups;
+  }, {});
   return records.map((record) => {
     const assignments = record.document_assignments || [];
+    const chaseLog = (chasesByDocument[record.id] || []).map((event) => {
+      const profile = Array.isArray(event.profiles) ? event.profiles[0] : event.profiles;
+      return {
+        id: event.id,
+        documentVersionId: event.document_version_id,
+        actorId: event.actor_id || "",
+        actor: profile?.full_name || profile?.email || "Admin",
+        actorEmail: profile?.email || "",
+        recipientStaffRecordIds: event.recipient_staff_record_ids || [],
+        recipientCount: Number(event.recipient_count || 0),
+        channel: event.channel || "manual",
+        message: event.message || "",
+        metadata: event.metadata || {},
+        createdAt: event.created_at || "",
+      };
+    });
     const read = assignments.filter((assignment) => assignment.acknowledged_at).length;
     const assigned = assignments.length;
     return {
@@ -467,6 +499,7 @@ function mapDocuments(records) {
         acknowledgedAt: assignment.acknowledged_at || "",
         dueAt: assignment.due_at || "",
       })),
+      chaseLog,
       status: assigned && read < assigned ? `Chase ${assigned - read}` : "Complete",
     };
   });
@@ -783,6 +816,42 @@ export async function acknowledgeDocumentAssignment({ documentVersionId, staffRe
     documentVersionId: data.document_version_id,
     staffRecordId: data.staff_record_id,
     acknowledgedAt: data.acknowledged_at || acknowledgedAt,
+  };
+}
+
+export async function recordDocumentChase({ documentVersionId, recipientStaffRecordIds = [], channel = "manual", message = "", metadata = {} }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!documentVersionId) throw new Error("Choose a policy to chase.");
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const actorId = userData?.user?.id || null;
+  const recipientIds = Array.from(new Set((recipientStaffRecordIds || []).filter(Boolean)));
+  const { data, error } = await supabase
+    .from("document_chase_events")
+    .insert({
+      document_version_id: documentVersionId,
+      actor_id: actorId,
+      recipient_staff_record_ids: recipientIds,
+      recipient_count: recipientIds.length,
+      channel,
+      message,
+      metadata,
+    })
+    .select("id, document_version_id, actor_id, recipient_staff_record_ids, recipient_count, channel, message, metadata, created_at")
+    .single();
+  if (error) throw error;
+  return {
+    id: data.id,
+    documentVersionId: data.document_version_id,
+    actorId: data.actor_id || actorId,
+    actor: "You",
+    actorEmail: "",
+    recipientStaffRecordIds: data.recipient_staff_record_ids || recipientIds,
+    recipientCount: Number(data.recipient_count || recipientIds.length),
+    channel: data.channel || channel,
+    message: data.message || message,
+    metadata: data.metadata || metadata,
+    createdAt: data.created_at || new Date().toISOString(),
   };
 }
 

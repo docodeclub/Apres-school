@@ -4406,6 +4406,7 @@ function Documents({ data, access }) {
   const [filter, setFilter] = useState("attention");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [selectedChaseIds, setSelectedChaseIds] = useState([]);
+  const [localChaseLog, setLocalChaseLog] = useState({});
   const canManageDocuments = ["Admin", "Superadmin"].includes(access?.role);
   const isStaffView = access?.role === "Staff";
   const staffRecordId = access?.currentUser?.staffRecordId || access?.currentUser?.id || "";
@@ -4423,6 +4424,7 @@ function Documents({ data, access }) {
       read,
       staffAssignment: assignment || null,
       staffAcknowledged,
+      chaseLog: [...(localChaseLog[doc.id] || []), ...(doc.chaseLog || [])],
     };
   });
   const totalAssigned = documentState.reduce((total, doc) => total + Number(doc.assigned || 0), 0);
@@ -4506,10 +4508,55 @@ function Documents({ data, access }) {
     const text = [`Recipients:`, recipientLines || "No recipients selected", ``, `Subject: ${chaseSubject}`, ``, chaseMessage].join("\n");
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       await navigator.clipboard.writeText(text);
-      setLinkStatus(`${chaseRecipients.length} policy reminder${chaseRecipients.length === 1 ? "" : "s"} copied.`);
+      await saveChaseEvent("copy");
+      setLinkStatus(`${chaseRecipients.length} policy reminder${chaseRecipients.length === 1 ? "" : "s"} copied and logged.`);
       return;
     }
     setLinkStatus("Clipboard is not available in this browser.");
+  }
+  async function saveChaseEvent(channel) {
+    if (!selectedDocument || !chaseRecipients.length) return null;
+    const fallbackEvent = {
+      id: `local-${Date.now()}`,
+      documentVersionId: selectedDocument.id,
+      actor: access?.currentUser?.name || access?.currentUser?.email || "You",
+      actorEmail: access?.currentUser?.email || "",
+      recipientStaffRecordIds: chaseRecipients.map((assignment) => assignment.staffRecordId),
+      recipientCount: chaseRecipients.length,
+      channel,
+      message: chaseMessage,
+      metadata: {
+        subject: chaseSubject,
+        recipients: chaseRecipients.map((assignment) => ({ name: assignment.name, email: assignment.email })),
+      },
+      createdAt: new Date().toISOString(),
+    };
+    if (!hasSupabaseConfig || !isUuid(selectedDocument.id)) {
+      setLocalChaseLog((current) => ({ ...current, [selectedDocument.id]: [fallbackEvent, ...(current[selectedDocument.id] || [])] }));
+      return fallbackEvent;
+    }
+    try {
+      const { recordDocumentChase } = await loadSupabaseModule();
+      const saved = await recordDocumentChase({
+        documentVersionId: selectedDocument.id,
+        recipientStaffRecordIds: fallbackEvent.recipientStaffRecordIds,
+        channel,
+        message: chaseMessage,
+        metadata: fallbackEvent.metadata,
+      });
+      const event = { ...fallbackEvent, ...saved };
+      setLocalChaseLog((current) => ({ ...current, [selectedDocument.id]: [event, ...(current[selectedDocument.id] || [])] }));
+      return event;
+    } catch (error) {
+      setLocalChaseLog((current) => ({ ...current, [selectedDocument.id]: [fallbackEvent, ...(current[selectedDocument.id] || [])] }));
+      setLinkStatus(`${error.message || "Unable to save reminder to Supabase."} A local reminder record has been added for this session.`);
+      return fallbackEvent;
+    }
+  }
+  async function openChaseEmail() {
+    if (!chaseEmailHref) return;
+    await saveChaseEvent("email");
+    window.location.href = chaseEmailHref;
   }
   async function saveDocumentLink(doc) {
     const link = links[doc.name] ?? doc.url ?? "";
@@ -4659,12 +4706,26 @@ function Documents({ data, access }) {
                   <button className="button subtle" type="button" onClick={() => setSelectedChaseIds(selectedOutstanding.map((assignment) => assignment.staffRecordId))}>Select all</button>
                   <button className="button subtle" type="button" onClick={() => setSelectedChaseIds([])}>Clear</button>
                   <button className="button book" type="button" onClick={copyChaseMessage} disabled={!chaseRecipients.length}>Copy reminder</button>
-                  {chaseEmailHref ? <a className="button light" href={chaseEmailHref}>Open email</a> : <span className="muted-inline">No email recipients selected</span>}
+                  {chaseEmailHref ? <button className="button light" type="button" onClick={openChaseEmail}>Open email</button> : <span className="muted-inline">No email recipients selected</span>}
                 </div>
                 <div className="document-chase-preview">
                   <strong>{chaseSubject}</strong>
                   <p>{chaseMessage.split("\n").slice(2, 5).join(" ")}</p>
                 </div>
+              </div>
+            )}
+            {selectedDocument.chaseLog?.length > 0 && (
+              <div className="document-chase-log">
+                <p className="eyebrow">Chase history</p>
+                {selectedDocument.chaseLog.slice(0, 6).map((event) => (
+                  <article key={event.id}>
+                    <div>
+                      <strong>{formatShortDate(event.createdAt)}</strong>
+                      <span>{event.actor || "Admin"} chased {event.recipientCount || event.recipientStaffRecordIds?.length || 0} staff member{(event.recipientCount || event.recipientStaffRecordIds?.length || 0) === 1 ? "" : "s"} via {event.channel || "manual"}.</span>
+                    </div>
+                    <Badge value={event.channel || "manual"} />
+                  </article>
+                ))}
               </div>
             )}
           </section>
