@@ -7922,6 +7922,79 @@ tfoot td {
   align-items: start;
 }
 
+.hr-attention-panel {
+  display: grid;
+  gap: 16px;
+  border: 1px solid rgba(238, 164, 78, 0.28);
+  border-radius: 18px;
+  background: linear-gradient(135deg, #fffaf3, #fff);
+  padding: 18px;
+  box-shadow: 0 12px 30px rgba(238, 164, 78, 0.08);
+}
+
+.hr-attention-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hr-attention-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(38, 63, 169, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 14px;
+}
+
+.hr-attention-card > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.hr-attention-card strong,
+.hr-attention-card small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hr-attention-card small {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.hr-attention-issues,
+.hr-attention-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hr-attention-actions button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--royal);
+  cursor: pointer;
+  font-weight: 900;
+  padding: 8px 11px;
+}
+
+.hr-attention-actions button:hover,
+.hr-attention-actions button:focus-visible {
+  border-color: rgba(49, 75, 184, 0.36);
+  box-shadow: 0 8px 18px rgba(49, 75, 184, 0.1);
+}
+
 .hr-ops-grid {
   display: grid;
   grid-template-columns: minmax(360px, 0.42fr) minmax(0, 1fr);
@@ -10127,6 +10200,7 @@ th {
   .user-invite,
   .user-grid,
   .hr-summary,
+  .hr-attention-list,
   .hr-ops-grid,
   .hr-manager-panel,
   .hr-command-centre,

@@ -1550,6 +1550,25 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
     files: (data.hrFiles || []).filter((file) => activeRows.some((person) => person.staffRecordId === file.staffRecordId && person.scope === site)).length,
   }));
   const staffWithNoFiles = activeRows.filter((person) => person.role !== "Superadmin" && !(data.hrFiles || []).some((file) => file.staffRecordId === person.staffRecordId)).length;
+  const profileFor = (person) => staffSource.find((staff) => staff.id === person.staffRecordId || staff.profileId === person.id || staff.id === person.id) || null;
+  const filesFor = (person) => (data.hrFiles || []).filter((file) => file.staffRecordId === person.staffRecordId);
+  const operationalRows = activeRows.map((person) => {
+    const profile = profileFor(person);
+    const files = filesFor(person);
+    const scr = profile ? staffScrOperationalSummary(profile) : null;
+    const pay = profile ? staffPayrollOperationalSummary(data, profile) : null;
+    const issues = [];
+    if (person.role !== "Superadmin" && !person.reportsTo) issues.push("Line manager");
+    if (person.role !== "Superadmin" && !files.length) issues.push("HR files");
+    if (scr?.status && !/compliant|ready|clear/i.test(scr.status)) issues.push("SCR");
+    if (!profile?.payRate && !profile?.annualSalary) issues.push("Pay basis");
+    return { person, profile, files, scr, pay, issues };
+  });
+  const attentionRows = operationalRows
+    .filter((row) => row.issues.length)
+    .sort((a, b) => b.issues.length - a.issues.length || String(a.person.name).localeCompare(String(b.person.name)))
+    .slice(0, 8);
+  const readyRecords = Math.max(0, activeRows.length - operationalRows.filter((row) => row.issues.length).length);
 
   useEffect(() => {
     if (activeRows.length && (!selectedStaffId || !activeRows.some((person) => person.id === selectedStaffId))) {
@@ -1695,10 +1714,44 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
       </div>
       <div className="hr-summary">
         <Metric icon={<Users />} label="Active people" value={activeRows.length} tone="blue" />
-        <Metric icon={<ShieldCheck />} label="Managers" value={managerOptions.length} tone="green" />
+        <Metric icon={<ShieldCheck />} label="Ready records" value={readyRecords} tone="green" />
         <Metric icon={<ClipboardCheck />} label="No line manager" value={unmappedStaff} tone={unmappedStaff ? "amber" : "green"} />
         <Metric icon={<FileText />} label="No HR files" value={staffWithNoFiles} tone={staffWithNoFiles ? "amber" : "green"} />
       </div>
+      <section className="hr-attention-panel">
+        <div className="crm-card-head">
+          <div>
+            <span>Needs action</span>
+            <h3>HR attention queue</h3>
+            <p>Records with missing manager, HR files, SCR review or pay basis appear here first.</p>
+          </div>
+          <Badge value={`${attentionRows.length} shown`} />
+        </div>
+        <div className="hr-attention-list">
+          {attentionRows.map(({ person, profile, files, scr, pay, issues }) => (
+            <article className="hr-attention-card" key={`${person.id}-attention`}>
+              <button type="button" onClick={() => setSelectedStaffId(person.id)}>
+                <span className="hr-mini-avatar">{initials(person)}</span>
+                <span>
+                  <strong>{person.name}</strong>
+                  <small>{person.scope} · {person.role}</small>
+                </span>
+              </button>
+              <div className="hr-attention-issues">
+                {issues.map((issue) => <Badge key={issue} value={issue} />)}
+              </div>
+              <div className="hr-attention-actions">
+                <button type="button" onClick={() => profile && onOpenStaffProfile?.(profile.id)}>Profile</button>
+                <button type="button" onClick={() => profile && onOpenScr?.(profile.id)}>SCR</button>
+                <button type="button" onClick={() => profile && onOpenHrFiles?.(profile.id)}>Files {files.length ? `(${files.length})` : ""}</button>
+                <button type="button" onClick={() => profile && onOpenPay?.(profile.id)}>Pay</button>
+              </div>
+              <small>{scr?.nextAction || pay?.basis || "Open the record to complete HR setup."}</small>
+            </article>
+          ))}
+          {!attentionRows.length && <EmptyList title="HR records are looking tidy" text="No missing line managers, HR files, SCR review or pay-basis issues are currently showing." />}
+        </div>
+      </section>
       <section className="hr-ops-grid">
         <aside className="hr-spotlight">
           {selectedStaff ? (
