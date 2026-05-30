@@ -6378,6 +6378,19 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     if (typeof document === "undefined") return;
     document.getElementById(`staff-profile-${section}-${person.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  function handleTimelineAction(event) {
+    if (event.actionType === "evidence") {
+      scrollToProfileSection("evidence");
+      return;
+    }
+    if (event.actionType === "hrFiles") {
+      onOpenHrFiles?.(person.id);
+      return;
+    }
+    if (event.actionType === "pay") {
+      onOpenPay?.(person.id);
+    }
+  }
   const operationalRecordCards = [
     {
       label: "People",
@@ -6716,6 +6729,11 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
                 <p>{event.detail}</p>
               </div>
               <small>{event.date ? formatShortDate(event.date) : "Date pending"}</small>
+              {event.href ? (
+                <a className="staff-profile-timeline-action" href={event.href} target="_blank" rel="noreferrer">{event.actionLabel || "Open"}</a>
+              ) : event.actionType ? (
+                <button className="staff-profile-timeline-action" type="button" onClick={() => handleTimelineAction(event)}>{event.actionLabel || "Open"}</button>
+              ) : null}
             </article>
           )) : (
             <article className="staff-profile-timeline-empty">
@@ -6929,6 +6947,8 @@ function buildStaffProfileTimeline({ data = {}, person = {}, evidenceRequests = 
       detail: [item.note, item.by ? `By ${item.by}` : ""].filter(Boolean).join(" · "),
       date: item.at || request.requestedAt,
       tone: request.status === "Rejected" || item.type === "Sent back" ? "alert" : request.status === "Approved" || item.type === "Approved" ? "ready" : "pending",
+      actionType: "evidence",
+      actionLabel: "Open evidence",
     }));
   });
 
@@ -6938,6 +6958,9 @@ function buildStaffProfileTimeline({ data = {}, person = {}, evidenceRequests = 
     detail: `${file.title}${file.category ? ` · ${file.category}` : ""}`,
     date: file.uploadedAt || file.issueDate,
     tone: staffHrFileBucket(file) === "Payslips" ? "pay" : staffHrFileBucket(file) === "Restricted" ? "alert" : "file",
+    href: file.fileUrl || "",
+    actionType: file.fileUrl ? "" : "hrFiles",
+    actionLabel: file.fileUrl ? "Open file" : "Open files",
   }));
 
   Object.entries(data.payrollHours || {}).forEach(([period, schools]) => {
@@ -6950,6 +6973,8 @@ function buildStaffProfileTimeline({ data = {}, person = {}, evidenceRequests = 
           detail: `${formatPayrollPeriod(period)} · ${schoolName} · ${Number(row.hours || 0).toFixed(2)} hours`,
           date: record.updatedAt || record.submittedAt || `${period}-01`,
           tone: "pay",
+          actionType: "pay",
+          actionLabel: "Open pay",
         }));
     });
   });
@@ -6963,6 +6988,8 @@ function buildStaffProfileTimeline({ data = {}, person = {}, evidenceRequests = 
       detail: `${formatPayrollPeriod(period)} · expenses ${formatCurrency(adjustment.expenses)} · deductions ${formatCurrency(adjustment.deductions)}${adjustment.note ? ` · ${adjustment.note}` : ""}`,
       date: run.updatedAt || `${period}-01`,
       tone: "pay",
+      actionType: "pay",
+      actionLabel: "Open pay",
     });
   });
 
@@ -7012,6 +7039,8 @@ function buildStaffProfileTimeline({ data = {}, person = {}, evidenceRequests = 
       detail: `${event.period ? formatPayrollPeriod(event.period) : "Payroll"}${event.school ? ` · ${event.school}` : ""}${event.detail ? ` · ${event.detail}` : ""}`,
       date: event.createdAt,
       tone: "pay",
+      actionType: "pay",
+      actionLabel: "Open pay",
     }));
 
   readAuditLog()

@@ -9358,7 +9358,7 @@ tfoot td {
 
 .staff-profile-timeline-list article {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 11px;
   align-items: start;
   min-width: 0;
@@ -9430,6 +9430,27 @@ tfoot td {
   font-size: 0.78rem;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.staff-profile-timeline-action {
+  border: 1px solid rgba(72, 103, 216, 0.18);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--royal);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 950;
+  line-height: 1;
+  padding: 8px 10px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.staff-profile-timeline-action:hover,
+.staff-profile-timeline-action:focus-visible {
+  border-color: rgba(72, 103, 216, 0.36);
+  background: #eef4ff;
+  outline: none;
 }
 
 .staff-profile-grid .staff-profile-files {
