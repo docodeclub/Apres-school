@@ -6367,6 +6367,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   const payslipFiles = hrFiles.filter((file) => staffHrFileBucket(file) === "Payslips");
   const restrictedFiles = hrFiles.filter((file) => staffHrFileBucket(file) === "Restricted");
   const pendingEvidenceRequests = evidenceRequests.filter((request) => ["Requested", "Submitted", "Rejected"].includes(request.status));
+  const profileTimeline = buildStaffProfileTimeline({ data, person, evidenceRequests, hrFiles });
   const profileSite = staffPrimaryLocation(person);
   const payBasis = person.annualSalary
     ? `${formatCurrency(monthlySalaryFromAnnual(person.annualSalary))}/mo salary`
@@ -6698,6 +6699,35 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           ))}
         </div>
       </section>
+      <section className="staff-profile-timeline">
+        <div className="staff-profile-timeline-head">
+          <div>
+            <p className="eyebrow">Recent activity</p>
+            <h4>Operational trail for {person.name}</h4>
+          </div>
+          <Badge value={`${profileTimeline.length} shown`} />
+        </div>
+        <div className="staff-profile-timeline-list">
+          {profileTimeline.length ? profileTimeline.map((event) => (
+            <article key={event.id}>
+              <span className={`staff-profile-timeline-dot ${event.tone}`} aria-hidden="true" />
+              <div>
+                <strong>{event.title}</strong>
+                <p>{event.detail}</p>
+              </div>
+              <small>{event.date ? formatShortDate(event.date) : "Date pending"}</small>
+            </article>
+          )) : (
+            <article className="staff-profile-timeline-empty">
+              <span className="staff-profile-timeline-dot neutral" aria-hidden="true" />
+              <div>
+                <strong>No recent activity yet</strong>
+                <p>HR files, SCR requests, payroll edits and policy acknowledgements will appear here once recorded.</p>
+              </div>
+            </article>
+          )}
+        </div>
+      </section>
       <section className={`scr-next-action-card ${actionItems.length ? "needs-action" : "ready"}`}>
         <div>
           <p className="eyebrow">Next action</p>
@@ -6868,6 +6898,143 @@ function staffPayslips(files = [], staffId) {
   return (files || [])
     .filter((file) => file.staffRecordId === staffId && staffHrFileBucket(file) === "Payslips" && file.status !== "archived")
     .sort((a, b) => String(b.issueDate || b.uploadedAt || "").localeCompare(String(a.issueDate || a.uploadedAt || "")));
+}
+
+function buildStaffProfileTimeline({ data = {}, person = {}, evidenceRequests = [], hrFiles = [] }) {
+  const staffIds = new Set([person.id, person.profileId].filter(Boolean).map(String));
+  const staffTokens = [person.name, person.fullName, person.email, person.id, person.profileId].filter(Boolean).map((item) => String(item).toLowerCase());
+  const events = [];
+  const pushEvent = (event) => {
+    if (!event?.title) return;
+    events.push({
+      id: event.id || `${event.title}-${event.date || events.length}`,
+      date: event.date || "",
+      tone: event.tone || "neutral",
+      detail: event.detail || "Activity recorded.",
+      ...event,
+    });
+  };
+
+  evidenceRequests.forEach((request) => {
+    const history = request.history?.length ? request.history : [{
+      id: `${request.id}-current`,
+      type: request.status || "Requested",
+      at: request.requestedAt,
+      by: request.requestedBy || "Admin",
+      note: request.note || "Evidence request active.",
+    }];
+    history.forEach((item) => pushEvent({
+      id: `scr-${request.id}-${item.id || item.type}`,
+      title: `${request.check} ${String(item.type || "updated").toLowerCase()}`,
+      detail: [item.note, item.by ? `By ${item.by}` : ""].filter(Boolean).join(" · "),
+      date: item.at || request.requestedAt,
+      tone: request.status === "Rejected" || item.type === "Sent back" ? "alert" : request.status === "Approved" || item.type === "Approved" ? "ready" : "pending",
+    }));
+  });
+
+  hrFiles.forEach((file) => pushEvent({
+    id: `hr-file-${file.id}`,
+    title: `${staffHrFileBucket(file)} file added`,
+    detail: `${file.title}${file.category ? ` · ${file.category}` : ""}`,
+    date: file.uploadedAt || file.issueDate,
+    tone: staffHrFileBucket(file) === "Payslips" ? "pay" : staffHrFileBucket(file) === "Restricted" ? "alert" : "file",
+  }));
+
+  Object.entries(data.payrollHours || {}).forEach(([period, schools]) => {
+    Object.entries(schools || {}).forEach(([schoolName, record]) => {
+      (record.rows || [])
+        .filter((row) => staffIds.has(String(row.staffId)))
+        .forEach((row) => pushEvent({
+          id: `pay-hours-${period}-${schoolName}-${row.id || row.staffId}`,
+          title: "Hours recorded",
+          detail: `${formatPayrollPeriod(period)} · ${schoolName} · ${Number(row.hours || 0).toFixed(2)} hours`,
+          date: record.updatedAt || record.submittedAt || `${period}-01`,
+          tone: "pay",
+        }));
+    });
+  });
+
+  Object.entries(data.payrollRuns || {}).forEach(([period, run]) => {
+    const adjustment = run.adjustments?.[person.id] || run.adjustments?.[person.profileId];
+    if (!adjustment) return;
+    pushEvent({
+      id: `pay-adjustment-${period}-${person.id}`,
+      title: "Payroll adjustment recorded",
+      detail: `${formatPayrollPeriod(period)} · expenses ${formatCurrency(adjustment.expenses)} · deductions ${formatCurrency(adjustment.deductions)}${adjustment.note ? ` · ${adjustment.note}` : ""}`,
+      date: run.updatedAt || `${period}-01`,
+      tone: "pay",
+    });
+  });
+
+  (data.documents || []).forEach((doc) => {
+    (doc.assignments || [])
+      .filter((assignment) => staffIds.has(String(assignment.staffRecordId)))
+      .forEach((assignment) => {
+        if (assignment.acknowledgedAt) {
+          pushEvent({
+            id: `doc-ack-${doc.id}-${assignment.id || person.id}`,
+            title: "Policy acknowledged",
+            detail: `${doc.name} · version ${doc.version || "current"}`,
+            date: assignment.acknowledgedAt,
+            tone: "ready",
+          });
+        } else if (assignment.dueAt) {
+          pushEvent({
+            id: `doc-due-${doc.id}-${assignment.id || person.id}`,
+            title: "Policy assigned",
+            detail: `${doc.name} · due ${formatShortDate(assignment.dueAt)}`,
+            date: assignment.dueAt,
+            tone: "pending",
+          });
+        }
+      });
+    (doc.chaseLog || [])
+      .filter((event) => (event.recipientStaffRecordIds || []).map(String).some((id) => staffIds.has(id)))
+      .forEach((event) => pushEvent({
+        id: `doc-chase-${event.id}`,
+        title: "Policy reminder sent",
+        detail: `${doc.name} · ${event.channel || "manual"} chase`,
+        date: event.createdAt,
+        tone: "pending",
+      }));
+  });
+
+  (data.payrollAudit || [])
+    .filter((event) => {
+      const metadataStaffIds = [event.metadata?.staffId, event.metadata?.staffRecordId].filter(Boolean).map(String);
+      if (metadataStaffIds.some((id) => staffIds.has(id))) return true;
+      const haystack = `${event.detail || ""} ${event.action || ""}`.toLowerCase();
+      return staffTokens.some((token) => token && haystack.includes(token));
+    })
+    .forEach((event) => pushEvent({
+      id: `pay-audit-${event.id}`,
+      title: event.action || "Payroll updated",
+      detail: `${event.period ? formatPayrollPeriod(event.period) : "Payroll"}${event.school ? ` · ${event.school}` : ""}${event.detail ? ` · ${event.detail}` : ""}`,
+      date: event.createdAt,
+      tone: "pay",
+    }));
+
+  readAuditLog()
+    .filter((event) => {
+      const haystack = `${event.action || ""} ${event.detail || ""}`.toLowerCase();
+      return staffTokens.some((token) => token && haystack.includes(token));
+    })
+    .forEach((event) => pushEvent({
+      id: `audit-${event.id}`,
+      title: event.action || "Admin action",
+      detail: event.detail || "Local admin action recorded.",
+      date: event.createdAt,
+      tone: "neutral",
+    }));
+
+  return events
+    .filter((event) => event.date || event.title)
+    .sort((a, b) => {
+      const left = a.date ? new Date(a.date).getTime() : 0;
+      const right = b.date ? new Date(b.date).getTime() : 0;
+      return right - left;
+    })
+    .slice(0, 8);
 }
 
 function payslipPeriod(file) {

@@ -9329,6 +9329,109 @@ tfoot td {
   transform: translateY(-1px);
 }
 
+.staff-profile-timeline {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(72, 103, 216, 0.16);
+  border-radius: 18px;
+  background: #fff;
+  padding: 16px;
+}
+
+.staff-profile-timeline-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.staff-profile-timeline-head h4 {
+  margin: 3px 0 0;
+  color: var(--royal-dark);
+  font-size: 1.18rem;
+}
+
+.staff-profile-timeline-list {
+  display: grid;
+  gap: 8px;
+}
+
+.staff-profile-timeline-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 11px;
+  align-items: start;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 11px;
+}
+
+.staff-profile-timeline-list article.staff-profile-timeline-empty {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.staff-profile-timeline-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  margin-top: 5px;
+  background: var(--royal);
+  box-shadow: 0 0 0 4px rgba(72, 103, 216, 0.11);
+}
+
+.staff-profile-timeline-dot.ready {
+  background: #25a67a;
+  box-shadow: 0 0 0 4px rgba(37, 166, 122, 0.13);
+}
+
+.staff-profile-timeline-dot.pending {
+  background: #f2a54c;
+  box-shadow: 0 0 0 4px rgba(242, 165, 76, 0.14);
+}
+
+.staff-profile-timeline-dot.alert {
+  background: #ce4d4d;
+  box-shadow: 0 0 0 4px rgba(206, 77, 77, 0.13);
+}
+
+.staff-profile-timeline-dot.file {
+  background: #6f7ddc;
+  box-shadow: 0 0 0 4px rgba(111, 125, 220, 0.13);
+}
+
+.staff-profile-timeline-dot.pay {
+  background: #1d8f6f;
+  box-shadow: 0 0 0 4px rgba(29, 143, 111, 0.13);
+}
+
+.staff-profile-timeline-dot.neutral {
+  background: #8791a8;
+  box-shadow: 0 0 0 4px rgba(135, 145, 168, 0.14);
+}
+
+.staff-profile-timeline-list strong {
+  color: var(--ink);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.staff-profile-timeline-list p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.staff-profile-timeline-list small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .staff-profile-grid .staff-profile-files {
   grid-column: span 2;
 }
@@ -10313,6 +10416,7 @@ th {
   .staff-profile-account-card,
   .staff-profile-stat-strip,
   .staff-record-command-grid,
+  .staff-profile-timeline-list article,
   .cover-move-panel,
   .cover-email-grid,
   .org-tree,
