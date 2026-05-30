@@ -679,7 +679,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "HR Files" && <HRFiles data={targetedEnrichedData} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} />}
         {tab === "Rota" && <Rota data={scopedData} allData={enrichedData} access={access} />}
         {tab === "Hours" && <HoursTracker data={scopedData} access={access} />}
-        {tab === "SCR" && <SCR data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} />}
+        {tab === "SCR" && <SCR data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} onOpenHrFiles={(staffId) => { setStaffProfileTargetId(staffId); setTab("HR Files"); }} onOpenPay={(staffId) => { setStaffProfileTargetId(staffId); setTab("Pay"); }} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
         {tab === "Documents" && <Documents data={scopedData} access={access} />}
         {tab === "Pay" && <Pay data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
@@ -2819,7 +2819,7 @@ function HoursTracker({ data, access }) {
   );
 }
 
-function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay }) {
+function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, onOpenHrFiles, onOpenPay }) {
   const [checklistState, setChecklistState] = useState(() => readScrChecklistState());
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const [evidenceFilter, setEvidenceFilter] = useState("Action needed");
@@ -3150,6 +3150,10 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay })
         evidenceRequests={renewalRequests}
         onRequestEvidence={requestProfileEvidence}
         onClearEvidenceRequest={clearProfileEvidenceRequest}
+        onOpenHrFiles={onOpenHrFiles}
+        onOpenPay={onOpenPay}
+        access={access}
+        onUpdateStaffPay={onUpdateStaffPay}
       />
       <section className="scr-evidence-console">
         <div className="scr-assignments-heading">
@@ -6109,7 +6113,7 @@ function Settings() {
   );
 }
 
-function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetHandled, evidenceRequests = {}, onRequestEvidence, onClearEvidenceRequest }) {
+function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetHandled, evidenceRequests = {}, onRequestEvidence, onClearEvidenceRequest, access, onUpdateStaffPay, onOpenHrFiles, onOpenPay }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Action needed");
   const [siteFilter, setSiteFilter] = useState("All");
@@ -6285,6 +6289,8 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
           onClearEvidenceRequest={onClearEvidenceRequest}
           access={access}
           onUpdateStaffPay={onUpdateStaffPay}
+          onOpenHrFiles={onOpenHrFiles}
+          onOpenPay={onOpenPay}
         />
       )}
       <TableWrap>
@@ -6326,7 +6332,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   );
 }
 
-function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction, actionItems = [], evidenceRequests = [], onRequestEvidence, onClearEvidenceRequest, access, onUpdateStaffPay }) {
+function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction, actionItems = [], evidenceRequests = [], onRequestEvidence, onClearEvidenceRequest, access, onUpdateStaffPay, onOpenHrFiles, onOpenPay }) {
   const [notes, setNotes] = useState(() => readJson(staffProfileNotesStorageKey, {}));
   const [accountState, setAccountState] = useState(() => readUserAdminState());
   const [photoUrl, setPhotoUrl] = useState(person.photoUrl || person.profilePhotoUrl || "");
@@ -6367,30 +6373,42 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     : person.payRate
       ? `${formatCurrency(person.payRate)}/hr`
       : "Pay basis missing";
+  function scrollToProfileSection(section) {
+    if (typeof document === "undefined") return;
+    document.getElementById(`staff-profile-${section}-${person.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   const operationalRecordCards = [
     {
       label: "People",
       title: managerName || "Line manager missing",
       detail: `${profileSite} · ${person.role || "Role not recorded"}`,
       status: managerName && managerName !== "Unassigned" ? "Assigned" : "Needs manager",
+      actionLabel: "People details",
+      action: () => scrollToProfileSection("people"),
     },
     {
       label: "Compliance",
       title: checkStatus,
       detail: pendingEvidenceRequests.length ? `${pendingEvidenceRequests.length} evidence request${pendingEvidenceRequests.length === 1 ? "" : "s"} active` : nextAction,
       status: actionItems.length ? "Action needed" : "Ready",
+      actionLabel: "Evidence requests",
+      action: () => scrollToProfileSection("evidence"),
     },
     {
       label: "HR files",
       title: `${hrFiles.length} file${hrFiles.length === 1 ? "" : "s"}`,
       detail: `${contractFiles.length} contract · ${payslipFiles.length} payslip · ${restrictedFiles.length} restricted`,
       status: hrFiles.length ? "On file" : "Missing files",
+      actionLabel: "Open HR files",
+      action: () => onOpenHrFiles?.(person.id),
     },
     {
       label: "Pay",
       title: payBasis,
       detail: person.contractType || "Contract type not recorded",
       status: person.annualSalary || person.payRate ? "Set" : "Needs setup",
+      actionLabel: "Open pay",
+      action: () => onOpenPay?.(person.id),
     },
   ];
   const profileStats = [
@@ -6675,6 +6693,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
               <strong>{card.title}</strong>
               <small>{card.detail}</small>
               <Badge value={card.status} />
+              <button type="button" onClick={card.action}>{card.actionLabel}</button>
             </article>
           ))}
         </div>
@@ -6689,7 +6708,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           {(actionItems.length ? actionItems : ["No action"]).map((item) => <span key={item}>{item}</span>)}
         </div>
       </section>
-      <section className="scr-profile-request-panel">
+      <section className="scr-profile-request-panel" id={`staff-profile-evidence-${person.id}`}>
         <div>
           <p className="eyebrow">Evidence requests</p>
           <h4>Request missing or updated SCR evidence.</h4>
@@ -6725,7 +6744,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
         </div>
       </section>
       <div className="staff-profile-grid">
-        <section>
+        <section id={`staff-profile-people-${person.id}`}>
           <h4>Contact & line management</h4>
           <dl>
             <div><dt>Email</dt><dd>{person.email || "Not recorded"}</dd></div>
@@ -6751,7 +6770,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
             <strong>{person.scrChecklist?.approvedAt ? `Approved ${formatShortDate(person.scrChecklist.approvedAt.slice(0, 10))}` : "Awaiting review"}</strong>
           </div>
         </section>
-        <section>
+        <section id={`staff-profile-pay-${person.id}`}>
           <h4>Pay & contract</h4>
           {canEditPay ? (
             <form className="staff-pay-form" onSubmit={savePayDetails}>
@@ -6788,7 +6807,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
             {!assignments.length && <span className="muted-inline">No active site assignment.</span>}
           </div>
         </section>
-        <section className="staff-profile-files">
+        <section className="staff-profile-files" id={`staff-profile-files-${person.id}`}>
           <h4>HR files</h4>
           <div className="staff-hr-file-tabs" role="tablist" aria-label={`${person.name} HR file categories`}>
             {hrFileTabs.map((tab) => (

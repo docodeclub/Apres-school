@@ -9309,6 +9309,26 @@ tfoot td {
   line-height: 1.25;
 }
 
+.staff-record-command-grid button {
+  justify-self: start;
+  border: 1px solid rgba(72, 103, 216, 0.18);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--royal);
+  cursor: pointer;
+  font-weight: 950;
+  padding: 8px 11px;
+  box-shadow: 0 8px 18px rgba(46, 67, 148, 0.07);
+}
+
+.staff-record-command-grid button:hover,
+.staff-record-command-grid button:focus-visible {
+  border-color: rgba(72, 103, 216, 0.36);
+  background: #eef4ff;
+  outline: none;
+  transform: translateY(-1px);
+}
+
 .staff-profile-grid .staff-profile-files {
   grid-column: span 2;
 }
