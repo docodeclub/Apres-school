@@ -9247,6 +9247,68 @@ tfoot td {
   overflow-wrap: anywhere;
 }
 
+.staff-record-command {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(72, 103, 216, 0.16);
+  border-radius: 18px;
+  background: #fff;
+  padding: 16px;
+}
+
+.staff-record-command-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.staff-record-command-head h4 {
+  margin: 3px 0 0;
+  color: var(--royal-dark);
+  font-size: 1.22rem;
+}
+
+.staff-record-command-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.staff-record-command-grid article {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #f8fbff;
+  padding: 13px;
+}
+
+.staff-record-command-grid span,
+.staff-record-command-grid small {
+  color: var(--muted);
+}
+
+.staff-record-command-grid span {
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.staff-record-command-grid strong,
+.staff-record-command-grid small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.staff-record-command-grid strong {
+  color: var(--ink);
+  line-height: 1.25;
+}
+
 .staff-profile-grid .staff-profile-files {
   grid-column: span 2;
 }
@@ -10230,6 +10292,7 @@ th {
   .staff-profile-grid,
   .staff-profile-account-card,
   .staff-profile-stat-strip,
+  .staff-record-command-grid,
   .cover-move-panel,
   .cover-email-grid,
   .org-tree,

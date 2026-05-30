@@ -6357,6 +6357,42 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   const avatar = photoUrl || person.photoUrl || person.profilePhotoUrl || defaultStaffAvatar;
   const canEditPay = ["Admin", "Superadmin"].includes(access?.role) && !isArchivedProfile;
   const monthlySalary = monthlySalaryFromAnnual(person.annualSalary);
+  const contractFiles = hrFiles.filter((file) => staffHrFileBucket(file) === "Contracts");
+  const payslipFiles = hrFiles.filter((file) => staffHrFileBucket(file) === "Payslips");
+  const restrictedFiles = hrFiles.filter((file) => staffHrFileBucket(file) === "Restricted");
+  const pendingEvidenceRequests = evidenceRequests.filter((request) => ["Requested", "Submitted", "Rejected"].includes(request.status));
+  const profileSite = staffPrimaryLocation(person);
+  const payBasis = person.annualSalary
+    ? `${formatCurrency(monthlySalaryFromAnnual(person.annualSalary))}/mo salary`
+    : person.payRate
+      ? `${formatCurrency(person.payRate)}/hr`
+      : "Pay basis missing";
+  const operationalRecordCards = [
+    {
+      label: "People",
+      title: managerName || "Line manager missing",
+      detail: `${profileSite} · ${person.role || "Role not recorded"}`,
+      status: managerName && managerName !== "Unassigned" ? "Assigned" : "Needs manager",
+    },
+    {
+      label: "Compliance",
+      title: checkStatus,
+      detail: pendingEvidenceRequests.length ? `${pendingEvidenceRequests.length} evidence request${pendingEvidenceRequests.length === 1 ? "" : "s"} active` : nextAction,
+      status: actionItems.length ? "Action needed" : "Ready",
+    },
+    {
+      label: "HR files",
+      title: `${hrFiles.length} file${hrFiles.length === 1 ? "" : "s"}`,
+      detail: `${contractFiles.length} contract · ${payslipFiles.length} payslip · ${restrictedFiles.length} restricted`,
+      status: hrFiles.length ? "On file" : "Missing files",
+    },
+    {
+      label: "Pay",
+      title: payBasis,
+      detail: person.contractType || "Contract type not recorded",
+      status: person.annualSalary || person.payRate ? "Set" : "Needs setup",
+    },
+  ];
   const profileStats = [
     ["Record", isArchivedProfile ? "Archived" : "Active"],
     ["SCR", checkStatus],
@@ -6624,6 +6660,25 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           </div>
         ))}
       </div>
+      <section className="staff-record-command">
+        <div className="staff-record-command-head">
+          <div>
+            <p className="eyebrow">Operational record</p>
+            <h4>Single source of truth for {person.name}</h4>
+          </div>
+          <Badge value={isArchivedProfile ? "Retained" : "Live record"} />
+        </div>
+        <div className="staff-record-command-grid">
+          {operationalRecordCards.map((card) => (
+            <article key={card.label}>
+              <span>{card.label}</span>
+              <strong>{card.title}</strong>
+              <small>{card.detail}</small>
+              <Badge value={card.status} />
+            </article>
+          ))}
+        </div>
+      </section>
       <section className={`scr-next-action-card ${actionItems.length ? "needs-action" : "ready"}`}>
         <div>
           <p className="eyebrow">Next action</p>
