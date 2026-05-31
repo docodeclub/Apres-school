@@ -6334,6 +6334,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
 
 function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction, actionItems = [], evidenceRequests = [], onRequestEvidence, onClearEvidenceRequest, access, onUpdateStaffPay, onOpenHrFiles, onOpenPay }) {
   const [notes, setNotes] = useState(() => readJson(staffProfileNotesStorageKey, {}));
+  const [noteSaveStatus, setNoteSaveStatus] = useState("");
   const [accountState, setAccountState] = useState(() => readUserAdminState());
   const [photoUrl, setPhotoUrl] = useState(person.photoUrl || person.profilePhotoUrl || "");
   const [photoStatus, setPhotoStatus] = useState("");
@@ -6350,7 +6351,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   const [requestNote, setRequestNote] = useState("");
   const archivedRecord = person.formerRecord || {};
   const isArchivedProfile = isFormerStaffRecord(person);
-  const profileNotes = normalizeStaffProfileNotes(notes[person.id]);
+  const profileNotes = chooseLatestStaffProfileNotes(notes[person.id], data.staffProfileNotes?.[person.id]);
   const assignments = staffAssignments(person);
   const accountUser = mergeUserRecords(data.staff || [], accountState).find((user) => user.id === (person.profileId || person.id) || user.staffRecordId === person.id);
   const hrFiles = (data.hrFiles || []).filter((file) => file.staffRecordId === person.id);
@@ -6482,6 +6483,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     });
     setPayStatus("");
     setHrFileTab("All");
+    setNoteSaveStatus("");
     const missingKey = actionItems.map((item) => String(item).toLowerCase()).includes("dbs")
       ? "dbs"
       : actionItems.map((item) => String(item).toLowerCase()).includes("safeguarding")
@@ -6590,6 +6592,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
       ...profileNotes,
       [field]: value,
       updatedAt: new Date().toISOString(),
+      source: "local",
     };
     const next = {
       ...notes,
@@ -6597,6 +6600,42 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     };
     setNotes(next);
     localStorage.setItem(staffProfileNotesStorageKey, JSON.stringify(next));
+    setNoteSaveStatus(hasSupabaseConfig && isUuid(person.id) ? "Unsaved changes" : "Saved locally");
+  }
+
+  async function saveProfileNotes(field, value) {
+    if (isArchivedProfile) return;
+    const nextStaffNotes = {
+      ...profileNotes,
+      [field]: value,
+      updatedAt: new Date().toISOString(),
+      source: "local",
+    };
+    const next = {
+      ...notes,
+      [person.id]: nextStaffNotes,
+    };
+    setNotes(next);
+    localStorage.setItem(staffProfileNotesStorageKey, JSON.stringify(next));
+    if (!hasSupabaseConfig || !isUuid(person.id)) {
+      setNoteSaveStatus("Saved locally");
+      return;
+    }
+    setNoteSaveStatus("Saving...");
+    try {
+      const { saveStaffProfileNotes } = await loadSupabaseModule();
+      const saved = await saveStaffProfileNotes(person.id, nextStaffNotes);
+      const merged = {
+        ...next,
+        [person.id]: saved,
+      };
+      setNotes(merged);
+      localStorage.setItem(staffProfileNotesStorageKey, JSON.stringify(merged));
+      setNoteSaveStatus("Saved to Supabase");
+      addAuditLog("Staff profile notes updated", `${person.name}: ${field} notes`);
+    } catch (error) {
+      setNoteSaveStatus(`Saved locally · live save failed: ${error.message || "Supabase rejected the update"}`);
+    }
   }
 
   async function uploadProfilePhoto(event) {
@@ -6909,13 +6948,13 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
             <p className="eyebrow">Internal notes</p>
             <h4>Structured notes for this staff record</h4>
           </div>
-          <Badge value={profileNotes.updatedAt ? `Saved ${formatShortDate(profileNotes.updatedAt)}` : "Local notes"} />
+          <Badge value={noteSaveStatus || (profileNotes.updatedAt ? `${profileNotes.source === "supabase" ? "Live" : "Local"} · ${formatShortDate(profileNotes.updatedAt)}` : "Local notes")} />
         </div>
         <div className="staff-profile-notes-grid">
-          <label>Manager notes<textarea value={profileNotes.manager} onChange={(event) => updateNote("manager", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Day-to-day context, line management, check-ins..."} disabled={isArchivedProfile} /></label>
-          <label>Contract notes<textarea value={profileNotes.contract} onChange={(event) => updateNote("contract", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Contract type, agreed changes, hours pattern, review dates..."} disabled={isArchivedProfile} /></label>
-          <label>Safeguarding / compliance notes<textarea value={profileNotes.compliance} onChange={(event) => updateNote("compliance", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "SCR follow-up, evidence context, training notes..."} disabled={isArchivedProfile} /></label>
-          <label>Payroll notes<textarea value={profileNotes.payroll} onChange={(event) => updateNote("payroll", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Pay agreements, extra hours context, payroll reminders..."} disabled={isArchivedProfile} /></label>
+          <label>Manager notes<textarea value={profileNotes.manager} onChange={(event) => updateNote("manager", event.target.value)} onBlur={(event) => saveProfileNotes("manager", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Day-to-day context, line management, check-ins..."} disabled={isArchivedProfile} /></label>
+          <label>Contract notes<textarea value={profileNotes.contract} onChange={(event) => updateNote("contract", event.target.value)} onBlur={(event) => saveProfileNotes("contract", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Contract type, agreed changes, hours pattern, review dates..."} disabled={isArchivedProfile} /></label>
+          <label>Safeguarding / compliance notes<textarea value={profileNotes.compliance} onChange={(event) => updateNote("compliance", event.target.value)} onBlur={(event) => saveProfileNotes("compliance", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "SCR follow-up, evidence context, training notes..."} disabled={isArchivedProfile} /></label>
+          <label>Payroll notes<textarea value={profileNotes.payroll} onChange={(event) => updateNote("payroll", event.target.value)} onBlur={(event) => saveProfileNotes("payroll", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Pay agreements, extra hours context, payroll reminders..."} disabled={isArchivedProfile} /></label>
         </div>
       </section>
     </article>
@@ -6923,15 +6962,26 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
 }
 
 function normalizeStaffProfileNotes(note) {
-  if (!note) return { manager: "", contract: "", compliance: "", payroll: "", updatedAt: "" };
-  if (typeof note === "string") return { manager: note, contract: "", compliance: "", payroll: "", updatedAt: "" };
+  if (!note) return { manager: "", contract: "", compliance: "", payroll: "", updatedAt: "", source: "local" };
+  if (typeof note === "string") return { manager: note, contract: "", compliance: "", payroll: "", updatedAt: "", source: "local" };
   return {
     manager: note.manager || "",
     contract: note.contract || "",
     compliance: note.compliance || "",
     payroll: note.payroll || "",
     updatedAt: note.updatedAt || "",
+    source: note.source || "local",
   };
+}
+
+function chooseLatestStaffProfileNotes(localNote, liveNote) {
+  const local = normalizeStaffProfileNotes(localNote);
+  const live = normalizeStaffProfileNotes(liveNote);
+  if (!liveNote) return local;
+  if (!localNote) return live;
+  const localTime = Date.parse(local.updatedAt || "") || 0;
+  const liveTime = Date.parse(live.updatedAt || "") || 0;
+  return liveTime > localTime ? live : local;
 }
 
 function staffHrFileBucket(file) {

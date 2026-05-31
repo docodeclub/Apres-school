@@ -63,6 +63,7 @@ export async function fetchPlatformData({ userId, role }) {
   if (!supabase || !userId) throw new Error("Supabase is not configured.");
 
   const isStaff = normalizeRole(role) === "Staff";
+  const canReadStaffProfileNotes = ["Admin", "Superadmin"].includes(normalizeRole(role));
   const staffQuery = supabase
     .from("staff_records")
     .select(`
@@ -210,6 +211,11 @@ export async function fetchPlatformData({ userId, role }) {
         .from("hr_reporting_lines")
         .select("id, staff_record_id, manager_staff_record_id, scope, effective_from, effective_to, changed_by, created_at")
         .is("effective_to", null);
+  const staffProfileNotesQuery = canReadStaffProfileNotes
+    ? supabase
+        .from("staff_profile_notes")
+        .select("staff_record_id, manager_notes, contract_notes, compliance_notes, payroll_notes, updated_at")
+    : Promise.resolve({ data: [], error: null });
   const scrEvidenceRequestsQuery = supabase
     .from("scr_evidence_requests")
     .select(`
@@ -236,7 +242,7 @@ export async function fetchPlatformData({ userId, role }) {
     `)
     .order("updated_at", { ascending: false });
 
-  const [staffResult, sessionsResult, documentsResult, documentChaseEventsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult, hrReportingResult, scrEvidenceRequestsResult] = await Promise.all([
+  const [staffResult, sessionsResult, documentsResult, documentChaseEventsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult, hrReportingResult, staffProfileNotesResult, scrEvidenceRequestsResult] = await Promise.all([
     staffQuery,
     sessionsQuery,
     documentsQuery,
@@ -248,6 +254,7 @@ export async function fetchPlatformData({ userId, role }) {
     payrollRunsQuery,
     payrollAuditQuery,
     hrReportingQuery,
+    staffProfileNotesQuery,
     scrEvidenceRequestsQuery,
   ]);
 
@@ -263,6 +270,7 @@ export async function fetchPlatformData({ userId, role }) {
     ["Payroll runs", payrollRunsResult.error],
     ["Payroll audit", payrollAuditResult.error],
     ["HR hierarchy", hrReportingResult.error],
+    ["Staff profile notes", staffProfileNotesResult.error?.code === "42P01" ? null : staffProfileNotesResult.error],
     ["SCR evidence requests", scrEvidenceRequestsResult.error],
   ]
     .filter(([, error]) => Boolean(error))
@@ -284,6 +292,7 @@ export async function fetchPlatformData({ userId, role }) {
     payrollRuns: payrollRunsResult.error ? {} : mapPayrollRuns(payrollRunsResult.data || []),
     payrollAudit: payrollAuditResult.error ? [] : mapPayrollAudit(payrollAuditResult.data || []),
     hrReportingLines: hrReportingResult.error ? {} : mapHrReportingLines(hrReportingResult.data || []),
+    staffProfileNotes: staffProfileNotesResult.error ? {} : mapStaffProfileNotes(staffProfileNotesResult.data || []),
     scrRenewalRequests: scrEvidenceRequestsResult.error ? {} : mapScrEvidenceRequests(scrEvidenceRequestsResult.data || []),
     warnings,
   };
@@ -386,6 +395,21 @@ function mapScrEvidenceRequests(records) {
       updatedAt: record.updated_at || "",
     };
     return requests;
+  }, {});
+}
+
+function mapStaffProfileNotes(records) {
+  return records.reduce((notes, record) => {
+    if (!record.staff_record_id) return notes;
+    notes[record.staff_record_id] = {
+      manager: record.manager_notes || "",
+      contract: record.contract_notes || "",
+      compliance: record.compliance_notes || "",
+      payroll: record.payroll_notes || "",
+      updatedAt: record.updated_at || "",
+      source: "supabase",
+    };
+    return notes;
   }, {});
 }
 
@@ -1093,6 +1117,40 @@ export async function updateHrReportingLine({ staffRecordId, managerStaffRecordI
     staffRecordId: data.staff_record_id,
     managerStaffRecordId: data.manager_staff_record_id || "",
     scope: data.scope || "",
+  };
+}
+
+export async function saveStaffProfileNotes(staffRecordId, notes = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!staffRecordId) throw new Error("Choose a staff member.");
+
+  const { data: authData } = await supabase.auth.getUser();
+  const payload = {
+    staff_record_id: staffRecordId,
+    manager_notes: notes.manager || null,
+    contract_notes: notes.contract || null,
+    compliance_notes: notes.compliance || null,
+    payroll_notes: notes.payroll || null,
+    updated_by: authData?.user?.id || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from("staff_profile_notes")
+    .upsert(payload, { onConflict: "staff_record_id" })
+    .select("staff_record_id, manager_notes, contract_notes, compliance_notes, payroll_notes, updated_at")
+    .single();
+
+  if (error) throw error;
+
+  return {
+    staffRecordId: data.staff_record_id,
+    manager: data.manager_notes || "",
+    contract: data.contract_notes || "",
+    compliance: data.compliance_notes || "",
+    payroll: data.payroll_notes || "",
+    updatedAt: data.updated_at || payload.updated_at,
+    source: "supabase",
   };
 }
 
