@@ -123,6 +123,7 @@ const Upload = makeIcon("UP");
 const Users = makeIcon("US");
 const X = makeIcon("X");
 const Platform = lazy(() => import("./PlatformModule.jsx"));
+const BookingLab = lazy(() => import("./BookingLab.jsx"));
 
 const MAGICBOOKING_URL = "https://apres-school.magicbooking.co.uk/Identity/Account/Login";
 const PEBBLE_KINGS_ROWANS_URL = "https://activities.bookpebble.co.uk/";
@@ -178,6 +179,7 @@ const pagePaths = {
   "Staff Application": "/staff-application",
   Magicbooking: "/magicbooking",
   "Book Pebble": "/book-pebble",
+  "Booking Lab": "/booking-lab",
   Payments: "/payments",
   Cancellations: "/cancellations",
   Policies: "/policies",
@@ -202,6 +204,7 @@ const pageMeta = {
   "Staff Application": ["Staff Application | Après School", "Apply to work with Après School through the staff onboarding form."],
   Magicbooking: ["Magicbooking Guide | Après School", "How parents can book Après School provision through Magicbooking."],
   "Book Pebble": ["Book Pebble Guide | Après School", "How parents can book selected Après holiday camps through Book Pebble."],
+  "Booking Lab": ["Booking Lab | Après School", "Experimental Après School booking journey for wraparound care and holiday camps."],
   Payments: ["Payments & Vouchers | Après School", "Payment options, childcare vouchers and booking-platform guidance."],
   Cancellations: ["Cancellations & Amendments | Après School", "Guidance for amending or cancelling Après School bookings."],
   Policies: ["Policies | Après School", "Safeguarding, behaviour, health and safety, privacy and complaints policy summaries."],
@@ -897,6 +900,11 @@ function PublicSite({ page, setPage, setPlatform }) {
       {page === "Schools" && <Schools setPage={setPage} />}
       {page === "Magicbooking" && <MagicbookingGuide setPage={setPage} />}
       {page === "Book Pebble" && <BookPebbleGuide setPage={setPage} />}
+      {page === "Booking Lab" && (
+        <Suspense fallback={<section className="page-shell"><div className="section-heading narrow"><p className="eyebrow">Booking Lab</p><h1>Loading prototype...</h1></div></section>}>
+          <BookingLab setPage={setPage} />
+        </Suspense>
+      )}
       {page === "Payments" && <Payments setPage={setPage} />}
       {page === "Cancellations" && <Cancellations setPage={setPage} />}
       {page === "Policies" && <Policies setPage={setPage} />}
@@ -2392,7 +2400,7 @@ function readJson(key, fallback) {
 }
 
 function MobileCTA({ page, setPage }) {
-  const hiddenPages = ["Home", "Bookings", "Holiday Clubs", "Schools", "Contact"];
+  const hiddenPages = ["Home", "Bookings", "Booking Lab", "Holiday Clubs", "Schools", "Contact"];
   return (
     <div className={hiddenPages.includes(page) ? "mobile-cta home-hidden" : "mobile-cta"}>
       <button className="button book" type="button" onClick={() => setPage("Bookings")}>Book Now</button>
