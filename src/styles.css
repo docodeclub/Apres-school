@@ -4088,20 +4088,75 @@ label {
 
 .platform-nav-group {
   display: grid;
-  gap: 4px;
+  gap: 5px;
   border: 1px solid rgba(220, 227, 245, 0.72);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.7);
   padding: 8px;
 }
 
-.platform-nav-group > strong {
+.platform-nav-group-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  padding: 7px 8px;
   color: #81879c;
-  padding: 0 6px 3px;
   font-size: 0.66rem;
   font-weight: 950;
   letter-spacing: 0.12em;
+  text-align: left;
   text-transform: uppercase;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.platform-nav-group-toggle:hover {
+  background: rgba(74, 104, 218, 0.07);
+  color: var(--royal-dark);
+}
+
+.platform-nav-group-toggle span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.platform-nav-group-toggle small {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(74, 104, 218, 0.09);
+  color: var(--royal);
+  font-size: 0.66rem;
+  letter-spacing: 0;
+}
+
+.platform-nav-group-toggle svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.72;
+  transform: rotate(90deg);
+  transition: transform 0.16s ease;
+}
+
+.platform-nav-group.collapsed .platform-nav-group-toggle svg {
+  transform: rotate(0deg);
+}
+
+.platform-nav-group-items {
+  display: grid;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.platform-nav-group.collapsed .platform-nav-group-items {
+  display: none;
 }
 
 .platform-nav button {
@@ -4121,18 +4176,22 @@ label {
   transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
+.platform-nav .platform-nav-group-toggle {
+  display: grid;
+}
+
 .platform-nav button:hover {
   background: rgba(74, 104, 218, 0.08);
   color: var(--royal-dark);
 }
 
-.platform-nav button svg {
+.platform-nav button:not(.platform-nav-group-toggle) svg {
   flex: 0 0 auto;
   width: 17px;
   opacity: 0.82;
 }
 
-.platform-nav button span {
+.platform-nav button:not(.platform-nav-group-toggle) span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -10606,11 +10665,21 @@ th {
   }
 
   .platform-nav-group {
-    display: contents;
+    flex: 0 0 auto;
+    display: grid;
+    width: min(72vw, 260px);
+    padding: 6px;
   }
 
-  .platform-nav-group > strong {
-    display: none;
+  .platform-nav-group-toggle {
+    min-height: 38px;
+    padding: 7px 8px;
+    white-space: nowrap;
+  }
+
+  .platform-nav-group-items {
+    display: grid;
+    gap: 4px;
   }
 
   .platform-nav button {
@@ -10619,6 +10688,11 @@ th {
     max-width: min(58vw, 220px);
     min-height: 42px;
     white-space: nowrap;
+  }
+
+  .platform-nav-group-items button {
+    width: 100%;
+    max-width: none;
   }
 
   .panel {
