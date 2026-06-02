@@ -4111,11 +4111,16 @@ label {
   letter-spacing: 0.12em;
   text-align: left;
   text-transform: uppercase;
-  transition: background 0.16s ease, color 0.16s ease;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .platform-nav-group-toggle:hover {
   background: rgba(74, 104, 218, 0.07);
+  color: var(--royal-dark);
+}
+
+.platform-nav-group.open .platform-nav-group-toggle {
+  background: rgba(74, 104, 218, 0.08);
   color: var(--royal-dark);
 }
 
@@ -4141,22 +4146,34 @@ label {
   width: 14px;
   height: 14px;
   opacity: 0.72;
-  transform: rotate(90deg);
-  transition: transform 0.16s ease;
+  transform: rotate(0deg);
+  transition: transform 0.22s ease;
 }
 
-.platform-nav-group.collapsed .platform-nav-group-toggle svg {
-  transform: rotate(0deg);
+.platform-nav-group.open .platform-nav-group-toggle svg {
+  transform: rotate(90deg);
 }
 
 .platform-nav-group-items {
   display: grid;
-  gap: 4px;
+  grid-template-rows: 1fr;
   overflow: hidden;
+  opacity: 1;
+  transform: translateY(0);
+  transition: grid-template-rows 0.24s ease, opacity 0.18s ease, transform 0.24s ease;
+}
+
+.platform-nav-group-items > div {
+  display: grid;
+  gap: 4px;
+  min-height: 0;
 }
 
 .platform-nav-group.collapsed .platform-nav-group-items {
-  display: none;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-5px);
+  pointer-events: none;
 }
 
 .platform-nav button {

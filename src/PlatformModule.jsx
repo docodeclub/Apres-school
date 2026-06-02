@@ -501,7 +501,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const [staffProfileTargetId, setStaffProfileTargetId] = useState("");
   const [viewRole, setViewRole] = useState(role);
   const [previewUserId, setPreviewUserId] = useState("");
-  const [collapsedNavGroups, setCollapsedNavGroups] = useState(() => readJson("apres-platform-collapsed-nav-groups", {}));
+  const [openNavGroup, setOpenNavGroup] = useState(() => localStorage.getItem("apres-platform-open-nav-group") || "");
   const [staffPayOverrides, setStaffPayOverrides] = useState(() => readJson(staffPayOverridesStorageKey, {}));
   const [staffSiteOverrides, setStaffSiteOverrides] = useState(() => readJson(staffSiteOverridesStorageKey, {}));
   const [formerStaffRecords, setFormerStaffRecords] = useState(() => readJson(formerStaffStorageKey, {}));
@@ -553,7 +553,6 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item))])
     .filter(([, items]) => items.length);
-  const activeGroup = visibleGroups.find(([, items]) => items.includes(tab))?.[0] || "";
 
   useEffect(() => {
     setViewRole(role);
@@ -564,14 +563,16 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
     if (!visibleTabs.includes(tab)) setTab(visibleTabs[0] || "Staff");
   }, [setTab, tab, visibleTabs]);
 
-  function toggleNavGroup(group) {
-    if (group === activeGroup) return;
-    const next = {
-      ...collapsedNavGroups,
-      [group]: !collapsedNavGroups[group],
-    };
-    setCollapsedNavGroups(next);
-    localStorage.setItem("apres-platform-collapsed-nav-groups", JSON.stringify(next));
+  function setNavGroup(group) {
+    const nextGroup = openNavGroup === group ? "" : group;
+    setOpenNavGroup(nextGroup);
+    localStorage.setItem("apres-platform-open-nav-group", nextGroup);
+  }
+
+  function selectNavItem(group, item) {
+    setOpenNavGroup(group);
+    localStorage.setItem("apres-platform-open-nav-group", group);
+    setTab(item);
   }
 
   function updateStaffPayOverride(staffId, patch) {
@@ -643,24 +644,26 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         </div>
         <nav className="platform-nav" aria-label="Internal platform sections">
           {visibleGroups.map(([group, items]) => (
-            <div className={`platform-nav-group ${collapsedNavGroups[group] && group !== activeGroup ? "collapsed" : ""}`} key={group}>
+            <div className={`platform-nav-group ${openNavGroup === group ? "open" : "collapsed"}`} key={group}>
               <button
                 className="platform-nav-group-toggle"
                 type="button"
-                aria-expanded={!(collapsedNavGroups[group] && group !== activeGroup)}
+                aria-expanded={openNavGroup === group}
                 aria-controls={`platform-nav-group-${group.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-                onClick={() => toggleNavGroup(group)}
+                onClick={() => setNavGroup(group)}
               >
                 <span>{group}</span>
                 <small>{items.length}</small>
                 <ChevronRight />
               </button>
               <div className="platform-nav-group-items" id={`platform-nav-group-${group.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>
-                {items.map((item) => (
-                  <button key={item} type="button" aria-current={tab === item ? "page" : undefined} className={tab === item ? "active" : ""} title={platformTabHints[item] || item} onClick={() => setTab(item)}>
-                    {iconFor(item)} <span>{item}</span>
-                  </button>
-                ))}
+                <div>
+                  {items.map((item) => (
+                    <button key={item} type="button" aria-current={tab === item ? "page" : undefined} className={tab === item ? "active" : ""} title={platformTabHints[item] || item} onClick={() => selectNavItem(group, item)}>
+                      {iconFor(item)} <span>{item}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ))}
