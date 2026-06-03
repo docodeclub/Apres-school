@@ -9053,6 +9053,115 @@ tfoot td {
   align-items: start;
 }
 
+.hr-vault-board {
+  align-items: stretch;
+  background: linear-gradient(135deg, #233aa5, #4f6ee0);
+  border-radius: 20px;
+  box-shadow: 0 20px 48px rgba(38, 63, 169, 0.18);
+  color: #fff;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.52fr);
+  padding: 22px;
+}
+
+.hr-vault-intro h3 {
+  font-size: clamp(1.55rem, 2.6vw, 2.35rem);
+  line-height: 1.05;
+  margin: 4px 0 8px;
+}
+
+.hr-vault-intro p,
+.hr-vault-alerts small,
+.hr-vault-alerts span {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.hr-vault-intro .eyebrow {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.hr-vault-alerts {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hr-vault-alerts article {
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.hr-vault-alerts span,
+.hr-vault-alerts small {
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.hr-vault-alerts span {
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hr-vault-alerts strong {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.hr-vault-categories {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.hr-vault-categories button {
+  background: #fff;
+  border: 1px solid rgba(72, 103, 216, 0.16);
+  border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(38, 63, 169, 0.06);
+  cursor: pointer;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 13px;
+  text-align: left;
+}
+
+.hr-vault-categories button.active,
+.hr-vault-categories button:hover,
+.hr-vault-categories button:focus-visible {
+  border-color: rgba(49, 75, 184, 0.38);
+  box-shadow: 0 16px 32px rgba(49, 75, 184, 0.12);
+  outline: none;
+}
+
+.hr-vault-categories span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hr-vault-categories strong {
+  color: var(--royal-dark);
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.hr-vault-categories small {
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .hr-file-form,
 .hr-file-list-panel {
   display: grid;
@@ -9091,6 +9200,27 @@ tfoot td {
   margin-top: 12px;
 }
 
+.hr-category-help {
+  background: #f8fbff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.hr-category-help span {
+  color: var(--royal-dark);
+  font-size: 0.78rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hr-category-help p {
+  margin: 0;
+}
+
 .form-two {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -9099,7 +9229,7 @@ tfoot td {
 
 .hr-files-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.45fr) minmax(180px, 0.45fr);
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.45fr) minmax(180px, 0.45fr) minmax(150px, 0.36fr);
   gap: 12px;
   align-items: end;
 }
@@ -9118,6 +9248,11 @@ tfoot td {
   border-radius: 16px;
   background: #f9fbff;
   padding: 14px;
+}
+
+.hr-file-row.restricted {
+  background: linear-gradient(135deg, #fff9ee, #fff);
+  border-color: rgba(242, 165, 76, 0.32);
 }
 
 .hr-file-icon {
@@ -10824,6 +10959,9 @@ th {
   .former-retained-files,
   .former-staff-row,
   .hr-file-console,
+  .hr-vault-board,
+  .hr-vault-alerts,
+  .hr-vault-categories,
   .hr-files-toolbar,
   .hr-file-row,
   .form-two,

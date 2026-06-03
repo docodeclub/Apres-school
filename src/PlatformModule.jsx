@@ -2301,20 +2301,34 @@ function HRFiles({ data, targetStaffId = "", onTargetHandled }) {
   const [query, setQuery] = useState("");
   const [staffFilter, setStaffFilter] = useState("All");
   const [categoryFilter, setCategoryFilter] = useState("All");
+  const [sensitivityFilter, setSensitivityFilter] = useState("All");
   const [status, setStatus] = useState("");
   const [storageHealth, setStorageHealth] = useState({ state: hasSupabaseConfig ? "checking" : "local", message: hasSupabaseConfig ? "Checking Supabase Storage..." : "Supabase is not configured for this environment." });
   const categories = data.hrFileCategories?.length ? data.hrFileCategories : fallbackHrFileCategories;
   const staff = data.staff || [];
   const search = query.trim().toLowerCase();
+  const selectedStaff = staff.find((person) => person.id === staffFilter) || null;
   const visibleFiles = files.filter((file) => {
     const matchesStaff = staffFilter === "All" || file.staffRecordId === staffFilter;
-    const matchesCategory = categoryFilter === "All" || file.category === categoryFilter;
-    const haystack = [file.staffName, file.staffEmail, file.title, file.category, file.notes, file.status].filter(Boolean).join(" ").toLowerCase();
-    return matchesStaff && matchesCategory && (!search || haystack.includes(search));
-  });
+    const matchesCategory = categoryFilter === "All" || file.category === categoryFilter || staffHrFileBucket(file) === categoryFilter;
+    const matchesSensitivity = sensitivityFilter === "All" || file.sensitivity === sensitivityFilter;
+    const haystack = [file.staffName, file.staffEmail, file.title, file.category, file.sensitivity, file.notes, file.status].filter(Boolean).join(" ").toLowerCase();
+    return matchesStaff && matchesCategory && matchesSensitivity && (!search || haystack.includes(search));
+  }).sort((a, b) => String(b.uploadedAt || b.issueDate || "").localeCompare(String(a.uploadedAt || a.issueDate || "")));
   const activeCount = files.filter((file) => file.status !== "archived").length;
   const restrictedCount = files.filter((file) => file.sensitivity === "restricted").length;
   const staffWithFiles = new Set(files.map((file) => file.staffRecordId).filter(Boolean)).size;
+  const privateStorageCount = files.filter((file) => file.storagePath && file.storagePath !== "Pending upload").length;
+  const missingExpiryCount = files.filter((file) => ["Contracts", "Restricted"].includes(staffHrFileBucket(file)) && !file.expiryDate).length;
+  const categoryCards = ["Contracts", "Payslips", "Letters", "Restricted", "Other"].map((bucket) => {
+    const bucketFiles = files.filter((file) => staffHrFileBucket(file) === bucket);
+    return {
+      bucket,
+      count: bucketFiles.length,
+      restricted: bucketFiles.filter((file) => file.sensitivity === "restricted").length,
+      latest: bucketFiles.sort((a, b) => String(b.uploadedAt || b.issueDate || "").localeCompare(String(a.uploadedAt || a.issueDate || "")))[0],
+    };
+  });
 
   useEffect(() => {
     setFiles(data.hrFiles || []);
@@ -2424,6 +2438,7 @@ function HRFiles({ data, targetStaffId = "", onTargetHandled }) {
         <Metric icon={<FileText />} label="Active files" value={activeCount} tone="blue" />
         <Metric icon={<Users />} label="Staff with files" value={staffWithFiles} tone="green" />
         <Metric icon={<LockKeyhole />} label="Restricted files" value={restrictedCount} tone="amber" />
+        <Metric icon={<ShieldCheck />} label="Private uploads" value={privateStorageCount} tone="green" />
       </div>
       <section className={`storage-health ${storageHealth.state}`}>
         <div>
@@ -2431,6 +2446,34 @@ function HRFiles({ data, targetStaffId = "", onTargetHandled }) {
           <span>{storageHealth.message}</span>
         </div>
         <Badge value={storageHealth.state === "ready" ? "Uploaded files private" : storageHealth.state === "failed" ? "Check Supabase" : "Pending"} />
+      </section>
+      <section className="hr-vault-board">
+        <div className="hr-vault-intro">
+          <p className="eyebrow">Document vault</p>
+          <h3>{selectedStaff ? `${selectedStaff.name}'s HR file record` : "All retained staff documents"}</h3>
+          <p>{selectedStaff ? `${selectedStaff.email || "No email recorded"} · ${staffPrimaryLocation(selectedStaff)} · ${selectedStaff.role || "Role not recorded"}` : "Use this area to see whether contracts, payslips, restricted checks and letters are actually attached to staff records."}</p>
+        </div>
+        <div className="hr-vault-alerts">
+          <article>
+            <span>Filtered results</span>
+            <strong>{visibleFiles.length}</strong>
+            <small>Files currently matching your search and filters.</small>
+          </article>
+          <article>
+            <span>Needs review</span>
+            <strong>{missingExpiryCount}</strong>
+            <small>Contract or restricted records without an expiry/review date.</small>
+          </article>
+        </div>
+      </section>
+      <section className="hr-vault-categories" aria-label="HR file category summary">
+        {categoryCards.map((card) => (
+          <button key={card.bucket} type="button" className={categoryFilter === card.bucket ? "active" : ""} onClick={() => setCategoryFilter(categoryFilter === card.bucket ? "All" : card.bucket)}>
+            <span>{card.bucket}</span>
+            <strong>{card.count}</strong>
+            <small>{card.latest ? `Latest: ${card.latest.title}` : "No files yet"}{card.restricted ? ` · ${card.restricted} restricted` : ""}</small>
+          </button>
+        ))}
       </section>
       <section className="hr-file-console">
         <form className="hr-file-form" onSubmit={saveHrFile}>
@@ -2441,9 +2484,13 @@ function HRFiles({ data, targetStaffId = "", onTargetHandled }) {
           </div>
           <label>Staff member<select name="staffRecordId" defaultValue="">
             <option value="" disabled>Choose staff</option>
-            {staff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+            {staff.map((person) => <option key={person.id} value={person.id}>{person.name}{person.email ? ` · ${person.email}` : ""}</option>)}
           </select></label>
           <label>Category<select name="category" defaultValue={categories[0]?.name}>{categories.map((category) => <option key={category.id || category.name}>{category.name}</option>)}</select></label>
+          <div className="hr-category-help">
+            <span>Category sets sensitivity</span>
+            <p>Contracts, payslips and letters are confidential. DBS, right-to-work and disciplinary records should be treated as restricted.</p>
+          </div>
           <label>Title<input name="title" placeholder="Signed contract, May payslip, HR letter..." /></label>
           <label>Upload file<input name="file" type="file" accept="application/pdf,.doc,.docx,image/png,image/jpeg,image/webp" /></label>
           <div className="form-two">
@@ -2464,28 +2511,39 @@ function HRFiles({ data, targetStaffId = "", onTargetHandled }) {
             <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search files or staff" /></label>
             <label>Staff<select value={staffFilter} onChange={(event) => setStaffFilter(event.target.value)}>
               <option>All</option>
-              {staff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+              {staff.map((person) => <option key={person.id} value={person.id}>{person.name}{person.email ? ` · ${person.email}` : ""}</option>)}
             </select></label>
             <label>Category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
               <option>All</option>
+              <option>Contracts</option>
+              <option>Payslips</option>
+              <option>Letters</option>
+              <option>Restricted</option>
+              <option>Other</option>
               {categories.map((category) => <option key={category.id || category.name}>{category.name}</option>)}
+            </select></label>
+            <label>Sensitivity<select value={sensitivityFilter} onChange={(event) => setSensitivityFilter(event.target.value)}>
+              <option>All</option>
+              <option value="confidential">Confidential</option>
+              <option value="restricted">Restricted</option>
             </select></label>
           </div>
           <div className="hr-file-list">
             {visibleFiles.map((file) => (
-              <article className="hr-file-row" key={file.id}>
+              <article className={`hr-file-row ${file.sensitivity === "restricted" ? "restricted" : ""}`} key={file.id}>
                 <div className="hr-file-icon"><FileText size={20} /></div>
                 <div>
                   <strong>{file.title}</strong>
                   <span>{file.staffName}{file.staffEmail ? ` · ${file.staffEmail}` : ""}</span>
-                  <small>{file.issueDate ? `Issued ${formatShortDate(file.issueDate)}` : "Issue date not recorded"}{file.expiryDate ? ` · Expires ${formatShortDate(file.expiryDate)}` : ""}</small>
+                  <small>{staffHrFileBucket(file)} · {file.issueDate ? `Issued ${formatShortDate(file.issueDate)}` : "Issue date not recorded"}{file.expiryDate ? ` · Review/expiry ${formatShortDate(file.expiryDate)}` : ""}</small>
                   {file.storagePath && <small className="storage-note">{file.storagePath === "Pending upload" ? "Upload pending" : "Private storage file"}</small>}
                   {file.notes && <p>{file.notes}</p>}
                   {file.syncError && <small className="sync-error">{file.syncError}</small>}
                 </div>
                 <div className="hr-file-actions">
                   <Badge value={hrFileStorageStatus(file)} />
-                  <span className={`hr-file-category ${file.sensitivity === "restricted" ? "restricted" : ""}`}>{file.category}</span>
+                  <span className={`hr-file-category ${file.sensitivity === "restricted" ? "restricted" : ""}`}>{file.sensitivity === "restricted" ? "Restricted" : "Confidential"}</span>
+                  <span className="hr-file-category">{file.category}</span>
                   {file.fileUrl && <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open file</a>}
                   <button className="button subtle" type="button" onClick={() => archiveFile(file)}>Archive</button>
                 </div>
