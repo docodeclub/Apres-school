@@ -9464,6 +9464,51 @@ tfoot td {
   margin-top: 10px;
 }
 
+.staff-profile-tabs {
+  background: #f3f6ff;
+  border: 1px solid rgba(72, 103, 216, 0.12);
+  border-radius: 18px;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  padding: 7px;
+}
+
+.staff-profile-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 950;
+  min-height: 40px;
+  padding: 9px 10px;
+}
+
+.staff-profile-tabs button.active {
+  background: #fff;
+  box-shadow: 0 12px 26px rgba(49, 75, 184, 0.12);
+  color: var(--royal-dark);
+}
+
+.staff-profile-tabs button:hover,
+.staff-profile-tabs button:focus-visible {
+  color: var(--royal-dark);
+  outline: none;
+}
+
+.staff-profile-tab-panel {
+  min-width: 0;
+}
+
+.staff-profile-tab-stack {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
 .staff-profile-account-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
@@ -9516,7 +9561,12 @@ tfoot td {
   min-width: 0;
 }
 
+.staff-profile-grid.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .staff-profile-grid section,
+.staff-profile-tab-panel > section,
 .staff-profile-notes {
   display: grid;
   gap: 10px;
@@ -9937,25 +9987,29 @@ tfoot td {
   resize: vertical;
 }
 
-.staff-profile-grid dl {
+.staff-profile-grid dl,
+.staff-profile-dl {
   display: grid;
   gap: 8px;
   margin: 0;
 }
 
-.staff-profile-grid dl div {
+.staff-profile-grid dl div,
+.staff-profile-dl div {
   display: grid;
   grid-template-columns: minmax(92px, 0.5fr) minmax(0, 1fr);
   gap: 10px;
 }
 
-.staff-profile-grid dt {
+.staff-profile-grid dt,
+.staff-profile-dl dt {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 900;
 }
 
-.staff-profile-grid dd {
+.staff-profile-grid dd,
+.staff-profile-dl dd {
   margin: 0;
   color: var(--ink);
   font-weight: 850;
@@ -10807,6 +10861,10 @@ th {
   }
 
   .hr-record-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .staff-profile-tabs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

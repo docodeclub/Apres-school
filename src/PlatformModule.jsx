@@ -6519,6 +6519,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   const [accountStatus, setAccountStatus] = useState("");
   const [accountBusy, setAccountBusy] = useState(false);
   const [hrFileTab, setHrFileTab] = useState("All");
+  const [profileTab, setProfileTab] = useState("Overview");
   const [requestEvidenceKey, setRequestEvidenceKey] = useState(() => scrEvidenceRequestOptions[0][0]);
   const [requestNote, setRequestNote] = useState("");
   const archivedRecord = person.formerRecord || {};
@@ -6547,6 +6548,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     : person.payRate
       ? `${formatCurrency(person.payRate)}/hr`
       : "Pay basis missing";
+  const profileTabs = ["Overview", "Compliance", "HR Files", "Pay", "Sites", "Notes"];
   function scrollToProfileSection(section) {
     if (typeof document === "undefined") return;
     document.getElementById(`staff-profile-${section}-${person.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -6655,6 +6657,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     });
     setPayStatus("");
     setHrFileTab("All");
+    setProfileTab("Overview");
     setNoteSaveStatus("");
     const missingKey = actionItems.map((item) => String(item).toLowerCase()).includes("dbs")
       ? "dbs"
@@ -6881,254 +6884,277 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           </dl>
         </section>
       )}
-      <section className="staff-profile-account-card">
-        <div>
-          <p className="eyebrow">Account access</p>
-          <h4>{accountUser?.status || "Not invited"}</h4>
-          <p>{accountUser?.email || person.email || "Email not recorded"} · {accountUser?.role || "Staff"} access{isArchivedProfile ? " · archived record" : ""}</p>
-        </div>
-        <div className="staff-profile-account-actions">
-          {accountUser?.temporaryPassword ? (
-            <>
-              <code>{accountUser.temporaryPassword}</code>
-              <button className="button light" type="button" onClick={() => copyLoginDetails(accountUser)}>Copy login details</button>
-            </>
-          ) : (
-            <small>No temporary password is currently visible.</small>
-          )}
-          <button className="button light" type="button" disabled={accountBusy || isArchivedProfile} onClick={resetProfileAccountPassword}>{accountBusy ? "Working..." : "Reset password"}</button>
-        </div>
-        {accountStatus && <p className="account-message">{accountStatus}</p>}
-      </section>
-      <div className="staff-profile-stat-strip">
-        {profileStats.map(([label, value]) => (
-          <div key={label}>
-            <span>{label}</span>
-            <strong>{value}</strong>
-          </div>
+      <div className="staff-profile-tabs" role="tablist" aria-label={`${person.name} staff profile sections`}>
+        {profileTabs.map((tabName) => (
+          <button key={tabName} className={profileTab === tabName ? "active" : ""} type="button" onClick={() => setProfileTab(tabName)}>{tabName}</button>
         ))}
       </div>
-      <section className="staff-record-command">
-        <div className="staff-record-command-head">
-          <div>
-            <p className="eyebrow">Operational record</p>
-            <h4>Single source of truth for {person.name}</h4>
-          </div>
-          <Badge value={isArchivedProfile ? "Retained" : "Live record"} />
-        </div>
-        <div className="staff-record-command-grid">
-          {operationalRecordCards.map((card) => (
-            <article key={card.label}>
-              <span>{card.label}</span>
-              <strong>{card.title}</strong>
-              <small>{card.detail}</small>
-              <Badge value={card.status} />
-              <button type="button" onClick={card.action}>{card.actionLabel}</button>
-            </article>
-          ))}
-        </div>
-      </section>
-      <section className="staff-profile-timeline">
-        <div className="staff-profile-timeline-head">
-          <div>
-            <p className="eyebrow">Recent activity</p>
-            <h4>Operational trail for {person.name}</h4>
-          </div>
-          <Badge value={`${profileTimeline.length} shown`} />
-        </div>
-        <div className="staff-profile-timeline-list">
-          {profileTimeline.length ? profileTimeline.map((event) => (
-            <article key={event.id}>
-              <span className={`staff-profile-timeline-dot ${event.tone}`} aria-hidden="true" />
+      <div className="staff-profile-tab-panel">
+        {profileTab === "Overview" && (
+          <div className="staff-profile-tab-stack">
+            <section className="staff-profile-account-card">
               <div>
-                <strong>{event.title}</strong>
-                <p>{event.detail}</p>
+                <p className="eyebrow">Account access</p>
+                <h4>{accountUser?.status || "Not invited"}</h4>
+                <p>{accountUser?.email || person.email || "Email not recorded"} · {accountUser?.role || "Staff"} access{isArchivedProfile ? " · archived record" : ""}</p>
               </div>
-              <small>{event.date ? formatShortDate(event.date) : "Date pending"}</small>
-              {event.href ? (
-                <a className="staff-profile-timeline-action" href={event.href} target="_blank" rel="noreferrer">{event.actionLabel || "Open"}</a>
-              ) : event.actionType ? (
-                <button className="staff-profile-timeline-action" type="button" onClick={() => handleTimelineAction(event)}>{event.actionLabel || "Open"}</button>
-              ) : null}
-            </article>
-          )) : (
-            <article className="staff-profile-timeline-empty">
-              <span className="staff-profile-timeline-dot neutral" aria-hidden="true" />
-              <div>
-                <strong>No recent activity yet</strong>
-                <p>HR files, SCR requests, payroll edits and policy acknowledgements will appear here once recorded.</p>
+              <div className="staff-profile-account-actions">
+                {accountUser?.temporaryPassword ? (
+                  <>
+                    <code>{accountUser.temporaryPassword}</code>
+                    <button className="button light" type="button" onClick={() => copyLoginDetails(accountUser)}>Copy login details</button>
+                  </>
+                ) : (
+                  <small>No temporary password is currently visible.</small>
+                )}
+                <button className="button light" type="button" disabled={accountBusy || isArchivedProfile} onClick={resetProfileAccountPassword}>{accountBusy ? "Working..." : "Reset password"}</button>
               </div>
-            </article>
-          )}
-        </div>
-      </section>
-      <section className={`scr-next-action-card ${actionItems.length ? "needs-action" : "ready"}`}>
-        <div>
-          <p className="eyebrow">Next action</p>
-          <h4>{nextAction}</h4>
-          <p>{isArchivedProfile ? "This is a retained evidence record and is excluded from live SCR actions." : actionItems.length ? "Work through these items before issuing assurance or marking the profile ready." : "No immediate SCR action is flagged for this staff member."}</p>
-        </div>
-        <div className="scr-action-tags">
-          {(actionItems.length ? actionItems : ["No action"]).map((item) => <span key={item}>{item}</span>)}
-        </div>
-      </section>
-      <section className="scr-profile-request-panel" id={`staff-profile-evidence-${person.id}`}>
-        <div>
-          <p className="eyebrow">Evidence requests</p>
-          <h4>Request missing or updated SCR evidence.</h4>
-          <p>{isArchivedProfile ? "Evidence requests are locked because this staff member has left. Restore the record before requesting new evidence." : "Requests logged here appear in the staff member’s evidence request area and can be tracked by admin until submitted, approved or cleared."}</p>
-        </div>
-        <form className="scr-profile-request-form" onSubmit={submitEvidenceRequest}>
-          <label>
-            Evidence type
-            <select value={requestEvidenceKey} onChange={(event) => setRequestEvidenceKey(event.target.value)} disabled={isArchivedProfile}>
-              {scrEvidenceRequestOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
-          </label>
-          <label>
-            Note to staff
-            <textarea rows="2" value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Please upload your renewed certificate or reference." disabled={isArchivedProfile} />
-          </label>
-          <button className="button dark" type="submit" disabled={!onRequestEvidence || isArchivedProfile}><Upload size={16} /> Request Evidence</button>
-        </form>
-        <div className="scr-profile-request-list">
-          {evidenceRequests.length ? evidenceRequests.map((request) => (
-            <article key={request.id}>
-              <div>
-                <strong>{request.check}</strong>
-                <span>{request.status} · {request.requestedAt ? formatShortDate(request.requestedAt.slice(0, 10)) : "date pending"}{request.requestedBy ? ` · ${request.requestedBy}` : ""}</span>
-                {request.note && <p>{request.note}</p>}
-                {!!request.history.length && <EvidenceHistoryTimeline events={request.history} />}
-              </div>
-              {request.status !== "Submitted" && (
-                <button className="button light" type="button" onClick={() => onClearEvidenceRequest?.(request)} disabled={!onClearEvidenceRequest || isArchivedProfile}>Clear</button>
-              )}
-            </article>
-          )) : <span className="muted-inline">No active evidence requests for this staff member.</span>}
-        </div>
-      </section>
-      <div className="staff-profile-grid">
-        <section id={`staff-profile-people-${person.id}`}>
-          <h4>Contact & line management</h4>
-          <dl>
-            <div><dt>Email</dt><dd>{person.email || "Not recorded"}</dd></div>
-            <div><dt>Phone</dt><dd>{person.phone || "Not recorded"}</dd></div>
-            <div><dt>Reports to</dt><dd>{managerName || "Unassigned"}</dd></div>
-            <div><dt>Next action</dt><dd>{nextAction}</dd></div>
-          </dl>
-        </section>
-        <section className="staff-profile-scr-checklist">
-          <h4>SCR evidence checklist</h4>
-          <p className="panel-note">Each item shows what admin should do next for this staff record.</p>
-          <div className="scr-profile-checklist">
-            {evidenceChecklistRows.map((row) => (
-              <div className={`scr-profile-check ${row.tone}`} key={row.key}>
-                <span>{row.label}</span>
-                <strong>{row.status}</strong>
-                <small>{row.detail}</small>
-              </div>
-            ))}
-          </div>
-          <div className="scr-profile-admin-review">
-            <span>Admin review</span>
-            <strong>{person.scrChecklist?.approvedAt ? `Approved ${formatShortDate(person.scrChecklist.approvedAt.slice(0, 10))}` : "Awaiting review"}</strong>
-          </div>
-        </section>
-        <section id={`staff-profile-pay-${person.id}`}>
-          <h4>Pay & contract</h4>
-          {canEditPay ? (
-            <form className="staff-pay-form" onSubmit={savePayDetails}>
-              <label>Hourly rate<input type="number" min="0" step="0.01" value={payForm.payRate} onChange={(event) => setPayForm((current) => ({ ...current, payRate: event.target.value }))} /></label>
-              <label>Annual salary<input type="number" min="0" step="0.01" value={payForm.annualSalary} onChange={(event) => setPayForm((current) => ({ ...current, annualSalary: event.target.value }))} /></label>
-              <label>Contract type<input type="text" value={payForm.contractType} onChange={(event) => setPayForm((current) => ({ ...current, contractType: event.target.value }))} placeholder="ZH, TTO, salaried..." /></label>
-              <div className="staff-pay-summary">
-                <span>Monthly salary</span>
-                <strong>{formatCurrency(monthlySalaryFromAnnual(payForm.annualSalary))}</strong>
-                <small>Annual salary divided by 12. Extra approved hours are added in Payroll.</small>
-              </div>
-              <button className="button light" type="submit">Save pay details</button>
-              {payStatus && <small>{payStatus}</small>}
-            </form>
-          ) : (
-            <dl>
-              <div><dt>Hourly rate</dt><dd>{person.payRate ? `${formatCurrency(person.payRate)}/hr` : "Not recorded"}</dd></div>
-              <div><dt>Annual salary</dt><dd>{person.annualSalary ? formatCurrency(person.annualSalary) : "Not recorded"}</dd></div>
-              <div><dt>Monthly salary</dt><dd>{monthlySalary ? formatCurrency(monthlySalary) : "Not recorded"}</dd></div>
-              <div><dt>Contract</dt><dd>{person.contractType || "Not recorded"}</dd></div>
-              <div><dt>Start date</dt><dd>{person.startDate || "Not recorded"}</dd></div>
-            </dl>
-          )}
-        </section>
-        <section>
-          <h4>Assigned sites</h4>
-          <div className="staff-profile-list">
-            {assignments.map((assignment, index) => (
-              <div key={`${assignment.school}-${index}`}>
-                <strong>{assignment.school}</strong>
-                <span>{assignment.role || person.role} · {assignment.status || "Active"}</span>
-              </div>
-            ))}
-            {!assignments.length && <span className="muted-inline">No active site assignment.</span>}
-          </div>
-        </section>
-        <section className="staff-profile-files" id={`staff-profile-files-${person.id}`}>
-          <h4>HR files</h4>
-          <div className="staff-hr-file-tabs" role="tablist" aria-label={`${person.name} HR file categories`}>
-            {hrFileTabs.map((tab) => (
-              <button
-                key={tab.name}
-                className={hrFileTab === tab.name ? "active" : ""}
-                type="button"
-                role="tab"
-                aria-selected={hrFileTab === tab.name}
-                onClick={() => setHrFileTab(tab.name)}
-              >
-                {tab.name}<span>{tab.count}</span>
-              </button>
-            ))}
-          </div>
-          <div className="staff-profile-list">
-            {visibleHrFiles.slice(0, 6).map((file) => (
-              <div className="staff-profile-file-row" key={file.id}>
-                <div>
-                  <strong>{file.title}</strong>
-                  <span>{file.category}{file.expiryDate ? ` · expires ${formatShortDate(file.expiryDate)}` : ""}</span>
+              {accountStatus && <p className="account-message">{accountStatus}</p>}
+            </section>
+            <div className="staff-profile-stat-strip">
+              {profileStats.map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
                 </div>
-                {file.fileUrl && <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open</a>}
+              ))}
+            </div>
+            <section className="staff-record-command">
+              <div className="staff-record-command-head">
+                <div>
+                  <p className="eyebrow">Operational record</p>
+                  <h4>Single source of truth for {person.name}</h4>
+                </div>
+                <Badge value={isArchivedProfile ? "Retained" : "Live record"} />
               </div>
-            ))}
-            {!visibleHrFiles.length && <span className="muted-inline">No {hrFileTab === "All" ? "" : `${hrFileTab.toLowerCase()} `}HR files logged yet.</span>}
-            {visibleHrFiles.length > 6 && <span className="muted-inline">Showing latest 6 of {visibleHrFiles.length}. Open HR Files for the full document history.</span>}
-          </div>
-        </section>
-        <section>
-          <h4>Upcoming rota context</h4>
-          <div className="staff-profile-list">
-            {sessions.map((session) => (
-              <div key={session.id || `${session.site}-${session.date}`}>
-                <strong>{session.programme}</strong>
-                <span>{session.site} · {session.date} · {session.time}</span>
+              <div className="staff-record-command-grid">
+                {operationalRecordCards.map((card) => (
+                  <article key={card.label}>
+                    <span>{card.label}</span>
+                    <strong>{card.title}</strong>
+                    <small>{card.detail}</small>
+                    <Badge value={card.status} />
+                    <button type="button" onClick={card.action}>{card.actionLabel}</button>
+                  </article>
+                ))}
               </div>
-            ))}
-            {!sessions.length && <span className="muted-inline">No matching upcoming sessions loaded.</span>}
+            </section>
+            <section className="staff-profile-timeline">
+              <div className="staff-profile-timeline-head">
+                <div>
+                  <p className="eyebrow">Recent activity</p>
+                  <h4>Operational trail for {person.name}</h4>
+                </div>
+                <Badge value={`${profileTimeline.length} shown`} />
+              </div>
+              <div className="staff-profile-timeline-list">
+                {profileTimeline.length ? profileTimeline.map((event) => (
+                  <article key={event.id}>
+                    <span className={`staff-profile-timeline-dot ${event.tone}`} aria-hidden="true" />
+                    <div>
+                      <strong>{event.title}</strong>
+                      <p>{event.detail}</p>
+                    </div>
+                    <small>{event.date ? formatShortDate(event.date) : "Date pending"}</small>
+                    {event.href ? (
+                      <a className="staff-profile-timeline-action" href={event.href} target="_blank" rel="noreferrer">{event.actionLabel || "Open"}</a>
+                    ) : event.actionType ? (
+                      <button className="staff-profile-timeline-action" type="button" onClick={() => handleTimelineAction(event)}>{event.actionLabel || "Open"}</button>
+                    ) : null}
+                  </article>
+                )) : (
+                  <article className="staff-profile-timeline-empty">
+                    <span className="staff-profile-timeline-dot neutral" aria-hidden="true" />
+                    <div>
+                      <strong>No recent activity yet</strong>
+                      <p>HR files, SCR requests, payroll edits and policy acknowledgements will appear here once recorded.</p>
+                    </div>
+                  </article>
+                )}
+              </div>
+            </section>
           </div>
-        </section>
+        )}
+        {profileTab === "Compliance" && (
+          <div className="staff-profile-tab-stack">
+            <section className={`scr-next-action-card ${actionItems.length ? "needs-action" : "ready"}`}>
+              <div>
+                <p className="eyebrow">Next action</p>
+                <h4>{nextAction}</h4>
+                <p>{isArchivedProfile ? "This is a retained evidence record and is excluded from live SCR actions." : actionItems.length ? "Work through these items before issuing assurance or marking the profile ready." : "No immediate SCR action is flagged for this staff member."}</p>
+              </div>
+              <div className="scr-action-tags">
+                {(actionItems.length ? actionItems : ["No action"]).map((item) => <span key={item}>{item}</span>)}
+              </div>
+            </section>
+            <section className="scr-profile-request-panel" id={`staff-profile-evidence-${person.id}`}>
+              <div>
+                <p className="eyebrow">Evidence requests</p>
+                <h4>Request missing or updated SCR evidence.</h4>
+                <p>{isArchivedProfile ? "Evidence requests are locked because this staff member has left. Restore the record before requesting new evidence." : "Requests logged here appear in the staff member’s evidence request area and can be tracked by admin until submitted, approved or cleared."}</p>
+              </div>
+              <form className="scr-profile-request-form" onSubmit={submitEvidenceRequest}>
+                <label>
+                  Evidence type
+                  <select value={requestEvidenceKey} onChange={(event) => setRequestEvidenceKey(event.target.value)} disabled={isArchivedProfile}>
+                    {scrEvidenceRequestOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Note to staff
+                  <textarea rows="2" value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Please upload your renewed certificate or reference." disabled={isArchivedProfile} />
+                </label>
+                <button className="button dark" type="submit" disabled={!onRequestEvidence || isArchivedProfile}><Upload size={16} /> Request Evidence</button>
+              </form>
+              <div className="scr-profile-request-list">
+                {evidenceRequests.length ? evidenceRequests.map((request) => (
+                  <article key={request.id}>
+                    <div>
+                      <strong>{request.check}</strong>
+                      <span>{request.status} · {request.requestedAt ? formatShortDate(request.requestedAt.slice(0, 10)) : "date pending"}{request.requestedBy ? ` · ${request.requestedBy}` : ""}</span>
+                      {request.note && <p>{request.note}</p>}
+                      {!!request.history.length && <EvidenceHistoryTimeline events={request.history} />}
+                    </div>
+                    {request.status !== "Submitted" && (
+                      <button className="button light" type="button" onClick={() => onClearEvidenceRequest?.(request)} disabled={!onClearEvidenceRequest || isArchivedProfile}>Clear</button>
+                    )}
+                  </article>
+                )) : <span className="muted-inline">No active evidence requests for this staff member.</span>}
+              </div>
+            </section>
+            <section className="staff-profile-scr-checklist">
+              <h4>SCR evidence checklist</h4>
+              <p className="panel-note">Each item shows what admin should do next for this staff record.</p>
+              <div className="scr-profile-checklist">
+                {evidenceChecklistRows.map((row) => (
+                  <div className={`scr-profile-check ${row.tone}`} key={row.key}>
+                    <span>{row.label}</span>
+                    <strong>{row.status}</strong>
+                    <small>{row.detail}</small>
+                  </div>
+                ))}
+              </div>
+              <div className="scr-profile-admin-review">
+                <span>Admin review</span>
+                <strong>{person.scrChecklist?.approvedAt ? `Approved ${formatShortDate(person.scrChecklist.approvedAt.slice(0, 10))}` : "Awaiting review"}</strong>
+              </div>
+            </section>
+          </div>
+        )}
+        {profileTab === "HR Files" && (
+          <section className="staff-profile-files" id={`staff-profile-files-${person.id}`}>
+            <h4>HR files</h4>
+            <div className="staff-hr-file-tabs" role="tablist" aria-label={`${person.name} HR file categories`}>
+              {hrFileTabs.map((tab) => (
+                <button
+                  key={tab.name}
+                  className={hrFileTab === tab.name ? "active" : ""}
+                  type="button"
+                  role="tab"
+                  aria-selected={hrFileTab === tab.name}
+                  onClick={() => setHrFileTab(tab.name)}
+                >
+                  {tab.name}<span>{tab.count}</span>
+                </button>
+              ))}
+            </div>
+            <div className="staff-profile-list">
+              {visibleHrFiles.slice(0, 6).map((file) => (
+                <div className="staff-profile-file-row" key={file.id}>
+                  <div>
+                    <strong>{file.title}</strong>
+                    <span>{file.category}{file.expiryDate ? ` · expires ${formatShortDate(file.expiryDate)}` : ""}</span>
+                  </div>
+                  {file.fileUrl && <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open</a>}
+                </div>
+              ))}
+              {!visibleHrFiles.length && <span className="muted-inline">No {hrFileTab === "All" ? "" : `${hrFileTab.toLowerCase()} `}HR files logged yet.</span>}
+              {visibleHrFiles.length > 6 && <span className="muted-inline">Showing latest 6 of {visibleHrFiles.length}. Open HR Files for the full document history.</span>}
+            </div>
+          </section>
+        )}
+        {profileTab === "Pay" && (
+          <section id={`staff-profile-pay-${person.id}`}>
+            <h4>Pay & contract</h4>
+            {canEditPay ? (
+              <form className="staff-pay-form" onSubmit={savePayDetails}>
+                <label>Hourly rate<input type="number" min="0" step="0.01" value={payForm.payRate} onChange={(event) => setPayForm((current) => ({ ...current, payRate: event.target.value }))} /></label>
+                <label>Annual salary<input type="number" min="0" step="0.01" value={payForm.annualSalary} onChange={(event) => setPayForm((current) => ({ ...current, annualSalary: event.target.value }))} /></label>
+                <label>Contract type<input type="text" value={payForm.contractType} onChange={(event) => setPayForm((current) => ({ ...current, contractType: event.target.value }))} placeholder="ZH, TTO, salaried..." /></label>
+                <div className="staff-pay-summary">
+                  <span>Monthly salary</span>
+                  <strong>{formatCurrency(monthlySalaryFromAnnual(payForm.annualSalary))}</strong>
+                  <small>Annual salary divided by 12. Extra approved hours are added in Payroll.</small>
+                </div>
+                <button className="button light" type="submit">Save pay details</button>
+                {payStatus && <small>{payStatus}</small>}
+              </form>
+            ) : (
+              <dl className="staff-profile-dl">
+                <div><dt>Hourly rate</dt><dd>{person.payRate ? `${formatCurrency(person.payRate)}/hr` : "Not recorded"}</dd></div>
+                <div><dt>Annual salary</dt><dd>{person.annualSalary ? formatCurrency(person.annualSalary) : "Not recorded"}</dd></div>
+                <div><dt>Monthly salary</dt><dd>{monthlySalary ? formatCurrency(monthlySalary) : "Not recorded"}</dd></div>
+                <div><dt>Contract</dt><dd>{person.contractType || "Not recorded"}</dd></div>
+                <div><dt>Start date</dt><dd>{person.startDate || "Not recorded"}</dd></div>
+              </dl>
+            )}
+          </section>
+        )}
+        {profileTab === "Sites" && (
+          <div className="staff-profile-grid compact">
+            <section id={`staff-profile-people-${person.id}`}>
+              <h4>Contact & line management</h4>
+              <dl>
+                <div><dt>Email</dt><dd>{person.email || "Not recorded"}</dd></div>
+                <div><dt>Phone</dt><dd>{person.phone || "Not recorded"}</dd></div>
+                <div><dt>Reports to</dt><dd>{managerName || "Unassigned"}</dd></div>
+                <div><dt>Next action</dt><dd>{nextAction}</dd></div>
+              </dl>
+            </section>
+            <section>
+              <h4>Assigned sites</h4>
+              <div className="staff-profile-list">
+                {assignments.map((assignment, index) => (
+                  <div key={`${assignment.school}-${index}`}>
+                    <strong>{assignment.school}</strong>
+                    <span>{assignment.role || person.role} · {assignment.status || "Active"}</span>
+                  </div>
+                ))}
+                {!assignments.length && <span className="muted-inline">No active site assignment.</span>}
+              </div>
+            </section>
+            <section>
+              <h4>Upcoming rota context</h4>
+              <div className="staff-profile-list">
+                {sessions.map((session) => (
+                  <div key={session.id || `${session.site}-${session.date}`}>
+                    <strong>{session.programme}</strong>
+                    <span>{session.site} · {session.date} · {session.time}</span>
+                  </div>
+                ))}
+                {!sessions.length && <span className="muted-inline">No matching upcoming sessions loaded.</span>}
+              </div>
+            </section>
+          </div>
+        )}
+        {profileTab === "Notes" && (
+          <section className="staff-profile-notes">
+            <div className="staff-profile-notes-head">
+              <div>
+                <p className="eyebrow">Internal notes</p>
+                <h4>Structured notes for this staff record</h4>
+              </div>
+              <Badge value={noteSaveStatus || (profileNotes.updatedAt ? `${profileNotes.source === "supabase" ? "Live" : "Local"} · ${formatShortDate(profileNotes.updatedAt)}` : "Local notes")} />
+            </div>
+            <div className="staff-profile-notes-grid">
+              <label>Manager notes<textarea value={profileNotes.manager} onChange={(event) => updateNote("manager", event.target.value)} onBlur={(event) => saveProfileNotes("manager", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Day-to-day context, line management, check-ins..."} disabled={isArchivedProfile} /></label>
+              <label>Contract notes<textarea value={profileNotes.contract} onChange={(event) => updateNote("contract", event.target.value)} onBlur={(event) => saveProfileNotes("contract", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Contract type, agreed changes, hours pattern, review dates..."} disabled={isArchivedProfile} /></label>
+              <label>Safeguarding / compliance notes<textarea value={profileNotes.compliance} onChange={(event) => updateNote("compliance", event.target.value)} onBlur={(event) => saveProfileNotes("compliance", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "SCR follow-up, evidence context, training notes..."} disabled={isArchivedProfile} /></label>
+              <label>Payroll notes<textarea value={profileNotes.payroll} onChange={(event) => updateNote("payroll", event.target.value)} onBlur={(event) => saveProfileNotes("payroll", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Pay agreements, extra hours context, payroll reminders..."} disabled={isArchivedProfile} /></label>
+            </div>
+          </section>
+        )}
       </div>
-      <section className="staff-profile-notes">
-        <div className="staff-profile-notes-head">
-          <div>
-            <p className="eyebrow">Internal notes</p>
-            <h4>Structured notes for this staff record</h4>
-          </div>
-          <Badge value={noteSaveStatus || (profileNotes.updatedAt ? `${profileNotes.source === "supabase" ? "Live" : "Local"} · ${formatShortDate(profileNotes.updatedAt)}` : "Local notes")} />
-        </div>
-        <div className="staff-profile-notes-grid">
-          <label>Manager notes<textarea value={profileNotes.manager} onChange={(event) => updateNote("manager", event.target.value)} onBlur={(event) => saveProfileNotes("manager", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Day-to-day context, line management, check-ins..."} disabled={isArchivedProfile} /></label>
-          <label>Contract notes<textarea value={profileNotes.contract} onChange={(event) => updateNote("contract", event.target.value)} onBlur={(event) => saveProfileNotes("contract", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Contract type, agreed changes, hours pattern, review dates..."} disabled={isArchivedProfile} /></label>
-          <label>Safeguarding / compliance notes<textarea value={profileNotes.compliance} onChange={(event) => updateNote("compliance", event.target.value)} onBlur={(event) => saveProfileNotes("compliance", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "SCR follow-up, evidence context, training notes..."} disabled={isArchivedProfile} /></label>
-          <label>Payroll notes<textarea value={profileNotes.payroll} onChange={(event) => updateNote("payroll", event.target.value)} onBlur={(event) => saveProfileNotes("payroll", event.target.value)} rows="3" placeholder={isArchivedProfile ? "Archived record notes are read-only." : "Pay agreements, extra hours context, payroll reminders..."} disabled={isArchivedProfile} /></label>
-        </div>
-      </section>
     </article>
   );
 }
