@@ -3279,6 +3279,22 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     return { school, assigned, checks, gaps: checks.filter((check) => !check.met).length };
   });
   const requirementGapCount = requirementRows.reduce((total, row) => total + row.gaps, 0);
+  const evidenceStatusPriority = { Submitted: 0, Rejected: 1, Requested: 2, Prompt: 3, Approved: 4, Cleared: 5 };
+  const evidenceActionQueue = evidenceWorkflowItems
+    .filter((item) => ["Submitted", "Rejected", "Requested", "Prompt"].includes(item.status))
+    .sort((a, b) => {
+      const priorityDiff = (evidenceStatusPriority[a.status] ?? 9) - (evidenceStatusPriority[b.status] ?? 9);
+      return priorityDiff || String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+    })
+    .slice(0, 4);
+  const siteAssuranceQueue = requirementRows
+    .filter((row) => row.gaps)
+    .sort((a, b) => b.gaps - a.gaps || a.school.localeCompare(b.school))
+    .slice(0, 4);
+  const selectedAssuranceComplete = selectedAssuranceStaff.filter((person) => person.compliance === "Compliant").length;
+  const selectedAssuranceCompletion = selectedAssuranceStaff.length
+    ? Math.round((selectedAssuranceComplete / selectedAssuranceStaff.length) * 100)
+    : 100;
   const scrFocusItems = [
     [reviewStaff, "Staff to review", reviewStaff ? "Check missing or incomplete SCR records." : "All staff currently marked compliant."],
     [renewalItems.length, "Renewal prompts", renewalItems.length ? "Expiry or review dates need follow-up." : "No renewals due in the next 60 days."],
@@ -3309,6 +3325,69 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
             </div>
           </article>
         ))}
+      </section>
+      <section className="scr-command-board" aria-label="SCR command centre">
+        <article className="scr-command-card primary">
+          <div>
+            <p className="eyebrow">Assurance focus</p>
+            <h3>{assuranceSchool}</h3>
+            <p>{selectedAssuranceStaff.length} assigned staff · {selectedAssuranceComplete} complete records</p>
+          </div>
+          <div className="scr-progress-ring" aria-label={`${selectedAssuranceCompletion}% complete`}>
+            <strong>{selectedAssuranceCompletion}%</strong>
+            <span>ready</span>
+          </div>
+          <div className="scr-progress-track"><span style={{ width: `${selectedAssuranceCompletion}%` }} /></div>
+          <p className="scr-command-note">
+            Use this as the school-facing assurance check before exporting a letter. Gaps below should be cleared before sharing evidence externally.
+          </p>
+        </article>
+        <article className="scr-command-card">
+          <div className="scr-command-head">
+            <div>
+              <p className="eyebrow">Evidence queue</p>
+              <h3>What needs attention first</h3>
+            </div>
+            <Badge value={evidenceActionQueue.length ? "Action needed" : "Clear"} />
+          </div>
+          <div className="scr-command-list">
+            {evidenceActionQueue.length ? evidenceActionQueue.map((item) => (
+              <article key={item.id}>
+                <div>
+                  <strong>{item.staffName}</strong>
+                  <span>{item.check}</span>
+                  <small>{item.updatedAt ? formatShortDate(item.updatedAt) : "No date recorded"} · {item.owner}</small>
+                </div>
+                <Badge value={item.status === "Prompt" ? "Renewal due" : item.status} />
+              </article>
+            )) : (
+              <p className="empty-inline">No submitted, rejected or requested evidence waiting.</p>
+            )}
+          </div>
+        </article>
+        <article className="scr-command-card">
+          <div className="scr-command-head">
+            <div>
+              <p className="eyebrow">Site cover</p>
+              <h3>Requirement gaps by school</h3>
+            </div>
+            <Badge value={siteAssuranceQueue.length ? "Check cover" : "Covered"} />
+          </div>
+          <div className="scr-command-list">
+            {siteAssuranceQueue.length ? siteAssuranceQueue.map((row) => (
+              <article key={row.school}>
+                <div>
+                  <strong>{row.school}</strong>
+                  <span>{row.checks.filter((check) => !check.met).map((check) => check.label).join(", ")}</span>
+                  <small>{row.assigned.length} assigned staff</small>
+                </div>
+                <Badge value={`${row.gaps} gap${row.gaps === 1 ? "" : "s"}`} />
+              </article>
+            )) : (
+              <p className="empty-inline">All current sites have the required cover recorded.</p>
+            )}
+          </div>
+        </article>
       </section>
       <section className="scr-assurance-hero">
         <div>
