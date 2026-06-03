@@ -6362,6 +6362,7 @@ function AuditLog({ data = {} }) {
   const [filter, setFilter] = useState("All");
   const [query, setQuery] = useState("");
   const [range, setRange] = useState("All time");
+  const [selectedAuditId, setSelectedAuditId] = useState("");
   function auditModule(item) {
     if (item.metadata?.module) return item.metadata.module;
     const action = String(item.action || "").toLowerCase();
@@ -6405,6 +6406,17 @@ function AuditLog({ data = {} }) {
     if (query && !haystack.includes(query.toLowerCase())) return false;
     return inDateRange(item);
   });
+  const selectedAudit = filteredItems.find((item) => item.id === selectedAuditId) || filteredItems[0] || null;
+  const selectedAuditRows = selectedAudit ? [
+    ["Action", selectedAudit.action],
+    ["Module", selectedAudit.module],
+    ["Detail", selectedAudit.detail || "No extra detail recorded."],
+    ["Actor", selectedAudit.actor || "Not recorded"],
+    ["Source", selectedAudit.source || "Local"],
+    ["Created", selectedAudit.createdAt ? new Date(selectedAudit.createdAt).toLocaleString("en-GB") : "Not recorded"],
+    ["Table", selectedAudit.tableName || selectedAudit.metadata?.tableName || "Not recorded"],
+    ["Record ID", selectedAudit.recordId || "Not recorded"],
+  ] : [];
   const recentCount = enrichedItems.filter((item) => inDateRange({ ...item, createdAt: item.createdAt }) && (range === "All time" ? true : true)).length;
   const moduleCounts = modules.filter((module) => module !== "All").map((module) => ({
     module,
@@ -6457,24 +6469,57 @@ function AuditLog({ data = {} }) {
           {["All time", "Today", "7 days", "30 days"].map((item) => <option key={item}>{item}</option>)}
         </select></label>
       </section>
-      <div className="audit-list">
-        {filteredItems.map((item) => (
-          <article className="audit-item" key={item.id}>
-            <div className="audit-module-mark">{item.module.slice(0, 2).toUpperCase()}</div>
-            <div>
-              <strong>{item.action}</strong>
-              <span>{item.detail || "No extra detail recorded."}</span>
-              <small>{new Date(item.createdAt).toLocaleString("en-GB")} · {item.source || "Local"}</small>
-              {!!auditMetadataTags(item).length && (
-                <div className="audit-metadata-tags">
-                  {auditMetadataTags(item).map((tag) => <span key={tag}>{tag}</span>)}
-                </div>
-              )}
+      <div className="audit-workbench">
+        <div className="audit-list">
+          {filteredItems.map((item) => (
+            <button className={`audit-item ${selectedAudit?.id === item.id ? "selected" : ""}`} type="button" key={item.id} onClick={() => setSelectedAuditId(item.id)}>
+              <div className="audit-module-mark">{item.module.slice(0, 2).toUpperCase()}</div>
+              <div>
+                <strong>{item.action}</strong>
+                <span>{item.detail || "No extra detail recorded."}</span>
+                <small>{new Date(item.createdAt).toLocaleString("en-GB")} · {item.source || "Local"}</small>
+                {!!auditMetadataTags(item).length && (
+                  <div className="audit-metadata-tags">
+                    {auditMetadataTags(item).map((tag) => <span key={tag}>{tag}</span>)}
+                  </div>
+                )}
+              </div>
+              <Badge value={item.module} />
+            </button>
+          ))}
+          {!filteredItems.length && <EmptyList title="No audit entries yet" text="User, CRM, rota, cover, HR and hours changes will appear here." />}
+        </div>
+        {selectedAudit && (
+          <aside className="audit-detail-panel">
+            <div className="audit-detail-head">
+              <div>
+                <p className="eyebrow">Audit detail</p>
+                <h3>{selectedAudit.action}</h3>
+              </div>
+              <Badge value={selectedAudit.module} />
             </div>
-            <Badge value={item.module} />
-          </article>
-        ))}
-        {!filteredItems.length && <EmptyList title="No audit entries yet" text="User, CRM, rota, cover, HR and hours changes will appear here." />}
+            <div className="audit-detail-grid">
+              {selectedAuditRows.map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+            {!!auditMetadataTags(selectedAudit).length && (
+              <div className="audit-detail-tags">
+                <span>Matched context</span>
+                <div className="audit-metadata-tags">
+                  {auditMetadataTags(selectedAudit).map((tag) => <span key={tag}>{tag}</span>)}
+                </div>
+              </div>
+            )}
+            <details className="audit-raw-metadata">
+              <summary>Raw metadata</summary>
+              <pre>{JSON.stringify(selectedAudit.metadata || {}, null, 2)}</pre>
+            </details>
+          </aside>
+        )}
       </div>
     </div>
   );
