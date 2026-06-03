@@ -1596,6 +1596,16 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
     .sort((a, b) => b.issues.length - a.issues.length || String(a.person.name).localeCompare(String(b.person.name)))
     .slice(0, 8);
   const readyRecords = Math.max(0, activeRows.length - operationalRows.filter((row) => row.issues.length).length);
+  const operationalRowById = new Map(operationalRows.map((row) => [row.person.id, row]));
+  const selectedOperationalRow = selectedStaff ? operationalRowById.get(selectedStaff.id) : null;
+  const selectedIssueCount = selectedOperationalRow?.issues.length || 0;
+  const selectedReadinessScore = selectedStaff ? Math.round(((4 - Math.min(selectedIssueCount, 4)) / 4) * 100) : 0;
+  const selectedRecordChecks = selectedStaff ? [
+    ["Line manager", Boolean(selectedStaff.reportsTo), selectedStaff.managerName || "No manager assigned"],
+    ["HR files", Boolean(selectedStaffFiles.length), selectedStaffFiles.length ? `${selectedStaffFiles.length} uploaded` : "No files attached"],
+    ["SCR", Boolean(selectedStaffScr?.status && /compliant|ready|clear/i.test(selectedStaffScr.status)), selectedStaffScr?.status || "Review needed"],
+    ["Pay basis", Boolean(selectedStaffProfile?.payRate || selectedStaffProfile?.annualSalary), selectedStaffPay?.basis || "Not recorded"],
+  ] : [];
 
   useEffect(() => {
     if (activeRows.length && (!selectedStaffId || !activeRows.some((person) => person.id === selectedStaffId))) {
@@ -1734,8 +1744,8 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
     <div className="stack hr-workspace">
       <div className="toolbar">
         <div>
-          <h2>People Ops</h2>
-          <p className="panel-note">A working HR view for line management, usual sites, staff records and people actions.</p>
+          <h2>Staff Records Hub</h2>
+          <p className="panel-note">Current staff, line management, HR files, SCR links and pay access in one operational record.</p>
         </div>
         <Badge value="Private HR workspace" />
       </div>
@@ -1798,6 +1808,25 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
                 <div><span>Direct reports</span><strong>{selectedDirectReports.length}</strong></div>
                 <div><span>HR files</span><strong>{selectedStaffFiles.length}</strong></div>
                 <div><span>Contract</span><strong>{selectedStaffProfile?.contractType || selectedStaffProfile?.employmentType || "Not recorded"}</strong></div>
+              </div>
+              <div className="hr-record-health">
+                <div className="hr-record-health-head">
+                  <div>
+                    <span>Record health</span>
+                    <strong>{selectedReadinessScore}% complete</strong>
+                  </div>
+                  <Badge value={selectedIssueCount ? `${selectedIssueCount} action${selectedIssueCount === 1 ? "" : "s"}` : "Ready"} />
+                </div>
+                <div className="hr-record-health-bar" aria-hidden="true"><span style={{ width: `${selectedReadinessScore}%` }} /></div>
+                <div className="hr-record-checks">
+                  {selectedRecordChecks.map(([label, ok, detail]) => (
+                    <article key={label} className={ok ? "ready" : "needs-work"}>
+                      <span>{ok ? "Ready" : "Action"}</span>
+                      <strong>{label}</strong>
+                      <small>{detail}</small>
+                    </article>
+                  ))}
+                </div>
               </div>
               <div className="hr-action-grid" aria-label={`${selectedStaff.name} operational actions`}>
                 <button type="button" onClick={() => selectedStaffProfile && onOpenStaffProfile?.(selectedStaffProfile.id)}>
@@ -1862,8 +1891,8 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
         <div className="hr-directory-panel">
           <div className="hr-directory-controls">
             <div>
-              <h3>Staff Directory</h3>
-              <p className="panel-note">Search, select and update the core HR routing fields.</p>
+              <h3>Current Staff Records</h3>
+              <p className="panel-note">Showing {filteredRows.length} of {activeRows.length}. Select a person to manage their operational record.</p>
             </div>
             <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search staff, email, manager or site" /></label>
             <label>Site<select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
@@ -1883,7 +1912,11 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
                 </button>
                 <span>{person.managerName}</span>
                 <span>{person.scope}</span>
-                <Badge value={person.updatedAt ? "Updated" : childrenOf(person.id).length ? `${childrenOf(person.id).length} reports` : "Profile"} />
+                <div className="hr-row-status">
+                  {(operationalRowById.get(person.id)?.issues || []).slice(0, 2).map((issue) => <Badge key={issue} value={issue} />)}
+                  {!(operationalRowById.get(person.id)?.issues || []).length && <Badge value={childrenOf(person.id).length ? `${childrenOf(person.id).length} reports` : "Ready"} />}
+                  {(operationalRowById.get(person.id)?.issues || []).length > 2 && <Badge value={`+${(operationalRowById.get(person.id)?.issues || []).length - 2}`} />}
+                </div>
               </article>
             ))}
             {!filteredRows.length && <EmptyList title="No staff found" text="Change the search or site filter to show more staff." />}
