@@ -4798,6 +4798,26 @@ function Documents({ data, access }) {
   const missingAcknowledgements = Math.max(0, totalAssigned - totalRead);
   const linkedCount = documentState.filter((doc) => Boolean(links[doc.name] || doc.url)).length;
   const missingLinkCount = documentState.length - linkedCount;
+  const completeDocumentCount = documentState.filter((doc) => {
+    const link = links[doc.name] || doc.url || "";
+    const assigned = Number(doc.assigned || 0);
+    const read = Number(doc.read || 0);
+    return link && assigned > 0 && read >= assigned;
+  }).length;
+  const documentReadiness = documentState.length ? Math.round((completeDocumentCount / documentState.length) * 100) : 100;
+  const priorityDocuments = documentState
+    .map((doc) => {
+      const link = links[doc.name] || doc.url || "";
+      const assigned = Number(doc.assigned || 0);
+      const read = Number(doc.read || 0);
+      const missing = Math.max(0, assigned - read);
+      const status = !link ? "Link needed" : missing ? "Chase reads" : assigned ? "Complete" : "Assign staff";
+      const weight = !link ? 0 : missing ? 1 : assigned ? 3 : 2;
+      return { ...doc, link, assigned, read, missing, status, weight };
+    })
+    .sort((a, b) => a.weight - b.weight || b.missing - a.missing || String(a.name).localeCompare(String(b.name)))
+    .slice(0, 4);
+  const nextChaseDocument = priorityDocuments.find((doc) => doc.missing > 0) || priorityDocuments.find((doc) => !doc.link) || null;
   const visibleDocuments = documentState
     .filter((doc) => {
       const search = `${doc.name} ${doc.category || ""} ${doc.version || ""}`.toLowerCase();
@@ -4962,6 +4982,47 @@ function Documents({ data, access }) {
       <p className="panel-note">{isStaffView ? "Open each assigned policy and confirm once you have read it." : "Live policy documents, source links and staff acknowledgement progress in one place."}</p>
       {linkStatus && <p className="panel-note">{linkStatus}</p>}
       <div className="documents-console">
+        <section className="documents-command-board" aria-label="Document library command view">
+          <article className="documents-command-card primary">
+            <div>
+              <p className="eyebrow">{isStaffView ? "Your policy status" : "Library readiness"}</p>
+              <h3>{isStaffView ? `${missingAcknowledgements || "No"} policies left to acknowledge` : `${documentReadiness}% operationally ready`}</h3>
+              <p>{isStaffView ? "Open each assigned policy, read it in Google Docs, then confirm the acknowledgement here." : "Google Doc links, version notes and staff acknowledgements are tracked together for Ofsted and school assurance."}</p>
+            </div>
+            <div className="documents-readiness-line"><span style={{ width: `${documentReadiness}%` }} /></div>
+          </article>
+          <article className="documents-command-card">
+            <div className="documents-command-head">
+              <div>
+                <p className="eyebrow">Priority queue</p>
+                <h3>{nextChaseDocument ? nextChaseDocument.name : "Nothing urgent"}</h3>
+              </div>
+              <Badge value={nextChaseDocument ? nextChaseDocument.status : "Clear"} />
+            </div>
+            <div className="documents-priority-list">
+              {priorityDocuments.map((doc) => (
+                <button type="button" key={doc.id || doc.name} onClick={() => setSelectedDocumentId(doc.id)}>
+                  <span>
+                    <strong>{doc.name}</strong>
+                    <small>{doc.link ? `${doc.read}/${doc.assigned} read` : "Add Google Doc link"}</small>
+                  </span>
+                  <Badge value={doc.status} />
+                </button>
+              ))}
+            </div>
+          </article>
+          <article className="documents-command-card compact">
+            <div>
+              <p className="eyebrow">Assurance checks</p>
+              <h3>Policy evidence in one place.</h3>
+            </div>
+            <div className="documents-check-list">
+              <span><CheckCircle2 size={16} /> Source links saved</span>
+              <span><ClipboardCheck size={16} /> Staff reads tracked</span>
+              <span><Bell size={16} /> Chases logged</span>
+            </div>
+          </article>
+        </section>
         <div className="documents-summary">
           <Metric icon={<FileText />} label={isStaffView ? "Assigned policies" : "Documents"} value={documentState.length} tone="blue" />
           <Metric icon={<CheckCircle2 />} label="Policy links" value={`${linkedCount}/${documentState.length}`} tone={missingLinkCount ? "amber" : "green"} />
