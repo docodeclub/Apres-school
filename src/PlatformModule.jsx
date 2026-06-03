@@ -1488,6 +1488,7 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
   const [query, setQuery] = useState("");
   const [siteFilter, setSiteFilter] = useState("All sites");
   const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [selectedRecordTab, setSelectedRecordTab] = useState("Overview");
   const [selectedFormerStaffId, setSelectedFormerStaffId] = useState("");
   const [dismissTargetId, setDismissTargetId] = useState("");
   const [dismissReason, setDismissReason] = useState("Resigned");
@@ -1556,6 +1557,7 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
   const selectedStaffRestrictedFiles = selectedStaffFiles.filter((file) => file.sensitivity === "restricted" || staffHrFileBucket(file) === "Restricted");
   const selectedStaffScr = selectedStaffProfile ? staffScrOperationalSummary(selectedStaffProfile) : null;
   const selectedStaffPay = selectedStaffProfile ? staffPayrollOperationalSummary(data, selectedStaffProfile) : null;
+  const selectedStaffNotes = selectedStaffProfile ? chooseLatestStaffProfileNotes(readJson(staffProfileNotesStorageKey, {})[selectedStaffProfile.id], data.staffProfileNotes?.[selectedStaffProfile.id]) : normalizeStaffProfileNotes(null);
   const selectedDirectReports = selectedStaff ? activeRows.filter((person) => person.reportsTo === selectedStaff.id) : [];
   const selectedFormerStaff = formerRows.find((person) => person.id === selectedFormerStaffId || person.staffRecordId === selectedFormerStaffId) || formerRows[0] || null;
   const selectedFormerRecord = selectedFormerStaff?.formerRecord || {};
@@ -1606,6 +1608,9 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
     ["SCR", Boolean(selectedStaffScr?.status && /compliant|ready|clear/i.test(selectedStaffScr.status)), selectedStaffScr?.status || "Review needed"],
     ["Pay basis", Boolean(selectedStaffProfile?.payRate || selectedStaffProfile?.annualSalary), selectedStaffPay?.basis || "Not recorded"],
   ] : [];
+  const recordTabs = ["Overview", "Compliance", "HR Files", "Pay", "Notes", "Exit"];
+  const latestStaffFiles = selectedStaffFiles.slice(0, 4);
+  const latestStaffPayslips = selectedStaffPayslips.slice(0, 3);
 
   useEffect(() => {
     if (activeRows.length && (!selectedStaffId || !activeRows.some((person) => person.id === selectedStaffId))) {
@@ -1809,79 +1814,186 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
                 <div><span>HR files</span><strong>{selectedStaffFiles.length}</strong></div>
                 <div><span>Contract</span><strong>{selectedStaffProfile?.contractType || selectedStaffProfile?.employmentType || "Not recorded"}</strong></div>
               </div>
-              <div className="hr-record-health">
-                <div className="hr-record-health-head">
-                  <div>
-                    <span>Record health</span>
-                    <strong>{selectedReadinessScore}% complete</strong>
-                  </div>
-                  <Badge value={selectedIssueCount ? `${selectedIssueCount} action${selectedIssueCount === 1 ? "" : "s"}` : "Ready"} />
-                </div>
-                <div className="hr-record-health-bar" aria-hidden="true"><span style={{ width: `${selectedReadinessScore}%` }} /></div>
-                <div className="hr-record-checks">
-                  {selectedRecordChecks.map(([label, ok, detail]) => (
-                    <article key={label} className={ok ? "ready" : "needs-work"}>
-                      <span>{ok ? "Ready" : "Action"}</span>
-                      <strong>{label}</strong>
-                      <small>{detail}</small>
-                    </article>
-                  ))}
-                </div>
-              </div>
-              <div className="hr-action-grid" aria-label={`${selectedStaff.name} operational actions`}>
-                <button type="button" onClick={() => selectedStaffProfile && onOpenStaffProfile?.(selectedStaffProfile.id)}>
-                  <ShieldCheck size={18} />
-                  <span><strong>Open staff profile</strong><small>SCR, pay details and staff record</small></span>
-                </button>
-                <button type="button" onClick={() => selectedStaffProfile && onOpenHrFiles?.(selectedStaffProfile.id)}>
-                  <FileText size={18} />
-                  <span><strong>HR files</strong><small>{selectedStaffFiles.length} files · {selectedStaffRestrictedFiles.length} restricted</small></span>
-                </button>
-                <button type="button" onClick={() => selectedStaffProfile && onOpenScr?.(selectedStaffProfile.id)}>
-                  <ClipboardCheck size={18} />
-                  <span><strong>SCR</strong><small>{selectedStaffScr?.status || "Review"} · {selectedStaffScr?.nextAction || "Check profile"}</small></span>
-                </button>
-                <button type="button" onClick={() => selectedStaffProfile && onOpenPay?.(selectedStaffProfile.id)}>
-                  <PoundSterling size={18} />
-                  <span><strong>Pay</strong><small>{selectedStaffPay?.latestPeriod ? `${formatPayrollPeriod(selectedStaffPay.latestPeriod)} · ${formatCurrency(selectedStaffPay.latestGross)}` : "Open payroll history"}</small></span>
-                </button>
-                <button className="hr-danger-action" type="button" onClick={() => openDismissModal(selectedStaff)}>
-                  <X size={18} />
-                  <span><strong>Dismiss</strong><small>Move to Former Staff and retain records</small></span>
-                </button>
-              </div>
-              <div className="hr-operational-snapshot">
-                <article>
-                  <span>SCR readiness</span>
-                  <strong>{selectedStaffScr?.status || "Review needed"}</strong>
-                  <small>{selectedStaffScr?.nextAction || "Open SCR profile to review evidence."}</small>
-                </article>
-                <article>
-                  <span>Documents</span>
-                  <strong>{selectedStaffFiles.length} HR file{selectedStaffFiles.length === 1 ? "" : "s"}</strong>
-                  <small>{selectedStaffPayslips.length} payslip{selectedStaffPayslips.length === 1 ? "" : "s"} · {selectedStaffRestrictedFiles.length} restricted</small>
-                </article>
-                <article>
-                  <span>Pay basis</span>
-                  <strong>{selectedStaffPay?.basis || "Not recorded"}</strong>
-                  <small>{selectedStaffPay?.latestPeriod ? `${formatPayrollPeriod(selectedStaffPay.latestPeriod)} payroll: ${formatCurrency(selectedStaffPay.latestGross)}` : "No submitted payroll period found."}</small>
-                </article>
-              </div>
-              <div className="hr-profile-controls">
-                <label>Line manager<select value={selectedStaff.reportsTo || ""} onChange={(event) => updatePerson(selectedStaff.id, { reportsTo: event.target.value })}>
-                  <option value="">No manager</option>
-                  {activeRows.filter((option) => option.id !== selectedStaff.id).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
-                </select></label>
-                <label>Usual site<select value={selectedStaff.scope} onChange={(event) => updatePerson(selectedStaff.id, { scope: event.target.value })}>
-                  {schoolOptions.map((site) => <option key={site} value={site}>{site}</option>)}
-                </select></label>
-              </div>
-              <div className="hr-direct-report-strip">
-                <span>Direct reports</span>
-                {selectedDirectReports.slice(0, 6).map((person) => (
-                  <button type="button" key={person.id} onClick={() => setSelectedStaffId(person.id)}>{person.name}</button>
+              <div className="hr-record-tabs" role="tablist" aria-label={`${selectedStaff.name} HR record sections`}>
+                {recordTabs.map((tabName) => (
+                  <button
+                    key={tabName}
+                    type="button"
+                    className={selectedRecordTab === tabName ? "active" : ""}
+                    onClick={() => setSelectedRecordTab(tabName)}
+                  >
+                    {tabName}
+                  </button>
                 ))}
-                {!selectedDirectReports.length && <small>No direct reports assigned.</small>}
+              </div>
+              <div className="hr-record-tab-panel">
+                {selectedRecordTab === "Overview" && (
+                  <div className="hr-tab-stack">
+                    <div className="hr-record-health">
+                      <div className="hr-record-health-head">
+                        <div>
+                          <span>Record health</span>
+                          <strong>{selectedReadinessScore}% complete</strong>
+                        </div>
+                        <Badge value={selectedIssueCount ? `${selectedIssueCount} action${selectedIssueCount === 1 ? "" : "s"}` : "Ready"} />
+                      </div>
+                      <div className="hr-record-health-bar" aria-hidden="true"><span style={{ width: `${selectedReadinessScore}%` }} /></div>
+                      <div className="hr-record-checks">
+                        {selectedRecordChecks.map(([label, ok, detail]) => (
+                          <article key={label} className={ok ? "ready" : "needs-work"}>
+                            <span>{ok ? "Ready" : "Action"}</span>
+                            <strong>{label}</strong>
+                            <small>{detail}</small>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="hr-profile-controls">
+                      <label>Line manager<select value={selectedStaff.reportsTo || ""} onChange={(event) => updatePerson(selectedStaff.id, { reportsTo: event.target.value })}>
+                        <option value="">No manager</option>
+                        {activeRows.filter((option) => option.id !== selectedStaff.id).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                      </select></label>
+                      <label>Usual site<select value={selectedStaff.scope} onChange={(event) => updatePerson(selectedStaff.id, { scope: event.target.value })}>
+                        {schoolOptions.map((site) => <option key={site} value={site}>{site}</option>)}
+                      </select></label>
+                    </div>
+                    <div className="hr-direct-report-strip">
+                      <span>Direct reports</span>
+                      {selectedDirectReports.slice(0, 6).map((person) => (
+                        <button type="button" key={person.id} onClick={() => setSelectedStaffId(person.id)}>{person.name}</button>
+                      ))}
+                      {!selectedDirectReports.length && <small>No direct reports assigned.</small>}
+                    </div>
+                  </div>
+                )}
+                {selectedRecordTab === "Compliance" && (
+                  <div className="hr-tab-stack">
+                    <div className="hr-operational-snapshot">
+                      <article>
+                        <span>SCR readiness</span>
+                        <strong>{selectedStaffScr?.status || "Review needed"}</strong>
+                        <small>{selectedStaffScr?.nextAction || "Open SCR profile to review evidence."}</small>
+                      </article>
+                      <article>
+                        <span>Restricted files</span>
+                        <strong>{selectedStaffRestrictedFiles.length}</strong>
+                        <small>Restricted HR files attached to this staff record.</small>
+                      </article>
+                    </div>
+                    <div className="hr-action-grid" aria-label={`${selectedStaff.name} compliance actions`}>
+                      <button type="button" onClick={() => selectedStaffProfile && onOpenScr?.(selectedStaffProfile.id)}>
+                        <ClipboardCheck size={18} />
+                        <span><strong>Open SCR</strong><small>{selectedStaffScr?.nextAction || "Review recruitment and training evidence"}</small></span>
+                      </button>
+                      <button type="button" onClick={() => selectedStaffProfile && onOpenStaffProfile?.(selectedStaffProfile.id)}>
+                        <ShieldCheck size={18} />
+                        <span><strong>Open full profile</strong><small>Training, evidence requests and internal notes</small></span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {selectedRecordTab === "HR Files" && (
+                  <div className="hr-tab-stack">
+                    <div className="hr-operational-snapshot">
+                      <article>
+                        <span>Total files</span>
+                        <strong>{selectedStaffFiles.length}</strong>
+                        <small>{selectedStaffRestrictedFiles.length} restricted · {selectedStaffPayslips.length} payslips</small>
+                      </article>
+                      <article>
+                        <span>Latest file</span>
+                        <strong>{latestStaffFiles[0]?.title || "No files yet"}</strong>
+                        <small>{latestStaffFiles[0]?.category || "Upload contracts, letters and evidence from HR Files."}</small>
+                      </article>
+                    </div>
+                    <div className="hr-mini-file-list">
+                      {latestStaffFiles.map((file) => (
+                        <a key={file.id} href={file.fileUrl || undefined} target="_blank" rel="noreferrer" aria-disabled={!file.fileUrl}>
+                          <span>{file.category || "HR file"}</span>
+                          <strong>{file.title}</strong>
+                          <small>{file.issueDate ? formatShortDate(file.issueDate) : file.uploadedAt ? formatShortDate(file.uploadedAt.slice(0, 10)) : "Date not recorded"}</small>
+                        </a>
+                      ))}
+                      {!latestStaffFiles.length && <small>No HR files attached yet.</small>}
+                    </div>
+                    <div className="hr-action-grid single">
+                      <button type="button" onClick={() => selectedStaffProfile && onOpenHrFiles?.(selectedStaffProfile.id)}>
+                        <FileText size={18} />
+                        <span><strong>Manage HR files</strong><small>Open the full contracts, payslips, letters and secure file record</small></span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {selectedRecordTab === "Pay" && (
+                  <div className="hr-tab-stack">
+                    <div className="hr-operational-snapshot">
+                      <article>
+                        <span>Pay basis</span>
+                        <strong>{selectedStaffPay?.basis || "Not recorded"}</strong>
+                        <small>{selectedStaffProfile?.annualSalary ? `${formatCurrency(selectedStaffProfile.annualSalary)} annual salary` : selectedStaffProfile?.payRate ? `${formatCurrency(selectedStaffProfile.payRate)}/hour` : "Add pay details on the Pay page."}</small>
+                      </article>
+                      <article>
+                        <span>Latest payroll</span>
+                        <strong>{selectedStaffPay?.latestPeriod ? formatPayrollPeriod(selectedStaffPay.latestPeriod) : "No run"}</strong>
+                        <small>{selectedStaffPay?.latestPeriod ? `${formatCurrency(selectedStaffPay.latestGross)} gross` : "No submitted payroll period found."}</small>
+                      </article>
+                    </div>
+                    <div className="hr-mini-file-list">
+                      {latestStaffPayslips.map((file) => (
+                        <a key={file.id} href={file.fileUrl || undefined} target="_blank" rel="noreferrer" aria-disabled={!file.fileUrl}>
+                          <span>{file.issueDate ? formatShortDate(file.issueDate) : "Payslip"}</span>
+                          <strong>{file.title}</strong>
+                          <small>{file.notes || "PDF retained for staff view"}</small>
+                        </a>
+                      ))}
+                      {!latestStaffPayslips.length && <small>No payslips attached yet.</small>}
+                    </div>
+                    <div className="hr-action-grid single">
+                      <button type="button" onClick={() => selectedStaffProfile && onOpenPay?.(selectedStaffProfile.id)}>
+                        <PoundSterling size={18} />
+                        <span><strong>Open pay history</strong><small>Monthly pay, hours, adjustments and uploaded payslips</small></span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {selectedRecordTab === "Notes" && (
+                  <div className="hr-tab-stack">
+                    <div className="hr-note-preview-grid">
+                      {[
+                        ["Manager notes", selectedStaffNotes.manager],
+                        ["Contract notes", selectedStaffNotes.contract],
+                        ["Compliance notes", selectedStaffNotes.compliance],
+                        ["Payroll notes", selectedStaffNotes.payroll],
+                      ].map(([label, note]) => (
+                        <article key={label}>
+                          <span>{label}</span>
+                          <p>{note || "No note recorded yet."}</p>
+                        </article>
+                      ))}
+                    </div>
+                    <div className="hr-action-grid single">
+                      <button type="button" onClick={() => selectedStaffProfile && onOpenStaffProfile?.(selectedStaffProfile.id)}>
+                        <ShieldCheck size={18} />
+                        <span><strong>Edit structured notes</strong><small>Open the full staff profile to update manager, contract, compliance and payroll notes</small></span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {selectedRecordTab === "Exit" && (
+                  <div className="hr-tab-stack">
+                    <div className="hr-exit-panel">
+                      <span>Leaver workflow</span>
+                      <strong>Move this person to Former Staff</strong>
+                      <p>This removes them from current HR views while retaining SCR history, HR files, payslips and audit records.</p>
+                    </div>
+                    <div className="hr-action-grid single">
+                      <button className="hr-danger-action" type="button" onClick={() => openDismissModal(selectedStaff)}>
+                        <X size={18} />
+                        <span><strong>Dismiss / archive staff member</strong><small>Choose a reason for leaving and retain their record securely</small></span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           ) : (
