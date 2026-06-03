@@ -6345,7 +6345,42 @@ function CrmDetailDrawer({ record, onChange }) {
 function AuditLog() {
   const [items, setItems] = useState(() => readAuditLog());
   const [filter, setFilter] = useState("All");
-  const filteredItems = items.filter((item) => filter === "All" || item.action.toLowerCase().includes(filter.toLowerCase()));
+  const [query, setQuery] = useState("");
+  const [range, setRange] = useState("All time");
+  function auditModule(item) {
+    const action = String(item.action || "").toLowerCase();
+    if (action.includes("pay") || action.includes("payslip") || action.includes("hours")) return "Payroll";
+    if (action.includes("scr") || action.includes("evidence")) return "SCR";
+    if (action.includes("hr") || action.includes("former staff") || action.includes("staff photo") || action.includes("profile notes")) return "HR";
+    if (action.includes("user") || action.includes("password") || action.includes("account") || action.includes("invite")) return "Users";
+    if (action.includes("rota") || action.includes("cover")) return "Rota";
+    if (action.includes("crm") || action.includes("enquiry")) return "CRM";
+    if (action.includes("ofsted")) return "Ofsted";
+    if (action.includes("document") || action.includes("policy")) return "Documents";
+    if (action.includes("settings") || action.includes("public")) return "Settings";
+    return "General";
+  }
+  function inDateRange(item) {
+    if (range === "All time") return true;
+    const created = new Date(item.createdAt || 0).getTime();
+    if (!created) return false;
+    const now = Date.now();
+    const days = range === "Today" ? 1 : range === "7 days" ? 7 : 30;
+    return now - created <= days * 24 * 60 * 60 * 1000;
+  }
+  const enrichedItems = items.map((item) => ({ ...item, module: auditModule(item) }));
+  const modules = ["All", ...Array.from(new Set(enrichedItems.map((item) => item.module))).sort()];
+  const filteredItems = enrichedItems.filter((item) => {
+    const haystack = `${item.action || ""} ${item.detail || ""} ${item.source || ""} ${item.module || ""}`.toLowerCase();
+    if (filter !== "All" && item.module !== filter) return false;
+    if (query && !haystack.includes(query.toLowerCase())) return false;
+    return inDateRange(item);
+  });
+  const recentCount = enrichedItems.filter((item) => inDateRange({ ...item, createdAt: item.createdAt }) && (range === "All time" ? true : true)).length;
+  const moduleCounts = modules.filter((module) => module !== "All").map((module) => ({
+    module,
+    count: enrichedItems.filter((item) => item.module === module).length,
+  })).sort((a, b) => b.count - a.count).slice(0, 4);
   function clearAudit() {
     localStorage.removeItem(auditStorageKey);
     setItems([]);
@@ -6355,20 +6390,54 @@ function AuditLog() {
       <div className="toolbar">
         <div>
           <h2>Audit Log</h2>
-          <p className="panel-note">Local demo trail for admin actions. Production should write immutable audit rows server-side.</p>
+          <p className="panel-note">Trace admin actions across staff, SCR, HR, payroll, rota, documents and settings.</p>
         </div>
         <div>
-          <select aria-label="Filter audit log" value={filter} onChange={(event) => setFilter(event.target.value)}>
-            {["All", "Cover", "Rota", "Hours", "HR", "CRM", "User"].map((item) => <option key={item}>{item}</option>)}
-          </select>
           <button className="button light" type="button" onClick={clearAudit}>Clear Local Log</button>
         </div>
       </div>
-      <div className="list">
+      <section className="audit-command-grid">
+        <article className="audit-command-card primary">
+          <p className="eyebrow">Audit source</p>
+          <h3>{items.length} local actions recorded</h3>
+          <p>Current actions are retained in browser storage. The layout is ready for immutable server-side audit rows when we move this fully into Supabase.</p>
+          <Badge value="Local audit" />
+        </article>
+        <article className="audit-command-card">
+          <span>Total visible</span>
+          <strong>{filteredItems.length}</strong>
+          <p>{range === "All time" ? "Across the full retained log." : `Within ${range.toLowerCase()}.`}</p>
+        </article>
+        <article className="audit-command-card">
+          <span>Active modules</span>
+          <strong>{modules.length - 1}</strong>
+          <p>{moduleCounts.map((item) => `${item.module} ${item.count}`).join(" · ") || "No modules yet."}</p>
+        </article>
+        <article className="audit-command-card">
+          <span>Recent activity</span>
+          <strong>{recentCount}</strong>
+          <p>Use filters below to trace a staff member, module or action.</p>
+        </article>
+      </section>
+      <section className="audit-filters">
+        <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search action, person, school or detail" /></label>
+        <label>Module<select aria-label="Filter audit log" value={filter} onChange={(event) => setFilter(event.target.value)}>
+          {modules.map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+        <label>Date range<select value={range} onChange={(event) => setRange(event.target.value)}>
+          {["All time", "Today", "7 days", "30 days"].map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+      </section>
+      <div className="audit-list">
         {filteredItems.map((item) => (
-          <article className="list-item" key={item.id}>
-            <div><strong>{item.action}</strong><span>{item.detail}</span><small>{new Date(item.createdAt).toLocaleString("en-GB")}</small></div>
-            <Badge value={item.source || "Local"} />
+          <article className="audit-item" key={item.id}>
+            <div className="audit-module-mark">{item.module.slice(0, 2).toUpperCase()}</div>
+            <div>
+              <strong>{item.action}</strong>
+              <span>{item.detail || "No extra detail recorded."}</span>
+              <small>{new Date(item.createdAt).toLocaleString("en-GB")} · {item.source || "Local"}</small>
+            </div>
+            <Badge value={item.module} />
           </article>
         ))}
         {!filteredItems.length && <EmptyList title="No audit entries yet" text="User, CRM, rota, cover, HR and hours changes will appear here." />}
