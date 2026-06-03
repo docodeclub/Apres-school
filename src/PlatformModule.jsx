@@ -6383,6 +6383,18 @@ function Settings() {
   const documentLinks = readJson(documentLinksStorageKey, {});
   const auditItems = readAuditLog();
   const hrFileCount = auditItems.filter((item) => String(item.action || "").toLowerCase().includes("hr file")).length;
+  const linkedPolicyCount = Object.keys(documentLinks).length;
+  const settingsHealth = settingsStatus.toLowerCase().includes("saved live") || settingsStatus.toLowerCase().includes("loaded from supabase")
+    ? "Live"
+    : settingsStatus.toLowerCase().includes("saving")
+      ? "Saving"
+      : "Check";
+  const controlCards = [
+    ["Public site", settings.campAnnouncementEnabled ? "Announcement on" : "Announcement off", settings.campAnnouncementEnabled ? "Homepage pop-out is active." : "Homepage pop-out is hidden.", settings.campAnnouncementEnabled ? "Live" : "Off"],
+    ["Data source", hasSupabaseConfig ? "Supabase connected" : "Local preview", hasSupabaseConfig ? "Settings can be saved for everyone." : "Changes only affect this browser.", hasSupabaseConfig ? "Connected" : "Local"],
+    ["Policies", `${linkedPolicyCount} linked`, "Google Docs currently saved in the policy library.", `${linkedPolicyCount} links`],
+    ["Audit", `${auditItems.length} local entries`, "Recent admin actions retained in this browser.", "Local audit"],
+  ];
   const launchItems = [
     ["Public site live", "Domain, homepage and booking routes are published."],
     ["Staff login live", "Manual temporary passwords work while email setup is completed."],
@@ -6444,67 +6456,89 @@ function Settings() {
       <div className="toolbar">
         <div>
           <h2>Settings</h2>
-          <p className="panel-note">Control public-site features that can be switched on or off without changing page content.</p>
-          <p className="panel-note">{settingsStatus}</p>
+          <p className="panel-note">Control public-site features, platform setup and operational health from one place.</p>
         </div>
       </div>
-      <section className="settings-grid">
-        <article className="setting-card">
+      <section className="settings-control-centre">
+        <article className="settings-hero">
           <div>
-            <p className="eyebrow">Homepage</p>
-            <h3>Camp announcement pop-out</h3>
-            <p>Advertises {nextCamp.title} on the homepage with dates, sites, daily themes and a booking link.</p>
+            <p className="eyebrow">Control centre</p>
+            <h3>Live switches should be obvious, reversible and hard to miss.</h3>
+            <p>{settingsStatus}</p>
           </div>
-          <label className="toggle-row">
-            <input aria-label="Camp announcement pop-out" type="checkbox" checked={settings.campAnnouncementEnabled} onChange={(event) => updateSetting({ campAnnouncementEnabled: event.target.checked })} />
-            <span>{settings.campAnnouncementEnabled ? "Enabled" : "Disabled"}</span>
-          </label>
+          <Badge value={settingsHealth} />
         </article>
-        <article className="setting-card">
+        <div className="settings-status-grid">
+          {controlCards.map(([label, value, text, badge]) => (
+            <article key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+              <p>{text}</p>
+              <Badge value={badge} />
+            </article>
+          ))}
+        </div>
+        <section className="settings-section-grid">
+          <article className="setting-card setting-card-feature">
+            <div>
+              <p className="eyebrow">Public website</p>
+              <h3>Camp announcement pop-out</h3>
+              <p>Advertises {nextCamp.title} on the homepage with dates, sites, daily themes and a booking link. Turning this off hides the pop-out on the public homepage once the live setting is saved.</p>
+            </div>
+            <div className="settings-feature-row">
+              <label className="toggle-row">
+                <input aria-label="Camp announcement pop-out" type="checkbox" checked={settings.campAnnouncementEnabled} onChange={(event) => updateSetting({ campAnnouncementEnabled: event.target.checked })} />
+                <span>{settings.campAnnouncementEnabled ? "Enabled" : "Disabled"}</span>
+              </label>
+              <Badge value={settings.campAnnouncementEnabled ? "Live on homepage" : "Hidden"} />
+            </div>
+          </article>
+          <article className="setting-card">
+            <div>
+              <p className="eyebrow">Current campaign</p>
+              <h3>{nextCamp.title}</h3>
+              <p>{nextCamp.dates} · {nextCamp.sites.join(", ")}</p>
+            </div>
+            <Badge value={settings.campAnnouncementEnabled ? "Promoted" : "Not promoted"} />
+          </article>
+          <article className="setting-card">
+            <div>
+              <p className="eyebrow">Document library</p>
+              <h3>Google policy links</h3>
+              <p>{linkedPolicyCount} policy links are saved in this browser. Open Documents to add or update live Google Doc links and staff acknowledgements.</p>
+            </div>
+            <Badge value={`${linkedPolicyCount} linked`} />
+          </article>
+          <article className="setting-card">
+            <div>
+              <p className="eyebrow">HR files</p>
+              <h3>Private storage</h3>
+              <p>HR uploads use the private Supabase Storage bucket and signed file links in the admin platform.</p>
+            </div>
+            <Badge value="Supabase Storage" />
+          </article>
+          <article className="setting-card">
+            <div>
+              <p className="eyebrow">Audit</p>
+              <h3>Recent admin changes</h3>
+              <p>{hrFileCount} HR file actions have been logged locally. Production audit rows can be moved server-side as the platform matures.</p>
+            </div>
+            <Badge value="Local audit" />
+          </article>
+        </section>
+        <section className="setting-card setting-card-wide">
           <div>
-            <p className="eyebrow">Preview</p>
-            <h3>{nextCamp.title}</h3>
-            <p>{nextCamp.dates} · {nextCamp.sites.join(", ")}</p>
-          </div>
-          <Badge value={settings.campAnnouncementEnabled ? "Live" : "Off"} />
-        </article>
-        <article className="setting-card">
-          <div>
-            <p className="eyebrow">Document library</p>
-            <h3>Google policy links</h3>
-            <p>{Object.keys(documentLinks).length} policy links are saved on this browser. Open Documents to add or update live Google Doc links.</p>
-          </div>
-          <Badge value={`${Object.keys(documentLinks).length} linked`} />
-        </article>
-        <article className="setting-card">
-          <div>
-            <p className="eyebrow">HR files</p>
-            <h3>Private storage</h3>
-            <p>HR uploads use the private Supabase Storage bucket and signed file links in the admin platform.</p>
-          </div>
-          <Badge value="Supabase Storage" />
-        </article>
-        <article className="setting-card">
-          <div>
-            <p className="eyebrow">Audit</p>
-            <h3>Recent admin changes</h3>
-            <p>{hrFileCount} HR file actions have been logged locally. Production audit rows can be moved server-side as the platform matures.</p>
-          </div>
-          <Badge value="Local audit" />
-        </article>
-        <article className="setting-card setting-card-wide">
-          <div>
-            <p className="eyebrow">Launch readiness</p>
-            <h3>V1 checks before wider rollout</h3>
-            <p>A short operational checklist for the current launch phase.</p>
+            <p className="eyebrow">Operational readiness</p>
+            <h3>V1 checks for the live platform</h3>
+            <p>A short operational checklist for the current rollout phase.</p>
           </div>
           <div className="settings-checklist">
             {launchItems.map(([title, text]) => (
               <span key={title}><CheckCircle2 size={18} /><strong>{title}</strong><small>{text}</small></span>
             ))}
           </div>
-        </article>
-        <article className="setting-card setting-card-wide">
+        </section>
+        <section className="setting-card setting-card-wide">
           <div>
             <p className="eyebrow">Email setup</p>
             <h3>Resend setup for staff invites</h3>
@@ -6515,7 +6549,7 @@ function Settings() {
               <span key={title}><Clock size={18} /><strong>{title}</strong><small>{text}</small></span>
             ))}
           </div>
-        </article>
+        </section>
       </section>
     </div>
   );
