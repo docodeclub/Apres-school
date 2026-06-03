@@ -589,6 +589,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
 
   function updateStaffSiteOverride(staffId, location) {
     if (!staffId || !location) return;
+    const person = (enrichedData.allStaff || enrichedData.staff || []).find((staff) => staff.id === staffId || staff.profileId === staffId);
     const next = {
       ...staffSiteOverrides,
       [staffId]: {
@@ -598,25 +599,28 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
     };
     setStaffSiteOverrides(next);
     localStorage.setItem(staffSiteOverridesStorageKey, JSON.stringify(next));
+    addAuditLog("Staff usual site updated", `${person?.name || staffId}: ${location}${person?.email ? ` · ${person.email}` : ""}`);
     if (!hasSupabaseConfig || !isUuid(staffId)) return;
     loadSupabaseModule()
       .then(({ updateStaffSiteDetails }) => updateStaffSiteDetails(staffId, location))
       .catch((error) => {
         console.warn("Unable to save staff usual site", error);
-        addAuditLog("Staff site save failed", `${staffId}: ${error.message || "Supabase rejected the update"}`);
+        addAuditLog("Staff site save failed", `${person?.name || staffId}: ${location} · ${error.message || "Supabase rejected the update"}`);
       });
   }
 
   function updateHrReportingOverride({ staffRecordId, managerStaffRecordId = "", scope = "" }) {
     if (!staffRecordId || !hasSupabaseConfig || !isUuid(staffRecordId)) return;
+    const staffPerson = (enrichedData.allStaff || enrichedData.staff || []).find((staff) => staff.id === staffRecordId || staff.profileId === staffRecordId);
+    const managerPerson = (enrichedData.allStaff || enrichedData.staff || []).find((staff) => staff.id === managerStaffRecordId || staff.profileId === managerStaffRecordId);
     loadSupabaseModule()
       .then(({ updateHrReportingLine }) => updateHrReportingLine({ staffRecordId, managerStaffRecordId, scope }))
       .then((savedLine) => {
-        addAuditLog("HR reporting line saved", `${savedLine.staffRecordId}: ${savedLine.scope || "Organisation-wide"}`);
+        addAuditLog("HR reporting line saved", `${staffPerson?.name || savedLine.staffRecordId}: reports to ${managerPerson?.name || "No manager assigned"} · ${savedLine.scope || "Organisation-wide"}${staffPerson?.email ? ` · ${staffPerson.email}` : ""}`);
       })
       .catch((error) => {
         console.warn("Unable to save HR reporting line", error);
-        addAuditLog("HR reporting line save failed", `${staffRecordId}: ${error.message || "Supabase rejected the update"}`);
+        addAuditLog("HR reporting line save failed", `${staffPerson?.name || staffRecordId}: ${scope || "Organisation-wide"} · ${error.message || "Supabase rejected the update"}`);
       });
   }
 
@@ -1657,7 +1661,10 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
         scope: nextScope || "Organisation-wide",
       });
     }
-    addAuditLog("HR hierarchy updated", `${person?.name || id}: ${Object.keys(patch).join(", ")}`);
+    const changedFields = [];
+    if (Object.prototype.hasOwnProperty.call(patch, "reportsTo")) changedFields.push(`manager ${manager?.name || "No manager assigned"}`);
+    if (Object.prototype.hasOwnProperty.call(patch, "scope")) changedFields.push(`site ${nextScope || "Organisation-wide"}`);
+    addAuditLog("HR hierarchy updated", `${person?.name || id}: ${changedFields.join(" · ") || Object.keys(patch).join(", ")}${person?.email ? ` · ${person.email}` : ""}`);
   }
 
   function childrenOf(managerId) {
@@ -2580,6 +2587,7 @@ function Rota({ data, allData = data, access }) {
   const pendingMoves = moves.filter((move) => !["Sent", "Archived"].includes(move.status)).length;
 
   function update(siteId, field, value) {
+    const site = rotaSites.find((item) => item.id === siteId);
     const next = {
       ...assignments,
       [siteId]: {
@@ -2589,7 +2597,7 @@ function Rota({ data, allData = data, access }) {
     };
     localStorage.setItem(rotaStorageKey, JSON.stringify(next));
     setAssignments(next);
-    addAuditLog("Rota updated", `${siteId}: ${field} set to ${value || "unassigned"}`);
+    addAuditLog("Rota updated", `${site?.site || siteId}: ${field} set to ${value || "unassigned"}`);
   }
 
   async function createCoverMove(event) {
@@ -3132,9 +3140,10 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     }));
   }
   function updateChecklist(staffId, patch) {
-    if (isFormerStaffRecord(scrData.staff.find((person) => person.id === staffId))) return;
+    const staffPerson = scrData.staff.find((person) => person.id === staffId);
+    if (isFormerStaffRecord(staffPerson)) return;
     setChecklistState((current) => {
-      const remoteChecklist = scrData.staff.find((person) => person.id === staffId)?.scrChecklist || {};
+      const remoteChecklist = staffPerson?.scrChecklist || {};
       const next = {
         ...current,
         [staffId]: {
@@ -3153,7 +3162,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
       persistScrChecklistRecord(staffId, next[staffId]);
       return next;
     });
-    addAuditLog("SCR checklist updated", `${staffId}: ${Object.keys(patch).join(", ")}`);
+    addAuditLog("SCR checklist updated", `${staffPerson?.name || staffId}: ${Object.keys(patch).join(", ")}${staffPerson?.email ? ` · ${staffPerson.email}` : ""}`);
   }
   function approveScrProfile(staffId) {
     const person = scrData.staff.find((item) => item.id === staffId);
@@ -3214,7 +3223,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     };
     saveRenewalRequests(next);
     persistScrEvidenceRequestRecord(request.id, request.staffId, request.evidenceKey, next[request.id], "SCR evidence request cleared");
-    addAuditLog("SCR evidence request cleared", `${request.check}: ${request.staffId}`);
+    addAuditLog("SCR evidence request cleared", `${person?.name || request.staffId}: ${request.check}${person?.email ? ` · ${person.email}` : ""}`);
   }
   function reviewSubmittedEvidence(item, decision, note = "") {
     if (isFormerStaffRecord(scrData.staff.find((person) => person.id === item.staffId))) return;
@@ -5467,7 +5476,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
     setHrFiles(data.hrFiles || []);
   }, [data.hrFiles]);
 
-  function saveRun(nextRun, action = "Payroll run updated") {
+  function saveRun(nextRun, action = "Payroll run updated", detail = "") {
     const runToSave = {
       ...nextRun,
       updatedAt: new Date().toISOString(),
@@ -5479,7 +5488,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
     };
     localStorage.setItem(payrollRunsStorageKey, JSON.stringify(next));
     setRuns(next);
-    addAuditLog(action, formatPayrollPeriod(period));
+    addAuditLog(action, [formatPayrollPeriod(period), detail].filter(Boolean).join(" · "));
     if (!usingSupabase) return;
     setSyncStatus("Saving payroll run to Supabase...");
     loadSupabaseModule()
@@ -5495,6 +5504,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
 
   function updateAdjustment(staffId, patch) {
     if (runLocked) return;
+    const person = data.staff.find((staff) => staff.id === staffId || staff.profileId === staffId);
     const nextAdjustment = {
       ...(currentRun.adjustments?.[staffId] || {}),
       ...patch,
@@ -5505,7 +5515,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
         ...(currentRun.adjustments || {}),
         [staffId]: nextAdjustment,
       },
-    }, "Payroll adjustment updated");
+    }, "Payroll adjustment updated", `${person?.name || staffId}: ${Object.keys(patch).join(", ")}${person?.email ? ` · ${person.email}` : ""}`);
   }
 
   function setRunStatus(status) {
@@ -6115,7 +6125,7 @@ function updateRecord(id, patch) {
       return next;
     });
 
-    addAuditLog("CRM updated", `${existing.name || id}: ${Object.keys(patch).join(", ")}`);
+    addAuditLog("CRM updated", `${existing.name || existing.school || id}: ${Object.keys(patch).join(", ")}${existing.contactEmail || existing.email ? ` · ${existing.contactEmail || existing.email}` : ""}${existing.type || existing.status ? ` · ${existing.type || existing.status}` : ""}`);
     if (!isSupabaseCrmRecord(id, existing)) return;
 
     loadSupabaseModule()
@@ -6187,7 +6197,7 @@ function updateRecord(id, patch) {
       saveCrmUpdates(next);
       return next;
     });
-    addAuditLog("CRM bulk update", `${ids.length} rows: ${Object.keys(patch).join(", ")}`);
+    addAuditLog("CRM bulk update", `${ids.length} rows: ${Object.keys(patch).join(", ")}${patch.status ? ` · status ${patch.status}` : ""}${patch.owner ? ` · owner ${patch.owner}` : ""}`);
   }
 
   return (
@@ -8330,7 +8340,8 @@ function inferAuditMetadata(action, detail = "") {
   const emailMatch = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
   if (emailMatch) metadata.email = emailMatch[0].toLowerCase();
 
-  const subject = String(detail || "").split(":")[0]?.trim();
+  const rawSubject = String(detail || "").split(":")[0]?.trim();
+  const subject = rawSubject?.includes("·") ? rawSubject.split("·").map((part) => part.trim()).filter(Boolean).at(-1) : rawSubject;
   if (subject && subject.length <= 80 && /[A-Za-z]/.test(subject)) metadata.subject = subject;
 
   const siteNames = ["Willington Prep", "King's House School", "Shrewsbury House School", "Ripley Court", "The Rowans"];
