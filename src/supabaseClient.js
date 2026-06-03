@@ -298,6 +298,36 @@ export async function fetchPlatformData({ userId, role }) {
   };
 }
 
+export async function fetchPublicSettings() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase
+    .from("platform_settings")
+    .select("value")
+    .eq("key", "public_site")
+    .maybeSingle();
+  if (error) throw error;
+  return data?.value || {};
+}
+
+export async function updatePublicSettings(settings) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const { data, error } = await supabase
+    .from("platform_settings")
+    .upsert({
+      key: "public_site",
+      value: settings,
+      is_public: true,
+      updated_by: userData?.user?.id || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "key" })
+    .select("value")
+    .single();
+  if (error) throw error;
+  return data?.value || settings;
+}
+
 function mapStaffRecords(records) {
   return records.map((record) => {
     const profile = Array.isArray(record.profiles) ? record.profiles[0] : record.profiles;

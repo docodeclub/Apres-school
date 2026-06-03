@@ -909,8 +909,31 @@ function PublicSite({ page, setPage, setPlatform }) {
 }
 
 function CampAnnouncement({ setPage }) {
-  const settings = readPublicSettings();
+  const [settings, setSettings] = useState(() => readPublicSettings());
+  const [settingsLoaded, setSettingsLoaded] = useState(() => !hasSupabaseConfig);
   const [closed, setClosed] = useState(() => sessionStorage.getItem("apres-camp-announcement-closed") === "true");
+  useEffect(() => {
+    let mounted = true;
+    if (!hasSupabaseConfig) return undefined;
+    loadSupabaseModule()
+      .then(({ fetchPublicSettings }) => fetchPublicSettings())
+      .then((remoteSettings) => {
+        if (!mounted) return;
+        const next = { ...readPublicSettings(), ...remoteSettings };
+        setSettings(next);
+        localStorage.setItem(publicSettingsStorageKey, JSON.stringify(next));
+      })
+      .catch(() => {
+        if (mounted) setSettings(readPublicSettings());
+      })
+      .finally(() => {
+        if (mounted) setSettingsLoaded(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  if (!settingsLoaded) return null;
   if (!settings.campAnnouncementEnabled || closed) return null;
 
   function close() {

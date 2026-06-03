@@ -6379,6 +6379,7 @@ function AuditLog() {
 
 function Settings() {
   const [settings, setSettings] = useState(() => readPublicSettings());
+  const [settingsStatus, setSettingsStatus] = useState(hasSupabaseConfig ? "Loading live settings..." : "Local preview only. Supabase is not configured in this environment.");
   const documentLinks = readJson(documentLinksStorageKey, {});
   const auditItems = readAuditLog();
   const hrFileCount = auditItems.filter((item) => String(item.action || "").toLowerCase().includes("hr file")).length;
@@ -6395,11 +6396,47 @@ function Settings() {
     ["Retest staff invite", "Send one reset to Kelly, then move the platform out of manual invite mode."],
   ];
 
-  function updateSetting(patch) {
+  useEffect(() => {
+    let mounted = true;
+    if (!hasSupabaseConfig) return undefined;
+    loadSupabaseModule()
+      .then(({ fetchPublicSettings }) => fetchPublicSettings())
+      .then((remoteSettings) => {
+        if (!mounted) return;
+        const next = { ...readPublicSettings(), ...remoteSettings };
+        setSettings(next);
+        localStorage.setItem(publicSettingsStorageKey, JSON.stringify(next));
+        setSettingsStatus("Live settings loaded from Supabase.");
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setSettingsStatus(`${error.message || "Unable to load live settings."} Run the platform settings SQL migration if this has not been added yet.`);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function updateSetting(patch) {
     const next = { ...settings, ...patch, updatedAt: new Date().toISOString() };
     setSettings(next);
     localStorage.setItem(publicSettingsStorageKey, JSON.stringify(next));
     addAuditLog("Public settings updated", `Camp announcement ${next.campAnnouncementEnabled ? "enabled" : "disabled"}`);
+    if (!hasSupabaseConfig) {
+      setSettingsStatus("Saved locally for this browser. Supabase is not configured in this environment.");
+      return;
+    }
+    setSettingsStatus("Saving live setting...");
+    try {
+      const { updatePublicSettings } = await loadSupabaseModule();
+      const saved = await updatePublicSettings(next);
+      const savedSettings = { ...next, ...saved };
+      setSettings(savedSettings);
+      localStorage.setItem(publicSettingsStorageKey, JSON.stringify(savedSettings));
+      setSettingsStatus(`Saved live. Camp announcement is now ${savedSettings.campAnnouncementEnabled ? "enabled" : "disabled"}.`);
+    } catch (error) {
+      setSettingsStatus(`${error.message || "Unable to save live setting."} Local browser setting was updated, but the public site may not change until Supabase settings are available.`);
+    }
   }
 
   return (
@@ -6408,6 +6445,7 @@ function Settings() {
         <div>
           <h2>Settings</h2>
           <p className="panel-note">Control public-site features that can be switched on or off without changing page content.</p>
+          <p className="panel-note">{settingsStatus}</p>
         </div>
       </div>
       <section className="settings-grid">
