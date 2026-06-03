@@ -7081,6 +7081,25 @@ label {
   color: var(--muted);
 }
 
+.audit-metadata-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.audit-metadata-tags span {
+  width: fit-content;
+  border: 1px solid rgba(42, 65, 170, 0.12);
+  border-radius: 999px;
+  background: #f8faff;
+  color: var(--royal-dark);
+  font-size: 0.74rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  padding: 4px 8px;
+}
+
 .payroll-run-console {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

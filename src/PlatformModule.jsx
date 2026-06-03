@@ -6353,6 +6353,7 @@ function AuditLog({ data = {} }) {
   const [query, setQuery] = useState("");
   const [range, setRange] = useState("All time");
   function auditModule(item) {
+    if (item.metadata?.module) return item.metadata.module;
     const action = String(item.action || "").toLowerCase();
     if (action.includes("pay") || action.includes("payslip") || action.includes("hours")) return "Payroll";
     if (action.includes("scr") || action.includes("evidence")) return "SCR";
@@ -6365,6 +6366,19 @@ function AuditLog({ data = {} }) {
     if (action.includes("settings") || action.includes("public")) return "Settings";
     return "General";
   }
+  function auditMetadataTags(item) {
+    const metadata = item.metadata || {};
+    return [
+      metadata.staffName && `Staff: ${metadata.staffName}`,
+      metadata.email,
+      metadata.site && `Site: ${metadata.site}`,
+      metadata.documentName && `Document: ${metadata.documentName}`,
+      metadata.payrollPeriod && `Period: ${metadata.payrollPeriod}`,
+      metadata.crmRecord && `CRM: ${metadata.crmRecord}`,
+      item.actor && `Actor: ${item.actor}`,
+      item.tableName && `Table: ${item.tableName}`,
+    ].filter(Boolean).slice(0, 5);
+  }
   function inDateRange(item) {
     if (range === "All time") return true;
     const created = new Date(item.createdAt || 0).getTime();
@@ -6376,7 +6390,7 @@ function AuditLog({ data = {} }) {
   const enrichedItems = combinedItems.map((item) => ({ ...item, module: auditModule(item) }));
   const modules = ["All", ...Array.from(new Set(enrichedItems.map((item) => item.module))).sort()];
   const filteredItems = enrichedItems.filter((item) => {
-    const haystack = `${item.action || ""} ${item.detail || ""} ${item.source || ""} ${item.module || ""}`.toLowerCase();
+    const haystack = `${item.action || ""} ${item.detail || ""} ${item.source || ""} ${item.module || ""} ${item.actor || ""} ${item.tableName || ""} ${JSON.stringify(item.metadata || {})}`.toLowerCase();
     if (filter !== "All" && item.module !== filter) return false;
     if (query && !haystack.includes(query.toLowerCase())) return false;
     return inDateRange(item);
@@ -6441,6 +6455,11 @@ function AuditLog({ data = {} }) {
               <strong>{item.action}</strong>
               <span>{item.detail || "No extra detail recorded."}</span>
               <small>{new Date(item.createdAt).toLocaleString("en-GB")} · {item.source || "Local"}</small>
+              {!!auditMetadataTags(item).length && (
+                <div className="audit-metadata-tags">
+                  {auditMetadataTags(item).map((tag) => <span key={tag}>{tag}</span>)}
+                </div>
+              )}
             </div>
             <Badge value={item.module} />
           </article>
@@ -8271,12 +8290,67 @@ function updateCoverMove(id, patch, setMoves) {
   setMoves(next);
 }
 
+function inferAuditMetadata(action, detail = "") {
+  const text = `${action || ""} ${detail || ""}`;
+  const lower = text.toLowerCase();
+  const metadata = {};
+  if (lower.includes("pay") || lower.includes("payslip") || lower.includes("hours")) {
+    metadata.module = "Payroll";
+    metadata.tableName = "payroll_runs";
+  } else if (lower.includes("scr") || lower.includes("evidence")) {
+    metadata.module = "SCR";
+    metadata.tableName = "scr_checks";
+  } else if (lower.includes("hr") || lower.includes("former staff") || lower.includes("staff photo") || lower.includes("profile notes")) {
+    metadata.module = "HR";
+    metadata.tableName = "staff_records";
+  } else if (lower.includes("user") || lower.includes("password") || lower.includes("account") || lower.includes("invite")) {
+    metadata.module = "Users";
+    metadata.tableName = "profiles";
+  } else if (lower.includes("rota") || lower.includes("cover")) {
+    metadata.module = "Rota";
+    metadata.tableName = lower.includes("cover") ? "cover_moves" : "rota_requirements";
+  } else if (lower.includes("crm") || lower.includes("enquiry")) {
+    metadata.module = "CRM";
+    metadata.tableName = "enquiries";
+  } else if (lower.includes("ofsted")) {
+    metadata.module = "Ofsted";
+    metadata.tableName = "ofsted_logs";
+  } else if (lower.includes("document") || lower.includes("policy")) {
+    metadata.module = "Documents";
+    metadata.tableName = "document_versions";
+  } else if (lower.includes("settings") || lower.includes("public")) {
+    metadata.module = "Settings";
+    metadata.tableName = "platform_settings";
+  } else {
+    metadata.module = "General";
+  }
+
+  const periodMatch = text.match(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+20\d{2}\b|\b20\d{2}-\d{2}\b/i);
+  if (periodMatch) metadata.payrollPeriod = periodMatch[0];
+  const emailMatch = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  if (emailMatch) metadata.email = emailMatch[0].toLowerCase();
+
+  const subject = String(detail || "").split(":")[0]?.trim();
+  if (subject && subject.length <= 80 && /[A-Za-z]/.test(subject)) metadata.subject = subject;
+
+  const siteNames = ["Willington Prep", "King's House School", "Shrewsbury House School", "Ripley Court", "The Rowans"];
+  const site = siteNames.find((name) => lower.includes(name.toLowerCase()));
+  if (site) metadata.site = site;
+  if (/staff|hr|scr|user|password|invite|payslip/i.test(action || "") && metadata.subject) metadata.staffName = metadata.subject;
+  if (/document|policy/i.test(action || "") && metadata.subject) metadata.documentName = metadata.subject;
+  if (/crm|enquiry/i.test(action || "") && metadata.subject) metadata.crmRecord = metadata.subject;
+  return metadata;
+}
+
 function addAuditLog(action, detail) {
   const items = readAuditLog();
+  const metadata = inferAuditMetadata(action, detail);
   const entry = {
     id: `audit-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     action,
     detail,
+    metadata,
+    tableName: metadata.tableName || "",
     source: "Local",
     createdAt: new Date().toISOString(),
   };
@@ -8286,7 +8360,9 @@ function addAuditLog(action, detail) {
     .then(({ createAuditLogEntry }) => createAuditLogEntry({
       action,
       detail,
+      tableName: metadata.tableName || null,
       metadata: {
+        ...metadata,
         localAuditId: entry.id,
         userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
       },
