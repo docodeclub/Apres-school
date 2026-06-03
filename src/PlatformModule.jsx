@@ -714,7 +714,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Sessions" && <Sessions data={scopedData} />}
         {tab === "Incidents" && <Incidents />}
         {tab === "CRM" && <CRM data={enrichedData} />}
-        {tab === "Audit" && <AuditLog />}
+        {tab === "Audit" && <AuditLog data={scopedData} />}
         {tab === "Settings" && <Settings />}
       </section>
     </main>
@@ -6342,8 +6342,13 @@ function CrmDetailDrawer({ record, onChange }) {
   );
 }
 
-function AuditLog() {
+function AuditLog({ data = {} }) {
   const [items, setItems] = useState(() => readAuditLog());
+  const remoteItems = data.auditLog || [];
+  const combinedItems = [
+    ...remoteItems,
+    ...items.filter((item) => !remoteItems.some((remote) => remote.action === item.action && remote.detail === item.detail && remote.createdAt === item.createdAt)),
+  ].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   const [filter, setFilter] = useState("All");
   const [query, setQuery] = useState("");
   const [range, setRange] = useState("All time");
@@ -6368,7 +6373,7 @@ function AuditLog() {
     const days = range === "Today" ? 1 : range === "7 days" ? 7 : 30;
     return now - created <= days * 24 * 60 * 60 * 1000;
   }
-  const enrichedItems = items.map((item) => ({ ...item, module: auditModule(item) }));
+  const enrichedItems = combinedItems.map((item) => ({ ...item, module: auditModule(item) }));
   const modules = ["All", ...Array.from(new Set(enrichedItems.map((item) => item.module))).sort()];
   const filteredItems = enrichedItems.filter((item) => {
     const haystack = `${item.action || ""} ${item.detail || ""} ${item.source || ""} ${item.module || ""}`.toLowerCase();
@@ -6399,9 +6404,9 @@ function AuditLog() {
       <section className="audit-command-grid">
         <article className="audit-command-card primary">
           <p className="eyebrow">Audit source</p>
-          <h3>{items.length} local actions recorded</h3>
-          <p>Current actions are retained in browser storage. The layout is ready for immutable server-side audit rows when we move this fully into Supabase.</p>
-          <Badge value="Local audit" />
+          <h3>{combinedItems.length} actions recorded</h3>
+          <p>{remoteItems.length ? `${remoteItems.length} rows are loaded from Supabase, with local browser entries shown as fallback context.` : "Current actions are retained in browser storage until Supabase audit rows are available."}</p>
+          <Badge value={remoteItems.length ? "Supabase + local" : "Local audit"} />
         </article>
         <article className="audit-command-card">
           <span>Total visible</span>
@@ -8276,6 +8281,19 @@ function addAuditLog(action, detail) {
     createdAt: new Date().toISOString(),
   };
   localStorage.setItem(auditStorageKey, JSON.stringify([entry, ...items].slice(0, 80)));
+  if (!hasSupabaseConfig) return;
+  loadSupabaseModule()
+    .then(({ createAuditLogEntry }) => createAuditLogEntry({
+      action,
+      detail,
+      metadata: {
+        localAuditId: entry.id,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+      },
+    }))
+    .catch(() => {
+      // Local audit is the fallback; avoid recursive audit logging on audit-write failures.
+    });
 }
 
 function readAuditLog() {

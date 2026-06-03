@@ -241,8 +241,15 @@ export async function fetchPlatformData({ userId, role }) {
       updated_at
     `)
     .order("updated_at", { ascending: false });
+  const auditLogQuery = normalizeRole(role) === "Staff"
+    ? Promise.resolve({ data: [], error: null })
+    : supabase
+        .from("audit_log")
+        .select("id, actor_id, action, table_name, record_id, metadata, created_at, profiles!audit_log_actor_id_fkey(full_name, email)")
+        .order("created_at", { ascending: false })
+        .limit(200);
 
-  const [staffResult, sessionsResult, documentsResult, documentChaseEventsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult, hrReportingResult, staffProfileNotesResult, scrEvidenceRequestsResult] = await Promise.all([
+  const [staffResult, sessionsResult, documentsResult, documentChaseEventsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult, hrReportingResult, staffProfileNotesResult, scrEvidenceRequestsResult, auditLogResult] = await Promise.all([
     staffQuery,
     sessionsQuery,
     documentsQuery,
@@ -256,6 +263,7 @@ export async function fetchPlatformData({ userId, role }) {
     hrReportingQuery,
     staffProfileNotesQuery,
     scrEvidenceRequestsQuery,
+    auditLogQuery,
   ]);
 
   if (staffResult.error) throw staffResult.error;
@@ -272,6 +280,7 @@ export async function fetchPlatformData({ userId, role }) {
     ["HR hierarchy", hrReportingResult.error],
     ["Staff profile notes", staffProfileNotesResult.error?.code === "42P01" ? null : staffProfileNotesResult.error],
     ["SCR evidence requests", scrEvidenceRequestsResult.error],
+    ["Audit log", auditLogResult.error],
   ]
     .filter(([, error]) => Boolean(error))
     .map(([label, error]) => `${label}: ${error.message || "Unable to load"}`);
@@ -294,8 +303,32 @@ export async function fetchPlatformData({ userId, role }) {
     hrReportingLines: hrReportingResult.error ? {} : mapHrReportingLines(hrReportingResult.data || []),
     staffProfileNotes: staffProfileNotesResult.error ? {} : mapStaffProfileNotes(staffProfileNotesResult.data || []),
     scrRenewalRequests: scrEvidenceRequestsResult.error ? {} : mapScrEvidenceRequests(scrEvidenceRequestsResult.data || []),
+    auditLog: auditLogResult.error ? [] : mapAuditLog(auditLogResult.data || []),
     warnings,
   };
+}
+
+export async function createAuditLogEntry({ action, detail = "", metadata = {}, tableName = null, recordId = null }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const { data, error } = await supabase
+    .from("audit_log")
+    .insert({
+      actor_id: userData?.user?.id || null,
+      action,
+      table_name: tableName,
+      record_id: recordId,
+      metadata: {
+        ...metadata,
+        detail,
+        source: "Supabase",
+      },
+    })
+    .select("id, actor_id, action, table_name, record_id, metadata, created_at, profiles!audit_log_actor_id_fkey(full_name, email)")
+    .single();
+  if (error) throw error;
+  return mapAuditLog([data])[0];
 }
 
 export async function fetchPublicSettings() {
@@ -426,6 +459,23 @@ function mapScrEvidenceRequests(records) {
     };
     return requests;
   }, {});
+}
+
+function mapAuditLog(records) {
+  return records.map((record) => {
+    const profile = Array.isArray(record.profiles) ? record.profiles[0] : record.profiles;
+    return {
+      id: `supabase-${record.id}`,
+      action: record.action || "Admin action",
+      detail: record.metadata?.detail || record.metadata?.summary || record.table_name || "No extra detail recorded.",
+      source: "Supabase",
+      actor: profile?.full_name || profile?.email || "Admin",
+      tableName: record.table_name || "",
+      recordId: record.record_id || "",
+      metadata: record.metadata || {},
+      createdAt: record.created_at || "",
+    };
+  });
 }
 
 function mapStaffProfileNotes(records) {
