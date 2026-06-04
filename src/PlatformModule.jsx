@@ -6417,6 +6417,36 @@ function AuditLog({ data = {} }) {
     ["Table", selectedAudit.tableName || selectedAudit.metadata?.tableName || "Not recorded"],
     ["Record ID", selectedAudit.recordId || "Not recorded"],
   ] : [];
+  function safeAuditFilePart(value) {
+    return String(value || "audit").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "audit";
+  }
+  function exportAuditLog() {
+    const rows = [
+      ["Created", "Action", "Module", "Detail", "Actor", "Source", "Staff", "Email", "Site", "Document", "Payroll period", "CRM record", "Table", "Record ID", "Metadata"],
+      ...filteredItems.map((item) => {
+        const metadata = item.metadata || {};
+        return [
+          item.createdAt || "",
+          item.action || "",
+          item.module || "",
+          item.detail || "",
+          item.actor || "",
+          item.source || "",
+          metadata.staffName || "",
+          metadata.email || "",
+          metadata.site || "",
+          metadata.documentName || "",
+          metadata.payrollPeriod || "",
+          metadata.crmRecord || "",
+          item.tableName || metadata.tableName || "",
+          item.recordId || "",
+          JSON.stringify(metadata),
+        ];
+      }),
+    ];
+    downloadCsv(`apres-audit-${safeAuditFilePart(filter)}-${safeAuditFilePart(range)}.csv`, rows);
+    addAuditLog("Audit log exported", `${filteredItems.length} rows · ${filter} · ${range}`);
+  }
   const recentCount = enrichedItems.filter((item) => inDateRange({ ...item, createdAt: item.createdAt }) && (range === "All time" ? true : true)).length;
   const moduleCounts = modules.filter((module) => module !== "All").map((module) => ({
     module,
@@ -6434,6 +6464,7 @@ function AuditLog({ data = {} }) {
           <p className="panel-note">Trace admin actions across staff, SCR, HR, payroll, rota, documents and settings.</p>
         </div>
         <div>
+          <button className="button book" type="button" disabled={!filteredItems.length} onClick={exportAuditLog}>Export CSV</button>
           <button className="button light" type="button" onClick={clearAudit}>Clear Local Log</button>
         </div>
       </div>
