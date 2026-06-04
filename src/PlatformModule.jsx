@@ -6421,6 +6421,7 @@ function AuditLog({ data = {} }) {
     return String(value || "audit").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "audit";
   }
   function exportAuditLog() {
+    const filename = `apres-audit-${safeAuditFilePart(filter)}-${safeAuditFilePart(range)}.csv`;
     const rows = [
       ["Created", "Action", "Module", "Detail", "Actor", "Source", "Staff", "Email", "Site", "Document", "Payroll period", "CRM record", "Table", "Record ID", "Metadata"],
       ...filteredItems.map((item) => {
@@ -6444,10 +6445,14 @@ function AuditLog({ data = {} }) {
         ];
       }),
     ];
-    downloadCsv(`apres-audit-${safeAuditFilePart(filter)}-${safeAuditFilePart(range)}.csv`, rows);
-    addAuditLog("Audit log exported", `${filteredItems.length} rows · ${filter} · ${range}`);
+    downloadCsv(filename, rows);
+    addAuditLog("Audit log exported", `${filteredItems.length} rows · ${filter} · ${range} · ${filename}`);
+    setItems(readAuditLog());
   }
   const recentCount = enrichedItems.filter((item) => inDateRange({ ...item, createdAt: item.createdAt }) && (range === "All time" ? true : true)).length;
+  const exportHistory = enrichedItems
+    .filter((item) => String(item.action || "").toLowerCase() === "audit log exported")
+    .slice(0, 5);
   const moduleCounts = modules.filter((module) => module !== "All").map((module) => ({
     module,
     count: enrichedItems.filter((item) => item.module === module).length,
@@ -6490,6 +6495,22 @@ function AuditLog({ data = {} }) {
           <strong>{recentCount}</strong>
           <p>Use filters below to trace a staff member, module or action.</p>
         </article>
+      </section>
+      <section className="audit-export-history">
+        <div>
+          <p className="eyebrow">Export history</p>
+          <h3>Recent CSV downloads</h3>
+          <p>Each export is recorded so audit evidence downloads remain visible to admins.</p>
+        </div>
+        <div className="audit-export-list">
+          {exportHistory.map((item) => (
+            <article key={item.id}>
+              <strong>{item.detail || "Audit CSV exported"}</strong>
+              <span>{item.createdAt ? new Date(item.createdAt).toLocaleString("en-GB") : "Date not recorded"} · {item.source || "Local"}</span>
+            </article>
+          ))}
+          {!exportHistory.length && <p>No audit exports have been recorded yet.</p>}
+        </div>
       </section>
       <section className="audit-filters">
         <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search action, person, school or detail" /></label>
