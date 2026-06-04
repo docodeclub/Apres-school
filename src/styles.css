@@ -7075,6 +7075,85 @@ label {
   font-weight: 750;
 }
 
+.audit-quick-filters {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.audit-quick-filters button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid rgba(42, 65, 170, 0.12);
+  border-radius: 16px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 12px;
+  text-align: left;
+  box-shadow: 0 8px 20px rgba(38, 63, 169, 0.05);
+  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.audit-quick-filters button:hover,
+.audit-quick-filters button.active {
+  border-color: rgba(42, 65, 170, 0.3);
+  box-shadow: 0 14px 28px rgba(38, 63, 169, 0.1);
+  transform: translateY(-1px);
+}
+
+.audit-quick-filters button.active {
+  background: linear-gradient(135deg, var(--royal), #5f7be8);
+}
+
+.audit-quick-filters span,
+.audit-quick-filters small,
+.audit-quick-filters strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.audit-quick-filters span {
+  color: var(--royal-dark);
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.audit-quick-filters small {
+  grid-column: 1;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 780;
+}
+
+.audit-quick-filters strong {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: grid;
+  min-width: 34px;
+  min-height: 34px;
+  place-items: center;
+  border-radius: 12px;
+  background: #f2f5ff;
+  color: var(--royal);
+  font-size: 0.84rem;
+  font-weight: 950;
+}
+
+.audit-quick-filters button.active span,
+.audit-quick-filters button.active small {
+  color: #fff;
+}
+
+.audit-quick-filters button.active strong {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
 .audit-filters {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) minmax(180px, 240px) minmax(180px, 220px);
@@ -11691,6 +11770,7 @@ th {
   .payroll-review-grid,
   .audit-command-grid,
   .audit-export-history,
+  .audit-quick-filters,
   .audit-filters,
   .audit-item,
   .payroll-checklist-head,

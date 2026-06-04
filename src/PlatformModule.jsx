@@ -6360,6 +6360,7 @@ function AuditLog({ data = {} }) {
     ...items.filter((item) => !remoteItems.some((remote) => remote.action === item.action && remote.detail === item.detail && remote.createdAt === item.createdAt)),
   ].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   const [filter, setFilter] = useState("All");
+  const [quickFilter, setQuickFilter] = useState("All activity");
   const [query, setQuery] = useState("");
   const [range, setRange] = useState("All time");
   const [selectedAuditId, setSelectedAuditId] = useState("");
@@ -6399,9 +6400,43 @@ function AuditLog({ data = {} }) {
     return now - created <= days * 24 * 60 * 60 * 1000;
   }
   const enrichedItems = combinedItems.map((item) => ({ ...item, module: auditModule(item) }));
+  const quickFilters = [
+    {
+      label: "All activity",
+      description: "Everything",
+      match: () => true,
+    },
+    {
+      label: "Staff",
+      description: "People changes",
+      match: (item, haystack) => item.module === "HR" || item.module === "Users" || haystack.includes("staff") || haystack.includes("profile") || haystack.includes("former staff"),
+    },
+    {
+      label: "Payroll",
+      description: "Pay and payslips",
+      match: (item, haystack) => item.module === "Payroll" || haystack.includes("payroll") || haystack.includes("payslip") || haystack.includes("hours"),
+    },
+    {
+      label: "SCR",
+      description: "Compliance evidence",
+      match: (item, haystack) => item.module === "SCR" || haystack.includes("scr") || haystack.includes("evidence") || haystack.includes("safeguarding"),
+    },
+    {
+      label: "Settings changes",
+      description: "Public and platform switches",
+      match: (item, haystack) => item.module === "Settings" || haystack.includes("setting") || haystack.includes("public settings") || haystack.includes("announcement"),
+    },
+    {
+      label: "Exports",
+      description: "Downloaded evidence",
+      match: (item, haystack) => haystack.includes("export") || haystack.includes(".csv") || haystack.includes(".pdf"),
+    },
+  ];
+  const selectedQuickFilter = quickFilters.find((item) => item.label === quickFilter) || quickFilters[0];
   const modules = ["All", ...Array.from(new Set(enrichedItems.map((item) => item.module))).sort()];
   const filteredItems = enrichedItems.filter((item) => {
     const haystack = `${item.action || ""} ${item.detail || ""} ${item.source || ""} ${item.module || ""} ${item.actor || ""} ${item.tableName || ""} ${JSON.stringify(item.metadata || {})}`.toLowerCase();
+    if (!selectedQuickFilter.match(item, haystack)) return false;
     if (filter !== "All" && item.module !== filter) return false;
     if (query && !haystack.includes(query.toLowerCase())) return false;
     return inDateRange(item);
@@ -6511,6 +6546,21 @@ function AuditLog({ data = {} }) {
           ))}
           {!exportHistory.length && <p>No audit exports have been recorded yet.</p>}
         </div>
+      </section>
+      <section className="audit-quick-filters" aria-label="Audit quick filters">
+        {quickFilters.map((item) => {
+          const count = enrichedItems.filter((auditItem) => {
+            const haystack = `${auditItem.action || ""} ${auditItem.detail || ""} ${auditItem.source || ""} ${auditItem.module || ""} ${auditItem.actor || ""} ${auditItem.tableName || ""} ${JSON.stringify(auditItem.metadata || {})}`.toLowerCase();
+            return item.match(auditItem, haystack);
+          }).length;
+          return (
+            <button className={quickFilter === item.label ? "active" : ""} type="button" key={item.label} onClick={() => setQuickFilter(item.label)}>
+              <span>{item.label}</span>
+              <small>{item.description}</small>
+              <strong>{count}</strong>
+            </button>
+          );
+        })}
       </section>
       <section className="audit-filters">
         <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search action, person, school or detail" /></label>
