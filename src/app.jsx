@@ -125,8 +125,9 @@ const X = makeIcon("X");
 const Platform = lazy(() => import("./PlatformModule.jsx"));
 
 const MAGICBOOKING_URL = "https://apres-school.magicbooking.co.uk/Identity/Account/Login";
-const PEBBLE_KINGS_ROWANS_URL = "https://activities.bookpebble.co.uk/";
-const PEBBLE_SHREWSBURY_URL = "https://activities.bookpebble.co.uk/";
+const PEBBLE_KINGS_URL = "https://activities.bookpebble.co.uk/";
+const PEBBLE_ROWANS_URL = "https://activities.bookpebble.co.uk/activity/apres-school-apres-school-holiday-camp-wimbledon-the-rowans-school-london-b1b01598-0d9a-49a2-9100-d4cb1ed322a5";
+const PEBBLE_SHREWSBURY_URL = "https://activities.bookpebble.co.uk/activity/apres-school-apres-school-holiday-camp-shrewsbury-house-school-surbiton-5803947a-423c-42d3-963e-736800789a68";
 const APRES_IMG = {
   groupTable: "/assets/apres-highlights/real-img_0014.jpg",
   outdoorBall: "/assets/apres-highlights/real-img_0030.jpg",
@@ -512,7 +513,7 @@ const bookingSites = [
     area: "Richmond",
     description: "Open-access holiday camp for children from all schools.",
     provider: "Book Pebble",
-    url: PEBBLE_KINGS_ROWANS_URL,
+    url: PEBBLE_KINGS_URL,
     image: APRES_IMG.kingsHouseTile,
     imagePosition: "center",
     schedule: "School holiday dates published by camp.",
@@ -557,7 +558,7 @@ const bookingSites = [
     area: "Wimbledon",
     description: "Open-access holiday camp at The Rowans School.",
     provider: "Book Pebble",
-    url: PEBBLE_KINGS_ROWANS_URL,
+    url: PEBBLE_ROWANS_URL,
     image: APRES_IMG.rowansTile,
     imagePosition: "center",
     schedule: "Holiday dates published by camp.",
@@ -602,7 +603,7 @@ const parentFaqs = [
 
 const bookingRoutes = [
   ["Magicbooking", "Wraparound care and selected school-specific holiday programmes.", "Best for parents booking regular or ad-hoc school provision.", MAGICBOOKING_URL],
-  ["Book Pebble", "Selected holiday camps where the camp listing, dates and checkout are handled separately.", "Best for open-access holiday camp places at listed sites.", PEBBLE_KINGS_ROWANS_URL],
+  ["Book Pebble", "Selected holiday camps where the camp listing, dates and checkout are handled separately.", "Best for open-access holiday camp places at listed sites.", PEBBLE_KINGS_URL],
   ["Need help choosing?", "Use the site cards below first. If your school or camp is not obvious, contact the team before booking.", "Best when you are unsure which platform applies.", null],
 ];
 
