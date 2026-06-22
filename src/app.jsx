@@ -433,16 +433,16 @@ const ofstedSites = [
 ];
 const coverReasons = ["Illness cover", "Planned absence", "Training cover", "Ratio support", "Emergency cover"];
 const nextCamp = {
-  title: "May Half Term Camp",
-  dates: "26-29 May",
-  bookingUrl: pagePaths.Bookings,
-  sites: ["Willington Prep", "The Rowans", "King's House School"],
-  note: "Choose your site on the bookings page for timings and live availability.",
+  title: "Summer Holiday Camps",
+  dates: "13th-17th",
+  bookingUrl: pagePaths["Holiday Clubs"],
+  sites: ["Shrewsbury House", "King's House School", "The Rowans", "Willington Prep"],
+  note: "Shrewsbury, King's House and The Rowans run 13th-17th. Willington Prep continues throughout the summer.",
   dailyThemes: [
-    ["Tuesday", "Adventure Quest", "Treasure hunts, obstacle courses, outdoor missions and team challenges."],
-    ["Wednesday", "Creative Makers Studio", "Arts, crafts, messy play and imaginative building activities."],
-    ["Thursday", "Ultimate Games Arena", "Dodgeball, football, relay races, capture the flag and team competitions."],
-    ["Friday", "Festival Finale", "Music, dancing, party games, talent challenges and end-of-week surprises."],
+    ["Move", "Outdoor Games", "Football, team challenges, relays and active play across the week."],
+    ["Make", "Creative Projects", "Hands-on making, construction, messy play and imaginative activities."],
+    ["Explore", "Daily Challenges", "Treasure hunts, missions, problem solving and group adventures."],
+    ["Reset", "Calm Moments", "Lunch routines, drawing, reading and quieter choices when children need a breather."],
   ],
 };
 
@@ -953,13 +953,13 @@ function CampAnnouncement({ setPage }) {
             <span>{nextCamp.dates}</span>
           </div>
           <h2>{nextCamp.title}</h2>
-          <p className="announcement-lede">Four lively days of games, making, outdoor challenges and festival-style fun.</p>
+          <p className="announcement-lede">Summer days of games, making, outdoor challenges and calmer moments at selected school sites.</p>
           <div className="announcement-sites">
             {nextCamp.sites.map((site) => <span key={site}>{site}</span>)}
           </div>
           <p>{nextCamp.note}</p>
           <div className="hero-actions">
-            <button className="button book" type="button" onClick={() => setPage("Bookings")}>Book Camp</button>
+            <button className="button book" type="button" onClick={() => setPage("Holiday Clubs")}>Book Camp</button>
             <button className="button light" type="button" onClick={() => setPage("Holiday Clubs")}>View Schedule</button>
           </div>
         </div>
@@ -1508,7 +1508,7 @@ function NextCampCard({ setPage }) {
       <div>
         <p className="eyebrow">Next camp</p>
         <h2>{nextCamp.title}</h2>
-        <p>{nextCamp.dates} at {nextCamp.sites.join(", ")}. Four themed days with active games, creative making and a festival finish. Choose the location below to book on the right platform.</p>
+        <p>{nextCamp.dates} at Shrewsbury House, King's House and The Rowans, with Willington Prep continuing throughout the summer. Choose the location below to book on the right platform.</p>
         <div className="announcement-sites">
           {nextCamp.sites.map((site) => <span key={site}>{site}</span>)}
         </div>
