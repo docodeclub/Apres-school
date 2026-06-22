@@ -17,6 +17,10 @@ const requiredBundleFragments = [
     fragment: "https://activities.bookpebble.co.uk/supplier/apres-school-1a30ba07-ffae-4d56-a896-2187e4f0a4b5",
   },
   {
+    label: "King's House Pebble activity",
+    fragment: "dc0775cd-5399-4810-b271-d03f7ccc81ba",
+  },
+  {
     label: "The Rowans Pebble activity",
     fragment: "b1b01598-0d9a-49a2-9100-d4cb1ed322a5",
   },
