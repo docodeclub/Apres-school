@@ -14,6 +14,7 @@
     "smoke": "node scripts/smoke-test.mjs",
     "qa:launch": "node scripts/launch-qa.mjs",
     "validate:static": "node scripts/static-check.mjs",
+    "check:booking-links": "node scripts/audit-public-booking-links.mjs",
     "check:deploy": "node scripts/deploy-check.mjs",
     "check:deploy:strict": "node scripts/deploy-check.mjs --strict-env"
   },
