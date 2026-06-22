@@ -13,10 +13,6 @@ const requiredBundleFragments = [
     fragment: "https://apres-school.magicbooking.co.uk/Identity/Account/Login",
   },
   {
-    label: "Après School Pebble supplier",
-    fragment: "https://activities.bookpebble.co.uk/supplier/apres-school-1a30ba07-ffae-4d56-a896-2187e4f0a4b5",
-  },
-  {
     label: "King's House Pebble activity",
     fragment: "dc0775cd-5399-4810-b271-d03f7ccc81ba",
   },
