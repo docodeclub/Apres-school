@@ -4659,6 +4659,35 @@ label {
   font-weight: 900;
 }
 
+.camp-availability-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.camp-availability-list article {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.76);
+  padding: 12px 14px;
+}
+
+.camp-availability-list span {
+  color: var(--orange);
+  font-size: 0.78rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.camp-availability-list strong {
+  color: var(--royal-dark);
+  font-weight: 950;
+  line-height: 1.35;
+}
+
 .announcement-themes {
   display: grid;
   gap: 10px;

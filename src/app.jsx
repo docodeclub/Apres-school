@@ -1503,14 +1503,26 @@ function HolidayClubs({ setPage }) {
 }
 
 function NextCampCard({ setPage }) {
+  const fixedWeekSites = ["Shrewsbury House", "King's House School", "The Rowans"];
+
   return (
     <section className="next-camp-card">
       <div>
         <p className="eyebrow">Next camp</p>
         <h2>{nextCamp.title}</h2>
-        <p>{nextCamp.dates} at Shrewsbury House, King's House and The Rowans, with Willington Prep continuing throughout the summer. Choose the location below to book on the right platform.</p>
+        <p>{nextCamp.note} Choose the location below to book on the right platform.</p>
         <div className="announcement-sites">
           {nextCamp.sites.map((site) => <span key={site}>{site}</span>)}
+        </div>
+        <div className="camp-availability-list" aria-label="Summer camp availability">
+          <article>
+            <span>{nextCamp.dates}</span>
+            <strong>{fixedWeekSites.join(", ")}</strong>
+          </article>
+          <article>
+            <span>Throughout summer</span>
+            <strong>Willington Prep</strong>
+          </article>
         </div>
         <button className="button book large" type="button" onClick={() => setPage("Bookings")}>Choose Camp Location</button>
       </div>
