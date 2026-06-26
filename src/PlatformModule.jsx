@@ -310,7 +310,8 @@ function resolveOwnStaffRecord(data, access, userEmail) {
 }
 
 function hasValidDate(value) {
-  if (!value || ["pending", "not required"].includes(String(value).toLowerCase())) return false;
+  const text = String(value || "").trim().toLowerCase();
+  if (!text || ["pending", "not required", "not recorded", "missing", "unknown", "evidence to review"].includes(text)) return false;
   return true;
 }
 
