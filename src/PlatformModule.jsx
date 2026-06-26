@@ -3495,18 +3495,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
           })}
         </div>
       </section>
-      <SCRInspectionLaunchPanel
-        site={selectedOfstedSite}
-        timing={selectedOfstedTiming}
-        school={selectedScrSchool}
-        staff={selectedSchoolStaff}
-        rows={inspectionRows}
-        score={inspectionReadinessScore}
-        attentionCount={inspectionAttentionCount}
-        staffEvidenceGaps={staffEvidenceGaps}
-        scheduledInspection={scheduledInspection}
-      />
-      {selectedOfstedSite?.id === "kings-house" && (
+      {selectedOfstedSite?.id === "kings-house" ? (
         <KingHouseInspectionEvidencePack
           site={selectedOfstedSite}
           timing={selectedOfstedTiming}
@@ -3519,149 +3508,24 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
           onOpenStaff={openEvidenceStaffProfile}
           onExportPdf={downloadInspectionEvidencePack}
         />
+      ) : (
+        <SCRInspectionLaunchPanel
+          site={selectedOfstedSite}
+          timing={selectedOfstedTiming}
+          school={selectedScrSchool}
+          staff={selectedSchoolStaff}
+          rows={inspectionRows}
+          score={inspectionReadinessScore}
+          attentionCount={inspectionAttentionCount}
+          staffEvidenceGaps={staffEvidenceGaps}
+          scheduledInspection={scheduledInspection}
+        />
       )}
-      <section className="scr-focus-strip" aria-label="SCR action summary">
-        {scrFocusItems.map(([count, title, text]) => (
-          <article className={count ? "needs-action" : "clear"} key={title}>
-            <strong>{count || "OK"}</strong>
-            <div>
-              <h3>{title}</h3>
-              <p>{text}</p>
-            </div>
-          </article>
-        ))}
-      </section>
       <SCRSiteEvidenceBoard
         school={selectedScrSchool}
         rows={selectedStaffEvidenceRows}
         onOpenStaff={openEvidenceStaffProfile}
       />
-      <section className="scr-command-board" aria-label="SCR command centre">
-        <article className="scr-command-card primary">
-          <div>
-            <p className="eyebrow">Assurance focus</p>
-            <h3>{assuranceSchool}</h3>
-            <p>{selectedAssuranceStaff.length} assigned staff · {selectedAssuranceComplete} complete records</p>
-          </div>
-          <div className="scr-progress-ring" aria-label={`${selectedAssuranceCompletion}% complete`}>
-            <strong>{selectedAssuranceCompletion}%</strong>
-            <span>ready</span>
-          </div>
-          <div className="scr-progress-track"><span style={{ width: `${selectedAssuranceCompletion}%` }} /></div>
-          <p className="scr-command-note">
-            Use this as the school-facing assurance check before exporting a letter. Gaps below should be cleared before sharing evidence externally.
-          </p>
-        </article>
-        <article className="scr-command-card">
-          <div className="scr-command-head">
-            <div>
-              <p className="eyebrow">Evidence queue</p>
-              <h3>What needs attention first</h3>
-            </div>
-            <Badge value={evidenceActionQueue.length ? "Action needed" : "Clear"} />
-          </div>
-          <div className="scr-command-list">
-            {evidenceActionQueue.length ? evidenceActionQueue.map((item) => (
-              <article key={item.id}>
-                <div>
-                  <strong>{item.staffName}</strong>
-                  <span>{item.check}</span>
-                  <small>{item.updatedAt ? formatShortDate(item.updatedAt) : "No date recorded"} · {item.owner}</small>
-                </div>
-                <Badge value={item.status === "Prompt" ? "Renewal due" : item.status} />
-              </article>
-            )) : (
-              <p className="empty-inline">No submitted, rejected or requested evidence waiting.</p>
-            )}
-          </div>
-        </article>
-        <article className="scr-command-card">
-          <div className="scr-command-head">
-            <div>
-              <p className="eyebrow">Site cover</p>
-              <h3>Requirement gaps by school</h3>
-            </div>
-            <Badge value={siteAssuranceQueue.length ? "Check cover" : "Covered"} />
-          </div>
-          <div className="scr-command-list">
-            {siteAssuranceQueue.length ? siteAssuranceQueue.map((row) => (
-              <article key={row.school}>
-                <div>
-                  <strong>{row.school}</strong>
-                  <span>{row.checks.filter((check) => !check.met).map((check) => check.label).join(", ")}</span>
-                  <small>{row.assigned.length} assigned staff</small>
-                </div>
-                <Badge value={`${row.gaps} gap${row.gaps === 1 ? "" : "s"}`} />
-              </article>
-            )) : (
-              <p className="empty-inline">All current sites have the required cover recorded.</p>
-            )}
-          </div>
-        </article>
-      </section>
-      <section className="scr-assurance-hero">
-        <div>
-          <p className="eyebrow">School assurance ready</p>
-          <h3>Evidence packs for safer recruitment, staff checks and school confidence.</h3>
-          <p>
-            Built around the same useful outputs as the Docode SCR: an individual staff SCR summary for internal review,
-            and a school-facing assurance letter that can be generated when the underlying records are complete.
-          </p>
-        </div>
-        <div className="scr-metrics" aria-label="SCR export readiness">
-          <Metric icon={<ShieldCheck />} label="Site completion" value={`${completion}%`} tone="green" />
-          <Metric icon={<CheckCircle2 />} label="Site records" value={compliantStaff} tone="blue" />
-          <Metric icon={<Bell />} label="Require review" value={reviewStaff} tone="amber" />
-          <Metric icon={<FileText />} label="Issue date" value={issueDate} tone="blue" />
-        </div>
-      </section>
-      <section className="scr-output-grid">
-        <article className="scr-output-card">
-          <div>
-            <p className="eyebrow">Staff SCR summary</p>
-            <h3>{samplePerson.name || "Staff member"} record pack</h3>
-            <p>Designed for a downloadable staff record with personal information, recruitment checks, training, DBS, right to work and admin review status.</p>
-          </div>
-          <label>
-            Staff member
-            <select value={samplePerson.id || ""} onChange={(event) => setSummaryStaffId(event.target.value)}>
-              {selectedSchoolStaff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
-            </select>
-          </label>
-          <div className="scr-record-preview">
-            <div><span>Role</span><strong>{samplePerson.role || "Role pending"}</strong></div>
-            <div><span>Assigned sites</span><strong>{staffPrimaryLocation(samplePerson)}</strong></div>
-            <div><span>DBS renewal</span><strong>{samplePerson.dbsRenewal || "Not recorded"}</strong></div>
-            <div><span>Safeguarding</span><strong>{samplePerson.safeguardingExpiry || "Not recorded"}</strong></div>
-          </div>
-        </article>
-        <article className="scr-output-card dark">
-          <div>
-            <p className="eyebrow">School assurance letter</p>
-            <h3>For DSL, SBM and compliance contacts.</h3>
-            <p>Summarises assigned staff, SCR status, DBS, barred list, safeguarding, first aid, right to work, references and assurance statements for a school or site.</p>
-          </div>
-          <label className="scr-school-select">
-            School / site
-            <select value={assuranceSchool} onChange={(event) => selectInspectionSchool(event.target.value)}>
-              {schoolOptions.map((school) => <option key={school} value={school}>{school}</option>)}
-            </select>
-          </label>
-          <label className="scr-evidence-toggle">
-            <input type="checkbox" checked={includeEvidenceAppendix} onChange={(event) => setIncludeEvidenceAppendix(event.target.checked)} />
-            <span>{includeEvidenceAppendix ? "Include evidence appendix" : "Summary only"}</span>
-          </label>
-          <div className="assurance-mini-table">
-            {selectedAssuranceStaff.length ? selectedAssuranceStaff.map((person) => (
-              <div key={person.id}>
-                <strong>{person.name}</strong>
-                <span>{person.role}</span>
-                <Badge value={person.compliance} />
-              </div>
-            )) : <p className="empty-inline">No staff are currently assigned to this site.</p>}
-          </div>
-        </article>
-      </section>
       <StaffTable
         data={{ ...scrData, staff: selectedSchoolStaff }}
         siteScopeLabel={selectedScrSchool}
@@ -3679,51 +3543,121 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
         access={access}
         onUpdateStaffPay={onUpdateStaffPay}
       />
-      <section className="scr-evidence-console">
-        <div className="scr-assignments-heading">
+      <SCRDetailsPanel title="Exports and assurance" summary={`${selectedAssuranceStaff.length} staff in ${assuranceSchool} · ${selectedAssuranceCompletion}% ready`}>
+        <section className="scr-output-grid">
+          <article className="scr-output-card">
+            <div>
+              <p className="eyebrow">Staff SCR summary</p>
+              <h3>{samplePerson.name || "Staff member"} record pack</h3>
+              <p>Download a staff record with recruitment checks, training, DBS, right to work and admin review status.</p>
+            </div>
+            <label>
+              Staff member
+              <select value={samplePerson.id || ""} onChange={(event) => setSummaryStaffId(event.target.value)}>
+                {selectedSchoolStaff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+              </select>
+            </label>
+            <div className="scr-record-preview">
+              <div><span>Role</span><strong>{samplePerson.role || "Role pending"}</strong></div>
+              <div><span>Assigned sites</span><strong>{staffPrimaryLocation(samplePerson)}</strong></div>
+              <div><span>DBS renewal</span><strong>{samplePerson.dbsRenewal || "Not recorded"}</strong></div>
+              <div><span>Safeguarding</span><strong>{samplePerson.safeguardingExpiry || "Not recorded"}</strong></div>
+            </div>
+          </article>
+          <article className="scr-output-card dark">
+            <div>
+              <p className="eyebrow">School assurance letter</p>
+              <h3>For DSL, SBM and compliance contacts.</h3>
+              <p>Generate a school-facing assurance letter for the selected site only.</p>
+            </div>
+            <label className="scr-school-select">
+              School / site
+              <select value={assuranceSchool} onChange={(event) => selectInspectionSchool(event.target.value)}>
+                {schoolOptions.map((school) => <option key={school}>{school}</option>)}
+              </select>
+            </label>
+            <label className="scr-evidence-toggle">
+              <input type="checkbox" checked={includeEvidenceAppendix} onChange={(event) => setIncludeEvidenceAppendix(event.target.checked)} />
+              <span>{includeEvidenceAppendix ? "Include evidence appendix" : "Summary only"}</span>
+            </label>
+            <div className="assurance-mini-table">
+              {selectedAssuranceStaff.length ? selectedAssuranceStaff.map((person) => (
+                <div key={person.id}>
+                  <strong>{person.name}</strong>
+                  <span>{person.role}</span>
+                  <Badge value={person.compliance} />
+                </div>
+              )) : <p className="empty-inline">No staff are currently assigned to this site.</p>}
+            </div>
+          </article>
+        </section>
+      </SCRDetailsPanel>
+      <SCRDetailsPanel title="Evidence inbox and renewals" summary={`${evidenceActionQueue.length} priority actions · ${renewalItems.length} renewals`}>
+        <section className="scr-evidence-console">
+          <div className="scr-assignments-heading">
+            <div>
+              <p className="eyebrow">Evidence inbox</p>
+              <h3>Track evidence requests when you need the workflow.</h3>
+              <p>Requested, submitted, rejected and approved evidence sits here with audit history.</p>
+            </div>
+            <div className="renewal-mini-metrics">
+              <Metric icon={<Bell />} label="Action needed" value={evidenceWorkflowItems.filter((item) => ["Prompt", "Requested", "Submitted", "Rejected"].includes(item.status)).length} tone="amber" />
+              <Metric icon={<ClipboardCheck />} label="Submitted" value={submittedEvidence.length} tone={submittedEvidence.length ? "amber" : "green"} />
+            </div>
+          </div>
+          <EvidenceWorkflowInbox items={evidenceWorkflowItems} filter={evidenceFilter} onFilter={setEvidenceFilter} />
+          <SubmittedEvidenceReviewQueue items={submittedEvidence} onReview={reviewSubmittedEvidence} />
+        </section>
+        <SCRRenewalPanel items={renewalItems} />
+      </SCRDetailsPanel>
+      <SCRDetailsPanel title="Assignments and requirements" summary={`${requirementGapCount} site cover gaps · ${onboardingProfiles.length} onboarding`}>
+        {!!onboardingProfiles.length && <SCROnboardingQueue staff={onboardingProfiles} onUpdate={updateChecklist} onApprove={approveScrProfile} />}
+        <SCRAssignmentsPanel
+          staff={selectedSchoolStaff}
+          schools={assignmentSchools}
+          onAdd={addAssignment}
+          onRemove={removeAssignment}
+          onUpdate={updateAssignment}
+        />
+        <SCRRequirementPanel rows={requirementRows} />
+      </SCRDetailsPanel>
+      <SCRDetailsPanel title="Reference" summary="SCR fields and assurance statements">
+        <section className="scr-assurance-statements">
           <div>
-            <p className="eyebrow">Evidence inbox</p>
-            <h3>Track every SCR evidence request without leaving the register.</h3>
-            <p>Requested, submitted, rejected and approved evidence all sits here, with the newest activity and audit history visible to admins.</p>
+            <p className="eyebrow">Included in assurance output</p>
+            <h3>What schools can be shown when records are complete.</h3>
           </div>
-          <div className="renewal-mini-metrics">
-            <Metric icon={<Bell />} label="Action needed" value={evidenceWorkflowItems.filter((item) => ["Prompt", "Requested", "Submitted", "Rejected"].includes(item.status)).length} tone="amber" />
-            <Metric icon={<ClipboardCheck />} label="Submitted" value={submittedEvidence.length} tone={submittedEvidence.length ? "amber" : "green"} />
+          <div className="statement-grid">
+            {assuranceStatements.map((statement) => (
+              <article key={statement}><CheckCircle2 size={18} /><p>{statement}</p></article>
+            ))}
           </div>
-        </div>
-        <EvidenceWorkflowInbox items={evidenceWorkflowItems} filter={evidenceFilter} onFilter={setEvidenceFilter} />
-        <SubmittedEvidenceReviewQueue items={submittedEvidence} onReview={reviewSubmittedEvidence} />
-      </section>
-      <SCRRenewalPanel items={renewalItems} />
-      {!!onboardingProfiles.length && <SCROnboardingQueue staff={onboardingProfiles} onUpdate={updateChecklist} onApprove={approveScrProfile} />}
-      <SCRAssignmentsPanel
-        staff={selectedSchoolStaff}
-        schools={assignmentSchools}
-        onAdd={addAssignment}
-        onRemove={removeAssignment}
-        onUpdate={updateAssignment}
-      />
-      <SCRRequirementPanel rows={requirementRows} />
-      <section className="scr-assurance-statements">
-        <div>
-          <p className="eyebrow">Included in assurance output</p>
-          <h3>What schools can be shown when records are complete.</h3>
-        </div>
-        <div className="statement-grid">
-          {assuranceStatements.map((statement) => (
-            <article key={statement}><CheckCircle2 size={18} /><p>{statement}</p></article>
+        </section>
+        <div className="scr-grid">
+          {["Personal Info", "Right to Work", "Identity Checks", "DBS", "Safeguarding", "Allergy Awareness", "First Aid", "Annual Declarations", "Recruitment Checks", "Admin Review"].map((group) => (
+            <article key={group}>
+              <h3>{group}</h3>
+              <p>{scrCopy[group]}</p>
+            </article>
           ))}
         </div>
-      </section>
-      <div className="scr-grid">
-        {["Personal Info", "Right to Work", "Identity Checks", "DBS", "Safeguarding", "Allergy Awareness", "First Aid", "Annual Declarations", "Recruitment Checks", "Admin Review"].map((group) => (
-          <article key={group}>
-            <h3>{group}</h3>
-            <p>{scrCopy[group]}</p>
-          </article>
-        ))}
-      </div>
+      </SCRDetailsPanel>
     </div>
+  );
+}
+
+function SCRDetailsPanel({ title, summary, children }) {
+  return (
+    <details className="scr-details-panel">
+      <summary>
+        <div>
+          <strong>{title}</strong>
+          <span>{summary}</span>
+        </div>
+        <em>Open</em>
+      </summary>
+      <div className="scr-details-panel-body">{children}</div>
+    </details>
   );
 }
 
