@@ -3085,18 +3085,22 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
   }));
   const scrData = { ...data, staff: staffWithAssignments };
   const activeScrStaff = scrData.staff.filter((person) => !isFormerStaffRecord(person));
-  const totalStaff = activeScrStaff.length;
-  const compliantStaff = activeScrStaff.filter((person) => person.compliance === "Compliant").length;
-  const reviewStaff = Math.max(totalStaff - compliantStaff, 0);
-  const completion = totalStaff ? Math.round((compliantStaff / totalStaff) * 100) : 100;
   const issueDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const [summaryStaffId, setSummaryStaffId] = useState(data.staff[0]?.id || "");
-  const samplePerson = activeScrStaff.find((person) => person.id === summaryStaffId) || activeScrStaff[0] || {};
-  const schoolOptions = assignmentSchools;
+  const schoolOptions = [...assignmentSchools].sort(sortPayrollSites);
+  const [selectedScrSchool, setSelectedScrSchool] = useState(schoolOptions[0] || "");
+  const selectedSchoolStaff = selectedScrSchool
+    ? activeScrStaff.filter((person) => staffAssignedToSchool(person, selectedScrSchool))
+    : activeScrStaff;
+  const totalStaff = selectedSchoolStaff.length;
+  const compliantStaff = selectedSchoolStaff.filter((person) => person.compliance === "Compliant").length;
+  const reviewStaff = Math.max(totalStaff - compliantStaff, 0);
+  const completion = totalStaff ? Math.round((compliantStaff / totalStaff) * 100) : 100;
+  const samplePerson = selectedSchoolStaff.find((person) => person.id === summaryStaffId) || selectedSchoolStaff[0] || {};
   const [assuranceSchool, setAssuranceSchool] = useState(schoolOptions[0] || "Partner School");
   const [includeEvidenceAppendix, setIncludeEvidenceAppendix] = useState(false);
   const assuranceStaff = activeScrStaff.filter((person) => staffAssignedToSchool(person, assuranceSchool));
-  const selectedAssuranceStaff = assuranceStaff.length ? assuranceStaff : activeScrStaff;
+  const selectedAssuranceStaff = assuranceStaff;
   const assuranceStatements = [
     "Enhanced DBS details, barred list checks and update-service status are recorded against each staff member.",
     "Right to work, identity checks and proof-of-address evidence can be tracked with verifier and review dates.",
@@ -3105,14 +3109,42 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     "References, employment gaps, overseas checks and qualification evidence are captured for safer recruitment.",
     "Annual medical, criminal and childcare disqualification declarations are prompted and reconfirmed digitally.",
   ];
-  const onboardingProfiles = activeScrStaff.filter((person) => person.onboardingStatus);
-  const renewalItems = buildScrRenewalItems(activeScrStaff);
-  const evidenceWorkflowItems = buildEvidenceWorkflowItems(activeScrStaff, renewalItems, renewalRequests);
-  const submittedEvidence = buildSubmittedEvidenceReviews(activeScrStaff, renewalRequests);
+  const onboardingProfiles = selectedSchoolStaff.filter((person) => person.onboardingStatus);
+  const renewalItems = buildScrRenewalItems(selectedSchoolStaff);
+  const evidenceWorkflowItems = buildEvidenceWorkflowItems(selectedSchoolStaff, renewalItems, renewalRequests);
+  const submittedEvidence = buildSubmittedEvidenceReviews(selectedSchoolStaff, renewalRequests);
   useEffect(() => {
     if (!data.scrRenewalRequests || !Object.keys(data.scrRenewalRequests).length) return;
     setRenewalRequests((current) => ({ ...current, ...data.scrRenewalRequests }));
   }, [data.scrRenewalRequests]);
+  useEffect(() => {
+    if (!schoolOptions.length) return;
+    if (!selectedScrSchool || !schoolOptions.includes(selectedScrSchool)) {
+      setSelectedScrSchool(schoolOptions[0]);
+    }
+    if (!schoolOptions.includes(assuranceSchool)) {
+      setAssuranceSchool(schoolOptions[0]);
+    }
+  }, [assuranceSchool, schoolOptions, selectedScrSchool]);
+  useEffect(() => {
+    if (!targetStaffId) return;
+    const targetPerson = activeScrStaff.find((person) => person.id === targetStaffId);
+    const targetSchool = staffSchoolNames(targetPerson)[0];
+    if (targetSchool && targetSchool !== selectedScrSchool) {
+      setSelectedScrSchool(targetSchool);
+      setAssuranceSchool(targetSchool);
+    }
+  }, [activeScrStaff, selectedScrSchool, targetStaffId]);
+  useEffect(() => {
+    if (selectedSchoolStaff.some((person) => person.id === summaryStaffId)) return;
+    setSummaryStaffId(selectedSchoolStaff[0]?.id || "");
+  }, [selectedSchoolStaff, summaryStaffId]);
+  function selectInspectionSchool(school) {
+    setSelectedScrSchool(school);
+    setAssuranceSchool(school);
+    const nextStaff = activeScrStaff.find((person) => staffAssignedToSchool(person, school));
+    setSummaryStaffId(nextStaff?.id || "");
+  }
   function updateAssignment(staffId, index, patch) {
     if (isFormerStaffRecord(scrData.staff.find((person) => person.id === staffId))) return;
     setAssignmentState((current) => {
@@ -3274,7 +3306,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     const { exportSchoolAssuranceLetter } = await import("./pdfExports.js");
     exportSchoolAssuranceLetter(selectedAssuranceStaff, assuranceSchool, { includeEvidenceAppendix, evidenceRequests: renewalRequests });
   }
-  const requirementRows = schoolOptions.map((school) => {
+  const requirementRows = (selectedScrSchool ? [selectedScrSchool] : schoolOptions).map((school) => {
     const assigned = activeScrStaff.filter((person) => staffAssignedToSchool(person, school));
     const checks = [
       ["First aider", "firstAid"],
@@ -3305,7 +3337,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     ? Math.round((selectedAssuranceComplete / selectedAssuranceStaff.length) * 100)
     : 100;
   const scrFocusItems = [
-    [reviewStaff, "Staff to review", reviewStaff ? "Check missing or incomplete SCR records." : "All staff currently marked compliant."],
+    [reviewStaff, "Staff to review", reviewStaff ? "Check missing or incomplete SCR records for this site." : "This site is currently marked compliant."],
     [renewalItems.length, "Renewal prompts", renewalItems.length ? "Expiry or review dates need follow-up." : "No renewals due in the next 60 days."],
     [requirementGapCount, "Site cover gaps", requirementGapCount ? "Check first aid, EYFS, safeguarding or allergy cover." : "Site requirements are covered."],
     [onboardingProfiles.length, "Onboarding queue", onboardingProfiles.length ? "Approve new staff only when evidence is complete." : "No onboarding records waiting."],
@@ -3316,6 +3348,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
       <div className="toolbar">
         <div>
           <h2>Single Central Register</h2>
+          <p className="panel-note">Inspection mode: choose one site and the SCR only shows staff assigned to that site.</p>
           {access?.isScoped && <p className="panel-note">Manager view: compliance table is limited to direct reports.</p>}
         </div>
         <div>
@@ -3324,6 +3357,45 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
           <button className="button dark" type="button"><Upload size={16} /> Request Evidence</button>
         </div>
       </div>
+      <section className="scr-school-switcher" aria-label="Inspection site selector">
+        <div className="scr-school-switcher-copy">
+          <p className="eyebrow">Inspection site</p>
+          <h3>{selectedScrSchool || "Choose a site"}</h3>
+          <p>
+            The register, evidence queue, assurance letter and site cover checks below are scoped to this school.
+            Staff assigned elsewhere are hidden from this inspection view.
+          </p>
+        </div>
+        <div className="scr-school-switcher-control">
+          <label>
+            School / site
+            <select value={selectedScrSchool} onChange={(event) => selectInspectionSchool(event.target.value)}>
+              {schoolOptions.map((school) => <option key={school} value={school}>{school}</option>)}
+            </select>
+          </label>
+          <div className="scr-school-counts">
+            <span><strong>{selectedSchoolStaff.length}</strong> assigned</span>
+            <span><strong>{compliantStaff}</strong> complete</span>
+            <span><strong>{reviewStaff}</strong> to review</span>
+          </div>
+        </div>
+        <div className="scr-school-buttons" aria-label="Quick school switcher">
+          {schoolOptions.map((school) => {
+            const count = activeScrStaff.filter((person) => staffAssignedToSchool(person, school)).length;
+            return (
+              <button
+                key={school}
+                className={school === selectedScrSchool ? "active" : ""}
+                type="button"
+                onClick={() => selectInspectionSchool(school)}
+              >
+                <strong>{school}</strong>
+                <span>{count} staff</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
       <section className="scr-focus-strip" aria-label="SCR action summary">
         {scrFocusItems.map(([count, title, text]) => (
           <article className={count ? "needs-action" : "clear"} key={title}>
@@ -3408,8 +3480,8 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
           </p>
         </div>
         <div className="scr-metrics" aria-label="SCR export readiness">
-          <Metric icon={<ShieldCheck />} label="Completion" value={`${completion}%`} tone="green" />
-          <Metric icon={<CheckCircle2 />} label="Complete records" value={compliantStaff} tone="blue" />
+          <Metric icon={<ShieldCheck />} label="Site completion" value={`${completion}%`} tone="green" />
+          <Metric icon={<CheckCircle2 />} label="Site records" value={compliantStaff} tone="blue" />
           <Metric icon={<Bell />} label="Require review" value={reviewStaff} tone="amber" />
           <Metric icon={<FileText />} label="Issue date" value={issueDate} tone="blue" />
         </div>
@@ -3424,7 +3496,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
           <label>
             Staff member
             <select value={samplePerson.id || ""} onChange={(event) => setSummaryStaffId(event.target.value)}>
-              {activeScrStaff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+              {selectedSchoolStaff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
             </select>
           </label>
           <div className="scr-record-preview">
@@ -3442,7 +3514,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
           </div>
           <label className="scr-school-select">
             School / site
-            <select value={assuranceSchool} onChange={(event) => setAssuranceSchool(event.target.value)}>
+            <select value={assuranceSchool} onChange={(event) => selectInspectionSchool(event.target.value)}>
               {schoolOptions.map((school) => <option key={school} value={school}>{school}</option>)}
             </select>
           </label>
@@ -3451,18 +3523,19 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
             <span>{includeEvidenceAppendix ? "Include evidence appendix" : "Summary only"}</span>
           </label>
           <div className="assurance-mini-table">
-            {selectedAssuranceStaff.map((person) => (
+            {selectedAssuranceStaff.length ? selectedAssuranceStaff.map((person) => (
               <div key={person.id}>
                 <strong>{person.name}</strong>
                 <span>{person.role}</span>
                 <Badge value={person.compliance} />
               </div>
-            ))}
+            )) : <p className="empty-inline">No staff are currently assigned to this site.</p>}
           </div>
         </article>
       </section>
       <StaffTable
-        data={scrData}
+        data={{ ...scrData, staff: selectedSchoolStaff }}
+        siteScopeLabel={selectedScrSchool}
         targetStaffId={targetStaffId}
         onTargetHandled={onTargetHandled}
         evidenceRequests={renewalRequests}
@@ -3491,7 +3564,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
       <SCRRenewalPanel items={renewalItems} />
       {!!onboardingProfiles.length && <SCROnboardingQueue staff={onboardingProfiles} onUpdate={updateChecklist} onApprove={approveScrProfile} />}
       <SCRAssignmentsPanel
-        staff={activeScrStaff}
+        staff={selectedSchoolStaff}
         schools={assignmentSchools}
         onAdd={addAssignment}
         onRemove={removeAssignment}
@@ -6805,7 +6878,7 @@ function Settings() {
   );
 }
 
-function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetHandled, evidenceRequests = {}, onRequestEvidence, onClearEvidenceRequest, access, onUpdateStaffPay, onOpenHrFiles, onOpenPay }) {
+function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetHandled, evidenceRequests = {}, onRequestEvidence, onClearEvidenceRequest, access, onUpdateStaffPay, onOpenHrFiles, onOpenPay, siteScopeLabel = "" }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Action needed");
   const [siteFilter, setSiteFilter] = useState("All");
@@ -6904,7 +6977,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     const matchesStatus = priorityView
       ? !isFormerStaffRecord(person) && priorityProfile(person).score > 0
       : statusFilter === "All" || (statusFilter === "Action needed" ? status !== "Compliant" && status !== "Archived" : status === statusFilter);
-    const matchesSite = siteFilter === "All" || staffSchoolNames(person).includes(siteFilter);
+    const matchesSite = siteScopeLabel || siteFilter === "All" || staffSchoolNames(person).includes(siteFilter);
     const haystack = [person.name, person.email, person.role, person.location, person.compliance, managerName(person), staffPrimaryLocation(person)].filter(Boolean).join(" ").toLowerCase();
     return matchesStatus && matchesSite && (!search || haystack.includes(search));
   });
@@ -6921,7 +6994,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   const actionCount = activeStaff.filter((person) => checkStatus(person) !== "Compliant").length;
   const compliantCount = activeStaff.length - actionCount;
   const selectedPerson = data.staff.find((person) => person.id === selectedId) || rows[0] || data.staff[0];
-  const filtersActive = query || statusFilter !== "Action needed" || siteFilter !== "All" || priorityView;
+  const filtersActive = query || statusFilter !== "Action needed" || (!siteScopeLabel && siteFilter !== "All") || priorityView;
   useEffect(() => {
     if (!targetStaffId) return;
     setSelectedId(targetStaffId);
@@ -6933,7 +7006,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
         <div>
           <p className="eyebrow">Live staff register</p>
           <h3>Find the next compliance action quickly.</h3>
-          <p>{rows.length} of {data.staff.length} records shown · {actionCount} active staff need review · {compliantCount} currently compliant.</p>
+          <p>{rows.length} of {data.staff.length} {siteScopeLabel ? `${siteScopeLabel} ` : ""}records shown · {actionCount} active staff need review · {compliantCount} currently compliant.</p>
           {!!priorityRows.length && (
             <div className="scr-priority-strip" aria-label="SCR priority view">
               {priorityRows.map(({ person, priority }) => (
@@ -6961,10 +7034,17 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
           <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
             {statusOptions.map((item) => <option key={item}>{item}</option>)}
           </select></label>
-          <label>Site<select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
-            <option>All</option>
-            {siteOptions.map((site) => <option key={site}>{site}</option>)}
-          </select></label>
+          {siteScopeLabel ? (
+            <div className="staff-site-scope">
+              <span>Inspection site</span>
+              <strong>{siteScopeLabel}</strong>
+            </div>
+          ) : (
+            <label>Site<select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
+              <option>All</option>
+              {siteOptions.map((site) => <option key={site}>{site}</option>)}
+            </select></label>
+          )}
           <button className="button light" type="button" disabled={!filtersActive} onClick={() => { setQuery(""); setStatusFilter("Action needed"); setSiteFilter("All"); setPriorityView(false); }}>Clear</button>
         </div>
       </div>
