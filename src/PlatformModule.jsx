@@ -3698,8 +3698,16 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
 }
 
 function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
+  const [showBlockersOnly, setShowBlockersOnly] = useState(false);
   const readyRows = rows.filter((row) => row.ready);
   const needsAction = rows.length - readyRows.length;
+  const blockerRows = rows
+    .map((row) => ({
+      ...row,
+      checks: row.checks.filter((check) => check.tone !== "ready" && check.tone !== "neutral"),
+    }))
+    .filter((row) => row.checks.length);
+  const visibleRows = showBlockersOnly ? blockerRows : rows;
   return (
     <section className="scr-evidence-board" aria-label={`${school} SCR evidence board`}>
       <div className="scr-evidence-board-head">
@@ -3713,9 +3721,14 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
           <span><strong>{readyRows.length}</strong> ready</span>
           <span><strong>{needsAction}</strong> to check</span>
         </div>
+        <div className="scr-evidence-board-actions">
+          <button className={showBlockersOnly ? "scr-filter-toggle active" : "scr-filter-toggle"} type="button" onClick={() => setShowBlockersOnly((value) => !value)}>
+            {showBlockersOnly ? "Showing blockers" : "Show blockers only"}
+          </button>
+        </div>
       </div>
       <div className="scr-evidence-board-list">
-        {rows.map((row) => (
+        {visibleRows.map((row) => (
           <article className={row.ready ? "ready" : "needs-action"} key={row.person.id}>
             <div className="scr-evidence-person">
               <div>
@@ -3741,6 +3754,7 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
           </article>
         ))}
         {!rows.length && <EmptyList title="No staff assigned to this site" text="Use the assignment section to add staff before producing assurance output." />}
+        {rows.length > 0 && !visibleRows.length && <EmptyList title="No blockers for this site" text="All visible SCR evidence is either checked, recorded or not required." />}
       </div>
     </section>
   );
@@ -7498,6 +7512,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   const [profileTab, setProfileTab] = useState("Overview");
   const [requestEvidenceKey, setRequestEvidenceKey] = useState(() => scrEvidenceRequestOptions[0][0]);
   const [requestNote, setRequestNote] = useState("");
+  const [showProfileEvidenceBlockersOnly, setShowProfileEvidenceBlockersOnly] = useState(false);
   const archivedRecord = person.formerRecord || {};
   const isArchivedProfile = isFormerStaffRecord(person);
   const profileNotes = chooseLatestStaffProfileNotes(notes[person.id], data.staffProfileNotes?.[person.id]);
@@ -7644,6 +7659,8 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
               : "Keep checked";
     return { key, label, status, tone, detail, file, request, canMarkChecked, nextStep };
   });
+  const profileEvidenceBlockers = evidenceChecklistRows.filter((row) => row.tone !== "ready");
+  const visibleEvidenceChecklistRows = showProfileEvidenceBlockersOnly ? profileEvidenceBlockers : evidenceChecklistRows;
 
   useEffect(() => {
     setPhotoUrl(person.photoUrl || person.profilePhotoUrl || "");
@@ -7657,6 +7674,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     setHrFileTab("All");
     setProfileTab("Overview");
     setNoteSaveStatus("");
+    setShowProfileEvidenceBlockersOnly(false);
     const missingKey = actionItems.map((item) => String(item).toLowerCase()).includes("dbs")
       ? "dbs"
       : actionItems.map((item) => String(item).toLowerCase()).includes("safeguarding")
@@ -8040,11 +8058,16 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
                   <p className="eyebrow">Inspection evidence actions</p>
                   <h4>Check, request or open evidence from one place.</h4>
                 </div>
-                <Badge value={`${evidenceChecklistRows.filter((row) => row.tone === "alert").length} missing`} />
+                <div className="scr-profile-checklist-tools">
+                  <Badge value={`${profileEvidenceBlockers.length} blocker${profileEvidenceBlockers.length === 1 ? "" : "s"}`} />
+                  <button className={showProfileEvidenceBlockersOnly ? "scr-filter-toggle active" : "scr-filter-toggle"} type="button" onClick={() => setShowProfileEvidenceBlockersOnly((value) => !value)}>
+                    {showProfileEvidenceBlockersOnly ? "Showing blockers" : "Show blockers only"}
+                  </button>
+                </div>
               </div>
               <p className="panel-note">Use this during SCR review so every evidence item has a clear next action and file route.</p>
               <div className="scr-profile-action-list">
-                {evidenceChecklistRows.map((row) => (
+                {visibleEvidenceChecklistRows.map((row) => (
                   <article className={`scr-profile-action-row ${row.tone}`} key={row.key}>
                     <div>
                       <span>{row.label}</span>
@@ -8070,6 +8093,9 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
                     </div>
                   </article>
                 ))}
+                {evidenceChecklistRows.length > 0 && !visibleEvidenceChecklistRows.length && (
+                  <EmptyList title="No blockers on this profile" text="All evidence items are either checked, recorded or not required." />
+                )}
               </div>
               <div className="scr-profile-admin-review">
                 <span>Admin review</span>

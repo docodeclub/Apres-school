@@ -5083,6 +5083,42 @@ label {
   line-height: 1;
 }
 
+.scr-evidence-board-actions,
+.scr-profile-checklist-tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.scr-filter-toggle {
+  background: #fff;
+  border: 1px solid rgba(72, 104, 220, 0.18);
+  border-radius: 999px;
+  color: var(--royal-dark);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 950;
+  line-height: 1;
+  min-height: 38px;
+  padding: 9px 13px;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.scr-filter-toggle:hover {
+  border-color: rgba(72, 104, 220, 0.36);
+  box-shadow: 0 10px 20px rgba(38, 63, 169, 0.1);
+  transform: translateY(-1px);
+}
+
+.scr-filter-toggle.active {
+  background: var(--royal);
+  border-color: var(--royal);
+  box-shadow: 0 12px 22px rgba(38, 63, 169, 0.16);
+  color: #fff;
+}
+
 .scr-evidence-board-list {
   display: grid;
   gap: 12px;
@@ -12075,6 +12111,11 @@ th {
 
   .scr-evidence-board-metrics {
     min-width: 0;
+  }
+
+  .scr-evidence-board-actions,
+  .scr-profile-checklist-tools {
+    justify-content: flex-start;
   }
 
   .scr-evidence-checks {
