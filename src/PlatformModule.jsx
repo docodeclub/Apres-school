@@ -3420,6 +3420,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     [onboardingProfiles.length, "Onboarding queue", onboardingProfiles.length ? "Approve new staff only when evidence is complete." : "No onboarding records waiting."],
   ];
   const selectedStaffEvidenceRows = buildScrSiteEvidenceRows(selectedSchoolStaff, data.hrFiles || [], renewalRequests);
+  const selectedSiteDocumentLinks = readJson(documentLinksStorageKey, {});
   function openEvidenceStaffProfile(staffId) {
     setProfileTargetId(staffId);
     setSummaryStaffId(staffId);
@@ -3490,6 +3491,19 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
         staffEvidenceGaps={staffEvidenceGaps}
         scheduledInspection={scheduledInspection}
       />
+      {selectedOfstedSite?.id === "kings-house" && (
+        <KingHouseInspectionEvidencePack
+          site={selectedOfstedSite}
+          timing={selectedOfstedTiming}
+          staff={selectedSchoolStaff}
+          evidenceRows={selectedStaffEvidenceRows}
+          documents={data.documents || []}
+          documentLinks={selectedSiteDocumentLinks}
+          rota={selectedSiteRota}
+          logs={selectedSiteLogs}
+          onOpenStaff={openEvidenceStaffProfile}
+        />
+      )}
       <section className="scr-focus-strip" aria-label="SCR action summary">
         {scrFocusItems.map(([count, title, text]) => (
           <article className={count ? "needs-action" : "clear"} key={title}>
@@ -4286,6 +4300,158 @@ function OfstedSiteLogs({ site, logs, onAdd, onUpdate }) {
         </table>
       </TableWrap>
       {!logs.length && <EmptyList title="No site logs yet" text="Record entries as they happen, or add a nil return to show a checked period with nothing to report." />}
+    </section>
+  );
+}
+
+function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, documents, documentLinks, rota, logs, onOpenStaff }) {
+  const managers = staff.filter((person) => String(person.role || "").toLowerCase().includes("manager"));
+  const firstAiders = staff.filter((person) => staffMeetsRequirement(person, "firstAid"));
+  const eyfsLeads = staff.filter((person) => staffMeetsRequirement(person, "eyfs"));
+  const safeguardingStaff = staff.filter((person) => staffMeetsRequirement(person, "safeguarding"));
+  const allergyStaff = staff.filter((person) => staffMeetsRequirement(person, "allergy"));
+  const blockerRows = evidenceRows
+    .map((row) => ({
+      person: row.person,
+      checks: row.checks.filter((check) => check.tone !== "ready" && check.tone !== "neutral"),
+    }))
+    .filter((row) => row.checks.length);
+  const policyNames = [
+    "Safeguarding Policy",
+    "Behaviour Policy",
+    "Health and Safety Policy",
+    "Complaints Policy",
+    "Illness and Accidents",
+    "First Aid Policy",
+    "Code of Conduct",
+    "Staff Handbook",
+  ];
+  const policyRows = policyNames.map((name) => {
+    const doc = documents.find((item) => item.name === name) || {};
+    return {
+      name,
+      link: documentLinks[name] || doc.url || "",
+      status: documentLinks[name] || doc.url ? "Linked" : "Add link",
+      read: Number(doc.read || 0),
+      assigned: Number(doc.assigned || 0),
+      version: doc.version || "Current version",
+    };
+  });
+  const coverRows = [
+    ["Named manager", managers],
+    ["First aider", firstAiders],
+    ["EYFS Level 3+", eyfsLeads],
+    ["Safeguarding trained", safeguardingStaff],
+    ["Allergy aware", allergyStaff],
+  ];
+  const openLogs = logs.filter((log) => log.status !== "Closed");
+  return (
+    <section className="khs-inspection-pack" aria-label="King's House inspection evidence pack">
+      <div className="khs-inspection-pack-head">
+        <div>
+          <p className="eyebrow">Monday evidence pack</p>
+          <h3>King&apos;s House inspection view</h3>
+          <p>Everything here is scoped to staff and evidence assigned to King&apos;s House School only.</p>
+        </div>
+        <div className="khs-inspection-pack-actions">
+          <Badge value={blockerRows.length ? `${blockerRows.length} staff to check` : "No SCR blockers"} />
+          {site?.providerUrl && <a className="button light" href={site.providerUrl} target="_blank" rel="noreferrer">Open Ofsted page</a>}
+        </div>
+      </div>
+      <div className="khs-pack-summary">
+        <div>
+          <span>Registered provision</span>
+          <strong>{site?.name || "King's House School"}</strong>
+          <small>URN {site?.urn || "not linked"} · Registered {site?.registrationDate ? formatShortDate(site.registrationDate) : "date pending"}</small>
+        </div>
+        <div>
+          <span>Inspection timing</span>
+          <strong>{scheduledInspectionForSite(site)?.daysUntil ? `${scheduledInspectionForSite(site).daysUntil} days` : "Scheduled"}</strong>
+          <small>{scheduledInspectionForSite(site)?.label || timing?.summary || "Check Ofsted timing"}</small>
+        </div>
+        <div>
+          <span>Assigned staff</span>
+          <strong>{staff.length}</strong>
+          <small>Only King&apos;s House assigned staff are included.</small>
+        </div>
+        <div>
+          <span>Open logs</span>
+          <strong>{openLogs.length}</strong>
+          <small>{openLogs.length ? "Review before inspection." : "No open site logs recorded."}</small>
+        </div>
+      </div>
+      <div className="khs-pack-grid">
+        <article className="khs-pack-card">
+          <div className="khs-pack-card-head">
+            <div>
+              <span>People evidence</span>
+              <h4>Named cover and leadership</h4>
+            </div>
+            <Badge value={coverRows.every(([, people]) => people.length) ? "Covered" : "Check gaps"} />
+          </div>
+          <div className="khs-pack-list">
+            {coverRows.map(([label, people]) => (
+              <div key={label}>
+                <strong>{label}</strong>
+                <span>{people.length ? people.map((person) => person.name).join(", ") : "Gap to resolve"}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+        <article className="khs-pack-card">
+          <div className="khs-pack-card-head">
+            <div>
+              <span>SCR blockers</span>
+              <h4>Open these records first</h4>
+            </div>
+            <Badge value={blockerRows.length ? "Action" : "Clear"} />
+          </div>
+          <div className="khs-pack-list">
+            {blockerRows.length ? blockerRows.slice(0, 6).map((row) => (
+              <button className="khs-pack-staff-link" type="button" key={row.person.id} onClick={() => onOpenStaff(row.person.id)}>
+                <strong>{row.person.name}</strong>
+                <span>{row.checks.map((check) => check.label).join(", ")}</span>
+              </button>
+            )) : <p className="empty-inline">No blocker rows are currently flagged for King&apos;s House.</p>}
+          </div>
+        </article>
+        <article className="khs-pack-card">
+          <div className="khs-pack-card-head">
+            <div>
+              <span>Site operation</span>
+              <h4>Session and register context</h4>
+            </div>
+            <Badge value={rota.length ? "Configured" : "Missing"} />
+          </div>
+          <div className="khs-pack-list">
+            {rota.length ? rota.map((item) => (
+              <div key={item.id}>
+                <strong>{item.type}</strong>
+                <span>{item.sessionStart}-{item.sessionEnd} · setup {item.setupMinutes} mins · cleanup {item.cleanupMinutes} mins</span>
+              </div>
+            )) : <p className="empty-inline">No rota window is currently configured for this site.</p>}
+          </div>
+        </article>
+      </div>
+      <article className="khs-policy-pack">
+        <div className="khs-pack-card-head">
+          <div>
+            <span>Documents to have ready</span>
+            <h4>Core policies and evidence links</h4>
+          </div>
+          <Badge value={`${policyRows.filter((row) => row.link).length}/${policyRows.length} linked`} />
+        </div>
+        <div className="khs-policy-grid">
+          {policyRows.map((doc) => (
+            <div className={doc.link ? "linked" : "missing"} key={doc.name}>
+              <span>{doc.name}</span>
+              <strong>{doc.status}</strong>
+              <small>{doc.assigned ? `${doc.read}/${doc.assigned} acknowledgements` : doc.version}</small>
+              {doc.link ? <a href={doc.link} target="_blank" rel="noreferrer">Open document</a> : <em>Add in Documents</em>}
+            </div>
+          ))}
+        </div>
+      </article>
     </section>
   );
 }

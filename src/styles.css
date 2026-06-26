@@ -5403,6 +5403,186 @@ label {
   color: #945d10;
 }
 
+.khs-inspection-pack {
+  display: grid;
+  gap: 16px;
+  border: 1px solid rgba(72, 104, 220, 0.18);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, #ffffff 0%, #f8faff 54%, rgba(243, 171, 73, 0.12) 100%);
+  box-shadow: 0 18px 46px rgba(38, 63, 169, 0.08);
+  padding: clamp(18px, 3vw, 26px);
+}
+
+.khs-inspection-pack-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+}
+
+.khs-inspection-pack h3 {
+  color: var(--royal-dark);
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  line-height: 1;
+  margin: 0 0 8px;
+}
+
+.khs-inspection-pack p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.khs-inspection-pack-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.khs-pack-summary,
+.khs-pack-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.khs-pack-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.khs-pack-summary div,
+.khs-pack-card,
+.khs-policy-pack {
+  min-width: 0;
+  border: 1px solid rgba(72, 104, 220, 0.14);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 16px;
+}
+
+.khs-pack-summary span,
+.khs-pack-card-head span,
+.khs-policy-grid span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.khs-pack-summary strong {
+  color: var(--royal-dark);
+  display: block;
+  font-size: 1.05rem;
+  line-height: 1.18;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.khs-pack-summary small,
+.khs-policy-grid small {
+  color: var(--muted);
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 760;
+  line-height: 1.35;
+  margin-top: 6px;
+}
+
+.khs-pack-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.khs-pack-card-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.khs-pack-card-head h4 {
+  color: var(--royal-dark);
+  font-size: 1.08rem;
+  line-height: 1.14;
+  margin: 4px 0 0;
+}
+
+.khs-pack-list,
+.khs-policy-grid {
+  display: grid;
+  gap: 9px;
+}
+
+.khs-pack-list div,
+.khs-pack-staff-link,
+.khs-policy-grid div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid rgba(72, 104, 220, 0.12);
+  border-radius: 14px;
+  background: #f8faff;
+  padding: 10px 12px;
+}
+
+.khs-pack-staff-link {
+  cursor: pointer;
+  text-align: left;
+}
+
+.khs-pack-staff-link:hover {
+  border-color: rgba(72, 104, 220, 0.32);
+  box-shadow: 0 10px 20px rgba(38, 63, 169, 0.08);
+}
+
+.khs-pack-list strong,
+.khs-pack-staff-link strong,
+.khs-policy-grid strong {
+  color: var(--royal-dark);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.khs-pack-list span,
+.khs-pack-staff-link span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.khs-policy-pack {
+  display: grid;
+  gap: 14px;
+}
+
+.khs-policy-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.khs-policy-grid div.linked {
+  background: linear-gradient(135deg, #fff 0%, #f4fbf7 100%);
+  border-color: rgba(37, 166, 122, 0.2);
+}
+
+.khs-policy-grid div.missing {
+  background: linear-gradient(135deg, #fff 0%, #fff8ef 100%);
+  border-color: rgba(242, 165, 76, 0.28);
+}
+
+.khs-policy-grid a,
+.khs-policy-grid em {
+  color: var(--royal);
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 950;
+  margin-top: 4px;
+}
+
 .scr-command-board {
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) repeat(2, minmax(0, 1fr));
@@ -12316,6 +12496,10 @@ th {
   .scr-inspection-launch-head,
   .scr-inspection-metrics,
   .scr-inspection-grid,
+  .khs-inspection-pack-head,
+  .khs-pack-summary,
+  .khs-pack-grid,
+  .khs-policy-grid,
   .scr-assurance-hero,
   .scr-output-grid,
   .scr-assurance-statements,
@@ -12333,6 +12517,7 @@ th {
   .scr-focus-strip,
   .scr-command-board,
   .ofsted-focus-strip,
+  .khs-inspection-pack-actions,
   .assignment-row,
   .requirement-grid,
   .onboarding-scr-grid,
