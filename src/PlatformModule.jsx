@@ -3470,8 +3470,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
           <p className="eyebrow">Inspection site</p>
           <h3>{selectedScrSchool || "Choose a site"}</h3>
           <p>
-            The register, evidence queue, assurance letter and site cover checks below are scoped to this school.
-            Staff assigned elsewhere are hidden from this inspection view.
+            Only staff assigned to this school appear in the SCR evidence and assurance tools below.
           </p>
         </div>
         <div className="scr-school-switcher-control">
