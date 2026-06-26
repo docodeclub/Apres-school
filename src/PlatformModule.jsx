@@ -3366,8 +3366,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     })
     .filter((item) => item.gaps.length)
     .sort((a, b) => a.person.name.localeCompare(b.person.name));
-  const inspectionMonday = new Date("2026-06-29T09:00:00+01:00");
-  const daysUntilInspection = Math.max(0, Math.ceil((inspectionMonday.getTime() - Date.now()) / 86400000));
+  const scheduledInspection = selectedOfstedSite ? scheduledInspectionForSite(selectedOfstedSite) : null;
   const scrFocusItems = [
     [reviewStaff, "Staff to review", reviewStaff ? "Check missing or incomplete SCR records for this site." : "This site is currently marked compliant."],
     [renewalItems.length, "Renewal prompts", renewalItems.length ? "Expiry or review dates need follow-up." : "No renewals due in the next 60 days."],
@@ -3443,7 +3442,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
         score={inspectionReadinessScore}
         attentionCount={inspectionAttentionCount}
         staffEvidenceGaps={staffEvidenceGaps}
-        daysUntilInspection={daysUntilInspection}
+        scheduledInspection={scheduledInspection}
       />
       <section className="scr-focus-strip" aria-label="SCR action summary">
         {scrFocusItems.map(([count, title, text]) => (
@@ -4230,20 +4229,24 @@ function OfstedSiteLogs({ site, logs, onAdd, onUpdate }) {
   );
 }
 
-function SCRInspectionLaunchPanel({ site, timing, school, staff, rows, score, attentionCount, staffEvidenceGaps, daysUntilInspection }) {
+function SCRInspectionLaunchPanel({ site, timing, school, staff, rows, score, attentionCount, staffEvidenceGaps, scheduledInspection }) {
   const urgentRows = rows.filter((row) => row.status !== "Ready");
   const firstAiders = staff.filter((person) => staffMeetsRequirement(person, "firstAid"));
   const eyfsLeads = staff.filter((person) => staffMeetsRequirement(person, "eyfs"));
   const safeguardingStaff = staff.filter((person) => staffMeetsRequirement(person, "safeguarding"));
   const allergyStaff = staff.filter((person) => staffMeetsRequirement(person, "allergy"));
+  const inspectionMetric = scheduledInspection
+    ? { label: "Inspection", value: scheduledInspection.daysUntil ? `${scheduledInspection.daysUntil} days` : "Today", tone: "amber" }
+    : { label: "Ofsted window", value: timing?.status || "Check site", tone: timing?.tone === "bad" || timing?.tone === "warn" ? "amber" : "green" };
   return (
     <section className="scr-inspection-launch" aria-label={`${school} SCR launch readiness`}>
       <div className="scr-inspection-launch-head">
         <div>
-          <p className="eyebrow">Monday inspection readiness</p>
+          <p className="eyebrow">{scheduledInspection ? "Scheduled inspection readiness" : "Site SCR readiness"}</p>
           <h3>{school}</h3>
           <p>
-            A site-specific launch check for the SCR, assigned staff, evidence gaps and assurance output.
+            {scheduledInspection ? `${scheduledInspection.label}. ` : ""}
+            A site-specific check for the SCR, assigned staff, evidence gaps and assurance output.
             Use this before opening the full register below.
           </p>
         </div>
@@ -4254,7 +4257,7 @@ function SCRInspectionLaunchPanel({ site, timing, school, staff, rows, score, at
       </div>
       <div className="scr-inspection-metrics">
         <Metric icon={<ShieldCheck />} label="Assigned staff" value={staff.length} tone={staff.length ? "blue" : "amber"} />
-        <Metric icon={<Bell />} label="Inspection" value={daysUntilInspection ? `${daysUntilInspection} days` : "Today"} tone="amber" />
+        <Metric icon={<Bell />} label={inspectionMetric.label} value={inspectionMetric.value} tone={inspectionMetric.tone} />
         <Metric icon={<FileText />} label="URN" value={site?.urn || "Not linked"} tone={site ? "green" : "amber"} />
         <Metric icon={<CheckCircle2 />} label="Window" value={timing?.status || "Check site"} tone={attentionCount ? "amber" : "green"} />
       </div>
@@ -8710,6 +8713,21 @@ function daysUntil(dateString) {
   today.setHours(0, 0, 0, 0);
   const target = new Date(`${dateString}T00:00:00`);
   return Math.ceil((target - today) / 86400000);
+}
+
+function scheduledInspectionForSite(site) {
+  const scheduledInspections = {
+    "kings-house": {
+      date: "2026-06-29",
+      label: "King's House School inspection is scheduled for Monday 29 June 2026",
+    },
+  };
+  const inspection = scheduledInspections[site.id];
+  if (!inspection) return null;
+  return {
+    ...inspection,
+    daysUntil: Math.max(0, daysUntil(inspection.date)),
+  };
 }
 
 function calculateOfstedInspectionWindow(site) {
