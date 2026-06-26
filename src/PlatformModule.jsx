@@ -415,6 +415,7 @@ const scrEvidenceRequestOptions = [
   ["safeguarding", "Safeguarding"],
   ["allergy", "Allergy awareness"],
   ["firstAid", "First aid"],
+  ["eyfsLevel", "EYFS Level 3"],
   ["rightToWork", "Right to work"],
   ["identity", "Identity / address"],
   ["barredList", "Barred list"],
@@ -3265,6 +3266,51 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     persistScrEvidenceRequestRecord(request.id, request.staffId, request.evidenceKey, next[request.id], "SCR evidence request cleared");
     addAuditLog("SCR evidence request cleared", `${person?.name || request.staffId}: ${request.check}${person?.email ? ` · ${person.email}` : ""}`);
   }
+  function markProfileEvidenceChecked(person, evidenceKey, label = "") {
+    if (isFormerStaffRecord(person)) return;
+    const requestId = `${person.id}-${evidenceKey}`;
+    const currentProfile = checklistState[person.id] || person.scrChecklist || {};
+    const currentEvidence = currentProfile.evidence || {};
+    const evidence = currentEvidence[evidenceKey] || {};
+    const nextChecklist = {
+      ...currentProfile,
+      evidence: {
+        ...currentEvidence,
+        [evidenceKey]: {
+          ...evidence,
+          status: "Approved",
+          reviewedAt: new Date().toISOString(),
+          reviewedBy: access?.currentUser?.name || "Admin",
+          verifiedBy: access?.currentUser?.name || evidence.verifiedBy || "Admin",
+          dateSeen: new Date().toISOString().slice(0, 10),
+        },
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    const nextChecklistState = {
+      ...checklistState,
+      [person.id]: nextChecklist,
+    };
+    setChecklistState(nextChecklistState);
+    saveScrChecklistState(nextChecklistState);
+    persistScrChecklistRecord(person.id, nextChecklist, "SCR evidence marked checked");
+
+    if (renewalRequests[requestId] && renewalRequests[requestId].status !== "Cleared") {
+      const nextRequests = {
+        ...renewalRequests,
+        [requestId]: appendScrRequestHistory({
+          ...(renewalRequests[requestId] || {}),
+          status: "Approved",
+          reviewedAt: new Date().toISOString(),
+          reviewedBy: access?.currentUser?.name || "Admin",
+          rejectionReason: "",
+        }, "Approved", access?.currentUser?.name || "Admin", "Evidence checked from staff profile."),
+      };
+      saveRenewalRequests(nextRequests);
+      persistScrEvidenceRequestRecord(requestId, person.id, evidenceKey, nextRequests[requestId], "SCR evidence marked checked request synced");
+    }
+    addAuditLog("SCR evidence marked checked", `${person.name}: ${label || scrEvidenceLabel(evidenceKey)}`);
+  }
   function reviewSubmittedEvidence(item, decision, note = "") {
     if (isFormerStaffRecord(scrData.staff.find((person) => person.id === item.staffId))) return;
     const rejectionReason = note.trim() || "Please check the evidence reference, date or document and resubmit for review.";
@@ -3597,6 +3643,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
         evidenceRequests={renewalRequests}
         onRequestEvidence={requestProfileEvidence}
         onClearEvidenceRequest={clearProfileEvidenceRequest}
+        onMarkEvidenceChecked={markProfileEvidenceChecked}
         onOpenHrFiles={onOpenHrFiles}
         onOpenPay={onOpenPay}
         access={access}
@@ -4594,6 +4641,7 @@ function scrEvidenceLabel(key) {
     barredList: "Barred list",
     safeguarding: "Safeguarding",
     allergy: "Allergy awareness",
+    eyfsLevel: "EYFS Level 3",
     references: "References",
     declarations: "Annual declarations",
     firstAid: "First aid",
@@ -4602,7 +4650,7 @@ function scrEvidenceLabel(key) {
 }
 
 function splitScrRequestId(id) {
-  const keys = ["rightToWork", "identity", "dbs", "barredList", "safeguarding", "allergy", "references", "declarations", "firstAid"];
+  const keys = ["rightToWork", "identity", "dbs", "barredList", "safeguarding", "allergy", "eyfsLevel", "references", "declarations", "firstAid"];
   const key = keys.find((item) => id.endsWith(`-${item}`));
   if (!key) return { staffId: "", evidenceKey: "" };
   return { staffId: id.slice(0, -(key.length + 1)), evidenceKey: key };
@@ -7205,7 +7253,7 @@ function Settings() {
   );
 }
 
-function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetHandled, evidenceRequests = {}, onRequestEvidence, onClearEvidenceRequest, access, onUpdateStaffPay, onOpenHrFiles, onOpenPay, siteScopeLabel = "" }) {
+function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetHandled, evidenceRequests = {}, onRequestEvidence, onClearEvidenceRequest, onMarkEvidenceChecked, access, onUpdateStaffPay, onOpenHrFiles, onOpenPay, siteScopeLabel = "" }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Action needed");
   const [siteFilter, setSiteFilter] = useState("All");
@@ -7386,6 +7434,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
           evidenceRequests={buildStaffProfileEvidenceRequests(selectedPerson, evidenceRequests)}
           onRequestEvidence={onRequestEvidence}
           onClearEvidenceRequest={onClearEvidenceRequest}
+          onMarkEvidenceChecked={onMarkEvidenceChecked}
           access={access}
           onUpdateStaffPay={onUpdateStaffPay}
           onOpenHrFiles={onOpenHrFiles}
@@ -7431,7 +7480,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   );
 }
 
-function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction, actionItems = [], evidenceRequests = [], onRequestEvidence, onClearEvidenceRequest, access, onUpdateStaffPay, onOpenHrFiles, onOpenPay }) {
+function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction, actionItems = [], evidenceRequests = [], onRequestEvidence, onClearEvidenceRequest, onMarkEvidenceChecked, access, onUpdateStaffPay, onOpenHrFiles, onOpenPay }) {
   const [notes, setNotes] = useState(() => readJson(staffProfileNotesStorageKey, {}));
   const [noteSaveStatus, setNoteSaveStatus] = useState("");
   const [accountState, setAccountState] = useState(() => readUserAdminState());
@@ -7541,6 +7590,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     firstAid: "firstAidExpiry",
   };
   const evidenceTextFields = {
+    eyfsLevel: ["eyfsLevel"],
     rightToWork: ["rightToWork", "rightToWorkType"],
     identity: ["identityVerified", "proofOfAddressVerified"],
     barredList: ["barredListResult", "barredListCheck"],
@@ -7552,8 +7602,10 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     const evidence = person.scrChecklist?.evidence?.[key] || {};
     const dateValue = evidence.expiryDate || person[evidenceDateFields[key]];
     const fieldValue = evidence.reference || evidence.status || (evidenceTextFields[key] || []).map((field) => person[field]).find(Boolean);
+    const file = findScrEvidenceFile(person, evidence, label, hrFiles);
     const expiryStatus = evidenceExpiryStatus({ expiryDate: dateValue });
     const firstAidNotRequired = key === "firstAid" && String(person.firstAidExpiry || "").toLowerCase() === "not required";
+    const eyfsLevel3Recorded = key === "eyfsLevel" && String(fieldValue || "").toLowerCase().includes("level 3");
     const status = request?.status === "Rejected"
       ? "Sent back"
       : request?.status === "Submitted"
@@ -7561,17 +7613,36 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
         : request?.status === "Requested"
           ? "Requested"
           : request?.status === "Approved" || evidence.status === "Approved"
-            ? "Approved"
-            : firstAidNotRequired
-              ? "Not required"
-              : expiryStatus || (fieldValue ? "Recorded" : "Missing");
+          ? "Approved"
+          : firstAidNotRequired
+            ? "Not required"
+            : eyfsLevel3Recorded
+              ? "Recorded"
+              : expiryStatus || (fieldValue || file ? "Recorded" : "Missing");
     const tone = ["Approved", "Recorded", "In date", "Not required"].includes(status)
       ? "ready"
       : ["Awaiting review", "Requested", "Expiring soon"].includes(status)
         ? "pending"
         : "alert";
-    const detail = request?.note || request?.rejectionReason || request?.submissionNote || evidence.note || (dateValue ? `Review date ${formatShortDate(dateValue)}` : fieldValue || "No evidence recorded yet.");
-    return { key, label, status, tone, detail };
+    const detail = request?.note
+      || request?.rejectionReason
+      || request?.submissionNote
+      || evidence.note
+      || file?.title
+      || (dateValue ? `Review date ${formatShortDate(dateValue)}` : fieldValue || "No evidence recorded yet.");
+    const canMarkChecked = !isArchivedProfile && ["Recorded", "In date", "Awaiting review", "Requested", "Sent back"].includes(status);
+    const nextStep = status === "Missing"
+      ? "Request update"
+      : status === "Awaiting review"
+        ? "Review and mark checked"
+        : status === "Requested"
+          ? "Waiting for staff"
+          : status === "Sent back"
+            ? "Needs resubmission"
+            : status === "Not required"
+              ? "No action"
+              : "Keep checked";
+    return { key, label, status, tone, detail, file, request, canMarkChecked, nextStep };
   });
 
   useEffect(() => {
@@ -7773,6 +7844,20 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     setRequestNote("");
   }
 
+  function requestEvidenceFromRow(row) {
+    if (isArchivedProfile) return;
+    onRequestEvidence?.(person, row.key, row.status === "Missing"
+      ? `${row.label} evidence is missing. Please upload or provide the latest evidence.`
+      : `Please provide an updated ${row.label} evidence item.`);
+    setRequestEvidenceKey(row.key);
+    setRequestNote("");
+  }
+
+  function markEvidenceRowChecked(row) {
+    if (isArchivedProfile || !row.canMarkChecked) return;
+    onMarkEvidenceChecked?.(person, row.key, row.label);
+  }
+
   return (
     <article className={`staff-profile-panel ${isArchivedProfile ? "archived" : ""}`}>
       <div className="staff-profile-identity">
@@ -7950,15 +8035,40 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
               </div>
             </section>
             <section className="staff-profile-scr-checklist">
-              <h4>SCR evidence checklist</h4>
-              <p className="panel-note">Each item shows what admin should do next for this staff record.</p>
-              <div className="scr-profile-checklist">
+              <div className="scr-profile-checklist-head">
+                <div>
+                  <p className="eyebrow">Inspection evidence actions</p>
+                  <h4>Check, request or open evidence from one place.</h4>
+                </div>
+                <Badge value={`${evidenceChecklistRows.filter((row) => row.tone === "alert").length} missing`} />
+              </div>
+              <p className="panel-note">Use this during SCR review so every evidence item has a clear next action and file route.</p>
+              <div className="scr-profile-action-list">
                 {evidenceChecklistRows.map((row) => (
-                  <div className={`scr-profile-check ${row.tone}`} key={row.key}>
-                    <span>{row.label}</span>
-                    <strong>{row.status}</strong>
-                    <small>{row.detail}</small>
-                  </div>
+                  <article className={`scr-profile-action-row ${row.tone}`} key={row.key}>
+                    <div>
+                      <span>{row.label}</span>
+                      <strong>{row.status}</strong>
+                      <small>{row.detail}</small>
+                      {row.request?.history?.length ? <EvidenceHistoryTimeline events={row.request.history} /> : null}
+                    </div>
+                    <div className="scr-profile-action-meta">
+                      <em>{row.nextStep}</em>
+                      <div>
+                        {row.file?.fileUrl ? (
+                          <a className="button light" href={row.file.fileUrl} target="_blank" rel="noreferrer">View file</a>
+                        ) : row.file?.storagePath ? (
+                          <span className="scr-private-file">Private file</span>
+                        ) : null}
+                        <button className="button light" type="button" onClick={() => requestEvidenceFromRow(row)} disabled={!onRequestEvidence || isArchivedProfile}>
+                          Request update
+                        </button>
+                        <button className="button dark" type="button" onClick={() => markEvidenceRowChecked(row)} disabled={!onMarkEvidenceChecked || !row.canMarkChecked || isArchivedProfile}>
+                          Mark checked
+                        </button>
+                      </div>
+                    </div>
+                  </article>
                 ))}
               </div>
               <div className="scr-profile-admin-review">

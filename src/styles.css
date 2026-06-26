@@ -11426,6 +11426,106 @@ tfoot td {
   gap: 8px;
 }
 
+.scr-profile-checklist-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.scr-profile-checklist-head h4 {
+  color: var(--royal-dark);
+  font-size: 1.18rem;
+  margin: 3px 0 0;
+}
+
+.scr-profile-action-list {
+  display: grid;
+  gap: 10px;
+}
+
+.scr-profile-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.55fr);
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-left: 5px solid rgba(72, 103, 216, 0.3);
+  border-radius: 16px;
+  background: #f8faff;
+  padding: 14px;
+}
+
+.scr-profile-action-row.ready {
+  border-left-color: rgba(37, 166, 122, 0.72);
+  background: linear-gradient(135deg, #fff 0%, #f4fbf7 100%);
+}
+
+.scr-profile-action-row.pending {
+  border-left-color: rgba(242, 165, 76, 0.82);
+  background: linear-gradient(135deg, #fff 0%, #fff9ef 100%);
+}
+
+.scr-profile-action-row.alert {
+  border-left-color: rgba(206, 77, 77, 0.82);
+  background: linear-gradient(135deg, #fff 0%, #fff6f6 100%);
+}
+
+.scr-profile-action-row span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.scr-profile-action-row strong {
+  color: var(--royal-dark);
+  display: block;
+  font-size: 1rem;
+  line-height: 1.2;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.scr-profile-action-row small {
+  color: var(--muted);
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.4;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.scr-profile-action-meta {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
+.scr-profile-action-meta em,
+.scr-private-file {
+  color: var(--royal);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.scr-profile-action-meta > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.scr-profile-action-meta .button {
+  min-height: 40px;
+  padding-inline: 14px;
+}
+
 .scr-profile-check {
   display: grid;
   gap: 4px;
@@ -12313,6 +12413,7 @@ th {
   .scr-priority-strip,
   .scr-profile-request-form,
   .scr-profile-request-list article,
+  .scr-profile-action-row,
   .staff-profile-grid,
   .staff-profile-account-card,
   .staff-profile-stat-strip,
@@ -12405,6 +12506,14 @@ th {
 
   .scr-profile-checklist {
     grid-template-columns: 1fr;
+  }
+
+  .scr-profile-action-meta {
+    justify-items: start;
+  }
+
+  .scr-profile-action-meta > div {
+    justify-content: flex-start;
   }
 
   .scr-next-action-card {
