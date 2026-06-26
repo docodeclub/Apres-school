@@ -3067,6 +3067,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
   const [checklistState, setChecklistState] = useState(() => readScrChecklistState());
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const [evidenceFilter, setEvidenceFilter] = useState("Action needed");
+  const [profileTargetId, setProfileTargetId] = useState("");
   const [assignmentState, setAssignmentState] = useState(() => Object.fromEntries(
     data.staff.map((person) => [person.id, staffAssignments(person)]),
   ));
@@ -3373,6 +3374,12 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     [requirementGapCount, "Site cover gaps", requirementGapCount ? "Check first aid, EYFS, safeguarding or allergy cover." : "Site requirements are covered."],
     [onboardingProfiles.length, "Onboarding queue", onboardingProfiles.length ? "Approve new staff only when evidence is complete." : "No onboarding records waiting."],
   ];
+  const selectedStaffEvidenceRows = buildScrSiteEvidenceRows(selectedSchoolStaff, data.hrFiles || [], renewalRequests);
+  function openEvidenceStaffProfile(staffId) {
+    setProfileTargetId(staffId);
+    setSummaryStaffId(staffId);
+    document.getElementById("scr-staff-register")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   return (
     <div className="stack">
@@ -3449,6 +3456,11 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
           </article>
         ))}
       </section>
+      <SCRSiteEvidenceBoard
+        school={selectedScrSchool}
+        rows={selectedStaffEvidenceRows}
+        onOpenStaff={openEvidenceStaffProfile}
+      />
       <section className="scr-command-board" aria-label="SCR command centre">
         <article className="scr-command-card primary">
           <div>
@@ -3578,8 +3590,11 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
       <StaffTable
         data={{ ...scrData, staff: selectedSchoolStaff }}
         siteScopeLabel={selectedScrSchool}
-        targetStaffId={targetStaffId}
-        onTargetHandled={onTargetHandled}
+        targetStaffId={profileTargetId || targetStaffId}
+        onTargetHandled={() => {
+          setProfileTargetId("");
+          onTargetHandled?.();
+        }}
         evidenceRequests={renewalRequests}
         onRequestEvidence={requestProfileEvidence}
         onClearEvidenceRequest={clearProfileEvidenceRequest}
@@ -3633,6 +3648,55 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
         ))}
       </div>
     </div>
+  );
+}
+
+function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
+  const readyRows = rows.filter((row) => row.ready);
+  const needsAction = rows.length - readyRows.length;
+  return (
+    <section className="scr-evidence-board" aria-label={`${school} SCR evidence board`}>
+      <div className="scr-evidence-board-head">
+        <div>
+          <p className="eyebrow">Evidence board</p>
+          <h3>{school} staff evidence at a glance.</h3>
+          <p>Open the staff record when a check needs context, or use the file link where evidence has already been uploaded.</p>
+        </div>
+        <div className="scr-evidence-board-metrics">
+          <span><strong>{rows.length}</strong> staff</span>
+          <span><strong>{readyRows.length}</strong> ready</span>
+          <span><strong>{needsAction}</strong> to check</span>
+        </div>
+      </div>
+      <div className="scr-evidence-board-list">
+        {rows.map((row) => (
+          <article className={row.ready ? "ready" : "needs-action"} key={row.person.id}>
+            <div className="scr-evidence-person">
+              <div>
+                <h4>{row.person.name}</h4>
+                <p>{row.person.role} · {row.person.email || "No email recorded"}</p>
+              </div>
+              <button className="button subtle" type="button" onClick={() => onOpenStaff(row.person.id)}>Open record</button>
+            </div>
+            <div className="scr-evidence-checks">
+              {row.checks.map((check) => (
+                <div className={`scr-evidence-chip ${check.tone}`} key={check.key}>
+                  <span>{check.label}</span>
+                  <strong>{check.status}</strong>
+                  <small>{check.detail}</small>
+                  {check.file?.fileUrl
+                    ? <a href={check.file.fileUrl} target="_blank" rel="noreferrer">Open evidence</a>
+                    : check.file?.storagePath
+                      ? <em>Private file</em>
+                      : null}
+                </div>
+              ))}
+            </div>
+          </article>
+        ))}
+        {!rows.length && <EmptyList title="No staff assigned to this site" text="Use the assignment section to add staff before producing assurance output." />}
+      </div>
+    </section>
   );
 }
 
@@ -4339,6 +4403,120 @@ function applyScrChecklistState(staff) {
     ...person,
     scrChecklist: state[person.id] || person.scrChecklist || {},
   }));
+}
+
+function buildScrSiteEvidenceRows(staff = [], hrFiles = [], evidenceRequests = {}) {
+  return staff.map((person) => {
+    const checks = [
+      scrEvidenceBoardCheck(person, "dbs", "DBS", person.dbsRenewal, hrFiles, evidenceRequests),
+      scrEvidenceBoardCheck(person, "safeguarding", "Safeguarding", person.safeguardingExpiry, hrFiles, evidenceRequests),
+      scrEvidenceBoardCheck(person, "allergy", "Allergy", person.allergyAwarenessExpiry, hrFiles, evidenceRequests),
+      scrEvidenceBoardCheck(person, "firstAid", "First aid", person.firstAidExpiry, hrFiles, evidenceRequests),
+      scrEvidenceBoardCheck(person, "eyfsLevel", "EYFS Level 3", person.eyfsLevel, hrFiles, evidenceRequests),
+      scrEvidenceBoardCheck(person, "adminReview", "Admin review", person.scrChecklist?.approvedAt || person.compliance, hrFiles, evidenceRequests),
+    ];
+    return {
+      person,
+      checks,
+      ready: checks.every((check) => check.tone === "ready" || check.tone === "neutral"),
+    };
+  }).sort((a, b) => {
+    const actionDiff = Number(a.ready) - Number(b.ready);
+    return actionDiff || a.person.name.localeCompare(b.person.name);
+  });
+}
+
+function scrEvidenceBoardCheck(person, key, label, profileValue, hrFiles, evidenceRequests) {
+  const evidenceKey = key === "eyfsLevel" ? "eyfsLevel" : key;
+  const evidence = person.scrChecklist?.evidence?.[evidenceKey] || {};
+  const request = evidenceRequests?.[`${person.id}-${evidenceKey}`] || {};
+  const file = findScrEvidenceFile(person, evidence, label, hrFiles);
+  const value = String(profileValue || evidence.expiryDate || evidence.reference || "").trim();
+  const lowerValue = value.toLowerCase();
+  const noExpiry = lowerValue === "no expiry stated" || evidence.noExpiryStated;
+  const status = evidenceExpiryStatus({ expiryDate: evidence.expiryDate || profileValue });
+
+  if (key === "adminReview") {
+    const approved = Boolean(person.scrChecklist?.approvedAt) || person.compliance === "Compliant";
+    return {
+      key,
+      label,
+      status: approved ? "Approved" : request.status || "Needs review",
+      detail: approved
+        ? person.scrChecklist?.approvedAt ? `Approved ${formatShortDate(person.scrChecklist.approvedAt)}` : "Marked compliant"
+        : "Open the record and complete admin review.",
+      tone: approved ? "ready" : "warn",
+      file,
+    };
+  }
+
+  if (key === "eyfsLevel") {
+    const hasLevel3 = String(person.eyfsLevel || evidence.reference || evidence.status || "").toLowerCase().includes("level 3");
+    const pending = evidence.status === "Evidence pending" || request.status === "Requested";
+    return {
+      key,
+      label,
+      status: hasLevel3 ? (pending ? "Pending evidence" : "On file") : "Missing",
+      detail: hasLevel3
+        ? file ? file.title : pending ? "Qualification recorded, certificate still needed." : "Level 3 Early Years qualification recorded."
+        : "No Level 3 EYFS evidence recorded.",
+      tone: hasLevel3 ? (pending ? "warn" : "ready") : "bad",
+      file,
+    };
+  }
+
+  if (lowerValue === "not required") {
+    return { key, label, status: "Not required", detail: "Not required for this role/site record.", tone: "neutral", file };
+  }
+
+  if (status === "Expired") {
+    return { key, label, status: "Expired", detail: value ? `Expired ${formatShortDate(value)}` : "Expiry date has passed.", tone: "bad", file };
+  }
+  if (status === "Expiring soon") {
+    return { key, label, status: "Expiring soon", detail: value ? `Expires ${formatShortDate(value)}` : "Renewal date is close.", tone: "warn", file };
+  }
+  if (hasValidDate(value) || evidence.reference || file) {
+    return {
+      key,
+      label,
+      status: noExpiry ? "No expiry stated" : status || "On file",
+      detail: file?.title || evidence.reference || (value ? `${noExpiry ? "Evidence" : "Date"}: ${noExpiry ? "certificate does not state an expiry" : formatShortDate(value)}` : "Evidence recorded."),
+      tone: "ready",
+      file,
+    };
+  }
+
+  return {
+    key,
+    label,
+    status: request.status || "Missing",
+    detail: request.note || "No evidence recorded yet.",
+    tone: request.status === "Requested" || request.status === "Submitted" ? "warn" : "bad",
+    file,
+  };
+}
+
+function findScrEvidenceFile(person, evidence = {}, label = "", hrFiles = []) {
+  const files = (hrFiles || []).filter((file) => file.staffRecordId === person.id && file.status !== "archived");
+  if (!files.length) return null;
+  if (evidence.fileId) {
+    const file = files.find((item) => item.id === evidence.fileId);
+    if (file) return file;
+  }
+  if (evidence.storagePath) {
+    const file = files.find((item) => item.storagePath === evidence.storagePath);
+    if (file) return file;
+  }
+  const tokens = [
+    evidence.reference,
+    evidence.certificateTitle,
+    evidence.provider,
+    label,
+  ].filter(Boolean).map((item) => String(item).toLowerCase());
+  return files.find((file) => {
+    const haystack = `${file.title || ""} ${file.category || ""} ${file.notes || ""}`.toLowerCase();
+    return tokens.some((token) => token && (haystack.includes(token) || token.includes(file.title?.toLowerCase?.() || "__no_title__")));
+  }) || null;
 }
 
 function buildScrRenewalItems(staff) {
@@ -7147,7 +7325,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     onTargetHandled?.();
   }, [targetStaffId, onTargetHandled]);
   return (
-    <section className="staff-register">
+    <section className="staff-register" id="scr-staff-register">
       <div className="staff-register-head">
         <div>
           <p className="eyebrow">Live staff register</p>
@@ -7932,6 +8110,7 @@ function staffHrFileBucket(file) {
   const category = `${file.category || ""} ${file.sensitivity || ""} ${file.title || ""}`.toLowerCase();
   if (category.includes("payslip") || category.includes("payroll")) return "Payslips";
   if (category.includes("contract")) return "Contracts";
+  if (category.includes("training") || category.includes("certificate") || category.includes("qualification") || category.includes("safeguarding") || category.includes("first aid") || category.includes("allergy")) return "Training";
   if (category.includes("letter") || category.includes("communication")) return "Letters";
   if (category.includes("disciplinary") || category.includes("dbs") || category.includes("right to work") || category.includes("restricted")) return "Restricted";
   return "Other";
@@ -8172,7 +8351,7 @@ function staffPayrollOperationalSummary(data = {}, person = {}) {
 }
 
 function buildStaffHrFileTabs(files) {
-  const baseTabs = ["All", "Contracts", "Payslips", "Letters", "Restricted", "Other"];
+  const baseTabs = ["All", "Contracts", "Training", "Payslips", "Letters", "Restricted", "Other"];
   const counts = files.reduce((acc, file) => {
     const bucket = staffHrFileBucket(file);
     acc.All += 1;
