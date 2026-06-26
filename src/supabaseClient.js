@@ -379,6 +379,7 @@ function mapStaffRecords(records) {
       safeguardingExpiry: scr?.safeguarding?.expiryDate || scr?.safeguarding?.expiry_date || "Not recorded",
       allergyAwarenessExpiry: scr?.admin_review?.allergy?.expiryDate || scr?.admin_review?.allergy?.expiry_date || "Not recorded",
       firstAidExpiry: scr?.first_aid?.expiryDate || scr?.first_aid?.expiry_date || "Not required",
+      eyfsLevel: scr?.recruitment_checks?.eyfsLevel || scr?.recruitment_checks?.eyfs_level || scr?.admin_review?.qualifications?.eyfsLevel || "",
       scrChecklist: mapScrChecklist(scr),
       payRate: Number(record.pay_rate || 0),
       annualSalary: Number(record.annual_salary || 0),
