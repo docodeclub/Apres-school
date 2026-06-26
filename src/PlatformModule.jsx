@@ -3364,7 +3364,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
       return { person, gaps };
     })
     .filter((item) => item.gaps.length)
-    .slice(0, 6);
+    .sort((a, b) => a.person.name.localeCompare(b.person.name));
   const inspectionMonday = new Date("2026-06-29T09:00:00+01:00");
   const daysUntilInspection = Math.max(0, Math.ceil((inspectionMonday.getTime() - Date.now()) / 86400000));
   const scrFocusItems = [
