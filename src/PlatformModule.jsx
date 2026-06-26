@@ -3360,6 +3360,21 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     const { exportSchoolAssuranceLetter } = await import("./pdfExports.js");
     exportSchoolAssuranceLetter(selectedAssuranceStaff, assuranceSchool, { includeEvidenceAppendix, evidenceRequests: renewalRequests });
   }
+  async function downloadInspectionEvidencePack() {
+    const { exportInspectionEvidencePack } = await import("./pdfExports.js");
+    exportInspectionEvidencePack({
+      site: selectedOfstedSite,
+      timing: selectedOfstedTiming,
+      staff: selectedSchoolStaff,
+      evidenceRows: selectedStaffEvidenceRows,
+      documents: data.documents || [],
+      documentLinks: selectedSiteDocumentLinks,
+      rota: selectedSiteRota,
+      logs: selectedSiteLogs,
+      scheduledInspection,
+    });
+    addAuditLog("Inspection evidence pack exported", selectedScrSchool);
+  }
   const requirementRows = (selectedScrSchool ? [selectedScrSchool] : schoolOptions).map((school) => {
     const assigned = activeScrStaff.filter((person) => staffAssignedToSchool(person, school));
     const checks = [
@@ -3502,6 +3517,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
           rota={selectedSiteRota}
           logs={selectedSiteLogs}
           onOpenStaff={openEvidenceStaffProfile}
+          onExportPdf={downloadInspectionEvidencePack}
         />
       )}
       <section className="scr-focus-strip" aria-label="SCR action summary">
@@ -4304,7 +4320,7 @@ function OfstedSiteLogs({ site, logs, onAdd, onUpdate }) {
   );
 }
 
-function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, documents, documentLinks, rota, logs, onOpenStaff }) {
+function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, documents, documentLinks, rota, logs, onOpenStaff, onExportPdf }) {
   const managers = staff.filter((person) => String(person.role || "").toLowerCase().includes("manager"));
   const firstAiders = staff.filter((person) => staffMeetsRequirement(person, "firstAid"));
   const eyfsLeads = staff.filter((person) => staffMeetsRequirement(person, "eyfs"));
@@ -4355,6 +4371,7 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
         </div>
         <div className="khs-inspection-pack-actions">
           <Badge value={blockerRows.length ? `${blockerRows.length} staff to check` : "No SCR blockers"} />
+          <button className="button book" type="button" onClick={onExportPdf}><Download size={16} /> Export PDF</button>
           {site?.providerUrl && <a className="button light" href={site.providerUrl} target="_blank" rel="noreferrer">Open Ofsted page</a>}
         </div>
       </div>

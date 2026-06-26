@@ -51,6 +51,25 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function inDate(value) {
+  if (!value) return false;
+  const lower = String(value).toLowerCase();
+  if (lower.includes("no expiry") || lower.includes("not required")) return true;
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return date >= today;
+}
+
+function meetsRequirement(person, requirement) {
+  if (requirement === "firstAid") return inDate(person.firstAidExpiry);
+  if (requirement === "eyfs") return String(person.eyfsLevel || person.role || "").toLowerCase().includes("level 3") || String(person.role || "").toLowerCase().includes("manager");
+  if (requirement === "safeguarding") return inDate(person.safeguardingExpiry);
+  if (requirement === "allergy") return inDate(person.allergyAwarenessExpiry);
+  return false;
+}
+
 class PdfDoc {
   constructor(title) {
     this.title = clean(title);
@@ -426,6 +445,115 @@ export function exportSchoolAssuranceLetter(staff = [], schoolName = "Partner Sc
   doc.line(160, 770, 360, 770, MUTED);
   doc.text(`Date: ${dateStamp()}`, PAGE.margin, 800, 9, MUTED);
   downloadPdf(`apres-school-assurance-${slug(schoolName)}-${fileStamp()}.pdf`, doc);
+}
+
+export function exportInspectionEvidencePack(options = {}) {
+  const site = options.site || {};
+  const timing = options.timing || {};
+  const staff = Array.isArray(options.staff) ? options.staff : [];
+  const evidenceRows = Array.isArray(options.evidenceRows) ? options.evidenceRows : [];
+  const documents = Array.isArray(options.documents) ? options.documents : [];
+  const documentLinks = options.documentLinks || {};
+  const rota = Array.isArray(options.rota) ? options.rota : [];
+  const logs = Array.isArray(options.logs) ? options.logs : [];
+  const scheduledInspection = options.scheduledInspection || {};
+  const blockerRows = evidenceRows
+    .map((row) => ({
+      person: row.person || {},
+      checks: (row.checks || []).filter((check) => check.tone !== "ready" && check.tone !== "neutral"),
+    }))
+    .filter((row) => row.checks.length);
+  const policyNames = [
+    "Safeguarding Policy",
+    "Behaviour Policy",
+    "Health and Safety Policy",
+    "Complaints Policy",
+    "Illness and Accidents",
+    "First Aid Policy",
+    "Code of Conduct",
+    "Staff Handbook",
+  ];
+  const policyRows = policyNames.map((name) => {
+    const document = documents.find((item) => item.name === name) || {};
+    const linked = Boolean(documentLinks[name] || document.url);
+    return [
+      name,
+      linked ? "Linked" : "Add link",
+      document.assigned ? `${document.read || 0}/${document.assigned} read` : document.version || "Current",
+    ];
+  });
+  const coverRows = [
+    ["Named manager", staff.filter((person) => String(person.role || "").toLowerCase().includes("manager"))],
+    ["First aider", staff.filter((person) => meetsRequirement(person, "firstAid"))],
+    ["EYFS Level 3+", staff.filter((person) => meetsRequirement(person, "eyfs"))],
+    ["Safeguarding trained", staff.filter((person) => meetsRequirement(person, "safeguarding"))],
+    ["Allergy aware", staff.filter((person) => meetsRequirement(person, "allergy"))],
+  ];
+  const openLogs = logs.filter((log) => log.status !== "Closed");
+  const sessionSummary = rota.length
+    ? rota.map((item) => `${item.type}: ${item.sessionStart}-${item.sessionEnd}`).join("; ")
+    : "No rota window configured";
+  const doc = new PdfDoc(`${site.school || "King's House School"} Inspection Evidence Pack`).addPage();
+  doc.pageHeader("Inspection Evidence Pack", `Site: ${site.school || "King's House School"}`);
+  doc.text(`${site.school || "King's House School"} Inspection Pack`, PAGE.margin, 112, 20, BLUE);
+  let y = doc.wrap(
+    `Site-specific pack for the scheduled inspection. ${scheduledInspection.label || timing.summary || "Check Ofsted timing."}`,
+    PAGE.margin,
+    138,
+    500,
+    9.5,
+    MUTED,
+  );
+  const kpiY = y + 14;
+  doc.kpi("URN", site.urn || "Not linked", PAGE.margin, kpiY, 116);
+  doc.kpi("Assigned staff", String(staff.length), 171, kpiY, 116);
+  doc.kpi("SCR blockers", String(blockerRows.length), 300, kpiY, 116);
+  doc.kpi("Open logs", String(openLogs.length), 429, kpiY, 124);
+
+  y = kpiY + 88;
+  doc.sectionTitle("Required Cover", PAGE.margin, y);
+  y = doc.table(
+    ["Requirement", "Named evidence"],
+    coverRows.map(([label, people]) => [label, people.length ? people.map((person) => person.name).join(", ") : "Gap to resolve"]),
+    PAGE.margin,
+    y + 14,
+    [150, 360],
+    { rowHeight: 22 },
+  );
+
+  y += 20;
+  doc.sectionTitle("SCR Blockers to Open First", PAGE.margin, y);
+  const blockerTableRows = blockerRows.length
+    ? blockerRows.slice(0, 6).map((row) => [row.person.name || "Staff member", row.checks.map((check) => `${check.label}: ${check.status}`).join("; ")])
+    : [["None flagged", "No SCR blockers are currently flagged for this site."]];
+  y = doc.table(
+    ["Staff member", "Evidence checks"],
+    blockerTableRows,
+    PAGE.margin,
+    y + 14,
+    [140, 370],
+    { rowHeight: 24 },
+  );
+
+  y += 20;
+  doc.sectionTitle("Site Operation and Documents", PAGE.margin, y);
+  y = doc.wrap(`Session context: ${sessionSummary}. Documents below should be openable from the live Documents library if requested.`, PAGE.margin, y + 18, 500, 8.5, MUTED, 11);
+  const startY = y + 8;
+  policyRows.forEach((row, index) => {
+    const column = index % 2;
+    const itemY = startY + Math.floor(index / 2) * 34;
+    const x = column === 0 ? PAGE.margin : 310;
+    doc.rect(x, itemY, 238, 26, row[1] === "Linked" ? [0.95, 0.99, 0.96] : [1, 0.98, 0.94], LINE);
+    doc.text(row[0], x + 8, itemY + 11, 7.5, BLUE);
+    doc.text(`${row[1]} - ${row[2]}`, x + 8, itemY + 22, 7.1, MUTED);
+  });
+
+  doc.line(PAGE.margin, 782, PAGE.width - PAGE.margin, 782, LINE);
+  doc.text("Prepared by:", PAGE.margin, 802, 9, INK);
+  doc.line(100, 802, 260, 802, MUTED);
+  doc.text(`Generated: ${dateStamp()}`, 365, 802, 8, MUTED);
+  doc.text("Confirm live records match the current site before sharing with Ofsted or school leadership.", PAGE.margin, 820, 7.5, MUTED);
+  downloadPdf(`apres-inspection-pack-${slug(site.school || "kings-house-school")}-${fileStamp()}.pdf`, doc);
 }
 
 export function exportPayrollSummary(rows = [], period = "", run = {}, options = {}) {
