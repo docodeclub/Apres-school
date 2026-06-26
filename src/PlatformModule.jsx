@@ -251,6 +251,11 @@ function staffAssignedToSchool(person, school) {
   return staffSchoolNames(person).includes(canonicalSchoolName(school));
 }
 
+function ofstedSiteForSchool(school) {
+  const canonical = canonicalSchoolName(school);
+  return ofstedSites.find((site) => canonicalSchoolName(site.school) === canonical) || null;
+}
+
 function isFormerStaffRecord(person = {}) {
   return Boolean(person.formerRecord || person.archivedAt || person.leftAt || person.status === "Former staff");
 }
@@ -3113,6 +3118,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
   const renewalItems = buildScrRenewalItems(selectedSchoolStaff);
   const evidenceWorkflowItems = buildEvidenceWorkflowItems(selectedSchoolStaff, renewalItems, renewalRequests);
   const submittedEvidence = buildSubmittedEvidenceReviews(selectedSchoolStaff, renewalRequests);
+  const [ofstedLogs] = useState(() => readJson(ofstedLogsStorageKey, []));
   useEffect(() => {
     if (!data.scrRenewalRequests || !Object.keys(data.scrRenewalRequests).length) return;
     setRenewalRequests((current) => ({ ...current, ...data.scrRenewalRequests }));
@@ -3336,6 +3342,30 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
   const selectedAssuranceCompletion = selectedAssuranceStaff.length
     ? Math.round((selectedAssuranceComplete / selectedAssuranceStaff.length) * 100)
     : 100;
+  const selectedOfstedSite = ofstedSiteForSchool(selectedScrSchool);
+  const selectedOfstedTiming = selectedOfstedSite ? calculateOfstedInspectionWindow(selectedOfstedSite) : null;
+  const selectedSiteRota = rotaSites.filter((site) => canonicalSchoolName(site.site) === canonicalSchoolName(selectedScrSchool));
+  const selectedSiteLogs = selectedOfstedSite ? ofstedLogs.filter((log) => log.siteId === selectedOfstedSite.id) : [];
+  const inspectionRows = selectedOfstedSite
+    ? buildOfstedReadinessRows(selectedOfstedSite, selectedSchoolStaff, data.documents || [], selectedOfstedTiming, selectedSiteRota, selectedSiteLogs)
+    : [];
+  const inspectionReadyCount = inspectionRows.filter((row) => row.status === "Ready").length;
+  const inspectionAttentionCount = inspectionRows.length - inspectionReadyCount;
+  const inspectionReadinessScore = inspectionRows.length ? Math.round((inspectionReadyCount / inspectionRows.length) * 100) : 0;
+  const staffEvidenceGaps = selectedSchoolStaff
+    .map((person) => {
+      const gaps = [
+        !hasValidDate(person.dbsRenewal) && "DBS",
+        !hasValidDate(person.safeguardingExpiry) && "Safeguarding",
+        !hasValidDate(person.allergyAwarenessExpiry) && "Allergy awareness",
+        !person.scrChecklist?.approvedAt && person.compliance !== "Compliant" && "Admin review",
+      ].filter(Boolean);
+      return { person, gaps };
+    })
+    .filter((item) => item.gaps.length)
+    .slice(0, 6);
+  const inspectionMonday = new Date("2026-06-29T09:00:00+01:00");
+  const daysUntilInspection = Math.max(0, Math.ceil((inspectionMonday.getTime() - Date.now()) / 86400000));
   const scrFocusItems = [
     [reviewStaff, "Staff to review", reviewStaff ? "Check missing or incomplete SCR records for this site." : "This site is currently marked compliant."],
     [renewalItems.length, "Renewal prompts", renewalItems.length ? "Expiry or review dates need follow-up." : "No renewals due in the next 60 days."],
@@ -3396,6 +3426,17 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
           })}
         </div>
       </section>
+      <SCRInspectionLaunchPanel
+        site={selectedOfstedSite}
+        timing={selectedOfstedTiming}
+        school={selectedScrSchool}
+        staff={selectedSchoolStaff}
+        rows={inspectionRows}
+        score={inspectionReadinessScore}
+        attentionCount={inspectionAttentionCount}
+        staffEvidenceGaps={staffEvidenceGaps}
+        daysUntilInspection={daysUntilInspection}
+      />
       <section className="scr-focus-strip" aria-label="SCR action summary">
         {scrFocusItems.map(([count, title, text]) => (
           <article className={count ? "needs-action" : "clear"} key={title}>
@@ -4120,6 +4161,110 @@ function OfstedSiteLogs({ site, logs, onAdd, onUpdate }) {
         </table>
       </TableWrap>
       {!logs.length && <EmptyList title="No site logs yet" text="Record entries as they happen, or add a nil return to show a checked period with nothing to report." />}
+    </section>
+  );
+}
+
+function SCRInspectionLaunchPanel({ site, timing, school, staff, rows, score, attentionCount, staffEvidenceGaps, daysUntilInspection }) {
+  const urgentRows = rows.filter((row) => row.status !== "Ready");
+  const firstAiders = staff.filter((person) => staffMeetsRequirement(person, "firstAid"));
+  const eyfsLeads = staff.filter((person) => staffMeetsRequirement(person, "eyfs"));
+  const safeguardingStaff = staff.filter((person) => staffMeetsRequirement(person, "safeguarding"));
+  const allergyStaff = staff.filter((person) => staffMeetsRequirement(person, "allergy"));
+  return (
+    <section className="scr-inspection-launch" aria-label={`${school} SCR launch readiness`}>
+      <div className="scr-inspection-launch-head">
+        <div>
+          <p className="eyebrow">Monday inspection readiness</p>
+          <h3>{school}</h3>
+          <p>
+            A site-specific launch check for the SCR, assigned staff, evidence gaps and assurance output.
+            Use this before opening the full register below.
+          </p>
+        </div>
+        <div className="scr-inspection-score">
+          <strong>{score}%</strong>
+          <span>{attentionCount ? `${attentionCount} item${attentionCount === 1 ? "" : "s"} to fix` : "ready"}</span>
+        </div>
+      </div>
+      <div className="scr-inspection-metrics">
+        <Metric icon={<ShieldCheck />} label="Assigned staff" value={staff.length} tone={staff.length ? "blue" : "amber"} />
+        <Metric icon={<Bell />} label="Inspection" value={daysUntilInspection ? `${daysUntilInspection} days` : "Today"} tone="amber" />
+        <Metric icon={<FileText />} label="URN" value={site?.urn || "Not linked"} tone={site ? "green" : "amber"} />
+        <Metric icon={<CheckCircle2 />} label="Window" value={timing?.status || "Check site"} tone={attentionCount ? "amber" : "green"} />
+      </div>
+      <div className="scr-inspection-grid">
+        <article className="scr-inspection-card">
+          <div className="scr-inspection-card-head">
+            <div>
+              <span>Required cover</span>
+              <h4>People who prove the site is covered</h4>
+            </div>
+            <Badge value={firstAiders.length && eyfsLeads.length && safeguardingStaff.length && allergyStaff.length ? "Covered" : "Gaps"} />
+          </div>
+          <div className="inspection-cover-list">
+            {[
+              ["First aider", firstAiders],
+              ["EYFS Level 3+", eyfsLeads],
+              ["Safeguarding", safeguardingStaff],
+              ["Allergy awareness", allergyStaff],
+            ].map(([label, people]) => (
+              <div key={label}>
+                <strong>{label}</strong>
+                <span>{people.length ? people.map((person) => person.name).join(", ") : "Gap to resolve"}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+        <article className="scr-inspection-card">
+          <div className="scr-inspection-card-head">
+            <div>
+              <span>Evidence actions</span>
+              <h4>Named staff gaps to clear first</h4>
+            </div>
+            <Badge value={staffEvidenceGaps.length ? "Action needed" : "Clear"} />
+          </div>
+          <div className="inspection-gap-list">
+            {staffEvidenceGaps.length ? staffEvidenceGaps.map(({ person, gaps }) => (
+              <div key={person.id}>
+                <strong>{person.name}</strong>
+                <span>{gaps.join(", ")}</span>
+              </div>
+            )) : <p className="empty-inline">No named staff evidence gaps found for this site.</p>}
+          </div>
+        </article>
+        <article className="scr-inspection-card">
+          <div className="scr-inspection-card-head">
+            <div>
+              <span>Site pack</span>
+              <h4>What still needs checking</h4>
+            </div>
+            <Badge value={urgentRows.length ? `${urgentRows.length} gaps` : "Ready"} />
+          </div>
+          <div className="inspection-gap-list">
+            {urgentRows.length ? urgentRows.map((row) => (
+              <div key={row.area}>
+                <strong>{row.area}</strong>
+                <span>{row.nextAction}</span>
+              </div>
+            )) : <p className="empty-inline">Site readiness checks are currently clear.</p>}
+          </div>
+        </article>
+      </div>
+      {site ? (
+        <div className="scr-inspection-registration">
+          <span>{site.name}</span>
+          <strong>URN {site.urn}</strong>
+          <span>Registered {formatShortDate(site.registrationDate)}</span>
+          <span>{site.lastInspectionDate ? `Last inspected ${formatShortDate(site.lastInspectionDate)}` : "Not yet inspected"}</span>
+          {timing?.dueBy && <span>Expected due by {formatShortDate(timing.dueBy)}</span>}
+        </div>
+      ) : (
+        <div className="scr-inspection-registration warning">
+          <strong>No Ofsted registration record is linked to {school}.</strong>
+          <span>Check the Ofsted page before generating assurance evidence.</span>
+        </div>
+      )}
     </section>
   );
 }
