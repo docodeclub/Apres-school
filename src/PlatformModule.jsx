@@ -7671,7 +7671,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     : person.payRate
       ? `${formatCurrency(person.payRate)}/hr`
       : "Pay basis missing";
-  const profileTabs = ["Overview", "Compliance", "HR Files", "Pay", "Sites", "Notes"];
+  const profileTabs = ["Overview", "SCR Evidence", "HR Files", "Pay", "Sites", "Notes"];
   function scrollToProfileSection(section) {
     if (typeof document === "undefined") return;
     document.getElementById(`staff-profile-${section}-${person.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -7703,7 +7703,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
       title: checkStatus,
       detail: pendingEvidenceRequests.length ? `${pendingEvidenceRequests.length} evidence request${pendingEvidenceRequests.length === 1 ? "" : "s"} active` : nextAction,
       status: actionItems.length ? "Action needed" : "Ready",
-      actionLabel: "Evidence requests",
+      actionLabel: "SCR evidence",
       action: () => scrollToProfileSection("evidence"),
     },
     {
@@ -7793,6 +7793,37 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   });
   const profileEvidenceBlockers = evidenceChecklistRows.filter((row) => row.tone !== "ready");
   const visibleEvidenceChecklistRows = showProfileEvidenceBlockersOnly ? profileEvidenceBlockers : evidenceChecklistRows;
+  const evidenceGroups = [
+    {
+      title: "Required for inspection",
+      text: "Core safer recruitment checks Ofsted are most likely to ask for first.",
+      keys: ["dbs", "barredList", "rightToWork", "identity"],
+    },
+    {
+      title: "Training",
+      text: "Training and qualification records that support the rota and site requirements.",
+      keys: ["safeguarding", "allergy", "firstAid", "eyfsLevel"],
+    },
+    {
+      title: "Recruitment",
+      text: "Recruitment evidence and annual declarations retained against the SCR.",
+      keys: ["references", "declarations"],
+    },
+  ].map((group) => ({
+    ...group,
+    rows: group.keys
+      .map((key) => visibleEvidenceChecklistRows.find((row) => row.key === key))
+      .filter(Boolean),
+  })).filter((group) => group.rows.length);
+  const adminReviewRow = {
+    key: "adminReview",
+    label: "Admin review",
+    status: person.scrChecklist?.approvedAt ? "Approved" : "Awaiting review",
+    tone: person.scrChecklist?.approvedAt ? "ready" : "pending",
+    detail: person.scrChecklist?.approvedAt ? `Approved ${formatShortDate(person.scrChecklist.approvedAt.slice(0, 10))}` : "Final admin sign-off has not been recorded.",
+    nextStep: person.scrChecklist?.approvedAt ? "Keep checked" : "Review profile",
+    canMarkChecked: false,
+  };
 
   useEffect(() => {
     setPhotoUrl(person.photoUrl || person.profilePhotoUrl || "");
@@ -8137,7 +8168,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
             </section>
           </div>
         )}
-        {profileTab === "Compliance" && (
+        {profileTab === "SCR Evidence" && (
           <div className="staff-profile-tab-stack">
             <section className={`scr-next-action-card ${actionItems.length ? "needs-action" : "ready"}`}>
               <div>
@@ -8187,8 +8218,8 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
             <section className="staff-profile-scr-checklist">
               <div className="scr-profile-checklist-head">
                 <div>
-                  <p className="eyebrow">Inspection evidence actions</p>
-                  <h4>Check, request or open evidence from one place.</h4>
+                  <p className="eyebrow">Staff SCR evidence</p>
+                  <h4>Grouped evidence for inspection review.</h4>
                 </div>
                 <div className="scr-profile-checklist-tools">
                   <Badge value={`${profileEvidenceBlockers.length} blocker${profileEvidenceBlockers.length === 1 ? "" : "s"}`} />
@@ -8197,41 +8228,74 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
                   </button>
                 </div>
               </div>
-              <p className="panel-note">Use this during SCR review so every evidence item has a clear next action and file route.</p>
-              <div className="scr-profile-action-list">
-                {visibleEvidenceChecklistRows.map((row) => (
-                  <article className={`scr-profile-action-row ${row.tone}`} key={row.key}>
-                    <div>
-                      <span>{row.label}</span>
-                      <strong>{row.status}</strong>
-                      <small>{row.detail}</small>
-                      {row.request?.history?.length ? <EvidenceHistoryTimeline events={row.request.history} /> : null}
-                    </div>
-                    <div className="scr-profile-action-meta">
-                      <em>{row.nextStep}</em>
-                      <div>
-                        {row.file?.fileUrl ? (
-                          <a className="button light" href={row.file.fileUrl} target="_blank" rel="noreferrer">View file</a>
-                        ) : row.file?.storagePath ? (
-                          <span className="scr-private-file">Private file</span>
-                        ) : null}
-                        <button className="button light" type="button" onClick={() => requestEvidenceFromRow(row)} disabled={!onRequestEvidence || isArchivedProfile}>
-                          Request update
-                        </button>
-                        <button className="button dark" type="button" onClick={() => markEvidenceRowChecked(row)} disabled={!onMarkEvidenceChecked || !row.canMarkChecked || isArchivedProfile}>
-                          Mark checked
-                        </button>
+              <p className="panel-note">Open only the group you need. Each evidence row still has the file route, request update and mark checked workflow.</p>
+              <div className="scr-profile-group-list">
+                {evidenceGroups.map((group, index) => {
+                  const blockers = group.rows.filter((row) => row.tone !== "ready").length;
+                  return (
+                    <details className="scr-profile-evidence-group" key={group.title} open={index === 0 || blockers > 0}>
+                      <summary>
+                        <div>
+                          <strong>{group.title}</strong>
+                          <span>{group.text}</span>
+                        </div>
+                        <Badge value={blockers ? `${blockers} action${blockers === 1 ? "" : "s"}` : "Ready"} />
+                      </summary>
+                      <div className="scr-profile-action-list">
+                        {group.rows.map((row) => (
+                          <article className={`scr-profile-action-row ${row.tone}`} key={row.key}>
+                            <div>
+                              <span>{row.label}</span>
+                              <strong>{row.status}</strong>
+                              <small>{row.detail}</small>
+                              {row.request?.history?.length ? <EvidenceHistoryTimeline events={row.request.history} /> : null}
+                            </div>
+                            <div className="scr-profile-action-meta">
+                              <em>{row.nextStep}</em>
+                              <div>
+                                {row.file?.fileUrl ? (
+                                  <a className="button light" href={row.file.fileUrl} target="_blank" rel="noreferrer">View file</a>
+                                ) : row.file?.storagePath ? (
+                                  <span className="scr-private-file">Private file</span>
+                                ) : null}
+                                <button className="button light" type="button" onClick={() => requestEvidenceFromRow(row)} disabled={!onRequestEvidence || isArchivedProfile}>
+                                  Request update
+                                </button>
+                                <button className="button dark" type="button" onClick={() => markEvidenceRowChecked(row)} disabled={!onMarkEvidenceChecked || !row.canMarkChecked || isArchivedProfile}>
+                                  Mark checked
+                                </button>
+                              </div>
+                            </div>
+                          </article>
+                        ))}
                       </div>
-                    </div>
-                  </article>
-                ))}
+                    </details>
+                  );
+                })}
                 {evidenceChecklistRows.length > 0 && !visibleEvidenceChecklistRows.length && (
                   <EmptyList title="No blockers on this profile" text="All evidence items are either checked, recorded or not required." />
                 )}
-              </div>
-              <div className="scr-profile-admin-review">
-                <span>Admin review</span>
-                <strong>{person.scrChecklist?.approvedAt ? `Approved ${formatShortDate(person.scrChecklist.approvedAt.slice(0, 10))}` : "Awaiting review"}</strong>
+                <details className="scr-profile-evidence-group admin-review" open>
+                  <summary>
+                    <div>
+                      <strong>Admin notes</strong>
+                      <span>Final SCR review status and internal notes.</span>
+                    </div>
+                    <Badge value={adminReviewRow.status} />
+                  </summary>
+                  <div className="scr-profile-action-list">
+                    <article className={`scr-profile-action-row ${adminReviewRow.tone}`}>
+                      <div>
+                        <span>{adminReviewRow.label}</span>
+                        <strong>{adminReviewRow.status}</strong>
+                        <small>{adminReviewRow.detail}</small>
+                      </div>
+                      <div className="scr-profile-action-meta">
+                        <em>{adminReviewRow.nextStep}</em>
+                      </div>
+                    </article>
+                  </div>
+                </details>
               </div>
             </section>
           </div>
