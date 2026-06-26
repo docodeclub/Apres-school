@@ -286,6 +286,21 @@ function checklistStatus(staff, key, requests = {}) {
   return "Pending";
 }
 
+function dbsNumberFor(staff = {}) {
+  return staff.dbsNumber
+    || staff.scrChecklist?.dbsNumber
+    || staff.scrChecklist?.evidence?.dbs?.number
+    || staff.scrChecklist?.evidence?.dbs?.dbsNumber
+    || staff.scrChecklist?.evidence?.dbs?.dbs_number
+    || "";
+}
+
+function dbsStatusFor(staff = {}, requests = {}) {
+  const number = dbsNumberFor(staff);
+  const status = checklistStatus(staff, "dbs", requests);
+  return number ? `${number} / ${status}` : `Not recorded / ${status}`;
+}
+
 const assuranceEvidenceChecks = [
   ["Right to work", "rightToWork"],
   ["Identity", "identity"],
@@ -343,7 +358,7 @@ export function exportStaffScrSummary(person, allStaff = [], options = {}) {
       ["SCR status", staff.compliance, "Current admin review"],
       ["Right to work", checklistStatus(staff, "rightToWork", evidenceRequests), evidenceSummary(staff, "rightToWork", evidenceRequests)],
       ["Identity / address", checklistStatus(staff, "identity", evidenceRequests), evidenceSummary(staff, "identity", evidenceRequests)],
-      ["Enhanced DBS", checklistStatus(staff, "dbs", evidenceRequests), evidenceSummary(staff, "dbs", evidenceRequests)],
+      ["Enhanced DBS", dbsStatusFor(staff, evidenceRequests), evidenceSummary(staff, "dbs", evidenceRequests)],
       ["Barred list", checklistStatus(staff, "barredList", evidenceRequests), evidenceSummary(staff, "barredList", evidenceRequests)],
       ["Safeguarding training", checklistStatus(staff, "safeguarding", evidenceRequests), evidenceSummary(staff, "safeguarding", evidenceRequests)],
       ["Allergy awareness", checklistStatus(staff, "allergy", evidenceRequests), evidenceSummary(staff, "allergy", evidenceRequests)],
@@ -379,11 +394,11 @@ export function exportSchoolAssuranceLetter(staff = [], schoolName = "Partner Sc
   y = kpiY + 94;
   doc.sectionTitle("Staff Covered by this Assurance", PAGE.margin, y);
   y = doc.table(
-    ["Staff member", "Role", "DBS", "Safeguarding", "First aid", "SCR status"],
+    ["Staff member", "Role", "DBS number / status", "Safeguarding", "First aid", "SCR status"],
     staff.map((person) => [
       person.name,
       person.role,
-      checklistStatus(person, "dbs", evidenceRequests),
+      dbsStatusFor(person, evidenceRequests),
       checklistStatus(person, "safeguarding", evidenceRequests),
       checklistStatus(person, "firstAid", evidenceRequests),
       person.compliance,
@@ -456,6 +471,7 @@ export function exportInspectionEvidencePack(options = {}) {
   const documentLinks = options.documentLinks || {};
   const rota = Array.isArray(options.rota) ? options.rota : [];
   const logs = Array.isArray(options.logs) ? options.logs : [];
+  const evidenceRequests = options.evidenceRequests || {};
   const scheduledInspection = options.scheduledInspection || {};
   const blockerRows = evidenceRows
     .map((row) => ({
@@ -536,6 +552,25 @@ export function exportInspectionEvidencePack(options = {}) {
   );
 
   y += 20;
+  doc.sectionTitle("Assigned Staff DBS Checks", PAGE.margin, y);
+  y = doc.table(
+    ["Staff member", "Role", "DBS number", "DBS status", "Renewal / review"],
+    staff.length ? staff.map((person) => [
+      person.name || "Staff member",
+      person.role || "Staff",
+      dbsNumberFor(person) || "Not recorded",
+      checklistStatus(person, "dbs", evidenceRequests),
+      person.dbsRenewal || "Not recorded",
+    ]) : [["No staff assigned", "", "", "", ""]],
+    PAGE.margin,
+    y + 14,
+    [110, 90, 110, 95, 105],
+    { rowHeight: 24 },
+  );
+
+  doc.addPage();
+  doc.pageHeader("Inspection Evidence Pack", `Site: ${site.school || "King's House School"}`);
+  y = 116;
   doc.sectionTitle("Site Operation and Documents", PAGE.margin, y);
   y = doc.wrap(`Session context: ${sessionSummary}. Documents below should be openable from the live Documents library if requested.`, PAGE.margin, y + 18, 500, 8.5, MUTED, 11);
   const startY = y + 8;

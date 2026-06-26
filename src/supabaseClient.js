@@ -375,6 +375,7 @@ function mapStaffRecords(records) {
       role: record.job_role || profile?.role || "Staff",
       location: record.primary_site || record.employment_type || "Assigned sites",
       compliance: scr?.admin_review?.status || "Review needed",
+      dbsNumber: scr?.dbs?.number || scr?.dbs?.dbsNumber || scr?.dbs?.dbs_number || "",
       dbsRenewal: scr?.dbs?.renewalDate || scr?.dbs?.renewal_date || "Not recorded",
       safeguardingExpiry: scr?.safeguarding?.expiryDate || scr?.safeguarding?.expiry_date || "Not recorded",
       allergyAwarenessExpiry: scr?.admin_review?.allergy?.expiryDate || scr?.admin_review?.allergy?.expiry_date || "Not recorded",
@@ -414,6 +415,7 @@ function mapScrChecklist(scr = {}) {
   const dbsEvidence = evidence.dbs || {};
   const safeguardingEvidence = evidence.safeguarding || {};
   const firstAidEvidence = evidence.firstAid || {};
+  const dbsNumber = dbsEvidence.number || dbsEvidence.dbsNumber || dbsEvidence.dbs_number || scr?.dbs?.number || scr?.dbs?.dbsNumber || scr?.dbs?.dbs_number || "";
   return {
     ...checklist,
     evidence,
@@ -422,7 +424,8 @@ function mapScrChecklist(scr = {}) {
     approvedBy: checklist.approvedBy || adminReview.approvedBy || adminReview.approved_by || "",
     rightToWork: checklist.rightToWork ?? Boolean(Object.keys(scr?.right_to_work || {}).length),
     identity: checklist.identity ?? Boolean(Object.keys(scr?.identity_checks || {}).length),
-    dbs: checklist.dbs ?? Boolean(dbsEvidence.reference || scr?.dbs?.number || scr?.dbs?.status),
+    dbs: checklist.dbs ?? Boolean(dbsEvidence.reference || dbsNumber || scr?.dbs?.status),
+    dbsNumber,
     barredList: checklist.barredList ?? Boolean(scr?.dbs?.barredList || scr?.dbs?.barred_list),
     safeguarding: checklist.safeguarding ?? Boolean(safeguardingEvidence.reference || scr?.safeguarding?.completedAt || scr?.safeguarding?.completed_at),
     allergy: checklist.allergy ?? Boolean(evidence.allergy?.reference || adminReview.allergy?.completedAt || adminReview.allergy?.completed_at),

@@ -12002,6 +12002,23 @@ tr.selected-row {
   box-shadow: inset 4px 0 0 #8b95aa;
 }
 
+.scr-staff-table.scoped {
+  min-width: 760px;
+}
+
+.scr-staff-table.scoped th,
+.scr-staff-table.scoped td {
+  padding: 15px 12px;
+}
+
+.scr-staff-table.scoped td:first-child strong {
+  color: var(--royal-dark);
+}
+
+.scr-row-action {
+  white-space: nowrap;
+}
+
 .cover-move-panel,
 .email-preview {
   display: grid;

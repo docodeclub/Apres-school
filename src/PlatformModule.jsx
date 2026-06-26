@@ -3079,6 +3079,14 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
   const staffWithAssignments = data.staff.map((person) => ({
     ...person,
     siteAssignments: assignmentState[person.id] || staffAssignments(person),
+    dbsNumber: checklistState[person.id]?.dbsNumber
+      || checklistState[person.id]?.evidence?.dbs?.number
+      || checklistState[person.id]?.evidence?.dbs?.dbsNumber
+      || person.dbsNumber
+      || person.scrChecklist?.dbsNumber
+      || person.scrChecklist?.evidence?.dbs?.number
+      || person.scrChecklist?.evidence?.dbs?.dbsNumber
+      || "",
     scrChecklist: {
       ...(person.scrChecklist || {}),
       ...(checklistState[person.id] || {}),
@@ -3371,6 +3379,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
       documentLinks: selectedSiteDocumentLinks,
       rota: selectedSiteRota,
       logs: selectedSiteLogs,
+      evidenceRequests: renewalRequests,
       scheduledInspection,
     });
     addAuditLog("Inspection evidence pack exported", selectedScrSchool);
@@ -7386,10 +7395,11 @@ function Settings() {
 
 function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetHandled, evidenceRequests = {}, onRequestEvidence, onClearEvidenceRequest, onMarkEvidenceChecked, access, onUpdateStaffPay, onOpenHrFiles, onOpenPay, siteScopeLabel = "" }) {
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Action needed");
+  const [statusFilter, setStatusFilter] = useState(() => siteScopeLabel ? "All" : "Action needed");
   const [siteFilter, setSiteFilter] = useState("All");
   const [priorityView, setPriorityView] = useState(false);
   const [selectedId, setSelectedId] = useState(data.staff[0]?.id || "");
+  const isSiteScoped = Boolean(siteScopeLabel);
   const hierarchy = readHierarchyState();
   const staffUsers = data.staff.map((person, index) => ({
     id: person.profileId || person.id,
@@ -7500,20 +7510,26 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   const actionCount = activeStaff.filter((person) => checkStatus(person) !== "Compliant").length;
   const compliantCount = activeStaff.length - actionCount;
   const selectedPerson = data.staff.find((person) => person.id === selectedId) || rows[0] || data.staff[0];
-  const filtersActive = query || statusFilter !== "Action needed" || (!siteScopeLabel && siteFilter !== "All") || priorityView;
+  const defaultStatusFilter = isSiteScoped ? "All" : "Action needed";
+  const filtersActive = query || statusFilter !== defaultStatusFilter || (!siteScopeLabel && siteFilter !== "All") || priorityView;
   useEffect(() => {
     if (!targetStaffId) return;
     setSelectedId(targetStaffId);
     onTargetHandled?.();
   }, [targetStaffId, onTargetHandled]);
+  useEffect(() => {
+    setStatusFilter(siteScopeLabel ? "All" : "Action needed");
+    setSiteFilter("All");
+    setPriorityView(false);
+  }, [siteScopeLabel]);
   return (
     <section className="staff-register" id="scr-staff-register">
       <div className="staff-register-head">
         <div>
           <p className="eyebrow">Live staff register</p>
-          <h3>Find the next compliance action quickly.</h3>
+          <h3>{isSiteScoped ? `${siteScopeLabel} staff SCR` : "Find the next compliance action quickly."}</h3>
           <p>{rows.length} of {data.staff.length} {siteScopeLabel ? `${siteScopeLabel} ` : ""}records shown · {actionCount} active staff need review · {compliantCount} currently compliant.</p>
-          {!!priorityRows.length && (
+          {!!priorityRows.length && !isSiteScoped && (
             <div className="scr-priority-strip" aria-label="SCR priority view">
               {priorityRows.map(({ person, priority }) => (
                 <button key={person.id} type="button" onClick={() => { setSelectedId(person.id); setPriorityView(true); }}>
@@ -7551,7 +7567,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
               {siteOptions.map((site) => <option key={site}>{site}</option>)}
             </select></label>
           )}
-          <button className="button light" type="button" disabled={!filtersActive} onClick={() => { setQuery(""); setStatusFilter("Action needed"); setSiteFilter("All"); setPriorityView(false); }}>Clear</button>
+          <button className="button light" type="button" disabled={!filtersActive} onClick={() => { setQuery(""); setStatusFilter(defaultStatusFilter); setSiteFilter("All"); setPriorityView(false); }}>Clear</button>
         </div>
       </div>
       {selectedPerson && (
@@ -7573,8 +7589,8 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
         />
       )}
       <TableWrap>
-        <table>
-          <thead><tr><th>Staff</th><th>Role</th><th>Assigned sites</th><th>Reports to</th><th>SCR</th><th>Priority</th><th>Next action</th>{!compact && <><th>DBS renewal</th><th>Safeguarding</th><th>First aid</th></>}<th>Profile</th></tr></thead>
+        <table className={isSiteScoped ? "scr-staff-table scoped" : "scr-staff-table"}>
+          <thead><tr><th>Staff</th><th>Role</th>{!isSiteScoped && <><th>Assigned sites</th><th>Reports to</th></>}<th>SCR</th><th>Priority</th><th>Next action</th>{!compact && !isSiteScoped && <><th>DBS renewal</th><th>Safeguarding</th><th>First aid</th></>}<th>Action</th></tr></thead>
           <tbody>
             {rows.map((person) => {
               const priority = priorityProfile(person);
@@ -7593,13 +7609,12 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
               >
                 <td><strong>{person.name}</strong>{person.email && <><br /><small>{person.email}</small></>}</td>
                 <td>{person.role}</td>
-                <td>{staffPrimaryLocation(person)}</td>
-                <td>{managerName(person)}</td>
+                {!isSiteScoped && <><td>{staffPrimaryLocation(person)}</td><td>{managerName(person)}</td></>}
                 <td><Badge value={checkStatus(person)} /></td>
                 <td><span className={`scr-priority-pill ${priority.tier.toLowerCase()}`}>{priority.tier}</span><br /><small>{priority.reason}</small></td>
                 <td><strong>{actionText(person)}</strong></td>
-                {!compact && <><td>{person.dbsRenewal}</td><td>{person.safeguardingExpiry}</td><td>{person.firstAidExpiry}</td></>}
-                <td><button className="button subtle" type="button" onClick={(event) => { event.stopPropagation(); setSelectedId(person.id); }}>{isFormerStaffRecord(person) ? "View retained" : selectedPerson?.id === person.id ? "Open" : "View"}</button></td>
+                {!compact && !isSiteScoped && <><td>{person.dbsRenewal}</td><td>{person.safeguardingExpiry}</td><td>{person.firstAidExpiry}</td></>}
+                <td><button className="button subtle scr-row-action" type="button" onClick={(event) => { event.stopPropagation(); setSelectedId(person.id); }}>{isFormerStaffRecord(person) ? "Retained record" : selectedPerson?.id === person.id ? "Evidence open" : "View evidence"}</button></td>
               </tr>
               );
             })}
