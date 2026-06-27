@@ -7314,6 +7314,39 @@ label {
   font-weight: 750;
 }
 
+.dbs-evidence-history {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 10px 0 0;
+}
+
+.dbs-evidence-history div {
+  border: 1px solid rgba(72, 104, 220, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  min-width: 0;
+  padding: 8px 9px;
+}
+
+.dbs-evidence-history dt {
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+  margin: 0 0 3px;
+  text-transform: uppercase;
+}
+
+.dbs-evidence-history dd {
+  color: var(--royal-dark);
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.25;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .requirement-checks {
   display: grid;
   gap: 8px;
@@ -12997,6 +13030,7 @@ th {
   .scr-profile-request-form,
   .scr-profile-request-list article,
   .scr-profile-action-row,
+  .dbs-evidence-history,
   .staff-profile-grid,
   .staff-profile-account-card,
   .staff-profile-stat-strip,

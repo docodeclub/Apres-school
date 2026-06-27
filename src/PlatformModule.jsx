@@ -5362,6 +5362,34 @@ function EvidenceHistoryTimeline({ events }) {
   );
 }
 
+function buildDbsEvidenceHistory(person, evidence = {}) {
+  const number = evidence.certificateNo || evidence.dbsNumber || evidence.number || person.dbsNumber || person.scrChecklist?.dbsNumber;
+  const source = evidence.reference || evidence.source || evidence.fileName || "SCR record";
+  const rows = [
+    ["DBS number", number],
+    ["Application ref", evidence.applicationRef],
+    ["Issue date", evidence.issueDate ? formatShortDate(evidence.issueDate) : null],
+    ["Checked by", evidence.verifiedBy],
+    ["Checked on", evidence.verifiedAt ? formatShortDate(evidence.verifiedAt.slice(0, 10)) : null],
+    ["Source", evidence.sourceSurname ? `${source} · ${evidence.sourceSurname}` : source],
+  ].filter(([, value]) => value);
+  return rows.length ? { rows } : null;
+}
+
+function DbsEvidenceHistory({ history }) {
+  if (!history?.rows?.length) return null;
+  return (
+    <dl className="dbs-evidence-history" aria-label="DBS evidence history">
+      {history.rows.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function StaffEvidenceRequestList({ items, onSubmit }) {
   if (!items.length) {
     return <EmptyList title="No evidence requested" text="Any SCR evidence requests from your manager or admin team will appear here." />;
@@ -8021,7 +8049,8 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
             : status === "Not required"
               ? "No action"
               : "Keep checked";
-    return { key, label, status, tone, detail, file, request, canMarkChecked, nextStep };
+    const dbsHistory = key === "dbs" ? buildDbsEvidenceHistory(person, evidence) : null;
+    return { key, label, status, tone, detail, file, request, canMarkChecked, nextStep, dbsHistory };
   });
   const profileEvidenceBlockers = evidenceChecklistRows.filter((row) => row.tone !== "ready");
   const visibleEvidenceChecklistRows = showProfileEvidenceBlockersOnly ? profileEvidenceBlockers : evidenceChecklistRows;
@@ -8480,6 +8509,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
                               <span>{row.label}</span>
                               <strong>{row.status}</strong>
                               <small>{row.detail}</small>
+                              {row.dbsHistory && <DbsEvidenceHistory history={row.dbsHistory} />}
                               {row.request?.history?.length ? <EvidenceHistoryTimeline events={row.request.history} /> : null}
                             </div>
                             <div className="scr-profile-action-meta">
