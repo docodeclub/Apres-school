@@ -394,6 +394,20 @@ function staffDbsNumber(person = {}) {
     || "";
 }
 
+function staffScrCheckedDate(person = {}) {
+  const checklist = person.scrChecklist || {};
+  const evidence = checklist.evidence || {};
+  return checklist.approvedAt
+    || checklist.checkedAt
+    || checklist.updatedAt
+    || evidence.adminReview?.checkedAt
+    || evidence.dbs?.checkedAt
+    || evidence.dbs?.verifiedAt
+    || evidence.safeguarding?.checkedAt
+    || evidence.safeguarding?.verifiedAt
+    || "";
+}
+
 function scoreDisclosureStaff(row, person) {
   const haystack = staffDisclosureText(person);
   let score = 0;
@@ -4575,6 +4589,7 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
   const openLogs = logs.filter((log) => log.status !== "Closed");
   const dbsReadyCount = staff.filter((person) => staffDbsNumber(person)).length;
   const linkedPolicyCount = policyRows.filter((row) => row.link).length;
+  const currentStaffRows = [...staff].sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
   const mondayChecklist = [
     {
       label: "DBS numbers present",
@@ -4645,6 +4660,32 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
           <small>{openLogs.length ? "Review before inspection." : "No open site logs recorded."}</small>
         </div>
       </div>
+      <article className="khs-current-staff" aria-label="Current King's House SCR staff">
+        <div className="khs-pack-card-head">
+          <div>
+            <span>Current staff only</span>
+            <h4>King&apos;s House SCR roster for inspection</h4>
+          </div>
+          <Badge value={`${currentStaffRows.length} active staff`} />
+        </div>
+        <TableWrap>
+          <table>
+            <thead><tr><th>Staff member</th><th>Role</th><th>DBS number</th><th>SCR checked</th><th>Status</th></tr></thead>
+            <tbody>
+              {currentStaffRows.map((person) => (
+                <tr key={person.id}>
+                  <td><strong>{person.name}</strong>{person.email && <><br /><small>{person.email}</small></>}</td>
+                  <td>{person.role || "Staff"}</td>
+                  <td>{staffDbsNumber(person) || "Not recorded"}</td>
+                  <td>{staffScrCheckedDate(person) ? formatShortDate(staffScrCheckedDate(person)) : "Not recorded"}</td>
+                  <td><Badge value={person.compliance || (person.scrChecklist?.approvedAt ? "Compliant" : "Review needed")} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
+        {!currentStaffRows.length && <p className="empty-inline">No active King&apos;s House staff are currently assigned.</p>}
+      </article>
       <article className="khs-named-evidence" aria-label="King's House named evidence shortcuts">
         <div className="khs-pack-card-head">
           <div>

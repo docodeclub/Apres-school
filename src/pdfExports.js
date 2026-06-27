@@ -300,6 +300,20 @@ function dbsNumberFor(staff = {}) {
     || "";
 }
 
+function scrCheckedDateFor(staff = {}) {
+  const checklist = staff.scrChecklist || {};
+  const evidence = checklist.evidence || {};
+  return checklist.approvedAt
+    || checklist.checkedAt
+    || checklist.updatedAt
+    || evidence.adminReview?.checkedAt
+    || evidence.dbs?.checkedAt
+    || evidence.dbs?.verifiedAt
+    || evidence.safeguarding?.checkedAt
+    || evidence.safeguarding?.verifiedAt
+    || "";
+}
+
 function dbsStatusFor(staff = {}, requests = {}) {
   const number = dbsNumberFor(staff);
   const status = checklistStatus(staff, "dbs", requests);
@@ -610,6 +624,14 @@ export function exportInspectionEvidencePack(options = {}) {
     checklistStatus(person, "dbs", evidenceRequests),
     dbsInspectionAction(person, evidenceRequests),
   ]) : [["No staff assigned", "", "", "", ""]];
+  const currentStaffRows = staff.length ? [...staff]
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
+    .map((person) => [
+      person.name || "Staff member",
+      person.role || "Staff",
+      dbsNumberFor(person) || "Not recorded",
+      scrCheckedDateFor(person) ? formatDate(scrCheckedDateFor(person)) : "Not recorded",
+    ]) : [["No current staff assigned", "", "", ""]];
   const openLogRows = openLogs.length ? openLogs.slice(0, 8).map((log) => [
     log.type || log.title || "Log",
     log.status || "Open",
@@ -640,6 +662,17 @@ export function exportInspectionEvidencePack(options = {}) {
   doc.kpi("Open logs", String(openLogs.length), 429, kpiY, 124);
 
   y = kpiY + 86;
+  doc.sectionTitle("Current Staff Only", PAGE.margin, y);
+  y = doc.table(
+    ["Staff member", "Role", "DBS number", "SCR checked"],
+    currentStaffRows,
+    PAGE.margin,
+    y + 14,
+    [134, 104, 132, 140],
+    { rowHeight: 24 },
+  );
+
+  y += 14;
   doc.sectionTitle("Named Evidence To Open First", PAGE.margin, y);
   y = doc.table(
     ["Area", "Staff", "Evidence", "Date / expiry"],
@@ -647,10 +680,10 @@ export function exportInspectionEvidencePack(options = {}) {
     PAGE.margin,
     y + 14,
     [92, 92, 202, 124],
-    { rowHeight: 32 },
+    { rowHeight: 29 },
   );
 
-  y += 18;
+  y += 14;
   doc.sectionTitle("Required Cover", PAGE.margin, y);
   y = doc.table(
     ["Requirement", "Status", "Named evidence"],
@@ -658,10 +691,10 @@ export function exportInspectionEvidencePack(options = {}) {
     PAGE.margin,
     y + 14,
     [125, 70, 315],
-    { rowHeight: 28 },
+    { rowHeight: 24 },
   );
 
-  y += 20;
+  y += 14;
   doc.sectionTitle(blockerRows.length > 2 ? "Immediate SCR Actions - First Two" : "Immediate SCR Actions", PAGE.margin, y);
   y = doc.table(
     ["Staff member", "Evidence checks", "DBS", "Detail"],

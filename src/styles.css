@@ -5725,7 +5725,8 @@ label {
 
 .khs-pack-summary div,
 .khs-pack-card,
-.khs-policy-pack {
+.khs-policy-pack,
+.khs-current-staff {
   min-width: 0;
   border: 1px solid rgba(72, 104, 220, 0.14);
   border-radius: 20px;
@@ -5771,6 +5772,37 @@ label {
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.92);
   padding: 16px;
+}
+
+.khs-current-staff {
+  display: grid;
+  gap: 14px;
+  background: #ffffff;
+}
+
+.khs-current-staff table {
+  min-width: 720px;
+}
+
+.khs-current-staff th {
+  background: #f5f7ff;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.khs-current-staff td {
+  vertical-align: middle;
+}
+
+.khs-current-staff td strong {
+  color: var(--royal-dark);
+}
+
+.khs-current-staff small {
+  color: var(--muted);
+  font-weight: 760;
 }
 
 .khs-named-evidence {
