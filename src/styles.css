@@ -4892,38 +4892,38 @@ label {
 
 .scr-school-switcher {
   position: sticky;
-  top: 76px;
-  z-index: 12;
+  top: 8px;
+  z-index: 24;
   display: grid;
   grid-template-columns: minmax(260px, 0.72fr) minmax(260px, 0.42fr);
   gap: 12px 16px;
   align-items: stretch;
   border: 1px solid rgba(72, 104, 220, 0.18);
-  border-radius: 20px;
+  border-radius: 18px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 249, 255, 0.94) 62%, rgba(74, 105, 218, 0.12) 100%);
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 249, 255, 0.96) 62%, rgba(74, 105, 218, 0.14) 100%);
   backdrop-filter: blur(18px);
-  box-shadow: 0 18px 40px rgba(38, 63, 169, 0.11);
-  padding: 14px;
+  box-shadow: 0 18px 42px rgba(38, 63, 169, 0.16);
+  padding: 12px;
 }
 
 .scr-school-switcher-copy {
   display: grid;
   align-content: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
 .scr-school-switcher-copy h3 {
   color: var(--royal-dark);
-  font-size: clamp(1.25rem, 2.4vw, 1.75rem);
-  line-height: 1.06;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  line-height: 1.08;
   margin: 0;
 }
 
 .scr-school-switcher-copy p {
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   font-weight: 760;
   line-height: 1.4;
   margin: 0;
@@ -4933,7 +4933,7 @@ label {
 .scr-school-switcher-control {
   display: grid;
   align-content: center;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
 }
 
@@ -4948,7 +4948,7 @@ label {
 }
 
 .scr-school-switcher-control select {
-  min-height: 46px;
+  min-height: 42px;
   border-radius: 14px;
   border: 1px solid rgba(72, 104, 220, 0.22);
   background: #fff;
@@ -4990,7 +4990,7 @@ label {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
 }
 
 .scr-school-buttons button {
@@ -5002,7 +5002,7 @@ label {
   background: #fff;
   color: var(--royal-dark);
   cursor: pointer;
-  padding: 9px 12px;
+  padding: 8px 11px;
   text-align: left;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }

@@ -3580,18 +3580,6 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
 
   return (
     <div className="stack">
-      <div className="toolbar">
-        <div>
-          <h2>Single Central Register</h2>
-          <p className="panel-note">Inspection mode: choose one site and the SCR only shows staff assigned to that site.</p>
-          {access?.isScoped && <p className="panel-note">Manager view: compliance table is limited to direct reports.</p>}
-        </div>
-        <div>
-          <button className="button light" type="button" onClick={downloadStaffSummary}><Download size={16} /> Staff Summary</button>
-          <button className="button light" type="button" onClick={downloadAssuranceLetter}><FileText size={16} /> Assurance Letter</button>
-          <button className="button dark" type="button"><Upload size={16} /> Request Evidence</button>
-        </div>
-      </div>
       <section className="scr-school-switcher" aria-label="Inspection site selector">
         <div className="scr-school-switcher-copy">
           <p className="eyebrow">Inspection site</p>
@@ -3630,6 +3618,18 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
           })}
         </div>
       </section>
+      <div className="toolbar">
+        <div>
+          <h2>Single Central Register</h2>
+          <p className="panel-note">Inspection mode is active: the evidence below is scoped to {selectedScrSchool || "the selected school"}.</p>
+          {access?.isScoped && <p className="panel-note">Manager view: compliance table is limited to direct reports.</p>}
+        </div>
+        <div>
+          <button className="button light" type="button" onClick={downloadStaffSummary}><Download size={16} /> Staff Summary</button>
+          <button className="button light" type="button" onClick={downloadAssuranceLetter}><FileText size={16} /> Assurance Letter</button>
+          <button className="button dark" type="button"><Upload size={16} /> Request Evidence</button>
+        </div>
+      </div>
       {selectedOfstedSite?.id === "kings-house" ? (
         <KingHouseInspectionEvidencePack
           site={selectedOfstedSite}
