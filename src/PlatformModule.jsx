@@ -206,7 +206,14 @@ function downloadCsv(filename, rows) {
 }
 
 function staffAssignments(person) {
-  if (Array.isArray(person?.siteAssignments) && person.siteAssignments.length) return person.siteAssignments;
+  const activeStatuses = new Set(["", "Active", "Scheduled", "Cover"]);
+  const isActiveAssignment = (assignment = {}) => {
+    const status = assignment.status || "Active";
+    return activeStatuses.has(status) && !assignment.endDate;
+  };
+  if (Array.isArray(person?.siteAssignments) && person.siteAssignments.length) {
+    return person.siteAssignments.filter(isActiveAssignment);
+  }
   if (person?.location) return [{ school: person.location, role: person.role, startDate: "", endDate: "", status: "Active" }];
   return [];
 }
@@ -249,6 +256,11 @@ function staffPrimaryLocation(person) {
 
 function staffAssignedToSchool(person, school) {
   return staffSchoolNames(person).includes(canonicalSchoolName(school));
+}
+
+function staffMatchesSchoolScope(person, school) {
+  if (!school) return true;
+  return staffAssignedToSchool(person, school);
 }
 
 function ofstedSiteForSchool(school) {
@@ -610,15 +622,17 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const localStaff = readOnboardedStaffProfiles();
   const canPreviewRoles = ["Admin", "Superadmin"].includes(role);
   const effectiveRole = canPreviewRoles ? viewRole : role;
+  const isLiveSupabaseData = String(data.source || "").toLowerCase().includes("supabase");
   const mergedStaff = mergeStaffProfiles(data.staff, localStaff).map((person) => {
     const localFormerRecord = formerStaffRecords[person.id] || formerStaffRecords[person.profileId];
+    const siteOverride = !isLiveSupabaseData ? staffSiteOverrides[person.id] : null;
     return {
       ...person,
       ...(staffPayOverrides[person.id] || {}),
-      ...(staffSiteOverrides[person.id]
+      ...(siteOverride
         ? {
-            location: staffSiteOverrides[person.id].location,
-            siteAssignments: [{ school: staffSiteOverrides[person.id].location, role: person.role, startDate: person.startDate || "", endDate: "", status: "Active" }],
+            location: siteOverride.location,
+            siteAssignments: [{ school: siteOverride.location, role: person.role, startDate: person.startDate || "", endDate: "", status: "Active" }],
           }
         : {}),
       formerRecord: person.formerRecord || localFormerRecord || null,
@@ -7970,7 +7984,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     const matchesStatus = priorityView
       ? !isFormerStaffRecord(person) && priorityProfile(person).score > 0
       : statusFilter === "All" || (statusFilter === "Action needed" ? status !== "Compliant" && status !== "Archived" : status === statusFilter);
-    const matchesSite = siteScopeLabel || siteFilter === "All" || staffSchoolNames(person).includes(siteFilter);
+    const matchesSite = siteScopeLabel ? staffMatchesSchoolScope(person, siteScopeLabel) : siteFilter === "All" || staffSchoolNames(person).includes(siteFilter);
     const haystack = [person.name, person.email, person.role, person.location, person.compliance, managerName(person), staffPrimaryLocation(person)].filter(Boolean).join(" ").toLowerCase();
     return matchesStatus && matchesSite && (!search || haystack.includes(search));
   });
