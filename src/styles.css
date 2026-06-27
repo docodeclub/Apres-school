@@ -5220,6 +5220,18 @@ label {
   padding: 5px 7px;
 }
 
+.dbs-disclosure-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 170px;
+}
+
+.dbs-disclosure-actions .button {
+  min-height: 34px;
+  padding: 8px 11px;
+}
+
 .scr-details-panel {
   border: 1px solid rgba(72, 104, 220, 0.14);
   border-radius: 20px;

@@ -3303,6 +3303,42 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
     });
     addAuditLog("SCR checklist updated", `${staffPerson?.name || staffId}: ${Object.keys(patch).join(", ")}${staffPerson?.email ? ` · ${staffPerson.email}` : ""}`);
   }
+  function applyDbsDisclosureNumber(result) {
+    const person = result?.person;
+    const row = result?.row;
+    if (!person?.id || !row?.certificateNo || isFormerStaffRecord(person)) return;
+    const currentProfile = checklistState[person.id] || person.scrChecklist || {};
+    const currentEvidence = currentProfile.evidence || {};
+    const nextChecklist = {
+      ...currentProfile,
+      dbs: true,
+      dbsNumber: row.certificateNo,
+      evidence: {
+        ...currentEvidence,
+        dbs: {
+          ...(currentEvidence.dbs || {}),
+          status: "Approved",
+          number: row.certificateNo,
+          dbsNumber: row.certificateNo,
+          certificateNo: row.certificateNo,
+          applicationRef: row.applicationRef,
+          issueDate: row.issueDate,
+          reference: "Disclosure Results 27 June 2026",
+          verifiedAt: new Date().toISOString(),
+          verifiedBy: access?.currentUser?.name || "Admin",
+          sourceSurname: row.surname,
+        },
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    setChecklistState((current) => {
+      const next = { ...current, [person.id]: nextChecklist };
+      saveScrChecklistState(next);
+      return next;
+    });
+    persistScrChecklistRecord(person.id, nextChecklist, "DBS disclosure number applied");
+    addAuditLog("DBS disclosure number applied", `${person.name}: ${row.certificateNo}`);
+  }
   function approveScrProfile(staffId) {
     const person = scrData.staff.find((item) => item.id === staffId);
     if (isFormerStaffRecord(person)) return;
@@ -3625,7 +3661,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
         rows={selectedStaffEvidenceRows}
         onOpenStaff={openEvidenceStaffProfile}
       />
-      <DBSDisclosureAuditPanel audit={dbsDisclosureAudit} onOpenStaff={openEvidenceStaffProfile} />
+      <DBSDisclosureAuditPanel audit={dbsDisclosureAudit} onOpenStaff={openEvidenceStaffProfile} onApply={applyDbsDisclosureNumber} />
       <StaffTable
         data={{ ...scrData, staff: selectedSchoolStaff }}
         siteScopeLabel={selectedScrSchool}
@@ -3835,7 +3871,7 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
   );
 }
 
-function DBSDisclosureAuditPanel({ audit, onOpenStaff }) {
+function DBSDisclosureAuditPanel({ audit, onOpenStaff, onApply }) {
   const [showNeedsAttentionOnly, setShowNeedsAttentionOnly] = useState(true);
   const visibleResults = showNeedsAttentionOnly
     ? audit.results.filter((result) => result.status !== "updated")
@@ -3879,6 +3915,7 @@ function DBSDisclosureAuditPanel({ audit, onOpenStaff }) {
           <tbody>
             {visibleResults.map((result) => {
               const [label, tone] = statusCopy[result.status] || ["Check", "warn"];
+              const canApply = Boolean(result.person && ["matched-missing-dbs", "different-current-dbs"].includes(result.status));
               const candidateText = result.status === "ambiguous"
                 ? result.candidates.map((candidate) => candidate.person.name).join(", ")
                 : result.person?.name || "No current staff match";
@@ -3893,9 +3930,12 @@ function DBSDisclosureAuditPanel({ audit, onOpenStaff }) {
                   <td>{result.currentDbs ? <code>{result.currentDbs}</code> : "Not recorded"}</td>
                   <td><span className={`badge ${tone === "bad" ? "bad" : tone === "warn" ? "warn" : "good"}`}>{label}</span></td>
                   <td>
-                    {result.person
-                      ? <button className="button subtle" type="button" onClick={() => onOpenStaff(result.person.id)}>Open record</button>
-                      : <span className="panel-note">Manual review</span>}
+                    <div className="dbs-disclosure-actions">
+                      {canApply && <button className="button light" type="button" onClick={() => onApply(result)}>Apply DBS</button>}
+                      {result.person
+                        ? <button className="button subtle" type="button" onClick={() => onOpenStaff(result.person.id)}>Open record</button>
+                        : <span className="panel-note">Manual review</span>}
+                    </div>
                   </td>
                 </tr>
               );
