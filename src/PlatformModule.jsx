@@ -3669,6 +3669,14 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
           })}
         </div>
       </section>
+      {selectedOfstedSite?.id === "kings-house" && (
+        <KingHouseMondayPackShortcut
+          staff={selectedSchoolStaff}
+          evidenceRows={selectedStaffEvidenceRows}
+          onOpenStaff={openEvidenceStaffProfile}
+          onExportPdf={downloadInspectionEvidencePack}
+        />
+      )}
       <div className="toolbar">
         <div>
           <h2>Single Central Register</h2>
@@ -3848,6 +3856,56 @@ function SCRDetailsPanel({ title, summary, children }) {
   );
 }
 
+function KingHouseMondayPackShortcut({ staff = [], evidenceRows = [], onOpenStaff, onExportPdf }) {
+  const currentStaff = [...staff].sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  const blockerRows = evidenceRows
+    .map((row) => ({
+      person: row.person,
+      checks: row.checks.filter((check) => check.tone !== "ready" && check.tone !== "neutral"),
+    }))
+    .filter((row) => row.checks.length);
+  const readyStaff = evidenceRows.filter((row) => row.ready).length;
+  const dbsReady = currentStaff.filter((person) => staffDbsNumber(person)).length;
+  function jumpTo(id) {
+    if (typeof document === "undefined") return;
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  return (
+    <section className="khs-monday-shortcut" aria-label="King's House Monday pack shortcut">
+      <div className="khs-monday-copy">
+        <p className="eyebrow">King&apos;s House Monday Pack</p>
+        <h3>Open the evidence you are most likely to need first.</h3>
+        <p>Site-scoped staff only: current roster, SCR evidence, DBS numbers, checked dates and export tools for Monday&apos;s inspection.</p>
+      </div>
+      <div className="khs-monday-metrics">
+        <span><strong>{currentStaff.length}</strong> staff</span>
+        <span><strong>{readyStaff}/{evidenceRows.length || 0}</strong> ready</span>
+        <span><strong>{dbsReady}/{currentStaff.length || 0}</strong> DBS</span>
+        <span><strong>{blockerRows.length}</strong> blockers</span>
+      </div>
+      <div className="khs-monday-staff">
+        {currentStaff.map((person) => {
+          const row = evidenceRows.find((item) => item.person.id === person.id);
+          const blockers = row?.checks?.filter((check) => check.tone !== "ready" && check.tone !== "neutral").length || 0;
+          return (
+            <button key={person.id} type="button" onClick={() => onOpenStaff?.(person.id)}>
+              <strong>{person.name}</strong>
+              <span>{staffDbsNumber(person) ? `DBS ${staffDbsNumber(person)}` : "DBS not recorded"}</span>
+              <em>{blockers ? `${blockers} to check` : "Ready"}</em>
+            </button>
+          );
+        })}
+      </div>
+      <div className="khs-monday-actions">
+        <button className="button book" type="button" onClick={() => jumpTo("khs-inspection-pack")}><ShieldCheck size={16} /> Open Monday Pack</button>
+        <button className="button light" type="button" onClick={() => jumpTo("scr-site-evidence-board")}><ClipboardCheck size={16} /> Evidence Board</button>
+        <button className="button light" type="button" onClick={() => jumpTo("scr-staff-register")}><Users size={16} /> Staff Profiles</button>
+        <button className="button dark" type="button" onClick={onExportPdf}><Download size={16} /> Export PDF</button>
+      </div>
+    </section>
+  );
+}
+
 function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
   const [showBlockersOnly, setShowBlockersOnly] = useState(false);
   const readyRows = rows.filter((row) => row.ready);
@@ -3864,7 +3922,7 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
     return [...checks].sort((a, b) => evidenceOrder.indexOf(a.key) - evidenceOrder.indexOf(b.key));
   }
   return (
-    <section className="scr-evidence-board" aria-label={`${school} SCR evidence board`}>
+    <section className="scr-evidence-board" id="scr-site-evidence-board" aria-label={`${school} SCR evidence board`}>
       <div className="scr-evidence-board-head">
         <div>
           <p className="eyebrow">Evidence board</p>
@@ -4636,7 +4694,7 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
   const namedEvidence = buildKingHouseNamedEvidence(staff, evidenceRows);
   const questionPrompts = buildKingHouseInspectionPrompts(managers[0], firstAiders, eyfsLeads, safeguardingStaff, allergyStaff);
   return (
-    <section className="khs-inspection-pack" aria-label="King's House inspection evidence pack">
+    <section className="khs-inspection-pack" id="khs-inspection-pack" aria-label="King's House inspection evidence pack">
       <div className="khs-inspection-pack-head">
         <div>
           <p className="eyebrow">Monday evidence pack</p>
