@@ -15,6 +15,7 @@
     "qa:launch": "node scripts/launch-qa.mjs",
     "validate:static": "node scripts/static-check.mjs",
     "check:booking-links": "node scripts/audit-public-booking-links.mjs",
+    "check:dbs-disclosure": "node scripts/audit-dbs-disclosure-results.mjs",
     "check:deploy": "node scripts/deploy-check.mjs",
     "check:deploy:strict": "node scripts/deploy-check.mjs --strict-env"
   },
