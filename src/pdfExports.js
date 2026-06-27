@@ -3,6 +3,7 @@ const BLUE = [0.15, 0.25, 0.66];
 const ROYAL = [0.29, 0.41, 0.85];
 const GREEN = [0.15, 0.66, 0.46];
 const AMBER = [0.95, 0.56, 0.15];
+const RED = [0.74, 0.20, 0.24];
 const INK = [0.09, 0.09, 0.18];
 const MUTED = [0.36, 0.39, 0.46];
 const LINE = [0.86, 0.89, 0.98];
@@ -301,6 +302,21 @@ function dbsStatusFor(staff = {}, requests = {}) {
   return number ? `${number} / ${status}` : `Not recorded / ${status}`;
 }
 
+function namesList(people = []) {
+  return people.length ? people.map((person) => person.name || "Staff member").join(", ") : "Gap to resolve";
+}
+
+function chunkRows(rows = [], size = 14) {
+  const chunks = [];
+  for (let index = 0; index < rows.length; index += size) chunks.push(rows.slice(index, index + size));
+  return chunks.length ? chunks : [[]];
+}
+
+function drawInspectionFooter(doc, note = "Confidential inspection preparation pack. Confirm live records before sharing externally.") {
+  doc.line(PAGE.margin, 802, PAGE.width - PAGE.margin, 802, LINE);
+  doc.text(note, PAGE.margin, 820, 7.5, MUTED);
+}
+
 const assuranceEvidenceChecks = [
   ["Right to work", "rightToWork"],
   ["Identity", "identity"],
@@ -509,67 +525,107 @@ export function exportInspectionEvidencePack(options = {}) {
   const sessionSummary = rota.length
     ? rota.map((item) => `${item.type}: ${item.sessionStart}-${item.sessionEnd}`).join("; ")
     : "No rota window configured";
+  const siteName = site.school || "King's House School";
+  const readinessStatus = blockerRows.length ? `${blockerRows.length} SCR blocker${blockerRows.length === 1 ? "" : "s"} to check` : "No SCR blockers flagged";
+  const readinessBadge = blockerRows.length ? "Action needed" : "Ready";
+  const coverTableRows = coverRows.map(([label, people]) => [
+    label,
+    people.length ? "Covered" : "Gap",
+    namesList(people),
+  ]);
+  const blockerTableRows = blockerRows.length
+    ? blockerRows.slice(0, 8).map((row) => [
+      row.person.name || "Staff member",
+      row.checks.map((check) => `${check.label}: ${check.status}`).join("; "),
+      row.checks[0]?.detail || "Open staff profile for detail",
+    ])
+    : [["None flagged", "No SCR blockers are currently flagged for this site.", ""]];
+  const dbsRows = staff.length ? staff.map((person) => [
+    person.name || "Staff member",
+    person.role || "Staff",
+    dbsNumberFor(person) || "Not recorded",
+    checklistStatus(person, "dbs", evidenceRequests),
+    person.dbsRenewal || "Not recorded",
+  ]) : [["No staff assigned", "", "", "", ""]];
+  const openLogRows = openLogs.length ? openLogs.slice(0, 8).map((log) => [
+    log.type || log.title || "Log",
+    log.status || "Open",
+    log.owner || log.assignedTo || "Unassigned",
+    log.dueDate || log.createdAt || "Date not recorded",
+  ]) : [["None", "No open logs recorded", "", ""]];
   const doc = new PdfDoc(`${site.school || "King's House School"} Inspection Evidence Pack`).addPage();
-  doc.pageHeader("Inspection Evidence Pack", `Site: ${site.school || "King's House School"}`);
-  doc.text(`${site.school || "King's House School"} Inspection Pack`, PAGE.margin, 112, 20, BLUE);
+  doc.pageHeader("Inspection Evidence Pack", `Site: ${siteName}`);
+  doc.rect(PAGE.margin, 104, PAGE.width - PAGE.margin * 2, 96, [0.95, 0.97, 1], LINE);
+  doc.text(`${siteName} Inspection Pack`, PAGE.margin + 18, 132, 21, BLUE);
   let y = doc.wrap(
-    `Site-specific pack for the scheduled inspection. ${scheduledInspection.label || timing.summary || "Check Ofsted timing."}`,
-    PAGE.margin,
-    138,
-    500,
+    scheduledInspection.label || timing.summary || "Site-specific Ofsted inspection preparation pack.",
+    PAGE.margin + 18,
+    156,
+    335,
     9.5,
     MUTED,
+    12,
   );
-  const kpiY = y + 14;
-  doc.kpi("URN", site.urn || "Not linked", PAGE.margin, kpiY, 116);
-  doc.kpi("Assigned staff", String(staff.length), 171, kpiY, 116);
+  doc.badge(readinessBadge, 405, 122, 122, blockerRows.length ? RED : GREEN);
+  doc.text("Inspection focus", 405, 154, 7.5, MUTED);
+  doc.wrap(readinessStatus, 405, 169, 128, 8.2, INK, 10);
+  doc.text(site.urn ? `URN ${site.urn}` : "URN not linked", 405, 193, 9, MUTED);
+  const kpiY = 224;
+  doc.kpi("Assigned staff", String(staff.length), PAGE.margin, kpiY, 116);
+  doc.kpi("Complete DBS", String(staff.filter((person) => dbsNumberFor(person)).length), 171, kpiY, 116);
   doc.kpi("SCR blockers", String(blockerRows.length), 300, kpiY, 116);
   doc.kpi("Open logs", String(openLogs.length), 429, kpiY, 124);
 
-  y = kpiY + 88;
+  y = kpiY + 92;
   doc.sectionTitle("Required Cover", PAGE.margin, y);
   y = doc.table(
-    ["Requirement", "Named evidence"],
-    coverRows.map(([label, people]) => [label, people.length ? people.map((person) => person.name).join(", ") : "Gap to resolve"]),
+    ["Requirement", "Status", "Named evidence"],
+    coverTableRows,
     PAGE.margin,
     y + 14,
-    [150, 360],
-    { rowHeight: 22 },
+    [125, 70, 315],
+    { rowHeight: 28 },
   );
 
   y += 20;
-  doc.sectionTitle("SCR Blockers to Open First", PAGE.margin, y);
-  const blockerTableRows = blockerRows.length
-    ? blockerRows.slice(0, 6).map((row) => [row.person.name || "Staff member", row.checks.map((check) => `${check.label}: ${check.status}`).join("; ")])
-    : [["None flagged", "No SCR blockers are currently flagged for this site."]];
+  doc.sectionTitle("Immediate SCR Actions", PAGE.margin, y);
   y = doc.table(
-    ["Staff member", "Evidence checks"],
+    ["Staff member", "Evidence checks", "Detail"],
     blockerTableRows,
     PAGE.margin,
     y + 14,
-    [140, 370],
-    { rowHeight: 24 },
+    [110, 240, 160],
+    { rowHeight: 34 },
   );
 
-  y += 20;
-  doc.sectionTitle("Assigned Staff DBS Checks", PAGE.margin, y);
-  y = doc.table(
-    ["Staff member", "Role", "DBS number", "DBS status", "Renewal / review"],
-    staff.length ? staff.map((person) => [
-      person.name || "Staff member",
-      person.role || "Staff",
-      dbsNumberFor(person) || "Not recorded",
-      checklistStatus(person, "dbs", evidenceRequests),
-      person.dbsRenewal || "Not recorded",
-    ]) : [["No staff assigned", "", "", "", ""]],
-    PAGE.margin,
-    y + 14,
-    [110, 90, 110, 95, 105],
-    { rowHeight: 24 },
-  );
+  drawInspectionFooter(doc, "Page 1: inspection overview, required cover and immediate SCR actions.");
 
   doc.addPage();
-  doc.pageHeader("Inspection Evidence Pack", `Site: ${site.school || "King's House School"}`);
+  doc.pageHeader("Inspection Evidence Pack", `Site: ${siteName}`);
+  y = 112;
+  doc.sectionTitle("Assigned Staff DBS Checks", PAGE.margin, y);
+  y = doc.wrap("This page is designed for the common inspection request: show the staff assigned to this site and their DBS references/status.", PAGE.margin, y + 18, 500, 9, MUTED, 12);
+  chunkRows(dbsRows, 15).forEach((chunk, index) => {
+    if (index > 0) {
+      drawInspectionFooter(doc, "Assigned staff DBS checks continued.");
+      doc.addPage();
+      doc.pageHeader("Inspection Evidence Pack", `Site: ${siteName}`);
+      y = 112;
+      doc.sectionTitle("Assigned Staff DBS Checks Continued", PAGE.margin, y);
+    }
+    y = doc.table(
+      ["Staff member", "Role", "DBS number", "DBS status", "Renewal / review"],
+      chunk,
+      PAGE.margin,
+      y + 14,
+      [108, 92, 116, 92, 102],
+      { rowHeight: 30 },
+    );
+  });
+  drawInspectionFooter(doc, "Page 2: DBS numbers, DBS status and renewal/review dates for assigned staff.");
+
+  doc.addPage();
+  doc.pageHeader("Inspection Evidence Pack", `Site: ${siteName}`);
   y = 116;
   doc.sectionTitle("Site Operation and Documents", PAGE.margin, y);
   y = doc.wrap(`Session context: ${sessionSummary}. Documents below should be openable from the live Documents library if requested.`, PAGE.margin, y + 18, 500, 8.5, MUTED, 11);
@@ -583,11 +639,24 @@ export function exportInspectionEvidencePack(options = {}) {
     doc.text(`${row[1]} - ${row[2]}`, x + 8, itemY + 22, 7.1, MUTED);
   });
 
-  doc.line(PAGE.margin, 782, PAGE.width - PAGE.margin, 782, LINE);
-  doc.text("Prepared by:", PAGE.margin, 802, 9, INK);
-  doc.line(100, 802, 260, 802, MUTED);
-  doc.text(`Generated: ${dateStamp()}`, 365, 802, 8, MUTED);
-  doc.text("Confirm live records match the current site before sharing with Ofsted or school leadership.", PAGE.margin, 820, 7.5, MUTED);
+  y = startY + Math.ceil(policyRows.length / 2) * 34 + 28;
+  doc.sectionTitle("Open Operational Logs", PAGE.margin, y);
+  y = doc.table(
+    ["Area", "Status", "Owner", "Date"],
+    openLogRows,
+    PAGE.margin,
+    y + 14,
+    [155, 100, 135, 120],
+    { rowHeight: 30 },
+  );
+
+  doc.text("Prepared by:", PAGE.margin, 760, 9, INK);
+  doc.line(100, 760, 260, 760, MUTED);
+  doc.text("Name / position:", PAGE.margin, 784, 9, INK);
+  doc.line(120, 784, 280, 784, MUTED);
+  doc.text(`Generated: ${dateStamp()}`, 365, 784, 8, MUTED);
+  drawInspectionFooter(doc, "Page 3: documents, operational logs and sign-off.");
+  if (options.returnBytes) return doc.output();
   downloadPdf(`apres-inspection-pack-${slug(site.school || "kings-house-school")}-${fileStamp()}.pdf`, doc);
 }
 
