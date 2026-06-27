@@ -638,6 +638,52 @@ export function exportInspectionEvidencePack(options = {}) {
     log.owner || log.assignedTo || "Unassigned",
     log.dueDate || log.createdAt || "Date not recorded",
   ]) : [["None", "No open logs recorded", "", ""]];
+  const managerCover = coverRows.find(([label]) => label === "Named manager")?.[1] || [];
+  const firstAidCover = coverRows.find(([label]) => label === "First aider")?.[1] || [];
+  const eyfsCover = coverRows.find(([label]) => label === "EYFS Level 3+")?.[1] || [];
+  const safeguardingCover = coverRows.find(([label]) => label === "Safeguarding trained")?.[1] || [];
+  const quickRouteRows = [
+    [
+      "Who is working at this site?",
+      "Page 1 Current Staff Only",
+      `${staff.length} current ${siteName} staff. This pack is site-scoped.`,
+    ],
+    [
+      "Show DBS numbers and status",
+      "Page 2 Assigned Staff DBS Checks",
+      "DBS numbers, status and review action are listed by assigned staff member.",
+    ],
+    [
+      "Who is the named manager?",
+      "Page 1 Required Cover",
+      namesList(managerCover),
+    ],
+    [
+      "Who covers first aid and EYFS Level 3?",
+      "Page 1 Required Cover",
+      `First aid: ${namesList(firstAidCover)}. EYFS Level 3+: ${namesList(eyfsCover)}.`,
+    ],
+    [
+      "Show safeguarding evidence",
+      "Page 1 Named Evidence / live SCR profile",
+      namesList(safeguardingCover),
+    ],
+    [
+      "Show policies and procedures",
+      "Page 3 Site Operation and Documents",
+      "Safeguarding, behaviour, health and safety, complaints, accidents and conduct links.",
+    ],
+    [
+      "Show live follow-up actions",
+      "Live SCR evidence rows / Page 1 Immediate SCR Actions",
+      blockerRows.length ? `${blockerRows.length} item${blockerRows.length === 1 ? "" : "s"} currently flagged.` : "No SCR blockers flagged.",
+    ],
+    [
+      "Show operational logs",
+      "Page 3 Open Operational Logs",
+      openLogs.length ? `${openLogs.length} open log${openLogs.length === 1 ? "" : "s"} recorded.` : "No open logs recorded.",
+    ],
+  ];
   const doc = new PdfDoc(`${site.school || "King's House School"} Inspection Evidence Pack`).addPage();
   doc.pageHeader("Inspection Evidence Pack", `Site: ${siteName}`);
   doc.rect(PAGE.margin, 104, PAGE.width - PAGE.margin * 2, 96, [0.95, 0.97, 1], LINE);
@@ -763,6 +809,42 @@ export function exportInspectionEvidencePack(options = {}) {
   doc.line(120, 784, 280, 784, MUTED);
   doc.text(`Generated: ${dateStamp()}`, 365, 784, 8, MUTED);
   drawInspectionFooter(doc, "Page 3: documents, operational logs and sign-off.");
+
+  doc.addPage();
+  doc.pageHeader("Inspection Evidence Pack", `Site: ${siteName}`);
+  y = 116;
+  doc.sectionTitle("Inspection Quick Routes", PAGE.margin, y);
+  y = doc.wrap(
+    "Use this page during the inspection conversation. It keeps the pack focused on this site and points you to the exact page or live SCR area to open first.",
+    PAGE.margin,
+    y + 18,
+    500,
+    8.8,
+    MUTED,
+    12,
+  );
+  y = doc.table(
+    ["Inspector asks", "Open first", "What to say / check"],
+    quickRouteRows,
+    PAGE.margin,
+    y + 16,
+    [150, 145, 215],
+    { rowHeight: 38 },
+  );
+
+  y += 22;
+  doc.sectionTitle("Site Scope Reminder", PAGE.margin, y);
+  doc.rect(PAGE.margin, y + 18, PAGE.width - PAGE.margin * 2, 72, [0.95, 0.97, 1], LINE);
+  doc.wrap(
+    `This export is for ${siteName}. It should only include staff assigned to this site and the documents, logs and evidence relevant to this inspection. If a person is not assigned to ${siteName}, they should not appear in the current staff roster or DBS table.`,
+    PAGE.margin + 16,
+    y + 42,
+    500,
+    8.6,
+    INK,
+    12,
+  );
+  drawInspectionFooter(doc, "Page 4: inspection questions, quick routes and site-scope reminder.");
   if (options.returnBytes) return doc.output();
   downloadPdf(`apres-inspection-pack-${slug(site.school || "kings-house-school")}-${fileStamp()}.pdf`, doc);
 }
