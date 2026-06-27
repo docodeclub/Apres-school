@@ -302,6 +302,26 @@ function dbsStatusFor(staff = {}, requests = {}) {
   return number ? `${number} / ${status}` : `Not recorded / ${status}`;
 }
 
+function dbsInspectionPriority(staff = {}, requests = {}) {
+  const status = checklistStatus(staff, "dbs", requests);
+  const number = dbsNumberFor(staff);
+  if (!number) return 4;
+  if (/rejected|sent back|expired|pending/i.test(status)) return 3;
+  if (/requested|submitted|review|expiring/i.test(status)) return 2;
+  return 1;
+}
+
+function dbsInspectionAction(staff = {}, requests = {}) {
+  const status = checklistStatus(staff, "dbs", requests);
+  if (!dbsNumberFor(staff)) return "Record DBS number before sharing assurance.";
+  if (/rejected|sent back/i.test(status)) return "Review evidence sent back to staff.";
+  if (/submitted/i.test(status)) return "Review submitted evidence.";
+  if (/requested/i.test(status)) return "Awaiting staff evidence.";
+  if (/expired/i.test(status)) return "Renew DBS evidence.";
+  if (/expiring/i.test(status)) return "Monitor renewal date.";
+  return staff.dbsRenewal ? `Review ${staff.dbsRenewal}` : "No immediate DBS action.";
+}
+
 function namesList(people = []) {
   return people.length ? people.map((person) => person.name || "Staff member").join(", ") : "Gap to resolve";
 }
@@ -537,15 +557,19 @@ export function exportInspectionEvidencePack(options = {}) {
     ? blockerRows.slice(0, 8).map((row) => [
       row.person.name || "Staff member",
       row.checks.map((check) => `${check.label}: ${check.status}`).join("; "),
+      dbsStatusFor(row.person, evidenceRequests),
       row.checks[0]?.detail || "Open staff profile for detail",
     ])
-    : [["None flagged", "No SCR blockers are currently flagged for this site.", ""]];
-  const dbsRows = staff.length ? staff.map((person) => [
+    : [["None flagged", "No SCR blockers are currently flagged for this site.", "", ""]];
+  const dbsRows = staff.length ? [...staff].sort((a, b) => (
+    dbsInspectionPriority(b, evidenceRequests) - dbsInspectionPriority(a, evidenceRequests)
+    || String(a.name || "").localeCompare(String(b.name || ""))
+  )).map((person) => [
     person.name || "Staff member",
     person.role || "Staff",
     dbsNumberFor(person) || "Not recorded",
     checklistStatus(person, "dbs", evidenceRequests),
-    person.dbsRenewal || "Not recorded",
+    dbsInspectionAction(person, evidenceRequests),
   ]) : [["No staff assigned", "", "", "", ""]];
   const openLogRows = openLogs.length ? openLogs.slice(0, 8).map((log) => [
     log.type || log.title || "Log",
@@ -590,11 +614,11 @@ export function exportInspectionEvidencePack(options = {}) {
   y += 20;
   doc.sectionTitle("Immediate SCR Actions", PAGE.margin, y);
   y = doc.table(
-    ["Staff member", "Evidence checks", "Detail"],
+    ["Staff member", "Evidence checks", "DBS", "Detail"],
     blockerTableRows,
     PAGE.margin,
     y + 14,
-    [110, 240, 160],
+    [104, 196, 110, 100],
     { rowHeight: 34 },
   );
 
@@ -604,7 +628,7 @@ export function exportInspectionEvidencePack(options = {}) {
   doc.pageHeader("Inspection Evidence Pack", `Site: ${siteName}`);
   y = 112;
   doc.sectionTitle("Assigned Staff DBS Checks", PAGE.margin, y);
-  y = doc.wrap("This page is designed for the common inspection request: show the staff assigned to this site and their DBS references/status.", PAGE.margin, y + 18, 500, 9, MUTED, 12);
+  y = doc.wrap("This page is designed for the common inspection request: show the staff assigned to this site and their DBS references/status. Missing or review-needed DBS records are listed first.", PAGE.margin, y + 18, 500, 9, MUTED, 12);
   chunkRows(dbsRows, 15).forEach((chunk, index) => {
     if (index > 0) {
       drawInspectionFooter(doc, "Assigned staff DBS checks continued.");
@@ -614,11 +638,11 @@ export function exportInspectionEvidencePack(options = {}) {
       doc.sectionTitle("Assigned Staff DBS Checks Continued", PAGE.margin, y);
     }
     y = doc.table(
-      ["Staff member", "Role", "DBS number", "DBS status", "Renewal / review"],
+      ["Staff member", "Role", "DBS number", "DBS status", "Action / review"],
       chunk,
       PAGE.margin,
       y + 14,
-      [108, 92, 116, 92, 102],
+      [108, 82, 116, 92, 112],
       { rowHeight: 30 },
     );
   });
