@@ -4555,6 +4555,40 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
     ["Allergy aware", allergyStaff],
   ];
   const openLogs = logs.filter((log) => log.status !== "Closed");
+  const dbsReadyCount = staff.filter((person) => staffDbsNumber(person)).length;
+  const linkedPolicyCount = policyRows.filter((row) => row.link).length;
+  const mondayChecklist = [
+    {
+      label: "DBS numbers present",
+      ready: staff.length > 0 && dbsReadyCount === staff.length,
+      detail: `${dbsReadyCount}/${staff.length || 0} assigned staff`,
+    },
+    {
+      label: "Named manager",
+      ready: managers.length > 0,
+      detail: managers.length ? managers.map((person) => person.name).join(", ") : "Add manager evidence",
+    },
+    {
+      label: "First aider",
+      ready: firstAiders.length > 0,
+      detail: firstAiders.length ? firstAiders.map((person) => person.name).join(", ") : "Check rota cover",
+    },
+    {
+      label: "EYFS Level 3",
+      ready: eyfsLeads.length > 0,
+      detail: eyfsLeads.length ? eyfsLeads.map((person) => person.name).join(", ") : "Assign qualified lead",
+    },
+    {
+      label: "Safeguarding/allergy",
+      ready: safeguardingStaff.length > 0 && allergyStaff.length > 0,
+      detail: `${safeguardingStaff.length} safeguarding · ${allergyStaff.length} allergy`,
+    },
+    {
+      label: "Policy links",
+      ready: linkedPolicyCount >= Math.max(policyRows.length - 2, 1),
+      detail: `${linkedPolicyCount}/${policyRows.length} core policies linked`,
+    },
+  ];
   return (
     <section className="khs-inspection-pack" aria-label="King's House inspection evidence pack">
       <div className="khs-inspection-pack-head">
@@ -4591,6 +4625,24 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
           <small>{openLogs.length ? "Review before inspection." : "No open site logs recorded."}</small>
         </div>
       </div>
+      <article className="khs-ready-checklist">
+        <div className="khs-pack-card-head">
+          <div>
+            <span>Before Monday</span>
+            <h4>Inspection-ready physical checks</h4>
+          </div>
+          <Badge value={mondayChecklist.every((item) => item.ready) ? "Ready" : `${mondayChecklist.filter((item) => !item.ready).length} to check`} />
+        </div>
+        <div className="khs-ready-grid">
+          {mondayChecklist.map((item) => (
+            <div className={item.ready ? "ready" : "check"} key={item.label}>
+              <span>{item.ready ? "Ready" : "Check"}</span>
+              <strong>{item.label}</strong>
+              <small>{item.detail}</small>
+            </div>
+          ))}
+        </div>
+      </article>
       <div className="khs-pack-grid">
         <article className="khs-pack-card">
           <div className="khs-pack-card-head">

@@ -5754,13 +5754,73 @@ label {
 }
 
 .khs-pack-summary small,
-.khs-policy-grid small {
+.khs-policy-grid small,
+.khs-ready-grid small {
   color: var(--muted);
   display: block;
   font-size: 0.8rem;
   font-weight: 760;
   line-height: 1.35;
   margin-top: 6px;
+}
+
+.khs-ready-checklist {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(72, 104, 220, 0.14);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 16px;
+}
+
+.khs-ready-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.khs-ready-grid div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid rgba(72, 104, 220, 0.12);
+  border-radius: 14px;
+  background: #f8faff;
+  padding: 10px;
+}
+
+.khs-ready-grid div.ready {
+  background: linear-gradient(135deg, #fff 0%, #f4fbf7 100%);
+  border-color: rgba(37, 166, 122, 0.22);
+}
+
+.khs-ready-grid div.check {
+  background: linear-gradient(135deg, #fff 0%, #fff8ef 100%);
+  border-color: rgba(242, 165, 76, 0.3);
+}
+
+.khs-ready-grid span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.khs-ready-grid div.ready span {
+  color: #13714d;
+}
+
+.khs-ready-grid div.check span {
+  color: #9a4f00;
+}
+
+.khs-ready-grid strong {
+  color: var(--royal-dark);
+  font-size: 0.9rem;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
 }
 
 .khs-pack-card {
@@ -12942,6 +13002,7 @@ th {
   .khs-inspection-pack-head,
   .khs-pack-summary,
   .khs-pack-grid,
+  .khs-ready-grid,
   .khs-policy-grid,
   .scr-assurance-hero,
   .scr-output-grid,
