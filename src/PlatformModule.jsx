@@ -8198,7 +8198,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   const [accountStatus, setAccountStatus] = useState("");
   const [accountBusy, setAccountBusy] = useState(false);
   const [hrFileTab, setHrFileTab] = useState("All");
-  const [profileTab, setProfileTab] = useState("Overview");
+  const [profileTab, setProfileTab] = useState("SCR Evidence");
   const [requestEvidenceKey, setRequestEvidenceKey] = useState(() => scrEvidenceRequestOptions[0][0]);
   const [requestNote, setRequestNote] = useState("");
   const [showProfileEvidenceBlockersOnly, setShowProfileEvidenceBlockersOnly] = useState(false);
@@ -8351,6 +8351,13 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   });
   const profileEvidenceBlockers = evidenceChecklistRows.filter((row) => row.tone !== "ready");
   const visibleEvidenceChecklistRows = showProfileEvidenceBlockersOnly ? profileEvidenceBlockers : evidenceChecklistRows;
+  const inspectionPriorityRows = ["dbs", "barredList", "rightToWork", "identity", "safeguarding", "allergy", "firstAid", "eyfsLevel"]
+    .map((key) => evidenceChecklistRows.find((row) => row.key === key))
+    .filter(Boolean);
+  const inspectionReadyRows = inspectionPriorityRows.filter((row) => row.tone === "ready");
+  const inspectionBlockerRows = inspectionPriorityRows.filter((row) => row.tone !== "ready");
+  const staffDbs = staffDbsNumber(person);
+  const staffChecked = staffScrCheckedDate(person);
   const evidenceGroups = [
     {
       title: "Required for inspection",
@@ -8393,7 +8400,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     });
     setPayStatus("");
     setHrFileTab("All");
-    setProfileTab("Overview");
+    setProfileTab("SCR Evidence");
     setNoteSaveStatus("");
     setShowProfileEvidenceBlockersOnly(false);
     const missingKey = actionItems.map((item) => String(item).toLowerCase()).includes("dbs")
@@ -8635,6 +8642,33 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           </dl>
         </section>
       )}
+      <section className={`staff-profile-inspection-snapshot ${inspectionBlockerRows.length ? "needs-action" : "ready"}`}>
+        <div className="staff-profile-inspection-summary">
+          <p className="eyebrow">Inspection snapshot</p>
+          <h4>{inspectionBlockerRows.length ? `${inspectionBlockerRows.length} evidence item${inspectionBlockerRows.length === 1 ? "" : "s"} to check` : "Core SCR evidence ready"}</h4>
+          <p>
+            {person.name} · {staffPrimaryLocation(person)} · DBS {staffDbs || "not recorded"} · SCR checked {staffChecked ? formatShortDate(staffChecked) : "not recorded"}
+          </p>
+        </div>
+        <div className="staff-profile-inspection-score">
+          <strong>{inspectionReadyRows.length}/{inspectionPriorityRows.length || 0}</strong>
+          <span>core items ready</span>
+        </div>
+        <div className="staff-profile-inspection-checks">
+          {inspectionPriorityRows.slice(0, 8).map((row) => (
+            <button
+              className={row.tone}
+              key={row.key}
+              type="button"
+              onClick={() => setProfileTab("SCR Evidence")}
+              title={row.detail}
+            >
+              <span>{row.label}</span>
+              <strong>{row.status}</strong>
+            </button>
+          ))}
+        </div>
+      </section>
       <div className="staff-profile-tabs" role="tablist" aria-label={`${person.name} staff profile sections`}>
         {profileTabs.map((tabName) => (
           <button key={tabName} className={profileTab === tabName ? "active" : ""} type="button" onClick={() => setProfileTab(tabName)}>{tabName}</button>
