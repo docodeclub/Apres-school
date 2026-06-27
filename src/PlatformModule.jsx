@@ -3859,13 +3859,17 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
     }))
     .filter((row) => row.checks.length);
   const visibleRows = showBlockersOnly ? blockerRows : rows;
+  const evidenceOrder = ["dbs", "safeguarding", "allergy", "firstAid", "eyfsLevel", "adminReview"];
+  function orderedChecks(checks = []) {
+    return [...checks].sort((a, b) => evidenceOrder.indexOf(a.key) - evidenceOrder.indexOf(b.key));
+  }
   return (
     <section className="scr-evidence-board" aria-label={`${school} SCR evidence board`}>
       <div className="scr-evidence-board-head">
         <div>
           <p className="eyebrow">Evidence board</p>
           <h3>{school} staff evidence at a glance.</h3>
-          <p>Open the staff record when a check needs context, or use the file link where evidence has already been uploaded.</p>
+          <p>Current assigned staff only. Blockers are shown first; checked evidence is collapsed so the inspection view stays calm.</p>
         </div>
         <div className="scr-evidence-board-metrics">
           <span><strong>{rows.length}</strong> staff</span>
@@ -3880,16 +3884,23 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
       </div>
       <div className="scr-evidence-board-list">
         {visibleRows.map((row) => {
-          const blockerChecks = row.checks.filter((check) => check.tone !== "ready" && check.tone !== "neutral");
-          const readyChecks = row.checks.filter((check) => check.tone === "ready" || check.tone === "neutral");
-          const visibleChecks = blockerChecks.length ? blockerChecks : row.checks.slice(0, 2);
-          const hiddenReadyChecks = blockerChecks.length ? readyChecks : row.checks.slice(2);
+          const ordered = orderedChecks(row.checks);
+          const blockerChecks = ordered.filter((check) => check.tone !== "ready" && check.tone !== "neutral");
+          const readyChecks = ordered.filter((check) => check.tone === "ready" || check.tone === "neutral");
+          const priorityChecks = blockerChecks.length ? blockerChecks : ordered.slice(0, 3);
+          const hiddenReadyChecks = blockerChecks.length ? readyChecks : ordered.slice(3);
+          const dbsNumber = staffDbsNumber(row.person);
+          const checkedDate = staffScrCheckedDate(row.person);
           return (
             <article className={row.ready ? "ready compact" : "needs-action compact"} key={row.person.id}>
               <div className="scr-evidence-person">
                 <div>
                   <h4>{row.person.name}</h4>
                   <p>{row.person.role} · {row.person.email || "No email recorded"}</p>
+                  <div className="scr-evidence-mini-facts">
+                    <span>DBS {dbsNumber || "not recorded"}</span>
+                    <span>SCR checked {checkedDate ? formatShortDate(checkedDate) : "not recorded"}</span>
+                  </div>
                 </div>
                 <div className="scr-evidence-row-status">
                   <span className={blockerChecks.length ? "needs-action" : "ready"}>{blockerChecks.length ? `${blockerChecks.length} to check` : "Ready"}</span>
@@ -3897,8 +3908,8 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
                 </div>
                 <button className="button subtle" type="button" onClick={() => onOpenStaff(row.person.id)}>Open record</button>
               </div>
-              <div className="scr-evidence-checks compact">
-                {visibleChecks.map((check) => (
+              <div className="scr-evidence-checks compact priority">
+                {priorityChecks.map((check) => (
                   <SCREvidenceChip check={check} key={check.key} />
                 ))}
               </div>

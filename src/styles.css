@@ -5145,7 +5145,7 @@ label {
 
 .scr-evidence-board-list {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .dbs-disclosure-audit {
@@ -5330,13 +5330,13 @@ label {
 
 .scr-evidence-board-list article {
   display: grid;
-  gap: 10px;
+  gap: 9px;
   min-width: 0;
   border: 1px solid rgba(72, 104, 220, 0.14);
-  border-left: 5px solid rgba(72, 104, 220, 0.28);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 13px;
+  border-left: 4px solid rgba(72, 104, 220, 0.28);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 12px;
 }
 
 .scr-evidence-board-list article.ready {
@@ -5351,9 +5351,9 @@ label {
 
 .scr-evidence-person {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
   gap: 12px;
-  align-items: center;
+  align-items: start;
 }
 
 .scr-evidence-person h4 {
@@ -5370,6 +5370,24 @@ label {
   font-size: 0.85rem;
   line-height: 1.35;
   margin-top: 3px;
+}
+
+.scr-evidence-mini-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.scr-evidence-mini-facts span {
+  border: 1px solid rgba(72, 104, 220, 0.12);
+  border-radius: 999px;
+  background: #f8faff;
+  color: var(--royal-dark);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  padding: 6px 8px;
 }
 
 .scr-evidence-row-status {
@@ -5428,7 +5446,11 @@ label {
 }
 
 .scr-evidence-checks.compact {
-  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+}
+
+.scr-evidence-checks.priority {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .scr-evidence-checks.ready-items {
@@ -5441,12 +5463,12 @@ label {
   gap: 5px;
   min-width: 0;
   border: 1px solid rgba(72, 104, 220, 0.12);
-  border-radius: 14px;
+  border-radius: 12px;
   background: #f8faff;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 850;
-  padding: 10px;
+  padding: 9px 10px;
 }
 
 .scr-evidence-checks.compact .scr-evidence-chip {
@@ -5457,11 +5479,13 @@ label {
 
 .scr-evidence-chip strong {
   color: var(--royal-dark);
-  font-size: 0.86rem;
+  font-size: 0.84rem;
   line-height: 1.1;
 }
 
 .scr-evidence-chip span {
+  color: var(--muted);
+  font-size: 0.76rem;
   line-height: 1.25;
 }
 
