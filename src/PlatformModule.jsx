@@ -349,6 +349,80 @@ function formatShortDate(value) {
   return parsed.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function normaliseAuditText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9@.]+/g, " ")
+    .trim();
+}
+
+function staffDisclosureText(person = {}) {
+  return normaliseAuditText([
+    person.fullName,
+    person.name,
+    person.email,
+    person.role,
+    person.location,
+    person.dateOfBirth,
+  ].filter(Boolean).join(" "));
+}
+
+function staffDbsNumber(person = {}) {
+  return person.dbsNumber
+    || person.scrChecklist?.dbsNumber
+    || person.scrChecklist?.evidence?.dbs?.number
+    || person.scrChecklist?.evidence?.dbs?.dbsNumber
+    || person.scrChecklist?.evidence?.dbs?.certificateNo
+    || "";
+}
+
+function scoreDisclosureStaff(row, person) {
+  const haystack = staffDisclosureText(person);
+  let score = 0;
+  row.terms.forEach((term) => {
+    if (haystack.includes(normaliseAuditText(term))) score += 12;
+  });
+  if (person.dateOfBirth && person.dateOfBirth === row.dob) score += 25;
+  if (haystack.includes(normaliseAuditText(row.surname))) score += 8;
+  return score;
+}
+
+function resolveDbsDisclosureRow(row, staff = []) {
+  const candidates = staff
+    .map((person) => ({ person, score: scoreDisclosureStaff(row, person), currentDbs: staffDbsNumber(person) }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+  const second = candidates[1];
+  if (!best) return { status: "unmatched", row, candidates: [] };
+  if (second && second.score === best.score) {
+    return { status: "ambiguous", row, candidates: candidates.filter((candidate) => candidate.score === best.score) };
+  }
+  const currentDbs = best.currentDbs;
+  return {
+    status: currentDbs === row.certificateNo ? "updated" : currentDbs ? "different-current-dbs" : "matched-missing-dbs",
+    row,
+    person: best.person,
+    currentDbs,
+    score: best.score,
+  };
+}
+
+function buildDbsDisclosureAudit(staff = []) {
+  const results = dbsDisclosureRows.map((row) => resolveDbsDisclosureRow(row, staff));
+  const summary = results.reduce((totals, result) => ({
+    ...totals,
+    [result.status]: (totals[result.status] || 0) + 1,
+  }), {});
+  return {
+    results,
+    summary,
+    attentionCount: results.filter((result) => result.status !== "updated").length,
+  };
+}
+
 function staffProfileFromApplication(application, id) {
   const school = application.preferredSchool || "Assignment needed";
   return {
@@ -421,6 +495,22 @@ const scrEvidenceRequestOptions = [
   ["barredList", "Barred list"],
   ["references", "References"],
   ["declarations", "Annual declarations"],
+];
+const dbsDisclosureRows = [
+  { surname: "ELEKES", dob: "2001-11-19", applicationRef: "E0873119464", certificateNo: "001897639742", issueDate: "2024-10-04", terms: ["angel", "elekes", "alekes"] },
+  { surname: "ROSE", dob: "1961-12-17", applicationRef: "E0873119200", certificateNo: "001898008401", issueDate: "2024-10-07", terms: ["julie", "rose"] },
+  { surname: "WATTS", dob: "2001-01-05", applicationRef: "E0873290870", certificateNo: "001898280331", issueDate: "2024-10-09", terms: ["jack", "watts"] },
+  { surname: "HARRISON", dob: "1964-11-08", applicationRef: "E0873570208", certificateNo: "001898619439", issueDate: "2024-10-10", terms: ["brenda", "harrison"] },
+  { surname: "NEWLAND", dob: "2001-04-13", applicationRef: "E0874177630", certificateNo: "001898755098", issueDate: "2024-10-11", terms: ["sonny", "newland"] },
+  { surname: "SNELL", dob: "1977-09-25", applicationRef: "E0873119373", certificateNo: "001898911282", issueDate: "2024-10-14", terms: ["snell"] },
+  { surname: "WOODLEY", dob: "1978-08-11", applicationRef: "E0873292660", certificateNo: "001901359590", issueDate: "2024-10-31", terms: ["sadie", "woodley"] },
+  { surname: "TOPPING", dob: "2005-07-22", applicationRef: "E0877531318", certificateNo: "001902110271", issueDate: "2024-11-06", terms: ["hannah", "topping"] },
+  { surname: "LALLY", dob: "2004-10-13", applicationRef: "E0877531214", certificateNo: "001902110211", issueDate: "2024-11-06", terms: ["josie", "lally"] },
+  { surname: "MARSHALL", dob: "2005-04-18", applicationRef: "E0877527730", certificateNo: "001902127873", issueDate: "2024-11-06", terms: ["joel", "marshall"] },
+  { surname: "NICOLIN", dob: "1979-03-25", applicationRef: "E0884832057", certificateNo: "001909625370", issueDate: "2025-01-15", terms: ["amanda", "nicholson", "nicolin"] },
+  { surname: "AZEBAZE AYANGMA", dob: "2007-12-18", applicationRef: "E0886155639", certificateNo: "001910951943", issueDate: "2025-01-24", terms: ["joelle", "azebaze", "ayanam", "ayangma"] },
+  { surname: "KELLY", dob: "1997-01-07", applicationRef: "E0888337193", certificateNo: "001916508152", issueDate: "2025-03-10", terms: ["kelly"] },
+  { surname: "GRANT", dob: "2002-08-12", applicationRef: "E0913830370", certificateNo: "001941644626", issueDate: "2025-09-26", terms: ["grant"] },
 ];
 const ofstedGapStatuses = ["Not started", "In progress", "Waiting on evidence", "Ready for review", "Resolved"];
 const ofstedInspectionDayItems = [
@@ -3445,6 +3535,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
   ];
   const selectedStaffEvidenceRows = buildScrSiteEvidenceRows(selectedSchoolStaff, data.hrFiles || [], renewalRequests);
   const selectedSiteDocumentLinks = readJson(documentLinksStorageKey, {});
+  const dbsDisclosureAudit = buildDbsDisclosureAudit(activeScrStaff);
   function openEvidenceStaffProfile(staffId) {
     setProfileTargetId(staffId);
     setSummaryStaffId(staffId);
@@ -3534,6 +3625,7 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
         rows={selectedStaffEvidenceRows}
         onOpenStaff={openEvidenceStaffProfile}
       />
+      <DBSDisclosureAuditPanel audit={dbsDisclosureAudit} onOpenStaff={openEvidenceStaffProfile} />
       <StaffTable
         data={{ ...scrData, staff: selectedSchoolStaff }}
         siteScopeLabel={selectedScrSchool}
@@ -3739,6 +3831,81 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
         {!rows.length && <EmptyList title="No staff assigned to this site" text="Use the assignment section to add staff before producing assurance output." />}
         {rows.length > 0 && !visibleRows.length && <EmptyList title="No blockers for this site" text="All visible SCR evidence is either checked, recorded or not required." />}
       </div>
+    </section>
+  );
+}
+
+function DBSDisclosureAuditPanel({ audit, onOpenStaff }) {
+  const [showNeedsAttentionOnly, setShowNeedsAttentionOnly] = useState(true);
+  const visibleResults = showNeedsAttentionOnly
+    ? audit.results.filter((result) => result.status !== "updated")
+    : audit.results;
+  const statusCopy = {
+    updated: ["Updated", "ready"],
+    "matched-missing-dbs": ["Needs update", "warn"],
+    "different-current-dbs": ["Mismatch", "bad"],
+    ambiguous: ["Ambiguous", "warn"],
+    unmatched: ["No match", "bad"],
+  };
+  return (
+    <section className="dbs-disclosure-audit" aria-label="DBS disclosure import check">
+      <div className="dbs-disclosure-head">
+        <div>
+          <p className="eyebrow">Disclosure import check</p>
+          <h3>DBS numbers from the 27 June disclosure report.</h3>
+          <p>Use this to confirm the disclosure PDF has been reflected in the SCR. Rows marked updated already match the certificate number on the staff record.</p>
+        </div>
+        <div className="dbs-disclosure-summary">
+          <span><strong>{audit.summary.updated || 0}</strong> updated</span>
+          <span><strong>{audit.attentionCount}</strong> to check</span>
+          <span><strong>{audit.summary.unmatched || 0}</strong> unmatched</span>
+        </div>
+        <button className={showNeedsAttentionOnly ? "scr-filter-toggle active" : "scr-filter-toggle"} type="button" onClick={() => setShowNeedsAttentionOnly((value) => !value)}>
+          {showNeedsAttentionOnly ? "Showing checks" : "Show checks only"}
+        </button>
+      </div>
+      <TableWrap>
+        <table className="dbs-disclosure-table">
+          <thead>
+            <tr>
+              <th>Disclosure row</th>
+              <th>Certificate no</th>
+              <th>Matched staff</th>
+              <th>Current SCR</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleResults.map((result) => {
+              const [label, tone] = statusCopy[result.status] || ["Check", "warn"];
+              const candidateText = result.status === "ambiguous"
+                ? result.candidates.map((candidate) => candidate.person.name).join(", ")
+                : result.person?.name || "No current staff match";
+              return (
+                <tr key={`${result.row.applicationRef}-${result.row.certificateNo}`}>
+                  <td>
+                    <strong>{result.row.surname}</strong>
+                    <small>DOB {formatShortDate(result.row.dob)} · issued {formatShortDate(result.row.issueDate)}</small>
+                  </td>
+                  <td><code>{result.row.certificateNo}</code></td>
+                  <td>{candidateText}</td>
+                  <td>{result.currentDbs ? <code>{result.currentDbs}</code> : "Not recorded"}</td>
+                  <td><span className={`badge ${tone === "bad" ? "bad" : tone === "warn" ? "warn" : "good"}`}>{label}</span></td>
+                  <td>
+                    {result.person
+                      ? <button className="button subtle" type="button" onClick={() => onOpenStaff(result.person.id)}>Open record</button>
+                      : <span className="panel-note">Manual review</span>}
+                  </td>
+                </tr>
+              );
+            })}
+            {!visibleResults.length && (
+              <tr><td colSpan="6"><strong>All disclosure rows match the current SCR DBS numbers.</strong></td></tr>
+            )}
+          </tbody>
+        </table>
+      </TableWrap>
     </section>
   );
 }

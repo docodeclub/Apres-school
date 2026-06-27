@@ -5138,6 +5138,88 @@ label {
   gap: 12px;
 }
 
+.dbs-disclosure-audit {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(72, 104, 220, 0.16);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 16px 36px rgba(38, 63, 169, 0.07);
+  padding: clamp(16px, 2.4vw, 22px);
+}
+
+.dbs-disclosure-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 16px;
+  align-items: end;
+}
+
+.dbs-disclosure-head h3 {
+  margin: 0 0 5px;
+  color: var(--royal-dark);
+  font-size: clamp(1.1rem, 2vw, 1.45rem);
+  line-height: 1.08;
+}
+
+.dbs-disclosure-head p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.dbs-disclosure-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(86px, 1fr));
+  gap: 8px;
+}
+
+.dbs-disclosure-summary span {
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgba(72, 104, 220, 0.14);
+  border-radius: 14px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  padding: 9px 11px;
+  text-transform: uppercase;
+}
+
+.dbs-disclosure-summary strong {
+  color: var(--royal);
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.dbs-disclosure-table td {
+  vertical-align: top;
+}
+
+.dbs-disclosure-table td strong,
+.dbs-disclosure-table td small {
+  display: block;
+}
+
+.dbs-disclosure-table td small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.dbs-disclosure-table code {
+  border-radius: 8px;
+  background: #f5f7ff;
+  color: var(--royal-dark);
+  font-size: 0.82rem;
+  font-weight: 900;
+  padding: 5px 7px;
+}
+
 .scr-details-panel {
   border: 1px solid rgba(72, 104, 220, 0.14);
   border-radius: 20px;
@@ -12548,6 +12630,15 @@ th {
   .scr-evidence-board-actions,
   .scr-profile-checklist-tools {
     justify-content: flex-start;
+  }
+
+  .dbs-disclosure-head {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .dbs-disclosure-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .scr-evidence-checks,
