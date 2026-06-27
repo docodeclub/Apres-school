@@ -5773,6 +5773,95 @@ label {
   padding: 16px;
 }
 
+.khs-named-evidence {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(72, 104, 220, 0.14);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 16px;
+}
+
+.khs-named-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.khs-named-evidence-grid article {
+  display: grid;
+  align-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid rgba(72, 104, 220, 0.13);
+  border-radius: 16px;
+  background: #f8faff;
+  padding: 12px;
+}
+
+.khs-named-evidence-grid article.ready {
+  background: linear-gradient(135deg, #ffffff 0%, #f4fbf7 100%);
+  border-color: rgba(37, 166, 122, 0.22);
+}
+
+.khs-named-evidence-grid article.check {
+  background: linear-gradient(135deg, #ffffff 0%, #fff8ef 100%);
+  border-color: rgba(242, 165, 76, 0.3);
+}
+
+.khs-named-evidence-grid span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.khs-named-evidence-grid strong {
+  color: var(--royal-dark);
+  display: block;
+  font-size: 0.95rem;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.khs-named-evidence-grid small {
+  color: var(--muted);
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.khs-named-evidence-grid article > div {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.khs-named-evidence-grid a,
+.khs-named-evidence-grid button,
+.khs-named-evidence-grid em {
+  border: 0;
+  background: transparent;
+  color: var(--royal);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 950;
+  padding: 0;
+  text-decoration: none;
+}
+
+.khs-named-evidence-grid a:hover,
+.khs-named-evidence-grid button:hover {
+  text-decoration: underline;
+}
+
 .khs-ready-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -12801,7 +12890,8 @@ th {
 
   .scr-evidence-checks,
   .scr-evidence-checks.compact,
-  .scr-evidence-checks.ready-items {
+  .scr-evidence-checks.ready-items,
+  .khs-named-evidence-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -13380,7 +13470,8 @@ th {
   .scr-evidence-board-metrics,
   .scr-evidence-checks,
   .scr-evidence-checks.compact,
-  .scr-evidence-checks.ready-items {
+  .scr-evidence-checks.ready-items,
+  .khs-named-evidence-grid {
     grid-template-columns: 1fr;
   }
 }

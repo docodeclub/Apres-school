@@ -318,7 +318,11 @@ function hasValidDate(value) {
 function staffMeetsRequirement(person, requirement) {
   if (requirement === "firstAid") return hasValidDate(person.firstAidExpiry);
   if (requirement === "eyfs") return String(person.eyfsLevel || person.role || "").toLowerCase().includes("level 3") || String(person.role || "").toLowerCase().includes("manager");
-  if (requirement === "safeguarding") return hasValidDate(person.safeguardingExpiry);
+  if (requirement === "safeguarding") {
+    const evidence = person.scrChecklist?.evidence?.safeguarding || {};
+    return hasValidDate(person.safeguardingExpiry)
+      || Boolean(evidence.reference && (evidence.noExpiryShown || evidence.noExpiryStated || evidence.status === "Approved" || evidence.storagePath));
+  }
   if (requirement === "allergy") return hasValidDate(person.allergyAwarenessExpiry);
   return false;
 }
@@ -4589,6 +4593,7 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
       detail: `${linkedPolicyCount}/${policyRows.length} core policies linked`,
     },
   ];
+  const namedEvidence = buildKingHouseNamedEvidence(staff, evidenceRows);
   return (
     <section className="khs-inspection-pack" aria-label="King's House inspection evidence pack">
       <div className="khs-inspection-pack-head">
@@ -4625,6 +4630,28 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
           <small>{openLogs.length ? "Review before inspection." : "No open site logs recorded."}</small>
         </div>
       </div>
+      <article className="khs-named-evidence" aria-label="King's House named evidence shortcuts">
+        <div className="khs-pack-card-head">
+          <div>
+            <span>Named evidence</span>
+            <h4>Open these first if the inspector asks</h4>
+          </div>
+          <Badge value={`${namedEvidence.filter((item) => item.ready).length}/${namedEvidence.length} ready`} />
+        </div>
+        <div className="khs-named-evidence-grid">
+          {namedEvidence.map((item) => (
+            <article className={item.ready ? "ready" : "check"} key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.title}</strong>
+              <small>{item.detail}</small>
+              <div>
+                {item.file?.fileUrl ? <a href={item.file.fileUrl} target="_blank" rel="noreferrer">View file</a> : <em>{item.ready ? "Open profile" : "Evidence needed"}</em>}
+                {item.person?.id && <button type="button" onClick={() => onOpenStaff(item.person.id)}>Staff profile</button>}
+              </div>
+            </article>
+          ))}
+        </div>
+      </article>
       <article className="khs-ready-checklist">
         <div className="khs-pack-card-head">
           <div>
@@ -4717,6 +4744,61 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
       </article>
     </section>
   );
+}
+
+function buildKingHouseNamedEvidence(staff = [], evidenceRows = []) {
+  const rama = staff.find((person) => {
+    const text = `${person.name || ""} ${person.fullName || ""} ${person.email || ""}`.toLowerCase();
+    return text.includes("rama") && text.includes("singh");
+  }) || staff.find((person) => String(person.role || "").toLowerCase().includes("manager"));
+  const ramaEvidence = rama?.scrChecklist?.evidence || {};
+  const ramaRow = evidenceRows.find((row) => row.person.id === rama?.id);
+  const checkFile = (key) => ramaRow?.checks.find((check) => check.key === key)?.file;
+  const evidenceFile = (key) => {
+    const evidence = ramaEvidence[key] || {};
+    return checkFile(key) || (evidence.storagePath ? { title: evidence.title || evidence.reference, storagePath: evidence.storagePath } : null);
+  };
+  const safeguarding = ramaEvidence.safeguarding || {};
+  const firstAid = ramaEvidence.firstAid || {};
+  const send = ramaEvidence.eyfsLevel || {};
+
+  return [
+    {
+      label: "Site manager",
+      title: rama ? rama.name : "Manager not selected",
+      detail: rama ? `${rama.role || "Manager"} · ${rama.location || "King's House School"}` : "Add the named King’s House manager.",
+      ready: Boolean(rama),
+      person: rama,
+    },
+    {
+      label: "DSL / safeguarding",
+      title: safeguarding.reference || "Safeguarding evidence missing",
+      detail: safeguarding.issueDate || safeguarding.completionDate
+        ? `Completed ${formatShortDate(safeguarding.completionDate || safeguarding.issueDate)}${safeguarding.expiryDate ? ` · expires ${formatShortDate(safeguarding.expiryDate)}` : " · no expiry shown"}`
+        : "Open Rama’s SCR profile and attach the DSL certificate.",
+      ready: Boolean(safeguarding.reference || evidenceFile("safeguarding")),
+      file: evidenceFile("safeguarding"),
+      person: rama,
+    },
+    {
+      label: "Paediatric first aid",
+      title: firstAid.reference || firstAid.qualification || "First aid evidence missing",
+      detail: firstAid.expiryDate
+        ? `Issued ${formatShortDate(firstAid.issueDate)} · expires ${formatShortDate(firstAid.expiryDate)}`
+        : "Add issue and expiry dates for the first aid certificate.",
+      ready: Boolean(firstAid.reference && firstAid.expiryDate),
+      file: evidenceFile("firstAid"),
+      person: rama,
+    },
+    {
+      label: "SEND inclusion",
+      title: send.reference || "SEND evidence missing",
+      detail: send.issueDate ? `Dated ${formatShortDate(send.issueDate)} · no expiry shown` : "Attach SEND / inclusion evidence if relevant.",
+      ready: Boolean(send.reference || evidenceFile("eyfsLevel")),
+      file: evidenceFile("eyfsLevel"),
+      person: rama,
+    },
+  ];
 }
 
 function SCRInspectionLaunchPanel({ site, timing, school, staff, rows, score, attentionCount, staffEvidenceGaps, scheduledInspection }) {
