@@ -4594,6 +4594,7 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
     },
   ];
   const namedEvidence = buildKingHouseNamedEvidence(staff, evidenceRows);
+  const questionPrompts = buildKingHouseInspectionPrompts(managers[0], firstAiders, eyfsLeads, safeguardingStaff, allergyStaff);
   return (
     <section className="khs-inspection-pack" aria-label="King's House inspection evidence pack">
       <div className="khs-inspection-pack-head">
@@ -4648,6 +4649,25 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
                 {item.file?.fileUrl ? <a href={item.file.fileUrl} target="_blank" rel="noreferrer">View file</a> : <em>{item.ready ? "Open profile" : "Evidence needed"}</em>}
                 {item.person?.id && <button type="button" onClick={() => onOpenStaff(item.person.id)}>Staff profile</button>}
               </div>
+            </article>
+          ))}
+        </div>
+      </article>
+      <article className="khs-question-prompts" aria-label="King's House inspection question prompts">
+        <div className="khs-pack-card-head">
+          <div>
+            <span>Staff prompts</span>
+            <h4>Likely inspection questions to rehearse</h4>
+          </div>
+          <Badge value={`${questionPrompts.length} prompts`} />
+        </div>
+        <div className="khs-question-grid">
+          {questionPrompts.map((prompt) => (
+            <article key={prompt.question}>
+              <span>{prompt.area}</span>
+              <strong>{prompt.question}</strong>
+              <small>{prompt.answer}</small>
+              <em>{prompt.evidence}</em>
             </article>
           ))}
         </div>
@@ -4744,6 +4764,50 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
       </article>
     </section>
   );
+}
+
+function buildKingHouseInspectionPrompts(manager, firstAiders = [], eyfsLeads = [], safeguardingStaff = [], allergyStaff = []) {
+  const managerName = manager?.name || "Rama";
+  const firstAidNames = namesOrGap(firstAiders);
+  const eyfsNames = namesOrGap(eyfsLeads);
+  const safeguardingNames = namesOrGap(safeguardingStaff);
+  const allergyNames = namesOrGap(allergyStaff);
+  return [
+    {
+      area: "Safeguarding",
+      question: "What would you do if a child made a disclosure?",
+      answer: `Stay calm, listen, do not promise confidentiality, write factual notes and escalate to the DSL route. ${managerName} is the named site lead for King's House.`,
+      evidence: `Show: safeguarding policy, DSL evidence, staff SCR checks. Covered by: ${safeguardingNames}.`,
+    },
+    {
+      area: "Ratios and supervision",
+      question: "How do you know children are safely supervised?",
+      answer: "Explain the register, headcounts, collection routines, handover points and how staff are positioned during active play, snack and dismissal.",
+      evidence: "Show: site rota, session times, assigned staff list and register process.",
+    },
+    {
+      area: "First aid",
+      question: "Who is first aid trained today?",
+      answer: `Name the trained person on site, where the first aid kit is kept, and how accidents are recorded and shared with parents.`,
+      evidence: `Show: first aid certificate and incident/accident procedure. Covered by: ${firstAidNames}.`,
+    },
+    {
+      area: "EYFS",
+      question: "How do you support younger children?",
+      answer: "Talk through settling, choice, toileting/comfort routines, age-appropriate activities, and when EYFS-qualified oversight is used.",
+      evidence: `Show: EYFS Level 3 evidence and site routine. Covered by: ${eyfsNames}.`,
+    },
+    {
+      area: "Allergies",
+      question: "How are allergies and medical needs managed?",
+      answer: "Describe checking records before snack, named staff awareness, avoiding cross-contamination and escalation if a child becomes unwell.",
+      evidence: `Show: allergy awareness evidence, illness/accident policy and snack routine. Covered by: ${allergyNames}.`,
+    },
+  ];
+}
+
+function namesOrGap(people = []) {
+  return people.length ? people.map((person) => person.name).join(", ") : "gap to confirm";
 }
 
 function buildKingHouseNamedEvidence(staff = [], evidenceRows = []) {
