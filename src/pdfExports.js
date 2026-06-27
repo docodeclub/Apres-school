@@ -66,7 +66,11 @@ function inDate(value) {
 function meetsRequirement(person, requirement) {
   if (requirement === "firstAid") return inDate(person.firstAidExpiry);
   if (requirement === "eyfs") return String(person.eyfsLevel || person.role || "").toLowerCase().includes("level 3") || String(person.role || "").toLowerCase().includes("manager");
-  if (requirement === "safeguarding") return inDate(person.safeguardingExpiry);
+  if (requirement === "safeguarding") {
+    const evidence = person.scrChecklist?.evidence?.safeguarding || {};
+    return inDate(person.safeguardingExpiry)
+      || Boolean(evidence.reference && (evidence.noExpiryShown || evidence.noExpiryStated || evidence.status === "Approved" || evidence.storagePath));
+  }
   if (requirement === "allergy") return inDate(person.allergyAwarenessExpiry);
   return false;
 }
@@ -337,6 +341,40 @@ function drawInspectionFooter(doc, note = "Confidential inspection preparation p
   doc.text(note, PAGE.margin, 820, 7.5, MUTED);
 }
 
+function buildKingHouseNamedEvidenceRows(staff = [], evidenceRows = []) {
+  const rama = staff.find((person) => {
+    const text = `${person.name || ""} ${person.fullName || ""} ${person.email || ""}`.toLowerCase();
+    return text.includes("rama") && text.includes("singh");
+  }) || staff.find((person) => String(person.role || "").toLowerCase().includes("manager"));
+  const evidence = rama?.scrChecklist?.evidence || {};
+  const ramaRow = evidenceRows.find((row) => row.person?.id === rama?.id);
+  const checkFile = (key) => ramaRow?.checks?.find((check) => check.key === key)?.file;
+  const evidenceTitle = (key, fallback) => {
+    const item = evidence[key] || {};
+    const file = checkFile(key);
+    return item.reference || item.qualification || file?.title || fallback;
+  };
+  const dateSummary = (item = {}) => {
+    const issueDate = item.completionDate || item.issueDate || "";
+    const expiryDate = item.expiryDate || "";
+    if (issueDate && expiryDate) return `${formatDate(issueDate)} - expires ${formatDate(expiryDate)}`;
+    if (issueDate) return `${formatDate(issueDate)} - no expiry shown`;
+    if (expiryDate) return `Expires ${formatDate(expiryDate)}`;
+    return "Date not recorded";
+  };
+  const safeguarding = evidence.safeguarding || {};
+  const firstAid = evidence.firstAid || {};
+  const send = evidence.eyfsLevel || {};
+  const staffName = rama?.name || "Rama Singh";
+
+  return [
+    ["Site manager", staffName, rama?.role || "Manager", rama?.location || "King's House School"],
+    ["DSL / safeguarding", staffName, evidenceTitle("safeguarding", "Safeguarding evidence not recorded"), dateSummary(safeguarding)],
+    ["Paediatric first aid", staffName, evidenceTitle("firstAid", "First aid evidence not recorded"), dateSummary(firstAid)],
+    ["SEND inclusion", staffName, evidenceTitle("eyfsLevel", "SEND inclusion evidence not recorded"), dateSummary(send)],
+  ];
+}
+
 const assuranceEvidenceChecks = [
   ["Right to work", "rightToWork"],
   ["Identity", "identity"],
@@ -553,6 +591,7 @@ export function exportInspectionEvidencePack(options = {}) {
     people.length ? "Covered" : "Gap",
     namesList(people),
   ]);
+  const namedEvidenceRows = buildKingHouseNamedEvidenceRows(staff, evidenceRows);
   const blockerTableRows = blockerRows.length
     ? blockerRows.slice(0, 8).map((row) => [
       row.person.name || "Staff member",
@@ -600,7 +639,18 @@ export function exportInspectionEvidencePack(options = {}) {
   doc.kpi("SCR blockers", String(blockerRows.length), 300, kpiY, 116);
   doc.kpi("Open logs", String(openLogs.length), 429, kpiY, 124);
 
-  y = kpiY + 92;
+  y = kpiY + 86;
+  doc.sectionTitle("Named Evidence To Open First", PAGE.margin, y);
+  y = doc.table(
+    ["Area", "Staff", "Evidence", "Date / expiry"],
+    namedEvidenceRows,
+    PAGE.margin,
+    y + 14,
+    [92, 92, 202, 124],
+    { rowHeight: 32 },
+  );
+
+  y += 18;
   doc.sectionTitle("Required Cover", PAGE.margin, y);
   y = doc.table(
     ["Requirement", "Status", "Named evidence"],
@@ -612,14 +662,14 @@ export function exportInspectionEvidencePack(options = {}) {
   );
 
   y += 20;
-  doc.sectionTitle("Immediate SCR Actions", PAGE.margin, y);
+  doc.sectionTitle(blockerRows.length > 2 ? "Immediate SCR Actions - First Two" : "Immediate SCR Actions", PAGE.margin, y);
   y = doc.table(
     ["Staff member", "Evidence checks", "DBS", "Detail"],
-    blockerTableRows,
+    blockerTableRows.slice(0, 2),
     PAGE.margin,
     y + 14,
     [104, 196, 110, 100],
-    { rowHeight: 34 },
+    { rowHeight: 28 },
   );
 
   drawInspectionFooter(doc, "Page 1: inspection overview, required cover and immediate SCR actions.");
