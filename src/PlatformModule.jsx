@@ -3700,35 +3700,61 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
         </div>
       </div>
       <div className="scr-evidence-board-list">
-        {visibleRows.map((row) => (
-          <article className={row.ready ? "ready" : "needs-action"} key={row.person.id}>
-            <div className="scr-evidence-person">
-              <div>
-                <h4>{row.person.name}</h4>
-                <p>{row.person.role} · {row.person.email || "No email recorded"}</p>
-              </div>
-              <button className="button subtle" type="button" onClick={() => onOpenStaff(row.person.id)}>Open record</button>
-            </div>
-            <div className="scr-evidence-checks">
-              {row.checks.map((check) => (
-                <div className={`scr-evidence-chip ${check.tone}`} key={check.key}>
-                  <span>{check.label}</span>
-                  <strong>{check.status}</strong>
-                  <small>{check.detail}</small>
-                  {check.file?.fileUrl
-                    ? <a href={check.file.fileUrl} target="_blank" rel="noreferrer">Open evidence</a>
-                    : check.file?.storagePath
-                      ? <em>Private file</em>
-                      : null}
+        {visibleRows.map((row) => {
+          const blockerChecks = row.checks.filter((check) => check.tone !== "ready" && check.tone !== "neutral");
+          const readyChecks = row.checks.filter((check) => check.tone === "ready" || check.tone === "neutral");
+          const visibleChecks = blockerChecks.length ? blockerChecks : row.checks.slice(0, 2);
+          const hiddenReadyChecks = blockerChecks.length ? readyChecks : row.checks.slice(2);
+          return (
+            <article className={row.ready ? "ready compact" : "needs-action compact"} key={row.person.id}>
+              <div className="scr-evidence-person">
+                <div>
+                  <h4>{row.person.name}</h4>
+                  <p>{row.person.role} · {row.person.email || "No email recorded"}</p>
                 </div>
-              ))}
-            </div>
-          </article>
-        ))}
+                <div className="scr-evidence-row-status">
+                  <span className={blockerChecks.length ? "needs-action" : "ready"}>{blockerChecks.length ? `${blockerChecks.length} to check` : "Ready"}</span>
+                  <small>{readyChecks.length} checked</small>
+                </div>
+                <button className="button subtle" type="button" onClick={() => onOpenStaff(row.person.id)}>Open record</button>
+              </div>
+              <div className="scr-evidence-checks compact">
+                {visibleChecks.map((check) => (
+                  <SCREvidenceChip check={check} key={check.key} />
+                ))}
+              </div>
+              {!!hiddenReadyChecks.length && (
+                <details className="scr-evidence-ready-details">
+                  <summary>{hiddenReadyChecks.length} checked / lower priority item{hiddenReadyChecks.length === 1 ? "" : "s"}</summary>
+                  <div className="scr-evidence-checks compact ready-items">
+                    {hiddenReadyChecks.map((check) => (
+                      <SCREvidenceChip check={check} key={check.key} />
+                    ))}
+                  </div>
+                </details>
+              )}
+            </article>
+          );
+        })}
         {!rows.length && <EmptyList title="No staff assigned to this site" text="Use the assignment section to add staff before producing assurance output." />}
         {rows.length > 0 && !visibleRows.length && <EmptyList title="No blockers for this site" text="All visible SCR evidence is either checked, recorded or not required." />}
       </div>
     </section>
+  );
+}
+
+function SCREvidenceChip({ check }) {
+  return (
+    <div className={`scr-evidence-chip ${check.tone}`}>
+      <span>{check.label}</span>
+      <strong>{check.status}</strong>
+      <small>{check.detail}</small>
+      {check.file?.fileUrl
+        ? <a href={check.file.fileUrl} target="_blank" rel="noreferrer">Open evidence</a>
+        : check.file?.storagePath
+          ? <em>Private file</em>
+          : null}
+    </div>
   );
 }
 
