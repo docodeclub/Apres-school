@@ -7655,7 +7655,7 @@ function Settings() {
 
 function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetHandled, evidenceRequests = {}, onRequestEvidence, onClearEvidenceRequest, onMarkEvidenceChecked, access, onUpdateStaffPay, onOpenHrFiles, onOpenPay, siteScopeLabel = "" }) {
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState(() => siteScopeLabel ? "All" : "Action needed");
+  const [statusFilter, setStatusFilter] = useState("Action needed");
   const [siteFilter, setSiteFilter] = useState("All");
   const [priorityView, setPriorityView] = useState(false);
   const [selectedId, setSelectedId] = useState(data.staff[0]?.id || "");
@@ -7769,8 +7769,9 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   const activeStaff = data.staff.filter((person) => !isFormerStaffRecord(person));
   const actionCount = activeStaff.filter((person) => checkStatus(person) !== "Compliant").length;
   const compliantCount = activeStaff.length - actionCount;
-  const selectedPerson = data.staff.find((person) => person.id === selectedId) || rows[0] || data.staff[0];
-  const defaultStatusFilter = isSiteScoped ? "All" : "Action needed";
+  const selectedPerson = rows.find((person) => person.id === selectedId) || rows[0] || data.staff.find((person) => person.id === selectedId) || data.staff[0];
+  const defaultStatusFilter = "Action needed";
+  const registerViewMode = statusFilter === "All" && !priorityView ? "all" : "blockers";
   const filtersActive = query || statusFilter !== defaultStatusFilter || (!siteScopeLabel && siteFilter !== "All") || priorityView;
   useEffect(() => {
     if (!targetStaffId) return;
@@ -7778,7 +7779,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     onTargetHandled?.();
   }, [targetStaffId, onTargetHandled]);
   useEffect(() => {
-    setStatusFilter(siteScopeLabel ? "All" : "Action needed");
+    setStatusFilter("Action needed");
     setSiteFilter("All");
     setPriorityView(false);
   }, [siteScopeLabel]);
@@ -7789,6 +7790,19 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
           <p className="eyebrow">Live staff register</p>
           <h3>{isSiteScoped ? `${siteScopeLabel} staff SCR` : "Find the next compliance action quickly."}</h3>
           <p>{rows.length} of {data.staff.length} {siteScopeLabel ? `${siteScopeLabel} ` : ""}records shown · {actionCount} active staff need review · {compliantCount} currently compliant.</p>
+          <div className="scr-register-mode" aria-label="SCR register view mode">
+            <button className={registerViewMode === "blockers" ? "active" : ""} type="button" onClick={() => { setStatusFilter("Action needed"); setPriorityView(false); }}>
+              Blockers first<span>{statusCounts["Action needed"] || 0}</span>
+            </button>
+            <button className={registerViewMode === "all" ? "active" : ""} type="button" onClick={() => { setStatusFilter("All"); setPriorityView(false); }}>
+              Show all staff<span>{statusCounts.All || 0}</span>
+            </button>
+            {priorityRows.length > 0 && (
+              <button className={priorityView ? "active" : ""} type="button" onClick={() => { setPriorityView(true); setStatusFilter("Action needed"); }}>
+                Highest priority<span>{priorityRows.length}</span>
+              </button>
+            )}
+          </div>
           {!!priorityRows.length && !isSiteScoped && (
             <div className="scr-priority-strip" aria-label="SCR priority view">
               {priorityRows.map(({ person, priority }) => (
