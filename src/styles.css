@@ -4438,6 +4438,16 @@ label {
   text-align: left;
 }
 
+.admin-quick-actions button.inspection {
+  border-color: rgba(242, 165, 76, 0.36);
+  background: linear-gradient(135deg, #fff9ef 0%, #eef3ff 100%);
+  box-shadow: 0 14px 28px rgba(38, 63, 169, 0.09);
+}
+
+.admin-quick-actions button.inspection strong {
+  color: #9a4f00;
+}
+
 .admin-quick-actions button:hover,
 .priority-item button:hover {
   transform: translateY(-1px);

@@ -596,6 +596,7 @@ const defaultStaffAvatar = "/assets/internal/default-staff-avatar.png";
 
 function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const [staffProfileTargetId, setStaffProfileTargetId] = useState("");
+  const [scrInspectionTarget, setScrInspectionTarget] = useState("");
   const [viewRole, setViewRole] = useState(role);
   const [previewUserId, setPreviewUserId] = useState("");
   const [openNavGroup, setOpenNavGroup] = useState(() => localStorage.getItem("apres-platform-open-nav-group") || "");
@@ -670,6 +671,15 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
     setOpenNavGroup(group);
     localStorage.setItem("apres-platform-open-nav-group", group);
     setTab(item);
+  }
+
+  function openMondayInspectionView() {
+    setStaffProfileTargetId("");
+    setScrInspectionTarget("King's House School");
+    setOpenNavGroup("People");
+    localStorage.setItem("apres-platform-open-nav-group", "People");
+    setTab("SCR");
+    addAuditLog("Monday inspection view opened", "King's House School SCR preset");
   }
 
   function updateStaffPayOverride(staffId, patch) {
@@ -787,7 +797,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
           access={access}
         />
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
-        {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
+        {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openMondayInspectionView} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && (
           <HRHierarchy
@@ -807,7 +817,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "HR Files" && <HRFiles data={targetedEnrichedData} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} />}
         {tab === "Rota" && <Rota data={scopedData} allData={enrichedData} access={access} />}
         {tab === "Hours" && <HoursTracker data={scopedData} access={access} />}
-        {tab === "SCR" && <SCR data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} onOpenHrFiles={(staffId) => { setStaffProfileTargetId(staffId); setTab("HR Files"); }} onOpenPay={(staffId) => { setStaffProfileTargetId(staffId); setTab("Pay"); }} />}
+        {tab === "SCR" && <SCR data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} inspectionSchoolTarget={scrInspectionTarget} onInspectionTargetHandled={() => setScrInspectionTarget("")} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} onOpenHrFiles={(staffId) => { setStaffProfileTargetId(staffId); setTab("HR Files"); }} onOpenPay={(staffId) => { setStaffProfileTargetId(staffId); setTab("Pay"); }} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
         {tab === "Documents" && <Documents data={scopedData} access={access} />}
         {tab === "Pay" && <Pay data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
@@ -989,7 +999,7 @@ function StaffDashboard({ data, access, userEmail }) {
   );
 }
 
-function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
+function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenInspectionView }) {
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const staffWithScrState = applyScrChecklistState(data.staff);
   const renewalItems = buildScrRenewalItems(staffWithScrState);
@@ -1013,6 +1023,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
     .filter((person) => !String(person.compliance).toLowerCase().includes("compliant"))
     .slice(0, 5);
   const quickActions = [
+    ["Monday inspection", "Open King’s House SCR blockers and export pack", "Inspection"],
     ["Rota", "Cover, first aid and EYFS cover", "Rota"],
     ["Ofsted", "Site readiness and inspection window", "Ofsted"],
     ["CRM", "New enquiries and school outreach", "CRM"],
@@ -1109,7 +1120,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile }) {
           <p>{attentionCount ? `${attentionCount} items need attention across compliance, rota and documents.` : "No urgent admin actions are waiting. Use quick actions for planned work."}</p>
           <div className="admin-quick-actions">
             {quickActions.map(([label, text, target]) => (
-              <button key={label} type="button" onClick={() => onOpenTab(target)}>
+              <button key={label} className={target === "Inspection" ? "inspection" : ""} type="button" onClick={() => target === "Inspection" ? onOpenInspectionView?.() : onOpenTab(target)}>
                 <strong>{label}</strong>
                 <span>{text}</span>
               </button>
@@ -3154,7 +3165,7 @@ function HoursTracker({ data, access }) {
   );
 }
 
-function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, onOpenHrFiles, onOpenPay }) {
+function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspectionTargetHandled, onTargetHandled, onUpdateStaffPay, onOpenHrFiles, onOpenPay }) {
   const [checklistState, setChecklistState] = useState(() => readScrChecklistState());
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const [evidenceFilter, setEvidenceFilter] = useState("Action needed");
@@ -3242,6 +3253,14 @@ function SCR({ data, access, targetStaffId, onTargetHandled, onUpdateStaffPay, o
       setAssuranceSchool(targetSchool);
     }
   }, [activeScrStaff, selectedScrSchool, targetStaffId]);
+  useEffect(() => {
+    if (!inspectionSchoolTarget || !schoolOptions.length) return;
+    const targetSchool = schoolOptions.find((school) => canonicalSchoolName(school) === canonicalSchoolName(inspectionSchoolTarget));
+    if (targetSchool) {
+      selectInspectionSchool(targetSchool);
+    }
+    onInspectionTargetHandled?.();
+  }, [inspectionSchoolTarget, onInspectionTargetHandled, schoolOptions]);
   useEffect(() => {
     if (selectedSchoolStaff.some((person) => person.id === summaryStaffId)) return;
     setSummaryStaffId(selectedSchoolStaff[0]?.id || "");
