@@ -612,6 +612,23 @@ const scrEvidenceRequestOptions = [
   ["references", "References"],
   ["declarations", "Annual declarations"],
 ];
+const suitabilityDeclarationStatements = [
+  ["medicalFit", "I remain medically fit to work with children."],
+  ["noHealthCondition", "I am not aware of any physical or mental health condition that affects my suitability to work with children."],
+  ["noCriminalChange", "I have not received any criminal caution, conviction, reprimand or warning since my last declaration that may affect my suitability to work with children."],
+  ["notDisqualified", "I have not become disqualified from working with children under the Childcare Act 2006 or any other relevant legislation."],
+  ["dbsUpdateActive", "My DBS Update Service subscription remains active, where applicable."],
+  ["notifyChanges", "I understand I must notify Après School immediately if my DBS status or suitability changes."],
+  ["readSafeguardingPolicy", "I have read and understood the current Safeguarding Policy."],
+  ["knowDsl", "I know who the DSL and Deputy DSL are."],
+  ["safeguardingEveryone", "I understand safeguarding is everyone’s responsibility."],
+  ["readCorePolicies", "I have read and agree to follow the current Code of Conduct, Behaviour Policy, Health & Safety Policy, Mobile Phone & Camera Policy and Whistleblowing Policy."],
+  ["contactDetailsCurrent", "My contact details and emergency contact details are up to date."],
+  ["rightToWorkValid", "My right to work documentation remains valid."],
+  ["qualificationsAccurate", "My qualification records held by Après School are accurate."],
+  ["medicalChangesShared", "I have informed Après School of any changes to my medical information or allergies that could affect my work."],
+];
+const suitabilityFinalDeclarationText = "I confirm that the information above is true and complete. I understand my ongoing duty to notify Après School immediately if anything changes that may affect my suitability to work with children.";
 const dbsDisclosureRows = [
   { surname: "ELEKES", dob: "2001-11-19", applicationRef: "E0873119464", certificateNo: "001897639742", issueDate: "2024-10-04", terms: ["angel", "elekes", "alekes"] },
   { surname: "ROSE", dob: "1961-12-17", applicationRef: "E0873119200", certificateNo: "001898008401", issueDate: "2024-10-07", terms: ["julie", "rose"] },
@@ -1010,11 +1027,16 @@ function PlatformHeader({ role, actualRole, canPreviewRoles, viewRole, setViewRo
 function StaffDashboard({ data, access, userEmail }) {
   const pendingDocs = data.documents.reduce((total, doc) => total + Math.max(0, Number(doc.assigned || 0) - Number(doc.read || 0)), 0);
   const ownStaff = resolveOwnStaffRecord(data, access, userEmail);
+  const [ownSuitabilityDeclarations, setOwnSuitabilityDeclarations] = useState(() => normaliseSuitabilityDeclarations(ownStaff || {}));
+  const ownStaffForDeclaration = ownStaff ? { ...ownStaff, suitabilityDeclarations: ownSuitabilityDeclarations } : null;
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const ownStaffWithScr = ownStaff ? applyScrChecklistState([ownStaff])[0] : null;
   const staffRenewalItems = ownStaffWithScr ? buildScrRenewalItems([ownStaffWithScr]) : [];
   const staffEvidenceRequests = ownStaffWithScr ? buildStaffEvidenceRequests(ownStaffWithScr, staffRenewalItems, renewalRequests) : [];
   const payslips = ownStaff ? staffPayslips(data.hrFiles, ownStaff.id).slice(0, 6) : [];
+  useEffect(() => {
+    setOwnSuitabilityDeclarations(normaliseSuitabilityDeclarations(ownStaff || {}));
+  }, [ownStaff?.id, ownStaff?.suitabilityDeclarations]);
   useEffect(() => {
     if (!data.scrRenewalRequests || !Object.keys(data.scrRenewalRequests).length) return;
     setRenewalRequests((current) => ({ ...current, ...data.scrRenewalRequests }));
@@ -1095,6 +1117,15 @@ function StaffDashboard({ data, access, userEmail }) {
         tone="green"
       />
       <Panel title="My Evidence Requests"><StaffEvidenceRequestList items={staffEvidenceRequests} onSubmit={saveEvidenceSubmission} /></Panel>
+      {ownStaffForDeclaration && (
+        <Panel title="Annual Suitability Declaration">
+          <SuitabilityDeclarationPanel
+            person={ownStaffForDeclaration}
+            canComplete
+            onSaved={(declaration) => setOwnSuitabilityDeclarations((current) => normaliseSuitabilityDeclarations({ suitabilityDeclarations: [declaration, ...current] }))}
+          />
+        </Panel>
+      )}
       <Panel title="My Payslips">
         <div className="list">
           {payslips.map((file) => (
@@ -1130,10 +1161,13 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenIns
   const activeUsers = mergeUserRecords(data.staff, readUserAdminState()).filter((user) => user.status !== "Deactivated").length;
   const coverMoves = readJson(coverMoveStorageKey, []);
   const pendingCoverMoves = coverMoves.filter((move) => !["Sent", "Archived"].includes(move.status)).length;
-  const attentionCount = submittedEvidence.length + expiredRenewals + pendingCoverMoves + pendingDocs;
+  const suitabilityCounts = buildSuitabilityDeclarationCounts(staffWithScrState.filter((person) => !isFormerStaffRecord(person)));
+  const suitabilityActions = suitabilityCounts.dueSoon + suitabilityCounts.expired + suitabilityCounts.missing;
+  const attentionCount = submittedEvidence.length + expiredRenewals + pendingCoverMoves + pendingDocs + suitabilityActions;
   const priorityItems = [
     [submittedEvidence.length, "Review submitted evidence", "Approve or send back staff evidence waiting for admin review.", "SCR"],
     [expiredRenewals, "Expired SCR evidence", "Request updated evidence and keep assurance records current.", "SCR"],
+    [suitabilityActions, "Annual suitability declarations", "Chase missing, overdue or nearly due suitability declarations.", "SCR"],
     [pendingCoverMoves, "Cover notices pending", "Confirm rota cover emails when staff are moved between sites.", "Rota"],
     [pendingDocs, "Unread policy acknowledgements", "Chase missing reads from the document library.", "Documents"],
   ];
@@ -1261,6 +1295,15 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenIns
         <Metric icon={<CalendarDays />} label="Upcoming sessions" value={data.sessions.length} tone="blue" />
         <Metric icon={<ClipboardCheck />} label="Submitted evidence" value={submittedEvidence.length} tone={submittedEvidence.length ? "amber" : "green"} />
         <Metric icon={<LockKeyhole />} label="Active users" value={activeUsers} tone="blue" />
+        <Panel title="Annual Suitability">
+          <div className="suitability-count-grid">
+            <article><span>Current</span><strong>{suitabilityCounts.current}</strong></article>
+            <article><span>Due within 30 days</span><strong>{suitabilityCounts.dueSoon}</strong></article>
+            <article className={suitabilityCounts.expired ? "alert" : ""}><span>Expired</span><strong>{suitabilityCounts.expired}</strong></article>
+            <article className={suitabilityCounts.missing ? "alert" : ""}><span>Missing</span><strong>{suitabilityCounts.missing}</strong></article>
+          </div>
+          <button className="button light" type="button" onClick={() => onOpenTab("SCR")}>Open staff profiles</button>
+        </Panel>
         <Panel title="Staff Actions">
           <div className="list">
             {staffActionRows.map((person) => (
@@ -8386,8 +8429,11 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   const [requestEvidenceKey, setRequestEvidenceKey] = useState(() => scrEvidenceRequestOptions[0][0]);
   const [requestNote, setRequestNote] = useState("");
   const [showProfileEvidenceBlockersOnly, setShowProfileEvidenceBlockersOnly] = useState(false);
+  const [suitabilityDeclarations, setSuitabilityDeclarations] = useState(() => normaliseSuitabilityDeclarations(person));
   const archivedRecord = person.formerRecord || {};
   const isArchivedProfile = isFormerStaffRecord(person);
+  const suitabilityPerson = { ...person, suitabilityDeclarations };
+  const suitabilityState = suitabilityDeclarationState(suitabilityPerson);
   const profileNotes = chooseLatestStaffProfileNotes(notes[person.id], data.staffProfileNotes?.[person.id]);
   const assignments = staffAssignments(person);
   const accountUser = mergeUserRecords(data.staff || [], accountState).find((user) => user.id === (person.profileId || person.id) || user.staffRecordId === person.id);
@@ -8412,7 +8458,11 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     : person.payRate
       ? `${formatCurrency(person.payRate)}/hr`
       : "Pay basis missing";
-  const profileTabs = ["Overview", "SCR Evidence", "HR Files", "Pay", "Sites", "Notes"];
+  const profileTabs = ["Overview", "SCR Evidence", "Annual Suitability Declaration", "HR Files", "Pay", "Sites", "Notes"];
+  const staffCanCompleteSuitability = !isArchivedProfile && access?.role === "Staff" && [
+    access?.currentUser?.staffRecordId,
+    access?.currentUser?.id,
+  ].filter(Boolean).some((id) => id === person.id || id === person.profileId);
   function scrollToProfileSection(section) {
     if (typeof document === "undefined") return;
     document.getElementById(`staff-profile-${section}-${person.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -8467,6 +8517,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
   const profileStats = [
     ["Record", isArchivedProfile ? "Archived" : "Active"],
     ["SCR", checkStatus],
+    ["Suitability", suitabilityState.label],
     ["Next action", nextAction],
     ["Manager", managerName || "Unassigned"],
   ];
@@ -8598,7 +8649,14 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           : scrEvidenceRequestOptions[0][0];
     setRequestEvidenceKey(missingKey);
     setRequestNote("");
-  }, [person.id, person.photoUrl, person.profilePhotoUrl, person.payRate, person.annualSalary, person.contractType]);
+    setSuitabilityDeclarations(normaliseSuitabilityDeclarations(person));
+  }, [person.id, person.photoUrl, person.profilePhotoUrl, person.payRate, person.annualSalary, person.contractType, person.suitabilityDeclarations]);
+
+  function handleSuitabilityDeclarationSaved(declaration) {
+    setSuitabilityDeclarations((current) => normaliseSuitabilityDeclarations({
+      suitabilityDeclarations: [declaration, ...current],
+    }));
+  }
 
   async function savePayDetails(event) {
     event.preventDefault();
@@ -8809,6 +8867,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
           <p>{person.role} · {staffPrimaryLocation(person)}</p>
           <div className="staff-profile-badges">
             <Badge value={checkStatus} />
+            <Badge value={`Suitability: ${suitabilityState.label}`} />
             <Badge value={person.contractType || "Contract not recorded"} />
             <Badge value={accountUser?.role ? `${accountUser.role} access` : "Access not set"} />
           </div>
@@ -8826,6 +8885,16 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
             <div><dt>Reason</dt><dd>{person.leavingReason || archivedRecord.reason || "Not recorded"}</dd></div>
             <div><dt>Last site</dt><dd>{staffPrimaryLocation(person)}</dd></div>
           </dl>
+        </section>
+      )}
+      {suitabilityState.tone !== "ready" && (
+        <section className={`suitability-warning ${suitabilityState.tone}`}>
+          <div>
+            <p className="eyebrow">Annual suitability declaration</p>
+            <h4>{suitabilityState.label}</h4>
+            <p>{suitabilityState.detail} Staff must confirm ongoing suitability every 12 months.</p>
+          </div>
+          <button className="button light" type="button" onClick={() => setProfileTab("Annual Suitability Declaration")}>Open declaration</button>
         </section>
       )}
       <section className={`staff-profile-inspection-snapshot ${inspectionBlockerRows.length ? "needs-action" : "ready"}`}>
@@ -9079,6 +9148,14 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
             </section>
           </div>
         )}
+        {profileTab === "Annual Suitability Declaration" && (
+          <SuitabilityDeclarationPanel
+            person={suitabilityPerson}
+            canComplete={staffCanCompleteSuitability}
+            showHistory
+            onSaved={handleSuitabilityDeclarationSaved}
+          />
+        )}
         {profileTab === "HR Files" && (
           <section className="staff-profile-files" id={`staff-profile-files-${person.id}`}>
             <h4>HR files</h4>
@@ -9194,6 +9271,120 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
         )}
       </div>
     </article>
+  );
+}
+
+function SuitabilityDeclarationPanel({ person, canComplete = false, showHistory = false, onSaved }) {
+  const declarations = normaliseSuitabilityDeclarations(person);
+  const state = suitabilityDeclarationState({ ...person, suitabilityDeclarations: declarations });
+  const [confirmations, setConfirmations] = useState(() => Object.fromEntries(suitabilityDeclarationStatements.map(([key]) => [key, false])));
+  const [finalConfirmation, setFinalConfirmation] = useState(false);
+  const [status, setStatus] = useState("");
+  const allStatementsConfirmed = suitabilityDeclarationStatements.every(([key]) => confirmations[key]);
+  const canSubmit = canComplete && allStatementsConfirmed && finalConfirmation && !status.toLowerCase().includes("saving");
+  const latest = state.latest;
+
+  function toggleStatement(key, checked) {
+    setConfirmations((current) => ({ ...current, [key]: checked }));
+  }
+
+  async function submitDeclaration(event) {
+    event.preventDefault();
+    if (!canSubmit) return;
+    const payload = makeSuitabilityDeclarationPayload(person, confirmations, finalConfirmation);
+    setStatus("Saving declaration...");
+    try {
+      let saved = {
+        ...payload,
+        id: `local-${Date.now()}`,
+        staffRecordId: person.id,
+        createdAt: new Date().toISOString(),
+        source: "local",
+      };
+      if (hasSupabaseConfig && isUuid(person.id)) {
+        const { saveStaffSuitabilityDeclaration } = await loadSupabaseModule();
+        saved = await saveStaffSuitabilityDeclaration(person.id, payload);
+      }
+      onSaved?.(saved);
+      setConfirmations(Object.fromEntries(suitabilityDeclarationStatements.map(([key]) => [key, false])));
+      setFinalConfirmation(false);
+      setStatus(hasSupabaseConfig ? "Declaration saved." : "Declaration saved locally. Supabase is not configured.");
+      addAuditLog("Annual suitability declaration completed", `${person.name}: ${payload.declarationYear}`);
+    } catch (error) {
+      setStatus(`Could not save declaration: ${error.message || "Supabase rejected the declaration."}`);
+    }
+  }
+
+  return (
+    <section className="suitability-declaration-panel" id={`staff-profile-suitability-${person.id}`}>
+      <div className={`suitability-status-card ${state.tone}`}>
+        <div>
+          <p className="eyebrow">Annual suitability declaration</p>
+          <h4>{state.label}</h4>
+          <p>{state.detail}</p>
+        </div>
+        <dl>
+          <div><dt>Declaration year</dt><dd>{latest?.declarationYear || new Date().getFullYear()}</dd></div>
+          <div><dt>Date completed</dt><dd>{latest?.dateCompleted ? formatShortDate(latest.dateCompleted) : "Not completed"}</dd></div>
+          <div><dt>Staff member</dt><dd>{latest?.staffMemberName || person.name}</dd></div>
+          <div><dt>Completed by / signed by</dt><dd>{latest?.signedBy || "Not signed"}</dd></div>
+          <div><dt>Status</dt><dd>{state.status}</dd></div>
+          <div><dt>Next due date</dt><dd>{state.nextDueDate ? formatShortDate(state.nextDueDate) : "Not set"}</dd></div>
+        </dl>
+      </div>
+      {canComplete ? (
+        <form className="suitability-declaration-form" onSubmit={submitDeclaration}>
+          <div>
+            <p className="eyebrow">Staff confirmation</p>
+            <h4>Confirm ongoing suitability to work with children.</h4>
+            <p>Tick each statement, then submit the final declaration. This creates a new historical record and does not overwrite previous declarations.</p>
+          </div>
+          <div className="suitability-checklist">
+            {suitabilityDeclarationStatements.map(([key, text]) => (
+              <label key={key}>
+                <input type="checkbox" checked={Boolean(confirmations[key])} onChange={(event) => toggleStatement(key, event.target.checked)} />
+                <span>{text}</span>
+              </label>
+            ))}
+          </div>
+          <label className="suitability-final-check">
+            <input type="checkbox" checked={finalConfirmation} onChange={(event) => setFinalConfirmation(event.target.checked)} />
+            <span>{suitabilityFinalDeclarationText}</span>
+          </label>
+          <div className="suitability-form-actions">
+            <button className="button dark" type="submit" disabled={!canSubmit}>Submit annual declaration</button>
+            <small>{status || `${suitabilityDeclarationStatements.filter(([key]) => confirmations[key]).length}/${suitabilityDeclarationStatements.length} statements confirmed`}</small>
+          </div>
+        </form>
+      ) : (
+        <div className="suitability-readonly-note">
+          <strong>{showHistory ? "Admin view" : "Read only"}</strong>
+          <span>{showHistory ? "Staff complete this themselves when logged in. Admin can view the full declaration history here." : "This declaration can be completed from the staff member’s own logged-in workspace."}</span>
+        </div>
+      )}
+      {showHistory && (
+        <div className="suitability-history">
+          <div className="suitability-history-head">
+            <h4>Previous declarations</h4>
+            <Badge value={`${declarations.length} record${declarations.length === 1 ? "" : "s"}`} />
+          </div>
+          {declarations.length ? declarations.map((declaration) => {
+            const declarationState = suitabilityDeclarationState({ suitabilityDeclarations: [declaration] });
+            const confirmedCount = suitabilityDeclarationStatements.filter(([key]) => declaration.confirmations?.[key]).length;
+            return (
+              <article key={declaration.id || `${declaration.dateCompleted}-${declaration.signedBy}`}>
+                <div>
+                  <strong>{declaration.declarationYear || declaration.dateCompleted?.slice(0, 4) || "Year not recorded"} declaration</strong>
+                  <span>Completed {declaration.dateCompleted ? formatShortDate(declaration.dateCompleted) : "date not recorded"} · signed by {declaration.signedBy || "not recorded"}</span>
+                  <small>{confirmedCount}/{suitabilityDeclarationStatements.length} statements confirmed · next due {declaration.nextDueDate ? formatShortDate(declaration.nextDueDate) : "not set"}</small>
+                </div>
+                <Badge value={declarationState.label} />
+              </article>
+            );
+          }) : <EmptyList title="No declarations yet" text="The staff member has not completed an annual suitability declaration." />}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -9824,6 +10015,88 @@ function daysUntil(dateString) {
   today.setHours(0, 0, 0, 0);
   const target = new Date(`${dateString}T00:00:00`);
   return Math.ceil((target - today) / 86400000);
+}
+
+function normaliseSuitabilityDeclarations(person = {}) {
+  return (person.suitabilityDeclarations || [])
+    .filter(Boolean)
+    .sort((a, b) => String(b.dateCompleted || b.createdAt || "").localeCompare(String(a.dateCompleted || a.createdAt || "")));
+}
+
+function latestSuitabilityDeclaration(person = {}) {
+  return normaliseSuitabilityDeclarations(person)[0] || null;
+}
+
+function suitabilityDeclarationState(person = {}) {
+  const latest = latestSuitabilityDeclaration(person);
+  if (!latest) {
+    return {
+      label: "Missing",
+      status: "Not Started",
+      tone: "alert",
+      nextDueDate: "",
+      daysUntilDue: null,
+      detail: "No annual suitability declaration has been completed.",
+    };
+  }
+  const nextDueDate = latest.nextDueDate || (latest.dateCompleted ? addMonths(latest.dateCompleted, 12) : "");
+  const remaining = nextDueDate ? daysUntil(nextDueDate) : null;
+  if (remaining !== null && remaining < 0) {
+    return {
+      label: "Expired",
+      status: "Expired",
+      tone: "alert",
+      nextDueDate,
+      daysUntilDue: remaining,
+      detail: `Expired ${formatShortDate(nextDueDate)}.`,
+      latest,
+    };
+  }
+  if (remaining !== null && remaining <= 30) {
+    return {
+      label: "Due within 30 days",
+      status: "Completed",
+      tone: "pending",
+      nextDueDate,
+      daysUntilDue: remaining,
+      detail: `Due ${formatShortDate(nextDueDate)}.`,
+      latest,
+    };
+  }
+  return {
+    label: "Current",
+    status: "Completed",
+    tone: "ready",
+    nextDueDate,
+    daysUntilDue: remaining,
+    detail: nextDueDate ? `Next due ${formatShortDate(nextDueDate)}.` : "Current declaration recorded.",
+    latest,
+  };
+}
+
+function buildSuitabilityDeclarationCounts(staff = []) {
+  return staff.reduce((counts, person) => {
+    const state = suitabilityDeclarationState(person);
+    if (state.label === "Current") counts.current += 1;
+    else if (state.label === "Due within 30 days") counts.dueSoon += 1;
+    else if (state.label === "Expired") counts.expired += 1;
+    else counts.missing += 1;
+    return counts;
+  }, { current: 0, dueSoon: 0, expired: 0, missing: 0 });
+}
+
+function makeSuitabilityDeclarationPayload(person, confirmations, finalConfirmation) {
+  const today = dateInputValue(new Date());
+  return {
+    declarationYear: Number(today.slice(0, 4)),
+    dateCompleted: today,
+    staffMemberName: person.name || person.fullName || "Staff member",
+    signedBy: person.name || person.fullName || "Staff member",
+    status: "Completed",
+    nextDueDate: addMonths(today, 12),
+    confirmations,
+    finalConfirmation,
+  };
 }
 
 function scheduledInspectionForSite(site) {

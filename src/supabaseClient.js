@@ -242,6 +242,24 @@ export async function fetchPlatformData({ userId, role }) {
       updated_at
     `)
     .order("updated_at", { ascending: false });
+  const suitabilityDeclarationsQuery = supabase
+    .from("staff_suitability_declarations")
+    .select(`
+      id,
+      staff_record_id,
+      declaration_year,
+      date_completed,
+      staff_member_name,
+      signed_by,
+      status,
+      next_due_date,
+      confirmations,
+      final_confirmation,
+      completed_by,
+      created_at,
+      updated_at
+    `)
+    .order("date_completed", { ascending: false });
   const auditLogQuery = normalizeRole(role) === "Staff"
     ? Promise.resolve({ data: [], error: null })
     : supabase
@@ -250,7 +268,7 @@ export async function fetchPlatformData({ userId, role }) {
         .order("created_at", { ascending: false })
         .limit(200);
 
-  const [staffResult, sessionsResult, documentsResult, documentChaseEventsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult, hrReportingResult, staffProfileNotesResult, scrEvidenceRequestsResult, auditLogResult] = await Promise.all([
+  const [staffResult, sessionsResult, documentsResult, documentChaseEventsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult, hrReportingResult, staffProfileNotesResult, scrEvidenceRequestsResult, suitabilityDeclarationsResult, auditLogResult] = await Promise.all([
     staffQuery,
     sessionsQuery,
     documentsQuery,
@@ -264,6 +282,7 @@ export async function fetchPlatformData({ userId, role }) {
     hrReportingQuery,
     staffProfileNotesQuery,
     scrEvidenceRequestsQuery,
+    suitabilityDeclarationsQuery,
     auditLogQuery,
   ]);
 
@@ -281,12 +300,17 @@ export async function fetchPlatformData({ userId, role }) {
     ["HR hierarchy", hrReportingResult.error],
     ["Staff profile notes", staffProfileNotesResult.error?.code === "42P01" ? null : staffProfileNotesResult.error],
     ["SCR evidence requests", scrEvidenceRequestsResult.error],
+    ["Annual suitability declarations", suitabilityDeclarationsResult.error?.code === "42P01" ? null : suitabilityDeclarationsResult.error],
     ["Audit log", auditLogResult.error],
   ]
     .filter(([, error]) => Boolean(error))
     .map(([label, error]) => `${label}: ${error.message || "Unable to load"}`);
 
   const staff = mapStaffRecords(staffResult.data || []);
+  const declarationsByStaff = suitabilityDeclarationsResult.error ? {} : mapSuitabilityDeclarations(suitabilityDeclarationsResult.data || []);
+  staff.forEach((person) => {
+    person.suitabilityDeclarations = declarationsByStaff[person.id] || [];
+  });
   await attachStaffPhotoUrls(staff);
   const hrFiles = hrFilesResult.error ? [] : mapHrFiles(hrFilesResult.data || []);
   await attachHrFileUrls(hrFiles);
@@ -304,9 +328,51 @@ export async function fetchPlatformData({ userId, role }) {
     hrReportingLines: hrReportingResult.error ? {} : mapHrReportingLines(hrReportingResult.data || []),
     staffProfileNotes: staffProfileNotesResult.error ? {} : mapStaffProfileNotes(staffProfileNotesResult.data || []),
     scrRenewalRequests: scrEvidenceRequestsResult.error ? {} : mapScrEvidenceRequests(scrEvidenceRequestsResult.data || []),
+    suitabilityDeclarations: suitabilityDeclarationsResult.error ? {} : declarationsByStaff,
     auditLog: auditLogResult.error ? [] : mapAuditLog(auditLogResult.data || []),
     warnings,
   };
+}
+
+export async function saveStaffSuitabilityDeclaration(staffRecordId, declaration) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!staffRecordId) throw new Error("Choose a staff member before saving the declaration.");
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const completedDate = declaration.dateCompleted || new Date().toISOString().slice(0, 10);
+  const payload = {
+    staff_record_id: staffRecordId,
+    declaration_year: Number(declaration.declarationYear || completedDate.slice(0, 4)),
+    date_completed: completedDate,
+    staff_member_name: declaration.staffMemberName || "",
+    signed_by: declaration.signedBy || declaration.staffMemberName || "",
+    status: declaration.status || "Completed",
+    next_due_date: declaration.nextDueDate || addMonthsIso(completedDate, 12),
+    confirmations: declaration.confirmations || {},
+    final_confirmation: Boolean(declaration.finalConfirmation),
+    completed_by: userData?.user?.id || null,
+  };
+  const { data, error } = await supabase
+    .from("staff_suitability_declarations")
+    .insert(payload)
+    .select(`
+      id,
+      staff_record_id,
+      declaration_year,
+      date_completed,
+      staff_member_name,
+      signed_by,
+      status,
+      next_due_date,
+      confirmations,
+      final_confirmation,
+      completed_by,
+      created_at,
+      updated_at
+    `)
+    .single();
+  if (error) throw error;
+  return mapSuitabilityDeclaration(data);
 }
 
 export async function createAuditLogEntry({ action, detail = "", metadata = {}, tableName = null, recordId = null }) {
@@ -497,6 +563,44 @@ function mapStaffProfileNotes(records) {
     };
     return notes;
   }, {});
+}
+
+function mapSuitabilityDeclaration(record = {}) {
+  return {
+    id: record.id,
+    staffRecordId: record.staff_record_id,
+    declarationYear: Number(record.declaration_year || 0),
+    dateCompleted: record.date_completed || "",
+    staffMemberName: record.staff_member_name || "",
+    signedBy: record.signed_by || "",
+    status: record.status || "Completed",
+    nextDueDate: record.next_due_date || "",
+    confirmations: record.confirmations || {},
+    finalConfirmation: Boolean(record.final_confirmation),
+    completedBy: record.completed_by || "",
+    createdAt: record.created_at || "",
+    updatedAt: record.updated_at || "",
+    source: "supabase",
+  };
+}
+
+function mapSuitabilityDeclarations(records) {
+  return records.reduce((groups, record) => {
+    if (!record.staff_record_id) return groups;
+    groups[record.staff_record_id] ||= [];
+    groups[record.staff_record_id].push(mapSuitabilityDeclaration(record));
+    return groups;
+  }, {});
+}
+
+function addMonthsIso(dateString, months) {
+  const date = new Date(`${dateString}T00:00:00`);
+  date.setMonth(date.getMonth() + months);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 async function attachStaffPhotoUrls(staff) {

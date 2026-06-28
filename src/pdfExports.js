@@ -314,6 +314,50 @@ function checklistStatus(staff, key, requests = {}) {
   return "Pending";
 }
 
+function addMonthsIso(dateString, months) {
+  const date = new Date(`${dateString}T00:00:00`);
+  date.setMonth(date.getMonth() + months);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function daysUntilIso(dateString) {
+  if (!dateString) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(target.getTime())) return null;
+  return Math.ceil((target - today) / 86400000);
+}
+
+function latestSuitabilityDeclaration(staff = {}) {
+  return (staff.suitabilityDeclarations || [])
+    .filter(Boolean)
+    .sort((a, b) => String(b.dateCompleted || b.createdAt || "").localeCompare(String(a.dateCompleted || a.createdAt || "")))[0] || null;
+}
+
+function suitabilityDeclarationStatus(staff = {}) {
+  const latest = latestSuitabilityDeclaration(staff);
+  if (!latest) return "Missing";
+  const dueDate = latest.nextDueDate || (latest.dateCompleted ? addMonthsIso(latest.dateCompleted, 12) : "");
+  const remaining = daysUntilIso(dueDate);
+  if (remaining !== null && remaining < 0) return "Expired";
+  if (remaining !== null && remaining <= 30) return "Due within 30 days";
+  return "Current";
+}
+
+function suitabilityDeclarationSummary(staff = {}) {
+  const latest = latestSuitabilityDeclaration(staff);
+  if (!latest) return "No annual staff suitability declaration is recorded.";
+  const dueDate = latest.nextDueDate || (latest.dateCompleted ? addMonthsIso(latest.dateCompleted, 12) : "");
+  return [
+    latest.declarationYear ? `${latest.declarationYear} declaration` : "Annual declaration",
+    latest.dateCompleted ? `completed ${latest.dateCompleted}` : "",
+    latest.signedBy ? `signed by ${latest.signedBy}` : "",
+    dueDate ? `next due ${dueDate}` : "",
+  ].filter(Boolean).join(", ");
+}
+
 function dbsNumberFor(staff = {}) {
   return staff.dbsNumber
     || staff.scrChecklist?.dbsNumber
@@ -475,6 +519,7 @@ export function exportStaffScrSummary(person, allStaff = [], options = {}) {
       ["Allergy awareness", checklistStatus(staff, "allergy", evidenceRequests), evidenceSummary(staff, "allergy", evidenceRequests)],
       ["References", checklistStatus(staff, "references", evidenceRequests), evidenceSummary(staff, "references", evidenceRequests)],
       ["Annual declarations", checklistStatus(staff, "declarations", evidenceRequests), evidenceSummary(staff, "declarations", evidenceRequests)],
+      ["Annual suitability declaration", suitabilityDeclarationStatus(staff), suitabilityDeclarationSummary(staff)],
     ],
     PAGE.margin,
     y + 18,
@@ -485,6 +530,25 @@ export function exportStaffScrSummary(person, allStaff = [], options = {}) {
   y += 32;
   doc.sectionTitle("Recruitment and Annual Declarations", PAGE.margin, y);
   y = doc.wrap("The full record supports application review, employment gaps, references, overseas checks where applicable, qualifications, annual medical and criminal declarations, childcare disqualification declarations and evidence requests.", PAGE.margin, y + 24, 500, 10, MUTED);
+  const suitabilityHistory = (staff.suitabilityDeclarations || []).slice(0, 5);
+  if (suitabilityHistory.length) {
+    y += 22;
+    doc.sectionTitle("Annual Suitability Declaration History", PAGE.margin, y);
+    y = doc.table(
+      ["Year", "Completed", "Signed by", "Status", "Next due"],
+      suitabilityHistory.map((declaration) => [
+        declaration.declarationYear || declaration.dateCompleted?.slice(0, 4) || "Not recorded",
+        declaration.dateCompleted || "Not recorded",
+        declaration.signedBy || "Not recorded",
+        suitabilityDeclarationStatus({ suitabilityDeclarations: [declaration] }),
+        declaration.nextDueDate || (declaration.dateCompleted ? addMonthsIso(declaration.dateCompleted, 12) : "Not recorded"),
+      ]),
+      PAGE.margin,
+      y + 18,
+      [70, 95, 135, 100, 110],
+      { rowHeight: 30 },
+    );
+  }
   doc.text("Generated from Apres School SCR records. Confirm live data before sharing externally.", PAGE.margin, 804, 8, MUTED);
   downloadPdf(`apres-staff-scr-summary-${slug(staff.name)}-${fileStamp()}.pdf`, doc);
 }
