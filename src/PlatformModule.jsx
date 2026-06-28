@@ -628,6 +628,24 @@ const suitabilityDeclarationStatements = [
   ["qualificationsAccurate", "My qualification records held by Après School are accurate."],
   ["medicalChangesShared", "I have informed Après School of any changes to my medical information or allergies that could affect my work."],
 ];
+const suitabilityDeclarationGroups = [
+  {
+    title: "Suitability and health",
+    detail: "Personal fitness, disqualification and anything that could affect safe work with children.",
+    keys: ["medicalFit", "noHealthCondition", "noCriminalChange", "notDisqualified", "medicalChangesShared"],
+  },
+  {
+    title: "DBS and safeguarding",
+    detail: "Ongoing safeguarding awareness and duty to report changes immediately.",
+    keys: ["dbsUpdateActive", "notifyChanges", "readSafeguardingPolicy", "knowDsl", "safeguardingEveryone"],
+  },
+  {
+    title: "Policies and records",
+    detail: "Core conduct expectations and staff record details held by Après School.",
+    keys: ["readCorePolicies", "contactDetailsCurrent", "rightToWorkValid", "qualificationsAccurate"],
+  },
+];
+const suitabilityDeclarationStatementMap = Object.fromEntries(suitabilityDeclarationStatements);
 const suitabilityFinalDeclarationText = "I confirm that the information above is true and complete. I understand my ongoing duty to notify Après School immediately if anything changes that may affect my suitability to work with children.";
 const dbsDisclosureRows = [
   { surname: "ELEKES", dob: "2001-11-19", applicationRef: "E0873119464", certificateNo: "001897639742", issueDate: "2024-10-04", terms: ["angel", "elekes", "alekes"] },
@@ -9280,6 +9298,7 @@ function SuitabilityDeclarationPanel({ person, canComplete = false, showHistory 
   const [confirmations, setConfirmations] = useState(() => Object.fromEntries(suitabilityDeclarationStatements.map(([key]) => [key, false])));
   const [finalConfirmation, setFinalConfirmation] = useState(false);
   const [status, setStatus] = useState("");
+  const confirmedCount = suitabilityDeclarationStatements.filter(([key]) => confirmations[key]).length;
   const allStatementsConfirmed = suitabilityDeclarationStatements.every(([key]) => confirmations[key]);
   const canSubmit = canComplete && allStatementsConfirmed && finalConfirmation && !status.toLowerCase().includes("saving");
   const latest = state.latest;
@@ -9337,15 +9356,33 @@ function SuitabilityDeclarationPanel({ person, canComplete = false, showHistory 
           <div>
             <p className="eyebrow">Staff confirmation</p>
             <h4>Confirm ongoing suitability to work with children.</h4>
-            <p>Tick each statement, then submit the final declaration. This creates a new historical record and does not overwrite previous declarations.</p>
+            <p>Work through the three sections, then submit the final declaration. Each submission is stored historically and does not overwrite previous records.</p>
+          </div>
+          <div className="suitability-progress-row">
+            <strong>{confirmedCount}/{suitabilityDeclarationStatements.length} confirmed</strong>
+            <span>{allStatementsConfirmed ? "Ready for final confirmation" : "Complete every statement before submitting"}</span>
           </div>
           <div className="suitability-checklist">
-            {suitabilityDeclarationStatements.map(([key, text]) => (
-              <label key={key}>
-                <input type="checkbox" checked={Boolean(confirmations[key])} onChange={(event) => toggleStatement(key, event.target.checked)} />
-                <span>{text}</span>
-              </label>
-            ))}
+            {suitabilityDeclarationGroups.map((group) => {
+              const groupConfirmed = group.keys.filter((key) => confirmations[key]).length;
+              return (
+                <fieldset key={group.title} className="suitability-check-group">
+                  <legend>
+                    <span>{group.title}</span>
+                    <small>{groupConfirmed}/{group.keys.length}</small>
+                  </legend>
+                  <p>{group.detail}</p>
+                  <div>
+                    {group.keys.map((key) => (
+                      <label key={key}>
+                        <input type="checkbox" checked={Boolean(confirmations[key])} onChange={(event) => toggleStatement(key, event.target.checked)} />
+                        <span>{suitabilityDeclarationStatementMap[key]}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              );
+            })}
           </div>
           <label className="suitability-final-check">
             <input type="checkbox" checked={finalConfirmation} onChange={(event) => setFinalConfirmation(event.target.checked)} />
@@ -9353,7 +9390,7 @@ function SuitabilityDeclarationPanel({ person, canComplete = false, showHistory 
           </label>
           <div className="suitability-form-actions">
             <button className="button dark" type="submit" disabled={!canSubmit}>Submit annual declaration</button>
-            <small>{status || `${suitabilityDeclarationStatements.filter(([key]) => confirmations[key]).length}/${suitabilityDeclarationStatements.length} statements confirmed`}</small>
+            <small>{status || (canSubmit ? "Ready to submit" : "Waiting for all confirmations")}</small>
           </div>
         </form>
       ) : (

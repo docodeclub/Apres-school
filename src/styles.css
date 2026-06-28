@@ -15174,10 +15174,79 @@ th {
   padding: 18px;
 }
 
+.suitability-progress-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(31, 57, 154, 0.12);
+  border-radius: 14px;
+  background: #f8faff;
+  padding: 12px 14px;
+}
+
+.suitability-progress-row strong {
+  color: var(--royal-dark);
+  font-weight: 950;
+}
+
+.suitability-progress-row span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
 .suitability-checklist {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.suitability-check-group {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fbfcff;
+  padding: 14px;
+}
+
+.suitability-check-group legend {
+  display: flex;
+  width: 100%;
   gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  padding: 0;
+  color: var(--royal-dark);
+  font-weight: 950;
+}
+
+.suitability-check-group legend small {
+  border-radius: 999px;
+  background: #eef3ff;
+  color: var(--royal);
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.suitability-check-group p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.suitability-check-group > div {
+  display: grid;
+  gap: 8px;
 }
 
 .suitability-checklist label,
@@ -15188,10 +15257,10 @@ th {
   align-items: start;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #f8faff;
-  padding: 12px;
+  background: #fff;
+  padding: 10px;
   color: var(--royal-dark);
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   font-weight: 800;
   line-height: 1.35;
 }
@@ -15205,6 +15274,8 @@ th {
 
 .suitability-final-check {
   background: #eef3ff;
+  font-size: 0.9rem;
+  padding: 12px;
 }
 
 .suitability-form-actions {
@@ -15275,6 +15346,12 @@ th {
 .suitability-count-grid article.alert {
   border-color: rgba(218, 74, 74, 0.24);
   background: #fff8f8;
+}
+
+@media (max-width: 1240px) {
+  .suitability-checklist {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 980px) {
