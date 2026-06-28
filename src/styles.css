@@ -6689,6 +6689,19 @@ label {
   font-size: 1.35rem;
 }
 
+.ofsted-print-note {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.ofsted-scr-print-table td {
+  white-space: pre-line;
+}
+
+.ofsted-scr-print-table td strong {
+  color: var(--royal-dark);
+}
+
 .ofsted-print-signoff div {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -14894,13 +14907,18 @@ th {
   .ofsted-print-pack table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.82rem;
+    font-size: 0.78rem;
+  }
+
+  .ofsted-scr-print-table {
+    font-size: 0.7rem;
+    line-height: 1.28;
   }
 
   .ofsted-print-pack th,
   .ofsted-print-pack td {
     border: 1px solid #bbb;
-    padding: 7px;
+    padding: 6px;
     text-align: left;
     vertical-align: top;
   }

@@ -339,6 +339,92 @@ function staffMeetsRequirement(person, requirement) {
   return false;
 }
 
+function evidenceFor(person, key) {
+  return person?.scrChecklist?.evidence?.[key] || {};
+}
+
+function firstText(...values) {
+  return values.map((value) => String(value || "").trim()).find(Boolean) || "";
+}
+
+function yesNo(value) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return "Not recorded";
+}
+
+function ofstedDbsPrintSummary(person) {
+  const evidence = evidenceFor(person, "dbs");
+  const number = firstText(
+    evidence.dbsNumber,
+    evidence.enhancedDbsNumber,
+    evidence.certificateNumber,
+    evidence.number,
+    evidence.reference,
+  );
+  const result = firstText(evidence.result, evidence.dbsResult, evidence.status);
+  const renewal = firstText(evidence.renewalDate, evidence.expiryDate, person.dbsRenewal);
+  return [
+    number ? `No. ${number}` : "Number not recorded",
+    result ? `Result: ${result}` : "",
+    renewal ? `Renewal/review: ${formatShortDate(renewal)}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+function ofstedReferencePrintSummary(person) {
+  const evidence = evidenceFor(person, "references");
+  const names = Array.isArray(evidence.references)
+    ? evidence.references.map((reference) => reference.organisation ? `${reference.name} (${reference.organisation})` : reference.name).filter(Boolean)
+    : Array.isArray(evidence.referenceNames)
+      ? evidence.referenceNames.filter(Boolean)
+      : [];
+  const checked = firstText(evidence.checkedAt, evidence.dateSeen, evidence.verifiedAt);
+  return [
+    evidence.referencesReceived || evidence.referenceCount ? `${evidence.referenceCount || 2} received` : "Not recorded",
+    names.length ? names.join("; ") : "",
+    checked ? `Checked ${formatShortDate(checked)}` : "",
+    `Would employ again: ${yesNo(evidence.wouldReemploy ?? evidence.wouldEmployAgain)}`,
+    `Safeguarding concerns: ${yesNo(evidence.safeguardingConcerns)}`,
+    `Children role: ${yesNo(evidence.recommendedForChildren ?? evidence.recommendForChildrenRole)}`,
+  ].filter(Boolean).join("\n");
+}
+
+function ofstedTrainingPrintSummary(person, key, fallbackDate, label) {
+  const evidence = evidenceFor(person, key);
+  const certificate = firstText(evidence.reference, evidence.fileName, evidence.title);
+  const date = firstText(evidence.completedAt, evidence.dateSeen, evidence.issueDate);
+  const expiry = firstText(evidence.expiryDate, fallbackDate);
+  const noExpiry = evidence.noExpiryShown || evidence.noExpiryStated;
+  return [
+    certificate || label,
+    date ? `Completed/seen: ${formatShortDate(date)}` : "",
+    noExpiry ? "No expiry shown" : expiry ? `Review: ${formatShortDate(expiry)}` : "Review not recorded",
+  ].filter(Boolean).join("\n");
+}
+
+function ofstedFirstAidEyfsSummary(person) {
+  const firstAid = ofstedTrainingPrintSummary(person, "firstAid", person.firstAidExpiry, "First aid");
+  const eyfsEvidence = evidenceFor(person, "eyfsLevel");
+  const eyfs = firstText(person.eyfsLevel, eyfsEvidence.reference, eyfsEvidence.level, eyfsEvidence.status);
+  return [`First aid: ${firstAid}`, `EYFS: ${eyfs || "Not recorded"}`].join("\n");
+}
+
+function ofstedScrEvidenceScore(person) {
+  const checks = [
+    Boolean(person.scrChecklist?.dbs || evidenceFor(person, "dbs").reference || evidenceFor(person, "dbs").number || evidenceFor(person, "dbs").dbsNumber),
+    Boolean(person.scrChecklist?.barredList || evidenceFor(person, "barredList").reference || evidenceFor(person, "barredList").status),
+    Boolean(person.scrChecklist?.rightToWork || evidenceFor(person, "rightToWork").reference || evidenceFor(person, "rightToWork").status),
+    Boolean(person.scrChecklist?.identity || evidenceFor(person, "identity").reference || evidenceFor(person, "identity").status),
+    Boolean(person.scrChecklist?.safeguarding || staffMeetsRequirement(person, "safeguarding")),
+    Boolean(person.scrChecklist?.allergy || staffMeetsRequirement(person, "allergy")),
+    Boolean(person.scrChecklist?.references || evidenceFor(person, "references").referencesReceived || evidenceFor(person, "references").referenceCount),
+    Boolean(person.scrChecklist?.firstAid || staffMeetsRequirement(person, "firstAid")),
+    Boolean(person.scrChecklist?.eyfsLevel || staffMeetsRequirement(person, "eyfs")),
+  ];
+  const ready = checks.filter(Boolean).length;
+  return `${ready}/${checks.length} key checks recorded`;
+}
+
 function evidenceExpiryStatus(evidence) {
   if (!evidence?.expiryDate) return "";
   const today = new Date();
@@ -4248,9 +4334,20 @@ function OfstedReadiness({ data }) {
         </div>
         <article>
           <h2>Assigned Staff and SCR Evidence</h2>
+          <p className="ofsted-print-note">This table is filtered to staff assigned to {site.school}. Use it as the inspection front sheet, then open the individual staff profile for evidence files.</p>
           {assignedStaff.length ? (
-            <table><thead><tr><th>Name</th><th>Role</th><th>SCR</th><th>DBS renewal</th><th>Safeguarding</th><th>Allergy</th><th>First aid</th><th>EYFS</th></tr></thead><tbody>
-              {assignedStaff.map((person) => <tr key={person.id}><td>{person.name}</td><td>{person.role}</td><td>{person.compliance}</td><td>{person.dbsRenewal || "Not recorded"}</td><td>{person.safeguardingExpiry || "Not recorded"}</td><td>{person.allergyAwarenessExpiry || "Not recorded"}</td><td>{person.firstAidExpiry || "Not recorded"}</td><td>{person.eyfsLevel || "Not recorded"}</td></tr>)}
+            <table className="ofsted-scr-print-table"><thead><tr><th>Staff member</th><th>Role</th><th>DBS / barred list</th><th>References</th><th>Safeguarding / allergy</th><th>First aid / EYFS</th><th>SCR state</th></tr></thead><tbody>
+              {assignedStaff.map((person) => (
+                <tr key={person.id}>
+                  <td><strong>{person.name}</strong><br />{person.email || "Email not recorded"}</td>
+                  <td>{person.role || "Staff"}<br />{staffPrimaryLocation(person)}</td>
+                  <td>{ofstedDbsPrintSummary(person)}<br />Barred list: {person.scrChecklist?.barredList ? "Recorded" : firstText(evidenceFor(person, "barredList").status, evidenceFor(person, "barredList").reference, "Not recorded")}</td>
+                  <td>{ofstedReferencePrintSummary(person)}</td>
+                  <td>{ofstedTrainingPrintSummary(person, "safeguarding", person.safeguardingExpiry, "Safeguarding")}<br />Allergy: {ofstedTrainingPrintSummary(person, "allergy", person.allergyAwarenessExpiry, "Allergy awareness")}</td>
+                  <td>{ofstedFirstAidEyfsSummary(person)}</td>
+                  <td>{person.compliance || "Review needed"}<br />{ofstedScrEvidenceScore(person)}</td>
+                </tr>
+              ))}
             </tbody></table>
           ) : <p>No staff are currently assigned to this site in the SCR.</p>}
         </article>
