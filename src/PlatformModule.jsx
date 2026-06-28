@@ -4482,18 +4482,22 @@ function OfstedReadiness({ data }) {
           <h2>Assigned Staff and SCR Evidence</h2>
           <p className="ofsted-print-note">This table is filtered to staff assigned to {site.school}. Use it as the inspection front sheet, then open the individual staff profile for evidence files.</p>
           {assignedStaff.length ? (
-            <table className="ofsted-scr-print-table"><thead><tr><th>Staff member</th><th>Role</th><th>DBS / barred list</th><th>References</th><th>Safeguarding / allergy</th><th>First aid / EYFS</th><th>SCR state</th></tr></thead><tbody>
-              {assignedStaff.map((person) => (
-                <tr key={person.id}>
-                  <td><strong>{person.name}</strong><br />{person.email || "Email not recorded"}</td>
-                  <td>{person.role || "Staff"}<br />{staffPrimaryLocation(person)}</td>
-                  <td>{ofstedDbsPrintSummary(person)}<br />Barred list: {person.scrChecklist?.barredList ? "Recorded" : firstText(evidenceFor(person, "barredList").status, evidenceFor(person, "barredList").reference, "Not recorded")}</td>
-                  <td>{ofstedReferencePrintSummary(person)}</td>
-                  <td>{ofstedTrainingPrintSummary(person, "safeguarding", person.safeguardingExpiry, "Safeguarding")}<br />Allergy: {ofstedTrainingPrintSummary(person, "allergy", person.allergyAwarenessExpiry, "Allergy awareness")}</td>
-                  <td>{ofstedFirstAidEyfsSummary(person)}</td>
-                  <td>{person.compliance || "Review needed"}<br />{ofstedScrEvidenceScore(person)}</td>
-                </tr>
-              ))}
+            <table className="ofsted-scr-print-table"><thead><tr><th>Staff member</th><th>Role</th><th>DBS / barred list</th><th>References</th><th>Safeguarding / allergy</th><th>First aid / EYFS</th><th>Annual suitability</th><th>SCR state</th></tr></thead><tbody>
+              {assignedStaff.map((person) => {
+                const suitability = suitabilityDeclarationState(person);
+                return (
+                  <tr key={person.id}>
+                    <td><strong>{person.name}</strong><br />{person.email || "Email not recorded"}</td>
+                    <td>{person.role || "Staff"}<br />{staffPrimaryLocation(person)}</td>
+                    <td>{ofstedDbsPrintSummary(person)}<br />Barred list: {person.scrChecklist?.barredList ? "Recorded" : firstText(evidenceFor(person, "barredList").status, evidenceFor(person, "barredList").reference, "Not recorded")}</td>
+                    <td>{ofstedReferencePrintSummary(person)}</td>
+                    <td>{ofstedTrainingPrintSummary(person, "safeguarding", person.safeguardingExpiry, "Safeguarding")}<br />Allergy: {ofstedTrainingPrintSummary(person, "allergy", person.allergyAwarenessExpiry, "Allergy awareness")}</td>
+                    <td>{ofstedFirstAidEyfsSummary(person)}</td>
+                    <td>{suitability.label}<br />{suitability.nextDueDate ? `Next due ${formatShortDate(suitability.nextDueDate)}` : suitability.detail}</td>
+                    <td>{person.compliance || "Review needed"}<br />{ofstedScrEvidenceScore(person)}</td>
+                  </tr>
+                );
+              })}
             </tbody></table>
           ) : <p>No staff are currently assigned to this site in the SCR.</p>}
         </article>

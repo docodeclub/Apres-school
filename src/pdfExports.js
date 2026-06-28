@@ -387,24 +387,34 @@ function dbsStatusFor(staff = {}, requests = {}) {
   return number ? `${number} / ${status}` : `Not recorded / ${status}`;
 }
 
-function dbsInspectionPriority(staff = {}, requests = {}) {
-  const status = checklistStatus(staff, "dbs", requests);
-  const number = dbsNumberFor(staff);
-  if (!number) return 4;
-  if (/rejected|sent back|expired|pending/i.test(status)) return 3;
-  if (/requested|submitted|review|expiring/i.test(status)) return 2;
-  return 1;
+function evidenceCheckFromRow(evidenceRows = [], staff = {}, key = "") {
+  const row = evidenceRows.find((item) => item.person?.id === staff.id);
+  return row?.checks?.find((check) => check.key === key) || null;
 }
 
-function dbsInspectionAction(staff = {}, requests = {}) {
-  const status = checklistStatus(staff, "dbs", requests);
-  if (!dbsNumberFor(staff)) return "Record DBS number before sharing assurance.";
-  if (/rejected|sent back/i.test(status)) return "Review evidence sent back to staff.";
-  if (/submitted/i.test(status)) return "Review submitted evidence.";
-  if (/requested/i.test(status)) return "Awaiting staff evidence.";
-  if (/expired/i.test(status)) return "Renew DBS evidence.";
-  if (/expiring/i.test(status)) return "Monitor renewal date.";
-  return staff.dbsRenewal ? `Review ${staff.dbsRenewal}` : "No immediate DBS action.";
+function compactCheckLabel(check, fallback = "Not recorded") {
+  if (!check) return fallback;
+  return [check.status, check.detail].filter(Boolean).join(" - ") || fallback;
+}
+
+function inspectionChecklistRowForStaff(staff = {}, evidenceRows = [], requests = {}) {
+  const dbsCheck = evidenceCheckFromRow(evidenceRows, staff, "dbs");
+  const safeguarding = evidenceCheckFromRow(evidenceRows, staff, "safeguarding");
+  const allergy = evidenceCheckFromRow(evidenceRows, staff, "allergy");
+  const firstAid = evidenceCheckFromRow(evidenceRows, staff, "firstAid");
+  const references = evidenceCheckFromRow(evidenceRows, staff, "references");
+  const suitability = evidenceCheckFromRow(evidenceRows, staff, "annualSuitability");
+  const row = evidenceRows.find((item) => item.person?.id === staff.id);
+  const blockers = (row?.checks || []).filter((check) => check.tone !== "ready" && check.tone !== "neutral");
+  const checkedDate = scrCheckedDateFor(staff);
+  return [
+    `${staff.name || "Staff member"}\n${staff.role || "Staff"}`,
+    `${dbsNumberFor(staff) || "DBS not recorded"}\n${dbsCheck?.status || checklistStatus(staff, "dbs", requests)}\nChecked: ${checkedDate ? formatDate(checkedDate) : "not recorded"}`,
+    `Safeguarding: ${safeguarding?.status || checklistStatus(staff, "safeguarding", requests)}\nAllergy: ${allergy?.status || checklistStatus(staff, "allergy", requests)}\nFirst aid: ${firstAid?.status || checklistStatus(staff, "firstAid", requests)}`,
+    compactCheckLabel(references, evidenceSummary(staff, "references", requests) || "Not recorded"),
+    compactCheckLabel(suitability, suitabilityDeclarationSummary(staff)),
+    blockers.length ? `${blockers.length} to check` : "Ready",
+  ];
 }
 
 function namesList(people = []) {
@@ -701,16 +711,13 @@ export function exportInspectionEvidencePack(options = {}) {
       row.checks[0]?.detail || "Open staff profile for detail",
     ])
     : [["None flagged", "No SCR blockers are currently flagged for this site.", "", ""]];
-  const dbsRows = staff.length ? [...staff].sort((a, b) => (
-    dbsInspectionPriority(b, evidenceRequests) - dbsInspectionPriority(a, evidenceRequests)
-    || String(a.name || "").localeCompare(String(b.name || ""))
-  )).map((person) => [
-    person.name || "Staff member",
-    person.role || "Staff",
-    dbsNumberFor(person) || "Not recorded",
-    checklistStatus(person, "dbs", evidenceRequests),
-    dbsInspectionAction(person, evidenceRequests),
-  ]) : [["No staff assigned", "", "", "", ""]];
+  const inspectionChecklistRows = staff.length ? [...staff].sort((a, b) => {
+    const rowA = evidenceRows.find((row) => row.person?.id === a.id);
+    const rowB = evidenceRows.find((row) => row.person?.id === b.id);
+    const blockersA = (rowA?.checks || []).filter((check) => check.tone !== "ready" && check.tone !== "neutral").length;
+    const blockersB = (rowB?.checks || []).filter((check) => check.tone !== "ready" && check.tone !== "neutral").length;
+    return blockersB - blockersA || String(a.name || "").localeCompare(String(b.name || ""));
+  }).map((person) => inspectionChecklistRowForStaff(person, evidenceRows, evidenceRequests)) : [["No staff assigned", "", "", "", "", ""]];
   const currentStaffRows = staff.length ? [...staff]
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
     .map((person) => [
@@ -736,9 +743,9 @@ export function exportInspectionEvidencePack(options = {}) {
       `${staff.length} current ${siteName} staff. This pack is site-scoped.`,
     ],
     [
-      "Show DBS numbers and status",
-      "Page 2 Assigned Staff DBS Checks",
-      "DBS numbers, status and review action are listed by assigned staff member.",
+      "Show the site SCR checklist",
+      "Page 2 Site SCR Checklist",
+      "DBS numbers, checked dates, training, references and annual suitability are listed by assigned staff member.",
     ],
     [
       "Who is the named manager?",
@@ -843,26 +850,26 @@ export function exportInspectionEvidencePack(options = {}) {
   doc.addPage();
   doc.pageHeader("Inspection Evidence Pack", `Site: ${siteName}`);
   y = 112;
-  doc.sectionTitle("Assigned Staff DBS Checks", PAGE.margin, y);
-  y = doc.wrap("This page is designed for the common inspection request: show the staff assigned to this site and their DBS references/status. Missing or review-needed DBS records are listed first.", PAGE.margin, y + 18, 500, 9, MUTED, 12);
-  chunkRows(dbsRows, 15).forEach((chunk, index) => {
+  doc.sectionTitle("Site SCR Checklist", PAGE.margin, y);
+  y = doc.wrap("This page is filtered to current staff assigned to this site only. It mirrors the live SCR checklist: DBS numbers, SCR checked dates, safeguarding, allergy, first aid, references and annual suitability declaration status.", PAGE.margin, y + 18, 500, 9, MUTED, 12);
+  chunkRows(inspectionChecklistRows, 11).forEach((chunk, index) => {
     if (index > 0) {
-      drawInspectionFooter(doc, "Assigned staff DBS checks continued.");
+      drawInspectionFooter(doc, "Site SCR checklist continued.");
       doc.addPage();
       doc.pageHeader("Inspection Evidence Pack", `Site: ${siteName}`);
       y = 112;
-      doc.sectionTitle("Assigned Staff DBS Checks Continued", PAGE.margin, y);
+      doc.sectionTitle("Site SCR Checklist Continued", PAGE.margin, y);
     }
     y = doc.table(
-      ["Staff member", "Role", "DBS number", "DBS status", "Action / review"],
+      ["Staff", "DBS / checked", "Training", "References", "Suitability", "Action"],
       chunk,
       PAGE.margin,
       y + 14,
-      [108, 82, 116, 92, 112],
-      { rowHeight: 30 },
+      [88, 98, 118, 82, 82, 42],
+      { rowHeight: 48 },
     );
   });
-  drawInspectionFooter(doc, "Page 2: DBS numbers, DBS status and renewal/review dates for assigned staff.");
+  drawInspectionFooter(doc, "Page 2: site-scoped SCR checklist with DBS numbers, checked dates, training, references and annual suitability.");
 
   doc.addPage();
   doc.pageHeader("Inspection Evidence Pack", `Site: ${siteName}`);
