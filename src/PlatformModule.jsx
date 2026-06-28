@@ -3862,6 +3862,11 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
           scheduledInspection={scheduledInspection}
         />
       )}
+      <SCRInspectionChecklist
+        school={selectedScrSchool}
+        rows={selectedStaffEvidenceRows}
+        onOpenStaff={openEvidenceStaffProfile}
+      />
       <SCRSiteEvidenceBoard
         school={selectedScrSchool}
         rows={selectedStaffEvidenceRows}
@@ -4064,7 +4069,7 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
     }))
     .filter((row) => row.checks.length);
   const visibleRows = showBlockersOnly ? blockerRows : rows;
-  const evidenceOrder = ["dbs", "safeguarding", "allergy", "firstAid", "eyfsLevel", "adminReview"];
+  const evidenceOrder = ["dbs", "safeguarding", "allergy", "firstAid", "references", "annualSuitability", "eyfsLevel", "adminReview"];
   function orderedChecks(checks = []) {
     return [...checks].sort((a, b) => evidenceOrder.indexOf(a.key) - evidenceOrder.indexOf(b.key));
   }
@@ -4134,6 +4139,86 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
         {!rows.length && <EmptyList title="No staff assigned to this site" text="Use the assignment section to add staff before producing assurance output." />}
         {rows.length > 0 && !visibleRows.length && <EmptyList title="No blockers for this site" text="All visible SCR evidence is either checked, recorded or not required." />}
       </div>
+    </section>
+  );
+}
+
+function SCRInspectionChecklist({ school, rows, onOpenStaff }) {
+  const checklistOrder = ["dbs", "safeguarding", "allergy", "firstAid", "references", "annualSuitability"];
+  const readyRows = rows.filter((row) => row.ready);
+  const needsAction = rows.length - readyRows.length;
+  const visibleChecks = (row) => checklistOrder.map((key) => row.checks.find((check) => check.key === key)).filter(Boolean);
+  const checkLabel = (check) => check.file?.fileUrl ? "View file" : check.file?.storagePath ? "Private file" : check.detail;
+  return (
+    <section className="scr-inspection-checklist" aria-label={`${school} SCR inspection checklist`}>
+      <div className="scr-inspection-checklist-head">
+        <div>
+          <p className="eyebrow">Inspection checklist</p>
+          <h3>{school} staff compliance table.</h3>
+          <p>Site-filtered, current staff only. Use this as the calm front page before opening individual evidence records.</p>
+        </div>
+        <div className="scr-inspection-checklist-metrics">
+          <span><strong>{rows.length}</strong> staff</span>
+          <span><strong>{readyRows.length}</strong> ready</span>
+          <span><strong>{needsAction}</strong> actions</span>
+        </div>
+      </div>
+      <TableWrap>
+        <table className="scr-inspection-checklist-table">
+          <thead>
+            <tr>
+              <th>Staff member</th>
+              <th>DBS no.</th>
+              <th>Safeguarding</th>
+              <th>Allergy</th>
+              <th>First aid</th>
+              <th>References</th>
+              <th>Suitability</th>
+              <th>Record</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const checks = Object.fromEntries(visibleChecks(row).map((check) => [check.key, check]));
+              const dbsNumber = staffDbsNumber(row.person);
+              return (
+                <tr key={row.person.id}>
+                  <td>
+                    <strong>{row.person.name}</strong>
+                    <small>{row.person.role || "Staff"} · SCR checked {staffScrCheckedDate(row.person) ? formatShortDate(staffScrCheckedDate(row.person)) : "not recorded"}</small>
+                  </td>
+                  <td>
+                    <span className={dbsNumber ? "scr-mini-status ready" : "scr-mini-status bad"}>{dbsNumber || "Missing"}</span>
+                  </td>
+                  {["safeguarding", "allergy", "firstAid", "references", "annualSuitability"].map((key) => {
+                    const check = checks[key];
+                    return (
+                      <td key={key}>
+                        {check ? (
+                          <div className={`scr-checklist-cell ${check.tone}`}>
+                            <strong>{check.status}</strong>
+                            {check.file?.fileUrl
+                              ? <a href={check.file.fileUrl} target="_blank" rel="noreferrer">{checkLabel(check)}</a>
+                              : <span>{checkLabel(check)}</span>}
+                          </div>
+                        ) : (
+                          <span className="scr-mini-status neutral">Not recorded</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td>
+                    <button className="button subtle" type="button" onClick={() => onOpenStaff(row.person.id)}>Open</button>
+                  </td>
+                </tr>
+              );
+            })}
+            {!rows.length && (
+              <tr><td colSpan="8"><strong>No current staff are assigned to this site.</strong></td></tr>
+            )}
+          </tbody>
+        </table>
+      </TableWrap>
     </section>
   );
 }
@@ -5334,6 +5419,8 @@ function buildScrSiteEvidenceRows(staff = [], hrFiles = [], evidenceRequests = {
       scrEvidenceBoardCheck(person, "allergy", "Allergy", person.allergyAwarenessExpiry, hrFiles, evidenceRequests),
       scrEvidenceBoardCheck(person, "firstAid", "First aid", person.firstAidExpiry, hrFiles, evidenceRequests),
       scrEvidenceBoardCheck(person, "eyfsLevel", "EYFS Level 3", person.eyfsLevel, hrFiles, evidenceRequests),
+      scrReferenceEvidenceCheck(person, hrFiles, evidenceRequests),
+      scrSuitabilityEvidenceCheck(person),
       scrEvidenceBoardCheck(person, "adminReview", "Admin review", person.scrChecklist?.approvedAt || person.compliance, hrFiles, evidenceRequests),
     ];
     return {
@@ -5345,6 +5432,61 @@ function buildScrSiteEvidenceRows(staff = [], hrFiles = [], evidenceRequests = {
     const actionDiff = Number(a.ready) - Number(b.ready);
     return actionDiff || a.person.name.localeCompare(b.person.name);
   });
+}
+
+function scrReferenceEvidenceCheck(person, hrFiles, evidenceRequests) {
+  const key = "references";
+  const evidence = person.scrChecklist?.evidence?.references || {};
+  const request = evidenceRequests?.[`${person.id}-${key}`] || {};
+  const file = findScrEvidenceFile(person, evidence, "References", hrFiles);
+  const summary = referenceAnswerSummary(evidence).filter(Boolean);
+  const received = Boolean(person.scrChecklist?.references || evidence.referencesReceived || evidence.referenceReceived || evidence.referenceCount > 0 || evidence.reference || file);
+  const wouldReemploy = evidence.wouldReemploy ?? evidence.wouldEmployAgain;
+  const safeguardingConcerns = evidence.safeguardingConcerns;
+  const recommended = evidence.recommendedForChildren ?? evidence.recommendForChildrenRole;
+  const requiredAnswersRecorded = wouldReemploy !== undefined && safeguardingConcerns !== undefined && recommended !== undefined;
+  const cleanAnswers = wouldReemploy !== false && safeguardingConcerns !== true && recommended !== false;
+  if (received && requiredAnswersRecorded && cleanAnswers) {
+    return {
+      key,
+      label: "References",
+      status: "Complete",
+      detail: summary.join(" · "),
+      tone: "ready",
+      file,
+    };
+  }
+  if (received) {
+    return {
+      key,
+      label: "References",
+      status: cleanAnswers ? "Answers needed" : "Review",
+      detail: summary.join(" · "),
+      tone: cleanAnswers ? "warn" : "bad",
+      file,
+    };
+  }
+  return {
+    key,
+    label: "References",
+    status: request.status || "Missing",
+    detail: request.note || "No reference evidence recorded.",
+    tone: request.status === "Requested" || request.status === "Submitted" ? "warn" : "bad",
+    file,
+  };
+}
+
+function scrSuitabilityEvidenceCheck(person) {
+  const state = suitabilityDeclarationState(person);
+  const tone = state.tone === "ready" ? "ready" : state.tone === "pending" ? "warn" : "bad";
+  return {
+    key: "annualSuitability",
+    label: "Annual suitability",
+    status: state.label,
+    detail: state.detail,
+    tone,
+    file: null,
+  };
 }
 
 function scrEvidenceBoardCheck(person, key, label, profileValue, hrFiles, evidenceRequests) {

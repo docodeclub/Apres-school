@@ -5049,6 +5049,158 @@ label {
   padding: clamp(18px, 3vw, 26px);
 }
 
+.scr-inspection-checklist {
+  display: grid;
+  gap: 16px;
+  border: 1px solid rgba(72, 104, 220, 0.16);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 18px 46px rgba(38, 63, 169, 0.08);
+  padding: clamp(18px, 3vw, 26px);
+}
+
+.scr-inspection-checklist-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: end;
+}
+
+.scr-inspection-checklist h3 {
+  color: var(--royal-dark);
+  font-size: clamp(1.25rem, 2.2vw, 1.75rem);
+  line-height: 1.08;
+  margin: 0 0 5px;
+}
+
+.scr-inspection-checklist p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.scr-inspection-checklist-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(86px, 1fr));
+  gap: 8px;
+  min-width: min(360px, 100%);
+}
+
+.scr-inspection-checklist-metrics span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(72, 104, 220, 0.14);
+  border-radius: 16px;
+  background: #f8faff;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  padding: 10px 12px;
+  text-transform: uppercase;
+}
+
+.scr-inspection-checklist-metrics strong {
+  color: var(--royal);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.scr-inspection-checklist-table th,
+.scr-inspection-checklist-table td {
+  vertical-align: top;
+}
+
+.scr-inspection-checklist-table td:first-child {
+  min-width: 190px;
+}
+
+.scr-inspection-checklist-table td:first-child strong {
+  color: var(--royal);
+  display: block;
+}
+
+.scr-inspection-checklist-table td:first-child small {
+  color: var(--muted);
+  display: block;
+  font-weight: 750;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.scr-checklist-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 132px;
+  border-left: 3px solid rgba(115, 127, 160, 0.22);
+  padding-left: 8px;
+}
+
+.scr-checklist-cell strong {
+  color: var(--royal-dark);
+  font-size: 0.84rem;
+}
+
+.scr-checklist-cell span,
+.scr-checklist-cell a {
+  color: var(--muted);
+  display: -webkit-box;
+  font-size: 0.76rem;
+  font-weight: 760;
+  line-height: 1.25;
+  max-width: 210px;
+  overflow: hidden;
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.scr-checklist-cell a {
+  color: var(--royal);
+  font-weight: 950;
+}
+
+.scr-checklist-cell.ready {
+  border-left-color: #53b86a;
+}
+
+.scr-checklist-cell.warn {
+  border-left-color: #f3ab49;
+}
+
+.scr-checklist-cell.bad {
+  border-left-color: #e75d50;
+}
+
+.scr-checklist-cell.neutral {
+  border-left-color: rgba(115, 127, 160, 0.24);
+}
+
+.scr-mini-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 950;
+  line-height: 1.15;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.scr-mini-status.ready {
+  background: #effaf2;
+  color: #24783d;
+}
+
+.scr-mini-status.bad {
+  background: #fff4f2;
+  color: #b8352c;
+}
+
+.scr-mini-status.neutral {
+  background: #f6f8fc;
+  color: var(--muted);
+}
+
 .scr-evidence-board-head {
   position: sticky;
   top: 246px;
