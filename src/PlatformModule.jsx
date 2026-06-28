@@ -8777,6 +8777,16 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
       .map((key) => visibleEvidenceChecklistRows.find((row) => row.key === key))
       .filter(Boolean),
   })).filter((group) => group.rows.length);
+  const evidenceGroupStats = evidenceGroups.map((group) => {
+    const blockers = group.rows.filter((row) => row.tone !== "ready").length;
+    return {
+      title: group.title,
+      ready: group.rows.length - blockers,
+      total: group.rows.length,
+      blockers,
+      tone: blockers ? "pending" : "ready",
+    };
+  });
   const adminReviewRow = {
     key: "adminReview",
     label: "Admin review",
@@ -9187,41 +9197,6 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
                 {(actionItems.length ? actionItems : ["No action"]).map((item) => <span key={item}>{item}</span>)}
               </div>
             </section>
-            <section className="scr-profile-request-panel" id={`staff-profile-evidence-${person.id}`}>
-              <div>
-                <p className="eyebrow">Evidence requests</p>
-                <h4>Request missing or updated SCR evidence.</h4>
-                <p>{isArchivedProfile ? "Evidence requests are locked because this staff member has left. Restore the record before requesting new evidence." : "Requests logged here appear in the staff member’s evidence request area and can be tracked by admin until submitted, approved or cleared."}</p>
-              </div>
-              <form className="scr-profile-request-form" onSubmit={submitEvidenceRequest}>
-                <label>
-                  Evidence type
-                  <select value={requestEvidenceKey} onChange={(event) => setRequestEvidenceKey(event.target.value)} disabled={isArchivedProfile}>
-                    {scrEvidenceRequestOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                  </select>
-                </label>
-                <label>
-                  Note to staff
-                  <textarea rows="2" value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Please upload your renewed certificate or reference." disabled={isArchivedProfile} />
-                </label>
-                <button className="button dark" type="submit" disabled={!onRequestEvidence || isArchivedProfile}><Upload size={16} /> Request Evidence</button>
-              </form>
-              <div className="scr-profile-request-list">
-                {evidenceRequests.length ? evidenceRequests.map((request) => (
-                  <article key={request.id}>
-                    <div>
-                      <strong>{request.check}</strong>
-                      <span>{request.status} · {request.requestedAt ? formatShortDate(request.requestedAt.slice(0, 10)) : "date pending"}{request.requestedBy ? ` · ${request.requestedBy}` : ""}</span>
-                      {request.note && <p>{request.note}</p>}
-                      {!!request.history.length && <EvidenceHistoryTimeline events={request.history} />}
-                    </div>
-                    {request.status !== "Submitted" && (
-                      <button className="button light" type="button" onClick={() => onClearEvidenceRequest?.(request)} disabled={!onClearEvidenceRequest || isArchivedProfile}>Clear</button>
-                    )}
-                  </article>
-                )) : <span className="muted-inline">No active evidence requests for this staff member.</span>}
-              </div>
-            </section>
             <section className="staff-profile-scr-checklist">
               <div className="scr-profile-checklist-head">
                 <div>
@@ -9235,7 +9210,21 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
                   </button>
                 </div>
               </div>
-              <p className="panel-note">Open only the group you need. Each evidence row still has the file route, request update and mark checked workflow.</p>
+              <div className="scr-profile-review-strip" aria-label="SCR evidence group readiness">
+                {evidenceGroupStats.map((item) => (
+                  <div className={item.tone} key={item.title}>
+                    <span>{item.title}</span>
+                    <strong>{item.ready}/{item.total}</strong>
+                    <small>{item.blockers ? `${item.blockers} to check` : "Ready"}</small>
+                  </div>
+                ))}
+                <div className={adminReviewRow.tone}>
+                  <span>Admin review</span>
+                  <strong>{adminReviewRow.status}</strong>
+                  <small>{adminReviewRow.nextStep}</small>
+                </div>
+              </div>
+              <p className="panel-note">Open the group you need. Every evidence row has the file route, request update and mark checked workflow.</p>
               <div className="scr-profile-group-list">
                 {evidenceGroups.map((group, index) => {
                   const blockers = group.rows.filter((row) => row.tone !== "ready").length;
@@ -9306,6 +9295,50 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
                 </details>
               </div>
             </section>
+            <details className="scr-profile-follow-up" id={`staff-profile-evidence-${person.id}`}>
+              <summary>
+                <div>
+                  <p className="eyebrow">Evidence requests</p>
+                  <strong>Request missing or updated SCR evidence</strong>
+                  <span>{evidenceRequests.length ? `${evidenceRequests.length} active request${evidenceRequests.length === 1 ? "" : "s"}` : "No active requests"}</span>
+                </div>
+                <Badge value={evidenceRequests.length ? "Follow-up" : "Clear"} />
+              </summary>
+              <div className="scr-profile-request-panel compact">
+                <div>
+                  <h4>Staff evidence follow-up</h4>
+                  <p>{isArchivedProfile ? "Evidence requests are locked because this staff member has left. Restore the record before requesting new evidence." : "Requests logged here appear in the staff member’s evidence request area and can be tracked by admin until submitted, approved or cleared."}</p>
+                </div>
+                <form className="scr-profile-request-form" onSubmit={submitEvidenceRequest}>
+                  <label>
+                    Evidence type
+                    <select value={requestEvidenceKey} onChange={(event) => setRequestEvidenceKey(event.target.value)} disabled={isArchivedProfile}>
+                      {scrEvidenceRequestOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    Note to staff
+                    <textarea rows="2" value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Please upload your renewed certificate or reference." disabled={isArchivedProfile} />
+                  </label>
+                  <button className="button dark" type="submit" disabled={!onRequestEvidence || isArchivedProfile}><Upload size={16} /> Request Evidence</button>
+                </form>
+                <div className="scr-profile-request-list">
+                  {evidenceRequests.length ? evidenceRequests.map((request) => (
+                    <article key={request.id}>
+                      <div>
+                        <strong>{request.check}</strong>
+                        <span>{request.status} · {request.requestedAt ? formatShortDate(request.requestedAt.slice(0, 10)) : "date pending"}{request.requestedBy ? ` · ${request.requestedBy}` : ""}</span>
+                        {request.note && <p>{request.note}</p>}
+                        {!!request.history.length && <EvidenceHistoryTimeline events={request.history} />}
+                      </div>
+                      {request.status !== "Submitted" && (
+                        <button className="button light" type="button" onClick={() => onClearEvidenceRequest?.(request)} disabled={!onClearEvidenceRequest || isArchivedProfile}>Clear</button>
+                      )}
+                    </article>
+                  )) : <span className="muted-inline">No active evidence requests for this staff member.</span>}
+                </div>
+              </div>
+            </details>
           </div>
         )}
         {profileTab === "Annual Suitability Declaration" && (

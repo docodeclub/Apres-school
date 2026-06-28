@@ -12733,6 +12733,55 @@ tfoot td {
   margin: 3px 0 0;
 }
 
+.scr-profile-review-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.scr-profile-review-strip div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid rgba(72, 104, 220, 0.12);
+  border-radius: 14px;
+  background: #f8faff;
+  padding: 10px 12px;
+}
+
+.scr-profile-review-strip div.ready {
+  border-color: rgba(37, 166, 122, 0.2);
+  background: #f4fbf7;
+}
+
+.scr-profile-review-strip div.pending,
+.scr-profile-review-strip div.alert {
+  border-color: rgba(242, 165, 76, 0.24);
+  background: #fff9ef;
+}
+
+.scr-profile-review-strip span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.scr-profile-review-strip strong {
+  color: var(--royal-dark);
+  font-size: 1rem;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+.scr-profile-review-strip small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
 .scr-profile-action-list {
   display: grid;
   gap: 10px;
@@ -12881,6 +12930,55 @@ tfoot td {
 .scr-profile-action-meta .button {
   min-height: 40px;
   padding-inline: 14px;
+}
+
+.scr-profile-follow-up {
+  border: 1px solid rgba(72, 104, 220, 0.14);
+  border-radius: 18px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.scr-profile-follow-up summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  list-style: none;
+  padding: 14px 16px;
+}
+
+.scr-profile-follow-up summary::-webkit-details-marker {
+  display: none;
+}
+
+.scr-profile-follow-up summary > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.scr-profile-follow-up summary strong {
+  color: var(--royal-dark);
+  font-size: 1rem;
+}
+
+.scr-profile-follow-up summary span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.scr-profile-follow-up[open] summary {
+  background: #f8faff;
+  border-bottom: 1px solid rgba(72, 104, 220, 0.12);
+}
+
+.scr-profile-request-panel.compact {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .scr-profile-check {
@@ -13815,6 +13913,7 @@ th {
   .staff-home-summary,
   .staff-home-details,
   .scr-priority-strip,
+  .scr-profile-review-strip,
   .scr-profile-request-form,
   .scr-profile-request-list article,
   .scr-profile-action-row,
