@@ -3349,6 +3349,7 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const [evidenceFilter, setEvidenceFilter] = useState("Action needed");
   const [profileTargetId, setProfileTargetId] = useState("");
+  const [mondayInspectionMode, setMondayInspectionMode] = useState(false);
   const [assignmentState, setAssignmentState] = useState(() => Object.fromEntries(
     data.staff.map((person) => [person.id, staffAssignments(person)]),
   ));
@@ -3775,9 +3776,27 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
     setSummaryStaffId(staffId);
     document.getElementById("scr-staff-register")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  function activateMondayInspectionMode() {
+    const kingsHouse = schoolOptions.find((school) => canonicalSchoolName(school) === canonicalSchoolName("King's House School"))
+      || schoolOptions.find((school) => canonicalSchoolName(school).includes("kings-house"))
+      || selectedScrSchool;
+    if (kingsHouse) selectInspectionSchool(kingsHouse);
+    setMondayInspectionMode(true);
+  }
 
   return (
     <div className="stack">
+      <section className={`scr-monday-mode ${mondayInspectionMode ? "active" : ""}`} aria-label="Monday inspection mode">
+        <div>
+          <p className="eyebrow">Monday inspection mode</p>
+          <h3>{mondayInspectionMode ? "Focused King’s House SCR view is on." : "Switch to the focused King’s House inspection view."}</h3>
+          <p>{mondayInspectionMode ? "Showing the essentials only: export controls, site checklist, required cover and staff profiles." : "Use this during the inspection to reduce noise and jump straight to the evidence Ofsted is most likely to ask for."}</p>
+        </div>
+        <div className="scr-monday-mode-actions">
+          <button className="button book" type="button" onClick={activateMondayInspectionMode}><ShieldCheck size={16} /> {mondayInspectionMode ? "Refresh King’s House Mode" : "Open Monday Mode"}</button>
+          {mondayInspectionMode && <button className="button light" type="button" onClick={() => setMondayInspectionMode(false)}>Show Full SCR</button>}
+        </div>
+      </section>
       <section className="scr-school-switcher" aria-label="Inspection site selector">
         <div className="scr-school-switcher-copy">
           <p className="eyebrow">Inspection site</p>
@@ -3833,10 +3852,12 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
         <div>
           <button className="button light" type="button" onClick={downloadStaffSummary}><Download size={16} /> Staff Summary</button>
           <button className="button light" type="button" onClick={downloadAssuranceLetter}><FileText size={16} /> Assurance Letter</button>
-          <button className="button dark" type="button"><Upload size={16} /> Request Evidence</button>
+          {mondayInspectionMode
+            ? <button className="button dark" type="button" onClick={downloadInspectionEvidencePack}><Download size={16} /> Inspection Pack</button>
+            : <button className="button dark" type="button"><Upload size={16} /> Request Evidence</button>}
         </div>
       </div>
-      {selectedOfstedSite?.id === "kings-house" ? (
+      {!mondayInspectionMode && (selectedOfstedSite?.id === "kings-house" ? (
         <KingHouseInspectionEvidencePack
           site={selectedOfstedSite}
           timing={selectedOfstedTiming}
@@ -3861,18 +3882,21 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
           staffEvidenceGaps={staffEvidenceGaps}
           scheduledInspection={scheduledInspection}
         />
-      )}
+      ))}
       <SCRInspectionChecklist
         school={selectedScrSchool}
         rows={selectedStaffEvidenceRows}
         onOpenStaff={openEvidenceStaffProfile}
       />
-      <SCRSiteEvidenceBoard
+      {mondayInspectionMode && (
+        <SCRRequirementPanel rows={requirementRows} compactTitle="Required cover for inspection" />
+      )}
+      {!mondayInspectionMode && <SCRSiteEvidenceBoard
         school={selectedScrSchool}
         rows={selectedStaffEvidenceRows}
         onOpenStaff={openEvidenceStaffProfile}
-      />
-      <DBSDisclosureAuditPanel audit={dbsDisclosureAudit} onOpenStaff={openEvidenceStaffProfile} onApply={applyDbsDisclosureNumber} />
+      />}
+      {!mondayInspectionMode && <DBSDisclosureAuditPanel audit={dbsDisclosureAudit} onOpenStaff={openEvidenceStaffProfile} onApply={applyDbsDisclosureNumber} />}
       <StaffTable
         data={{ ...scrData, staff: selectedSchoolStaff }}
         siteScopeLabel={selectedScrSchool}
@@ -3890,7 +3914,7 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
         access={access}
         onUpdateStaffPay={onUpdateStaffPay}
       />
-      <SCRDetailsPanel title="Exports and assurance" summary={`${selectedAssuranceStaff.length} staff in ${assuranceSchool} · ${selectedAssuranceCompletion}% ready`}>
+      {!mondayInspectionMode && <SCRDetailsPanel title="Exports and assurance" summary={`${selectedAssuranceStaff.length} staff in ${assuranceSchool} · ${selectedAssuranceCompletion}% ready`}>
         <section className="scr-output-grid">
           <article className="scr-output-card">
             <div>
@@ -3938,8 +3962,8 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
             </div>
           </article>
         </section>
-      </SCRDetailsPanel>
-      <SCRDetailsPanel title="Evidence inbox and renewals" summary={`${evidenceActionQueue.length} priority actions · ${renewalItems.length} renewals`}>
+      </SCRDetailsPanel>}
+      {!mondayInspectionMode && <SCRDetailsPanel title="Evidence inbox and renewals" summary={`${evidenceActionQueue.length} priority actions · ${renewalItems.length} renewals`}>
         <section className="scr-evidence-console">
           <div className="scr-assignments-heading">
             <div>
@@ -3956,8 +3980,8 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
           <SubmittedEvidenceReviewQueue items={submittedEvidence} onReview={reviewSubmittedEvidence} />
         </section>
         <SCRRenewalPanel items={renewalItems} />
-      </SCRDetailsPanel>
-      <SCRDetailsPanel title="Assignments and requirements" summary={`${requirementGapCount} site cover gaps · ${onboardingProfiles.length} onboarding`}>
+      </SCRDetailsPanel>}
+      {!mondayInspectionMode && <SCRDetailsPanel title="Assignments and requirements" summary={`${requirementGapCount} site cover gaps · ${onboardingProfiles.length} onboarding`}>
         {!!onboardingProfiles.length && <SCROnboardingQueue staff={onboardingProfiles} onUpdate={updateChecklist} onApprove={approveScrProfile} />}
         <SCRAssignmentsPanel
           staff={selectedSchoolStaff}
@@ -3967,8 +3991,8 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
           onUpdate={updateAssignment}
         />
         <SCRRequirementPanel rows={requirementRows} />
-      </SCRDetailsPanel>
-      <SCRDetailsPanel title="Reference" summary="SCR fields and assurance statements">
+      </SCRDetailsPanel>}
+      {!mondayInspectionMode && <SCRDetailsPanel title="Reference" summary="SCR fields and assurance statements">
         <section className="scr-assurance-statements">
           <div>
             <p className="eyebrow">Included in assurance output</p>
@@ -3988,7 +4012,7 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
             </article>
           ))}
         </div>
-      </SCRDetailsPanel>
+      </SCRDetailsPanel>}
     </div>
   );
 }
@@ -6260,14 +6284,14 @@ function ChecklistProgress({ person, checks, onApprove }) {
   );
 }
 
-function SCRRequirementPanel({ rows }) {
+function SCRRequirementPanel({ rows, compactTitle = "" }) {
   return (
     <section className="scr-requirements">
       <div className="scr-assignments-heading">
         <div>
           <p className="eyebrow">Site requirement checks</p>
-          <h3>Flag rota and SCR gaps before a school assurance letter goes out.</h3>
-          <p>Each site checks for at least one first aider, one EYFS Level 3+ lead, safeguarding training and allergy awareness among assigned staff.</p>
+          <h3>{compactTitle || "Flag rota and SCR gaps before a school assurance letter goes out."}</h3>
+          <p>{compactTitle ? "Confirm the selected site has named cover for inspection: first aid, EYFS Level 3+, safeguarding and allergy awareness." : "Each site checks for at least one first aider, one EYFS Level 3+ lead, safeguarding training and allergy awareness among assigned staff."}</p>
         </div>
       </div>
       <div className="requirement-grid">

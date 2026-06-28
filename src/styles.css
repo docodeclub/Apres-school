@@ -4917,6 +4917,43 @@ label {
   padding: 12px;
 }
 
+.scr-monday-mode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid rgba(243, 171, 73, 0.26);
+  border-radius: 24px;
+  background: linear-gradient(135deg, #fff 0%, #fffaf1 100%);
+  box-shadow: 0 18px 46px rgba(38, 63, 169, 0.08);
+  padding: clamp(18px, 3vw, 24px);
+}
+
+.scr-monday-mode.active {
+  border-color: rgba(37, 166, 122, 0.26);
+  background: linear-gradient(135deg, #fff 0%, #f3fbf6 100%);
+}
+
+.scr-monday-mode h3 {
+  color: var(--royal-dark);
+  font-size: clamp(1.2rem, 2.2vw, 1.7rem);
+  line-height: 1.08;
+  margin: 0 0 6px;
+}
+
+.scr-monday-mode p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.scr-monday-mode-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .scr-school-switcher-copy {
   display: grid;
   align-content: center;
@@ -13767,6 +13804,7 @@ th {
   .next-camp-card,
   .camp-schedule,
   .scr-school-switcher,
+  .scr-monday-mode,
   .khs-monday-shortcut,
   .scr-inspection-launch-head,
   .scr-inspection-metrics,
