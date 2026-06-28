@@ -5884,7 +5884,7 @@ function SCROnboardingQueue({ staff, onUpdate, onApprove }) {
                       {evidenceExpiryStatus(person.scrChecklist?.evidence?.[key]) && <Badge value={evidenceExpiryStatus(person.scrChecklist?.evidence?.[key])} />}
                     </label>
                   </summary>
-                  <EvidenceFields evidence={person.scrChecklist?.evidence?.[key] || {}} onChange={(patch) => updateEvidence(person, key, patch)} />
+                  <EvidenceFields evidenceKey={key} evidence={person.scrChecklist?.evidence?.[key] || {}} onChange={(patch) => updateEvidence(person, key, patch)} />
                 </details>
               ))}
             </div>
@@ -5897,13 +5897,42 @@ function SCROnboardingQueue({ staff, onUpdate, onApprove }) {
   );
 }
 
-function EvidenceFields({ evidence, onChange }) {
+function referenceAnswerSummary(evidence = {}) {
+  const received = evidence.referencesReceived ?? evidence.referenceReceived ?? evidence.referenceCount > 0;
+  const wouldReemploy = evidence.wouldReemploy ?? evidence.wouldEmployAgain;
+  const safeguardingConcerns = evidence.safeguardingConcerns;
+  const recommended = evidence.recommendedForChildren ?? evidence.recommendForChildrenRole;
+  const referenceNames = Array.isArray(evidence.references)
+    ? evidence.references.map((reference) => reference.organisation ? `${reference.name} (${reference.organisation})` : reference.name).filter(Boolean)
+    : Array.isArray(evidence.referenceNames)
+      ? evidence.referenceNames.filter(Boolean)
+      : [];
+  return [
+    referenceNames.length ? `References: ${referenceNames.join(", ")}` : "",
+    received ? "Reference received" : "Reference not confirmed",
+    wouldReemploy === true ? "Would employ again" : wouldReemploy === false ? "Would not employ again" : "Re-employ answer not recorded",
+    safeguardingConcerns === false ? "No safeguarding concerns" : safeguardingConcerns === true ? "Safeguarding concerns recorded" : "Safeguarding answer not recorded",
+    recommended === true ? "Recommended for work with children" : recommended === false ? "Not recommended for work with children" : "Recommendation answer not recorded",
+  ];
+}
+
+function EvidenceFields({ evidenceKey = "", evidence, onChange }) {
+  const isReferences = evidenceKey === "references";
   return (
     <div className="evidence-fields">
       <label>Evidence / document ref<input value={evidence.reference || ""} onChange={(event) => onChange({ reference: event.target.value })} placeholder="Certificate, DBS ref, file name..." /></label>
       <label>Date seen<input type="date" value={evidence.dateSeen || ""} onChange={(event) => onChange({ dateSeen: event.target.value })} /></label>
       <label>Expiry / review date<input type="date" value={evidence.expiryDate || ""} onChange={(event) => onChange({ expiryDate: event.target.value })} /></label>
       <label>Verified by<input value={evidence.verifiedBy || ""} onChange={(event) => onChange({ verifiedBy: event.target.value })} placeholder="Admin name" /></label>
+      {isReferences && (
+        <div className="reference-answer-grid">
+          <label><input type="checkbox" checked={Boolean(evidence.referencesReceived ?? evidence.referenceCount > 0)} onChange={(event) => onChange({ referencesReceived: event.target.checked, referenceCount: event.target.checked ? (evidence.referenceCount || 2) : 0 })} /> Reference received</label>
+          <label><input type="checkbox" checked={Boolean(evidence.wouldReemploy ?? evidence.wouldEmployAgain)} onChange={(event) => onChange({ wouldReemploy: event.target.checked, wouldEmployAgain: event.target.checked })} /> Would employ again</label>
+          <label><input type="checkbox" checked={evidence.safeguardingConcerns === false} onChange={(event) => onChange({ safeguardingConcerns: event.target.checked ? false : null })} /> No safeguarding concerns</label>
+          <label><input type="checkbox" checked={Boolean(evidence.recommendedForChildren ?? evidence.recommendForChildrenRole)} onChange={(event) => onChange({ recommendedForChildren: event.target.checked, recommendForChildrenRole: event.target.checked })} /> Recommended for work with children</label>
+          <small>{referenceAnswerSummary(evidence).join(" · ")}</small>
+        </div>
+      )}
       <label>Evidence note<textarea rows="2" value={evidence.note || ""} onChange={(event) => onChange({ note: event.target.value })} placeholder="Expiry date, provider, issue notes or follow-up." /></label>
     </div>
   );
@@ -8386,10 +8415,12 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
       : ["Awaiting review", "Requested", "Expiring soon"].includes(status)
         ? "pending"
         : "alert";
+    const referenceSummary = key === "references" ? referenceAnswerSummary(evidence).join(" · ") : "";
     const detail = request?.note
       || request?.rejectionReason
       || request?.submissionNote
       || evidence.note
+      || referenceSummary
       || file?.title
       || (dateValue ? `Review date ${formatShortDate(dateValue)}` : fieldValue || "No evidence recorded yet.");
     const canMarkChecked = !isArchivedProfile && ["Recorded", "In date", "Awaiting review", "Requested", "Sent back"].includes(status);

@@ -255,6 +255,29 @@ function requestStatus(request) {
 function evidenceSummary(staff, key, requests = {}) {
   const request = evidenceRequestFor(staff, key, requests);
   const evidence = staff.scrChecklist?.evidence?.[key] || {};
+  if (key === "references") {
+    const received = evidence.referencesReceived ?? evidence.referenceReceived ?? evidence.referenceCount > 0;
+    const wouldReemploy = evidence.wouldReemploy ?? evidence.wouldEmployAgain;
+    const safeguardingConcerns = evidence.safeguardingConcerns;
+    const recommended = evidence.recommendedForChildren ?? evidence.recommendForChildrenRole;
+    const referenceNames = Array.isArray(evidence.references)
+      ? evidence.references.map((reference) => reference.organisation ? `${reference.name} (${reference.organisation})` : reference.name).filter(Boolean)
+      : Array.isArray(evidence.referenceNames)
+        ? evidence.referenceNames.filter(Boolean)
+        : [];
+    const parts = [
+      request?.evidenceReference || evidence.reference || "Reference evidence",
+      referenceNames.length ? `names: ${referenceNames.join("; ")}` : "",
+      received ? `${evidence.referenceCount || 2} reference${Number(evidence.referenceCount || 2) === 1 ? "" : "s"} received` : "",
+      evidence.dateSeen || evidence.checkedAt ? `checked ${evidence.dateSeen || evidence.checkedAt}` : "",
+      wouldReemploy === true ? "would employ again: yes" : wouldReemploy === false ? "would employ again: no" : "",
+      safeguardingConcerns === false ? "safeguarding concerns: no" : safeguardingConcerns === true ? "safeguarding concerns: yes" : "",
+      recommended === true ? "recommended for work with children: yes" : recommended === false ? "recommended for work with children: no" : "",
+      evidence.verifiedBy ? `by ${evidence.verifiedBy}` : "",
+      request?.note || request?.submissionNote || evidence.note || "",
+    ].filter(Boolean);
+    return parts.join(", ");
+  }
   const parts = [
     request?.evidenceReference || evidence.reference || "No reference recorded",
     request?.submittedAt ? `submitted ${request.submittedAt.slice(0, 10)}` : "",
