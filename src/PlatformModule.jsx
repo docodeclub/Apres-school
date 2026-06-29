@@ -476,8 +476,34 @@ function staffDbsNumber(person = {}) {
     || person.scrChecklist?.dbsNumber
     || person.scrChecklist?.evidence?.dbs?.number
     || person.scrChecklist?.evidence?.dbs?.dbsNumber
+    || person.scrChecklist?.evidence?.dbs?.dbs_number
     || person.scrChecklist?.evidence?.dbs?.certificateNo
+    || person.scrChecklist?.evidence?.dbs?.certificate_no
+    || person.scrChecklist?.dbs?.number
+    || person.scrChecklist?.dbs?.dbsNumber
+    || person.scrChecklist?.dbs?.dbs_number
+    || person.scrChecklist?.dbs?.certificateNo
+    || person.scrChecklist?.dbs?.certificate_no
     || "";
+}
+
+function staffDbsUpdateServiceLabel(person = {}) {
+  const evidence = person.scrChecklist?.evidence?.dbs || {};
+  const direct = person.scrChecklist?.dbs || {};
+  const status = evidence.updateServiceStatus
+    || evidence.update_service_status
+    || direct.updateServiceStatus
+    || direct.update_service_status
+    || "";
+  const active = evidence.updateServiceActive
+    ?? evidence.update_service_active
+    ?? evidence.updateService
+    ?? direct.updateServiceActive
+    ?? direct.update_service_active
+    ?? direct.updateService
+    ?? false;
+  if (active === true || String(status).toLowerCase() === "active") return "Update Service active";
+  return status ? `Update Service ${status}` : "";
 }
 
 function staffScrCheckedDate(person = {}) {
@@ -5041,15 +5067,22 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
           <table>
             <thead><tr><th>Staff member</th><th>Role</th><th>DBS number</th><th>SCR checked</th><th>Status</th></tr></thead>
             <tbody>
-              {currentStaffRows.map((person) => (
-                <tr key={person.id}>
-                  <td><strong>{person.name}</strong>{person.email && <><br /><small>{person.email}</small></>}</td>
-                  <td>{person.role || "Staff"}</td>
-                  <td>{staffDbsNumber(person) || "Not recorded"}</td>
-                  <td>{staffScrCheckedDate(person) ? formatShortDate(staffScrCheckedDate(person)) : "Not recorded"}</td>
-                  <td><Badge value={person.compliance || (person.scrChecklist?.approvedAt ? "Compliant" : "Review needed")} /></td>
-                </tr>
-              ))}
+              {currentStaffRows.map((person) => {
+                const dbsNumber = staffDbsNumber(person);
+                const updateService = staffDbsUpdateServiceLabel(person);
+                return (
+                  <tr key={person.id}>
+                    <td><strong>{person.name}</strong>{person.email && <><br /><small>{person.email}</small></>}</td>
+                    <td>{person.role || "Staff"}</td>
+                    <td>
+                      <strong>{dbsNumber || "Not recorded"}</strong>
+                      {updateService && <><br /><small>{updateService}</small></>}
+                    </td>
+                    <td>{staffScrCheckedDate(person) ? formatShortDate(staffScrCheckedDate(person)) : "Not recorded"}</td>
+                    <td><Badge value={person.compliance || (person.scrChecklist?.approvedAt ? "Compliant" : "Review needed")} /></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </TableWrap>

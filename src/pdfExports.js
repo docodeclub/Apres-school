@@ -364,6 +364,13 @@ function dbsNumberFor(staff = {}) {
     || staff.scrChecklist?.evidence?.dbs?.number
     || staff.scrChecklist?.evidence?.dbs?.dbsNumber
     || staff.scrChecklist?.evidence?.dbs?.dbs_number
+    || staff.scrChecklist?.evidence?.dbs?.certificateNo
+    || staff.scrChecklist?.evidence?.dbs?.certificate_no
+    || staff.scrChecklist?.dbs?.number
+    || staff.scrChecklist?.dbs?.dbsNumber
+    || staff.scrChecklist?.dbs?.dbs_number
+    || staff.scrChecklist?.dbs?.certificateNo
+    || staff.scrChecklist?.dbs?.certificate_no
     || "";
 }
 

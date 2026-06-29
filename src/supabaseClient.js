@@ -443,7 +443,7 @@ function mapStaffRecords(records) {
       role: record.job_role || profile?.role || "Staff",
       location: record.primary_site || record.employment_type || "Assigned sites",
       compliance: scr?.admin_review?.status || "Review needed",
-      dbsNumber: scr?.dbs?.number || scr?.dbs?.dbsNumber || scr?.dbs?.dbs_number || "",
+      dbsNumber: scr?.dbs?.number || scr?.dbs?.dbsNumber || scr?.dbs?.dbs_number || scr?.dbs?.certificateNo || scr?.dbs?.certificate_no || "",
       dbsRenewal: scr?.dbs?.renewalDate || scr?.dbs?.renewal_date || "Not recorded",
       safeguardingExpiry: scr?.safeguarding?.expiryDate || scr?.safeguarding?.expiry_date || "Not recorded",
       allergyAwarenessExpiry: scr?.admin_review?.allergy?.expiryDate || scr?.admin_review?.allergy?.expiry_date || "Not recorded",
@@ -480,10 +480,24 @@ function mapScrChecklist(scr = {}) {
     ...(checklist.evidence || {}),
     ...(adminReview.evidence || {}),
   };
-  const dbsEvidence = evidence.dbs || {};
+  const dbsEvidence = {
+    ...(scr?.dbs || {}),
+    ...(evidence.dbs || {}),
+  };
+  evidence.dbs = dbsEvidence;
   const safeguardingEvidence = evidence.safeguarding || {};
   const firstAidEvidence = evidence.firstAid || {};
-  const dbsNumber = dbsEvidence.number || dbsEvidence.dbsNumber || dbsEvidence.dbs_number || scr?.dbs?.number || scr?.dbs?.dbsNumber || scr?.dbs?.dbs_number || "";
+  const dbsNumber = dbsEvidence.number
+    || dbsEvidence.dbsNumber
+    || dbsEvidence.dbs_number
+    || dbsEvidence.certificateNo
+    || dbsEvidence.certificate_no
+    || scr?.dbs?.number
+    || scr?.dbs?.dbsNumber
+    || scr?.dbs?.dbs_number
+    || scr?.dbs?.certificateNo
+    || scr?.dbs?.certificate_no
+    || "";
   return {
     ...checklist,
     evidence,
