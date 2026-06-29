@@ -506,6 +506,32 @@ function staffDbsUpdateServiceLabel(person = {}) {
   return status ? `Update Service ${status}` : "";
 }
 
+function staffInspectionEvidenceLinks(person = {}, evidenceRows = []) {
+  const row = evidenceRows.find((item) => item.person?.id === person.id);
+  if (!row?.checks?.length) return [];
+  const priority = ["dbs", "safeguarding", "firstAid", "allergy", "eyfsLevel", "references", "annualSuitability"];
+  const seen = new Set();
+  return [...row.checks]
+    .sort((a, b) => {
+      const aIndex = priority.indexOf(a.key);
+      const bIndex = priority.indexOf(b.key);
+      return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
+    })
+    .filter((check) => check.file?.fileUrl)
+    .filter((check) => {
+      const key = `${check.key}-${check.file.fileUrl}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((check) => ({
+      key: check.key,
+      label: check.label || check.key,
+      href: check.file.fileUrl,
+      title: check.file.title || check.detail || check.label,
+    }));
+}
+
 function staffScrCheckedDate(person = {}) {
   const checklist = person.scrChecklist || {};
   const evidence = checklist.evidence || {};
@@ -5065,11 +5091,12 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
         </div>
         <TableWrap>
           <table>
-            <thead><tr><th>Staff member</th><th>Role</th><th>DBS number</th><th>SCR checked</th><th>Status</th></tr></thead>
+            <thead><tr><th>Staff member</th><th>Role</th><th>DBS number</th><th>Certificate links</th><th>SCR checked</th><th>Status</th></tr></thead>
             <tbody>
               {currentStaffRows.map((person) => {
                 const dbsNumber = staffDbsNumber(person);
                 const updateService = staffDbsUpdateServiceLabel(person);
+                const evidenceLinks = staffInspectionEvidenceLinks(person, evidenceRows);
                 return (
                   <tr key={person.id}>
                     <td><strong>{person.name}</strong>{person.email && <><br /><small>{person.email}</small></>}</td>
@@ -5077,6 +5104,17 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
                     <td>
                       <strong>{dbsNumber || "Not recorded"}</strong>
                       {updateService && <><br /><small>{updateService}</small></>}
+                    </td>
+                    <td>
+                      <div className="khs-roster-evidence-links">
+                        {evidenceLinks.slice(0, 5).map((link) => (
+                          <a href={link.href} key={`${person.id}-${link.key}-${link.href}`} target="_blank" rel="noreferrer" title={link.title}>
+                            {link.label}
+                          </a>
+                        ))}
+                        {evidenceLinks.length > 5 && <small>+{evidenceLinks.length - 5} more on profile</small>}
+                        {!evidenceLinks.length && <button type="button" onClick={() => onOpenStaff(person.id)}>Open profile</button>}
+                      </div>
                     </td>
                     <td>{staffScrCheckedDate(person) ? formatShortDate(staffScrCheckedDate(person)) : "Not recorded"}</td>
                     <td><Badge value={person.compliance || (person.scrChecklist?.approvedAt ? "Compliant" : "Review needed")} /></td>

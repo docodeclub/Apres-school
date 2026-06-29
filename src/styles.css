@@ -6162,7 +6162,7 @@ label {
 }
 
 .khs-current-staff table {
-  min-width: 720px;
+  min-width: 980px;
 }
 
 .khs-current-staff th {
@@ -6184,6 +6184,47 @@ label {
 .khs-current-staff small {
   color: var(--muted);
   font-weight: 760;
+}
+
+.khs-roster-evidence-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  max-width: 360px;
+}
+
+.khs-roster-evidence-links a,
+.khs-roster-evidence-links button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  border: 1px solid rgba(72, 104, 220, 0.18);
+  border-radius: 999px;
+  background: #f8faff;
+  color: var(--royal-dark);
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.khs-roster-evidence-links a:hover,
+.khs-roster-evidence-links button:hover {
+  border-color: rgba(72, 104, 220, 0.34);
+  background: #eef3ff;
+}
+
+.khs-roster-evidence-links button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.khs-roster-evidence-links small {
+  width: 100%;
+  font-size: 0.72rem;
 }
 
 .khs-named-evidence {
