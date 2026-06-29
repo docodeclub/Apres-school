@@ -506,6 +506,22 @@ function staffDbsUpdateServiceLabel(person = {}) {
   return status ? `Update Service ${status}` : "";
 }
 
+function staffDbsClearDate(person = {}) {
+  const evidence = person.scrChecklist?.evidence?.dbs || {};
+  const direct = person.scrChecklist?.dbs || {};
+  return evidence.clearDate
+    || evidence.clear_date
+    || evidence.issueDate
+    || evidence.issue_date
+    || evidence.date
+    || direct.clearDate
+    || direct.clear_date
+    || direct.issueDate
+    || direct.issue_date
+    || direct.date
+    || "";
+}
+
 function staffInspectionEvidenceLinks(person = {}, evidenceRows = []) {
   const row = evidenceRows.find((item) => item.person?.id === person.id);
   if (!row?.checks?.length) return [];
@@ -5096,6 +5112,7 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
               {currentStaffRows.map((person) => {
                 const dbsNumber = staffDbsNumber(person);
                 const updateService = staffDbsUpdateServiceLabel(person);
+                const dbsClearDate = staffDbsClearDate(person);
                 const evidenceLinks = staffInspectionEvidenceLinks(person, evidenceRows);
                 return (
                   <tr key={person.id}>
@@ -5103,6 +5120,7 @@ function KingHouseInspectionEvidencePack({ site, timing, staff, evidenceRows, do
                     <td>{person.role || "Staff"}</td>
                     <td>
                       <strong>{dbsNumber || "Not recorded"}</strong>
+                      {dbsClearDate && <><br /><small>Clear {formatShortDate(dbsClearDate)}</small></>}
                       {updateService && <><br /><small>{updateService}</small></>}
                     </td>
                     <td>
