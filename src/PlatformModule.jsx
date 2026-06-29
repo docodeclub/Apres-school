@@ -3350,6 +3350,7 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
   const [evidenceFilter, setEvidenceFilter] = useState("Action needed");
   const [profileTargetId, setProfileTargetId] = useState("");
   const [mondayInspectionMode, setMondayInspectionMode] = useState(false);
+  const [mondayBlockersOnly, setMondayBlockersOnly] = useState(false);
   const [assignmentState, setAssignmentState] = useState(() => Object.fromEntries(
     data.staff.map((person) => [person.id, staffAssignments(person)]),
   ));
@@ -3769,6 +3770,14 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
     [onboardingProfiles.length, "Onboarding queue", onboardingProfiles.length ? "Approve new staff only when evidence is complete." : "No onboarding records waiting."],
   ];
   const selectedStaffEvidenceRows = buildScrSiteEvidenceRows(selectedSchoolStaff, data.hrFiles || [], renewalRequests);
+  const mondayBlockerRows = selectedStaffEvidenceRows.filter((row) => !row.ready);
+  const mondayVisibleEvidenceRows = mondayInspectionMode && mondayBlockersOnly
+    ? mondayBlockerRows
+    : selectedStaffEvidenceRows;
+  const mondayVisibleStaffIds = new Set(mondayVisibleEvidenceRows.map((row) => row.person.id));
+  const mondayVisibleStaff = mondayInspectionMode && mondayBlockersOnly
+    ? selectedSchoolStaff.filter((person) => mondayVisibleStaffIds.has(person.id))
+    : selectedSchoolStaff;
   const selectedSiteDocumentLinks = readJson(documentLinksStorageKey, {});
   const dbsDisclosureAudit = buildDbsDisclosureAudit(activeScrStaff);
   function openEvidenceStaffProfile(staffId) {
@@ -3796,6 +3805,19 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
           <button className="button book" type="button" onClick={activateMondayInspectionMode}><ShieldCheck size={16} /> {mondayInspectionMode ? "Refresh King’s House Mode" : "Open Monday Mode"}</button>
           {mondayInspectionMode && <button className="button light" type="button" onClick={() => setMondayInspectionMode(false)}>Show Full SCR</button>}
         </div>
+        {mondayInspectionMode && (
+          <div className="scr-monday-filter" aria-label="Monday inspection missing evidence filter">
+            <span><strong>{mondayBlockerRows.length}</strong> staff with blockers</span>
+            <span><strong>{selectedStaffEvidenceRows.length}</strong> staff in site view</span>
+            <button
+              className={mondayBlockersOnly ? "scr-filter-toggle active" : "scr-filter-toggle"}
+              type="button"
+              onClick={() => setMondayBlockersOnly((value) => !value)}
+            >
+              {mondayBlockersOnly ? "Showing blockers" : "Show blockers only"}
+            </button>
+          </div>
+        )}
       </section>
       <section className="scr-school-switcher" aria-label="Inspection site selector">
         <div className="scr-school-switcher-copy">
@@ -3837,8 +3859,8 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
       </section>
       {selectedOfstedSite?.id === "kings-house" && (
         <KingHouseMondayPackShortcut
-          staff={selectedSchoolStaff}
-          evidenceRows={selectedStaffEvidenceRows}
+          staff={mondayVisibleStaff}
+          evidenceRows={mondayVisibleEvidenceRows}
           onOpenStaff={openEvidenceStaffProfile}
           onExportPdf={downloadInspectionEvidencePack}
         />
@@ -3885,8 +3907,10 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
       ))}
       <SCRInspectionChecklist
         school={selectedScrSchool}
-        rows={selectedStaffEvidenceRows}
+        rows={mondayVisibleEvidenceRows}
         onOpenStaff={openEvidenceStaffProfile}
+        emptyTitle={mondayBlockersOnly ? "No missing evidence in this view." : undefined}
+        emptyText={mondayBlockersOnly ? "Clear the filter to show every assigned staff member again." : undefined}
       />
       {mondayInspectionMode && (
         <SCRRequirementPanel rows={requirementRows} compactTitle="Required cover for inspection" />
@@ -3898,7 +3922,7 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
       />}
       {!mondayInspectionMode && <DBSDisclosureAuditPanel audit={dbsDisclosureAudit} onOpenStaff={openEvidenceStaffProfile} onApply={applyDbsDisclosureNumber} />}
       <StaffTable
-        data={{ ...scrData, staff: selectedSchoolStaff }}
+        data={{ ...scrData, staff: mondayVisibleStaff }}
         siteScopeLabel={selectedScrSchool}
         targetStaffId={profileTargetId || targetStaffId}
         onTargetHandled={() => {
@@ -4167,7 +4191,7 @@ function SCRSiteEvidenceBoard({ school, rows, onOpenStaff }) {
   );
 }
 
-function SCRInspectionChecklist({ school, rows, onOpenStaff }) {
+function SCRInspectionChecklist({ school, rows, onOpenStaff, emptyTitle = "No current staff are assigned to this site.", emptyText = "" }) {
   const checklistOrder = ["dbs", "safeguarding", "allergy", "firstAid", "references", "annualSuitability"];
   const readyRows = rows.filter((row) => row.ready);
   const needsAction = rows.length - readyRows.length;
@@ -4238,7 +4262,12 @@ function SCRInspectionChecklist({ school, rows, onOpenStaff }) {
               );
             })}
             {!rows.length && (
-              <tr><td colSpan="8"><strong>No current staff are assigned to this site.</strong></td></tr>
+              <tr>
+                <td colSpan="8">
+                  <strong>{emptyTitle}</strong>
+                  {emptyText && <small>{emptyText}</small>}
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
