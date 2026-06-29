@@ -12589,6 +12589,51 @@ tfoot td {
   font-weight: 950;
 }
 
+.scr-next-action-workflow {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(242, 165, 76, 0.24);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px;
+}
+
+.scr-next-action-workflow > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.scr-next-action-workflow span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.scr-next-action-workflow strong {
+  color: var(--royal-dark);
+  font-size: 1rem;
+  line-height: 1.16;
+}
+
+.scr-next-action-workflow small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 820;
+}
+
+.scr-next-action-workflow > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .scr-profile-request-panel {
   display: grid;
   gap: 14px;
@@ -14108,6 +14153,14 @@ th {
   }
 
   .scr-action-tags {
+    justify-content: flex-start;
+  }
+
+  .scr-next-action-workflow {
+    grid-template-columns: 1fr;
+  }
+
+  .scr-next-action-workflow > div:last-child {
     justify-content: flex-start;
   }
 

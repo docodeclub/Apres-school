@@ -8804,6 +8804,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     return { key, label, status, tone, detail, file, request, canMarkChecked, nextStep, dbsHistory };
   });
   const profileEvidenceBlockers = evidenceChecklistRows.filter((row) => row.tone !== "ready");
+  const firstProfileEvidenceBlocker = profileEvidenceBlockers[0] || null;
   const visibleEvidenceChecklistRows = showProfileEvidenceBlockersOnly ? profileEvidenceBlockers : evidenceChecklistRows;
   const inspectionPriorityRows = ["dbs", "barredList", "rightToWork", "identity", "safeguarding", "allergy", "firstAid", "eyfsLevel"]
     .map((key) => evidenceChecklistRows.find((row) => row.key === key))
@@ -9075,6 +9076,15 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     onMarkEvidenceChecked?.(person, row.key, row.label);
   }
 
+  function focusEvidenceRow(row) {
+    if (!row) return;
+    setProfileTab("SCR Evidence");
+    setShowProfileEvidenceBlockersOnly(false);
+    window.setTimeout(() => {
+      document.getElementById(`scr-profile-evidence-${person.id}-${row.key}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+  }
+
   return (
     <article className={`staff-profile-panel ${isArchivedProfile ? "archived" : ""}`}>
       <div className="staff-profile-identity">
@@ -9253,6 +9263,20 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
               <div className="scr-action-tags">
                 {(actionItems.length ? actionItems : ["No action"]).map((item) => <span key={item}>{item}</span>)}
               </div>
+              {firstProfileEvidenceBlocker && !isArchivedProfile && (
+                <div className="scr-next-action-workflow">
+                  <div>
+                    <span>First blocker</span>
+                    <strong>{firstProfileEvidenceBlocker.label}</strong>
+                    <small>{firstProfileEvidenceBlocker.status} · {firstProfileEvidenceBlocker.nextStep}</small>
+                  </div>
+                  <div>
+                    <button className="button light" type="button" onClick={() => focusEvidenceRow(firstProfileEvidenceBlocker)}>Open blocker</button>
+                    <button className="button light" type="button" onClick={() => requestEvidenceFromRow(firstProfileEvidenceBlocker)} disabled={!onRequestEvidence}>Request update</button>
+                    <button className="button dark" type="button" onClick={() => markEvidenceRowChecked(firstProfileEvidenceBlocker)} disabled={!onMarkEvidenceChecked || !firstProfileEvidenceBlocker.canMarkChecked}>Mark checked</button>
+                  </div>
+                </div>
+              )}
             </section>
             <section className="staff-profile-scr-checklist">
               <div className="scr-profile-checklist-head">
@@ -9296,7 +9320,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
                       </summary>
                       <div className="scr-profile-action-list">
                         {group.rows.map((row) => (
-                          <article className={`scr-profile-action-row ${row.tone}`} key={row.key}>
+                          <article className={`scr-profile-action-row ${row.tone}`} id={`scr-profile-evidence-${person.id}-${row.key}`} key={row.key}>
                             <div>
                               <span>{row.label}</span>
                               <strong>{row.status}</strong>
