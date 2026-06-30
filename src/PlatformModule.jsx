@@ -894,13 +894,12 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
     setTab(item);
   }
 
-  function openMondayInspectionView() {
+  function openSiteScrFocusView() {
     setStaffProfileTargetId("");
-    setScrInspectionTarget("King's House School");
     setOpenNavGroup("People");
     localStorage.setItem("apres-platform-open-nav-group", "People");
     setTab("SCR");
-    addAuditLog("Monday inspection view opened", "King's House School SCR preset");
+    addAuditLog("Site SCR focus opened", "Admin dashboard quick action");
   }
 
   function updateStaffPayOverride(staffId, patch) {
@@ -1018,7 +1017,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
           access={access}
         />
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
-        {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openMondayInspectionView} />}
+        {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && (
           <HRHierarchy
@@ -1261,7 +1260,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenIns
     .filter((person) => !String(person.compliance).toLowerCase().includes("compliant"))
     .slice(0, 5);
   const quickActions = [
-    ["Monday inspection", "Open King’s House SCR blockers and export pack", "Inspection"],
+    ["Site SCR", "Open site-scoped compliance and evidence tools", "Inspection"],
     ["Rota", "Cover, first aid and EYFS cover", "Rota"],
     ["Ofsted", "Site readiness and inspection window", "Ofsted"],
     ["CRM", "New enquiries and school outreach", "CRM"],
@@ -3417,8 +3416,8 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const [evidenceFilter, setEvidenceFilter] = useState("Action needed");
   const [profileTargetId, setProfileTargetId] = useState("");
-  const [mondayInspectionMode, setMondayInspectionMode] = useState(false);
-  const [mondayBlockersOnly, setMondayBlockersOnly] = useState(false);
+  const [siteFocusMode, setSiteFocusMode] = useState(false);
+  const [siteBlockersOnly, setSiteBlockersOnly] = useState(false);
   const [assignmentState, setAssignmentState] = useState(() => Object.fromEntries(
     data.staff.map((person) => [person.id, staffAssignments(person)]),
   ));
@@ -3838,13 +3837,13 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
     [onboardingProfiles.length, "Onboarding queue", onboardingProfiles.length ? "Approve new staff only when evidence is complete." : "No onboarding records waiting."],
   ];
   const selectedStaffEvidenceRows = buildScrSiteEvidenceRows(selectedSchoolStaff, data.hrFiles || [], renewalRequests);
-  const mondayBlockerRows = selectedStaffEvidenceRows.filter((row) => !row.ready);
-  const mondayVisibleEvidenceRows = mondayInspectionMode && mondayBlockersOnly
-    ? mondayBlockerRows
+  const siteBlockerRows = selectedStaffEvidenceRows.filter((row) => !row.ready);
+  const siteVisibleEvidenceRows = siteFocusMode && siteBlockersOnly
+    ? siteBlockerRows
     : selectedStaffEvidenceRows;
-  const mondayVisibleStaffIds = new Set(mondayVisibleEvidenceRows.map((row) => row.person.id));
-  const mondayVisibleStaff = mondayInspectionMode && mondayBlockersOnly
-    ? selectedSchoolStaff.filter((person) => mondayVisibleStaffIds.has(person.id))
+  const siteVisibleStaffIds = new Set(siteVisibleEvidenceRows.map((row) => row.person.id));
+  const siteVisibleStaff = siteFocusMode && siteBlockersOnly
+    ? selectedSchoolStaff.filter((person) => siteVisibleStaffIds.has(person.id))
     : selectedSchoolStaff;
   const selectedSiteDocumentLinks = readJson(documentLinksStorageKey, {});
   const dbsDisclosureAudit = buildDbsDisclosureAudit(activeScrStaff);
@@ -3853,36 +3852,32 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
     setSummaryStaffId(staffId);
     document.getElementById("scr-staff-register")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  function activateMondayInspectionMode() {
-    const kingsHouse = schoolOptions.find((school) => canonicalSchoolName(school) === canonicalSchoolName("King's House School"))
-      || schoolOptions.find((school) => canonicalSchoolName(school).includes("kings-house"))
-      || selectedScrSchool;
-    if (kingsHouse) selectInspectionSchool(kingsHouse);
-    setMondayInspectionMode(true);
+  function activateSiteFocusMode() {
+    setSiteFocusMode(true);
   }
 
   return (
     <div className="stack">
-      <section className={`scr-monday-mode ${mondayInspectionMode ? "active" : ""}`} aria-label="Monday inspection mode">
+      <section className={`scr-monday-mode ${siteFocusMode ? "active" : ""}`} aria-label="Site SCR focus mode">
         <div>
-          <p className="eyebrow">Monday inspection mode</p>
-          <h3>{mondayInspectionMode ? "Focused King’s House SCR view is on." : "Switch to the focused King’s House inspection view."}</h3>
-          <p>{mondayInspectionMode ? "Showing the essentials only: export controls, site checklist, required cover and staff profiles." : "Use this during the inspection to reduce noise and jump straight to the evidence Ofsted is most likely to ask for."}</p>
+          <p className="eyebrow">Site focus</p>
+          <h3>{siteFocusMode ? `${selectedScrSchool || "Selected site"} focus is on.` : "Focus this page on one site when you need a calmer view."}</h3>
+          <p>{siteFocusMode ? "Showing the essentials: site checklist, required cover, staff rows and export controls." : "Use this for school assurance, Ofsted preparation or a quick compliance review without the full SCR noise."}</p>
         </div>
         <div className="scr-monday-mode-actions">
-          <button className="button book" type="button" onClick={activateMondayInspectionMode}><ShieldCheck size={16} /> {mondayInspectionMode ? "Refresh King’s House Mode" : "Open Monday Mode"}</button>
-          {mondayInspectionMode && <button className="button light" type="button" onClick={() => setMondayInspectionMode(false)}>Show Full SCR</button>}
+          <button className="button book" type="button" onClick={activateSiteFocusMode}><ShieldCheck size={16} /> {siteFocusMode ? "Refresh Site Focus" : "Open Site Focus"}</button>
+          {siteFocusMode && <button className="button light" type="button" onClick={() => setSiteFocusMode(false)}>Show Full SCR</button>}
         </div>
-        {mondayInspectionMode && (
-          <div className="scr-monday-filter" aria-label="Monday inspection missing evidence filter">
-            <span><strong>{mondayBlockerRows.length}</strong> staff with blockers</span>
+        {siteFocusMode && (
+          <div className="scr-monday-filter" aria-label="Site focus missing evidence filter">
+            <span><strong>{siteBlockerRows.length}</strong> staff with blockers</span>
             <span><strong>{selectedStaffEvidenceRows.length}</strong> staff in site view</span>
             <button
-              className={mondayBlockersOnly ? "scr-filter-toggle active" : "scr-filter-toggle"}
+              className={siteBlockersOnly ? "scr-filter-toggle active" : "scr-filter-toggle"}
               type="button"
-              onClick={() => setMondayBlockersOnly((value) => !value)}
+              onClick={() => setSiteBlockersOnly((value) => !value)}
             >
-              {mondayBlockersOnly ? "Showing blockers" : "Show blockers only"}
+              {siteBlockersOnly ? "Showing blockers" : "Show blockers only"}
             </button>
           </div>
         )}
@@ -3925,42 +3920,21 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
           })}
         </div>
       </section>
-      {selectedOfstedSite?.id === "kings-house" && (
-        <KingHouseMondayPackShortcut
-          staff={mondayVisibleStaff}
-          evidenceRows={mondayVisibleEvidenceRows}
-          onOpenStaff={openEvidenceStaffProfile}
-          onExportPdf={downloadInspectionEvidencePack}
-        />
-      )}
       <div className="toolbar">
         <div>
           <h2>Single Central Register</h2>
-          <p className="panel-note">Inspection mode is active: the evidence below is scoped to {selectedScrSchool || "the selected school"}.</p>
+          <p className="panel-note">The evidence below is scoped to {selectedScrSchool || "the selected school"}.</p>
           {access?.isScoped && <p className="panel-note">Manager view: compliance table is limited to direct reports.</p>}
         </div>
         <div>
           <button className="button light" type="button" onClick={downloadStaffSummary}><Download size={16} /> Staff Summary</button>
           <button className="button light" type="button" onClick={downloadAssuranceLetter}><FileText size={16} /> Assurance Letter</button>
-          {mondayInspectionMode
+          {siteFocusMode
             ? <button className="button dark" type="button" onClick={downloadInspectionEvidencePack}><Download size={16} /> Inspection Pack</button>
             : <button className="button dark" type="button"><Upload size={16} /> Request Evidence</button>}
         </div>
       </div>
-      {!mondayInspectionMode && (selectedOfstedSite?.id === "kings-house" ? (
-        <KingHouseInspectionEvidencePack
-          site={selectedOfstedSite}
-          timing={selectedOfstedTiming}
-          staff={selectedSchoolStaff}
-          evidenceRows={selectedStaffEvidenceRows}
-          documents={data.documents || []}
-          documentLinks={selectedSiteDocumentLinks}
-          rota={selectedSiteRota}
-          logs={selectedSiteLogs}
-          onOpenStaff={openEvidenceStaffProfile}
-          onExportPdf={downloadInspectionEvidencePack}
-        />
-      ) : (
+      {!siteFocusMode && (
         <SCRInspectionLaunchPanel
           site={selectedOfstedSite}
           timing={selectedOfstedTiming}
@@ -3972,25 +3946,25 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
           staffEvidenceGaps={staffEvidenceGaps}
           scheduledInspection={scheduledInspection}
         />
-      ))}
+      )}
       <SCRInspectionChecklist
         school={selectedScrSchool}
-        rows={mondayVisibleEvidenceRows}
+        rows={siteVisibleEvidenceRows}
         onOpenStaff={openEvidenceStaffProfile}
-        emptyTitle={mondayBlockersOnly ? "No missing evidence in this view." : undefined}
-        emptyText={mondayBlockersOnly ? "Clear the filter to show every assigned staff member again." : undefined}
+        emptyTitle={siteBlockersOnly ? "No missing evidence in this view." : undefined}
+        emptyText={siteBlockersOnly ? "Clear the filter to show every assigned staff member again." : undefined}
       />
-      {mondayInspectionMode && (
-        <SCRRequirementPanel rows={requirementRows} compactTitle="Required cover for inspection" />
+      {siteFocusMode && (
+        <SCRRequirementPanel rows={requirementRows} compactTitle="Required cover for this site" />
       )}
-      {!mondayInspectionMode && <SCRSiteEvidenceBoard
+      {!siteFocusMode && <SCRSiteEvidenceBoard
         school={selectedScrSchool}
         rows={selectedStaffEvidenceRows}
         onOpenStaff={openEvidenceStaffProfile}
       />}
-      {!mondayInspectionMode && <DBSDisclosureAuditPanel audit={dbsDisclosureAudit} onOpenStaff={openEvidenceStaffProfile} onApply={applyDbsDisclosureNumber} />}
+      {!siteFocusMode && <DBSDisclosureAuditPanel audit={dbsDisclosureAudit} onOpenStaff={openEvidenceStaffProfile} onApply={applyDbsDisclosureNumber} />}
       <StaffTable
-        data={{ ...scrData, staff: mondayVisibleStaff }}
+        data={{ ...scrData, staff: siteVisibleStaff }}
         siteScopeLabel={selectedScrSchool}
         targetStaffId={profileTargetId || targetStaffId}
         onTargetHandled={() => {
@@ -4006,7 +3980,7 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
         access={access}
         onUpdateStaffPay={onUpdateStaffPay}
       />
-      {!mondayInspectionMode && <SCRDetailsPanel title="Exports and assurance" summary={`${selectedAssuranceStaff.length} staff in ${assuranceSchool} · ${selectedAssuranceCompletion}% ready`}>
+      {!siteFocusMode && <SCRDetailsPanel title="Exports and assurance" summary={`${selectedAssuranceStaff.length} staff in ${assuranceSchool} · ${selectedAssuranceCompletion}% ready`}>
         <section className="scr-output-grid">
           <article className="scr-output-card">
             <div>
@@ -4055,7 +4029,7 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
           </article>
         </section>
       </SCRDetailsPanel>}
-      {!mondayInspectionMode && <SCRDetailsPanel title="Evidence inbox and renewals" summary={`${evidenceActionQueue.length} priority actions · ${renewalItems.length} renewals`}>
+      {!siteFocusMode && <SCRDetailsPanel title="Evidence inbox and renewals" summary={`${evidenceActionQueue.length} priority actions · ${renewalItems.length} renewals`}>
         <section className="scr-evidence-console">
           <div className="scr-assignments-heading">
             <div>
@@ -4073,7 +4047,7 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
         </section>
         <SCRRenewalPanel items={renewalItems} />
       </SCRDetailsPanel>}
-      {!mondayInspectionMode && <SCRDetailsPanel title="Assignments and requirements" summary={`${requirementGapCount} site cover gaps · ${onboardingProfiles.length} onboarding`}>
+      {!siteFocusMode && <SCRDetailsPanel title="Assignments and requirements" summary={`${requirementGapCount} site cover gaps · ${onboardingProfiles.length} onboarding`}>
         {!!onboardingProfiles.length && <SCROnboardingQueue staff={onboardingProfiles} onUpdate={updateChecklist} onApprove={approveScrProfile} />}
         <SCRAssignmentsPanel
           staff={selectedSchoolStaff}
@@ -4084,7 +4058,7 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
         />
         <SCRRequirementPanel rows={requirementRows} />
       </SCRDetailsPanel>}
-      {!mondayInspectionMode && <SCRDetailsPanel title="Reference" summary="SCR fields and assurance statements">
+      {!siteFocusMode && <SCRDetailsPanel title="Reference" summary="SCR fields and assurance statements">
         <section className="scr-assurance-statements">
           <div>
             <p className="eyebrow">Included in assurance output</p>
@@ -10482,12 +10456,7 @@ function makeSuitabilityDeclarationPayload(person, confirmations, finalConfirmat
 }
 
 function scheduledInspectionForSite(site) {
-  const scheduledInspections = {
-    "kings-house": {
-      date: "2026-06-29",
-      label: "King's House School inspection is scheduled for Monday 29 June 2026",
-    },
-  };
+  const scheduledInspections = {};
   const inspection = scheduledInspections[site.id];
   if (!inspection) return null;
   return {
