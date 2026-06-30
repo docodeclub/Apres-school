@@ -3858,18 +3858,18 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
 
   return (
     <div className="stack">
-      <section className={`scr-monday-mode ${siteFocusMode ? "active" : ""}`} aria-label="Site SCR focus mode">
+      <section className={`scr-site-focus ${siteFocusMode ? "active" : ""}`} aria-label="Site SCR focus mode">
         <div>
           <p className="eyebrow">Site focus</p>
-          <h3>{siteFocusMode ? `${selectedScrSchool || "Selected site"} focus is on.` : "Focus this page on one site when you need a calmer view."}</h3>
-          <p>{siteFocusMode ? "Showing the essentials: site checklist, required cover, staff rows and export controls." : "Use this for school assurance, Ofsted preparation or a quick compliance review without the full SCR noise."}</p>
+          <h3>{siteFocusMode ? `${selectedScrSchool || "Selected site"} register is focused.` : "Focus the register on one site."}</h3>
+          <p>{siteFocusMode ? "Showing only the site checklist, required cover, assigned staff and export controls." : "Use this for school assurance, Ofsted preparation or a quick compliance review without the full SCR noise."}</p>
         </div>
-        <div className="scr-monday-mode-actions">
+        <div className="scr-site-focus-actions">
           <button className="button book" type="button" onClick={activateSiteFocusMode}><ShieldCheck size={16} /> {siteFocusMode ? "Refresh Site Focus" : "Open Site Focus"}</button>
           {siteFocusMode && <button className="button light" type="button" onClick={() => setSiteFocusMode(false)}>Show Full SCR</button>}
         </div>
         {siteFocusMode && (
-          <div className="scr-monday-filter" aria-label="Site focus missing evidence filter">
+          <div className="scr-site-focus-filter" aria-label="Site focus missing evidence filter">
             <span><strong>{siteBlockerRows.length}</strong> staff with blockers</span>
             <span><strong>{selectedStaffEvidenceRows.length}</strong> staff in site view</span>
             <button
@@ -3882,12 +3882,12 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
           </div>
         )}
       </section>
-      <section className="scr-school-switcher" aria-label="Inspection site selector">
+      <section className="scr-school-switcher" aria-label="SCR site selector">
         <div className="scr-school-switcher-copy">
-          <p className="eyebrow">Inspection site</p>
+          <p className="eyebrow">Site register</p>
           <h3>{selectedScrSchool || "Choose a site"}</h3>
           <p>
-            Only staff assigned to this school appear in the SCR evidence and assurance tools below.
+            Choose a school to see only the staff, checks and evidence that belong to that provision.
           </p>
         </div>
         <div className="scr-school-switcher-control">
@@ -5365,12 +5365,11 @@ function SCRInspectionLaunchPanel({ site, timing, school, staff, rows, score, at
     <section className="scr-inspection-launch" aria-label={`${school} SCR launch readiness`}>
       <div className="scr-inspection-launch-head">
         <div>
-          <p className="eyebrow">{scheduledInspection ? "Scheduled inspection readiness" : "Site SCR readiness"}</p>
-          <h3>{school}</h3>
+          <p className="eyebrow">Site compliance</p>
+          <h3>{school} readiness overview</h3>
           <p>
             {scheduledInspection ? `${scheduledInspection.label}. ` : ""}
-            A site-specific check for the SCR, assigned staff, evidence gaps and assurance output.
-            Use this before opening the full register below.
+            Assigned staff, required cover, evidence gaps and assurance outputs in one calm view.
           </p>
         </div>
         <div className="scr-inspection-score">
@@ -5389,7 +5388,7 @@ function SCRInspectionLaunchPanel({ site, timing, school, staff, rows, score, at
           <div className="scr-inspection-card-head">
             <div>
               <span>Required cover</span>
-              <h4>People who prove the site is covered</h4>
+              <h4>Named staff for key requirements</h4>
             </div>
             <Badge value={firstAiders.length && eyfsLeads.length && safeguardingStaff.length && allergyStaff.length ? "Covered" : "Gaps"} />
           </div>
@@ -5410,8 +5409,8 @@ function SCRInspectionLaunchPanel({ site, timing, school, staff, rows, score, at
         <article className="scr-inspection-card">
           <div className="scr-inspection-card-head">
             <div>
-              <span>Evidence actions</span>
-              <h4>Named staff gaps to clear first</h4>
+              <span>Staff evidence</span>
+              <h4>Missing records to clear first</h4>
             </div>
             <Badge value={staffEvidenceGaps.length ? "Action needed" : "Clear"} />
           </div>
@@ -5427,8 +5426,8 @@ function SCRInspectionLaunchPanel({ site, timing, school, staff, rows, score, at
         <article className="scr-inspection-card">
           <div className="scr-inspection-card-head">
             <div>
-              <span>Site pack</span>
-              <h4>What still needs checking</h4>
+              <span>Operational checks</span>
+              <h4>Site-level actions still open</h4>
             </div>
             <Badge value={urgentRows.length ? `${urgentRows.length} gaps` : "Ready"} />
           </div>
@@ -8622,7 +8621,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
           </select></label>
           {siteScopeLabel ? (
             <div className="staff-site-scope">
-              <span>Inspection site</span>
+              <span>Site scope</span>
               <strong>{siteScopeLabel}</strong>
             </div>
           ) : (
