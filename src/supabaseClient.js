@@ -143,7 +143,7 @@ export async function fetchPlatformData({ userId, role }) {
         .from("enquiries")
         .select("id, name, email, organisation, type, subject, message, status, owner_id, internal_notes, created_at")
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(250);
 
   const hrFilesQuery = supabase
     .from("staff_hr_files")
@@ -737,13 +737,16 @@ function mapEnquiries(records) {
   return records.map((record) => ({
     id: record.id,
     name: record.name,
+    email: record.email,
     type: record.type,
     organisation: record.organisation,
-    subject: record.subject || record.message,
+    subject: record.subject || "",
+    message: record.message || "",
     status: formatCrmStatus(record.status),
     owner: parseInternalNotes(record.internal_notes).owner || (record.owner_id ? "Assigned" : "Unassigned"),
     note: parseInternalNotes(record.internal_notes).note || "",
     nextAction: parseInternalNotes(record.internal_notes).nextAction || "call/email follow-up",
+    createdAt: record.created_at || "",
     source: "supabase",
   }));
 }

@@ -1248,6 +1248,8 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenIns
   const pendingCoverMoves = coverMoves.filter((move) => !["Sent", "Archived"].includes(move.status)).length;
   const suitabilityCounts = buildSuitabilityDeclarationCounts(staffWithScrState.filter((person) => !isFormerStaffRecord(person)));
   const suitabilityActions = suitabilityCounts.dueSoon + suitabilityCounts.expired + suitabilityCounts.missing;
+  const websiteEnquiries = data.enquiries.filter((record) => record.type !== "Outreach");
+  const newWebsiteEnquiries = websiteEnquiries.filter((record) => ["New", "Reviewing", "Follow up"].includes(record.status || "New")).length;
   const attentionCount = submittedEvidence.length + expiredRenewals + pendingCoverMoves + pendingDocs + suitabilityActions;
   const priorityItems = [
     [submittedEvidence.length, "Review submitted evidence", "Approve or send back staff evidence waiting for admin review.", "SCR"],
@@ -1260,10 +1262,10 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenIns
     .filter((person) => !String(person.compliance).toLowerCase().includes("compliant"))
     .slice(0, 5);
   const quickActions = [
+    ["Enquiries", `${newWebsiteEnquiries || websiteEnquiries.length} website contact response${(newWebsiteEnquiries || websiteEnquiries.length) === 1 ? "" : "s"}`, "CRM"],
     ["Site SCR", "Open site-scoped compliance and evidence tools", "Inspection"],
     ["Rota", "Cover, first aid and EYFS cover", "Rota"],
     ["Ofsted", "Site readiness and inspection window", "Ofsted"],
-    ["CRM", "New enquiries and school outreach", "CRM"],
     ["Hours", "Paid windows and approvals", "Hours"],
   ];
   useEffect(() => {
@@ -7685,10 +7687,10 @@ function Incidents() {
 function CRM({ data }) {
   const [updates, setUpdates] = useState(() => readCrmUpdates());
   const [fallbackOutreach, setFallbackOutreach] = useState([]);
-  const [typeFilter, setTypeFilter] = useState("All");
+  const [typeFilter, setTypeFilter] = useState("Website enquiries");
   const [query, setQuery] = useState("");
   const [rowLimit, setRowLimit] = useState("25");
-  const [sort, setSort] = useState({ key: "name", direction: "asc" });
+  const [sort, setSort] = useState({ key: "created", direction: "desc" });
   const [selectedId, setSelectedId] = useState("");
   const [selectedRows, setSelectedRows] = useState([]);
 
@@ -7705,10 +7707,22 @@ function CRM({ data }) {
 
   const outreachSource = data.outreach?.length ? data.outreach : fallbackOutreach;
   const outreach = outreachSource.map((record) => ({ ...record, ...updates[record.id] }));
-  const records = [...mergeCrmRecords(data.enquiries, updates), ...outreach];
+  const enquiryRecords = mergeCrmRecords(data.enquiries, updates);
+  const records = [...enquiryRecords, ...outreach];
+  const websiteEnquiries = enquiryRecords.filter(isWebsiteEnquiryRecord);
+  const newWebsiteEnquiries = websiteEnquiries.filter((record) => ["New", "Reviewing", "Follow up"].includes(record.status || "New"));
+  const recentWebsiteEnquiries = [...websiteEnquiries]
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+    .slice(0, 3);
   const queryText = query.trim().toLowerCase();
   const visibleRecords = records.filter((record) => {
-    const matchesType = typeFilter === "All" || record.type === typeFilter || record.stage === typeFilter || record.status === typeFilter;
+    const isWebsite = isWebsiteEnquiryRecord(record);
+    const matchesType = typeFilter === "All"
+      || (typeFilter === "Website enquiries" && isWebsite)
+      || (typeFilter === "Outreach" && record.type === "Outreach")
+      || record.type === typeFilter
+      || record.stage === typeFilter
+      || record.status === typeFilter;
     if (!matchesType) return false;
     if (!queryText) return true;
     return [
@@ -7725,6 +7739,7 @@ function CRM({ data }) {
       record.message,
       record.note,
       record.nextAction,
+      record.createdAt,
       record.owner,
     ].filter(Boolean).join(" ").toLowerCase().includes(queryText);
   });
@@ -7842,12 +7857,12 @@ function updateRecord(id, patch) {
       <div className="toolbar">
         <div>
           <h2>Enquiries CRM</h2>
-          <p className="panel-note">Track website enquiries and school outreach as rows. Email still happens manually; this keeps stage, notes and follow-up visible.</p>
+          <p className="panel-note">Website contact responses are shown first. Outreach is still available as a separate filter when you need it.</p>
         </div>
         <div className="crm-toolbar-controls">
-          <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search school, contact, note..." /></label>
+          <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contact responses, school, email..." /></label>
           <label>Filter<select aria-label="Filter enquiries" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-            {["All", "Parent", "School", "Staff", "Outreach", "Prospect", "Contacted", "Follow up", "Partner school", "Closed"].map((item) => <option key={item}>{item}</option>)}
+            {["Website enquiries", "All", "Parent", "School", "Staff", "Outreach", "Prospect", "Contacted", "Follow up", "Partner school", "Closed"].map((item) => <option key={item}>{item}</option>)}
           </select></label>
           <label>Rows<select aria-label="Rows per page" value={rowLimit} onChange={(event) => setRowLimit(event.target.value)}>
             {["25", "50", "100", "All"].map((item) => <option key={item}>{item}</option>)}
@@ -7855,10 +7870,30 @@ function updateRecord(id, patch) {
         </div>
       </div>
       <div className="crm-summary">
-        <Metric icon={<Mail />} label="Outreach prospects" value={outreachCount} tone="blue" />
+        <Metric icon={<Mail />} label="Website responses" value={websiteEnquiries.length} tone={websiteEnquiries.length ? "amber" : "green"} />
+        <Metric icon={<Bell />} label="New responses" value={newWebsiteEnquiries.length} tone={newWebsiteEnquiries.length ? "amber" : "green"} />
+        <Metric icon={<Users />} label="Outreach prospects" value={outreachCount} tone="blue" />
         <Metric icon={<CalendarDays />} label="Follow-ups" value={followUpCount} tone="amber" />
         <Metric icon={<ShieldCheck />} label="Partner schools" value={partnerCount} tone="green" />
       </div>
+      {recentWebsiteEnquiries.length > 0 && (
+        <section className="crm-enquiry-strip" aria-label="Recent website contact responses">
+          <div>
+            <p className="eyebrow">Website contact responses</p>
+            <h3>Latest messages from the public site</h3>
+          </div>
+          <div className="crm-enquiry-strip-grid">
+            {recentWebsiteEnquiries.map((record) => (
+              <button key={record.id} type="button" onClick={() => setSelectedId(record.id)}>
+                <span>{record.type || "Enquiry"}</span>
+                <strong>{record.name || "Unnamed contact"}</strong>
+                <small>{record.email || "No email"}{record.createdAt ? ` · ${formatShortDate(record.createdAt)}` : ""}</small>
+                <p>{record.subject || record.message || "No message preview"}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       <p className="panel-note">Showing {rowsToShow.length} of {visibleRecords.length} matching records.</p>
       <CrmBulkActions
         selectedCount={selectedRows.length}
@@ -7875,6 +7910,7 @@ function updateRecord(id, patch) {
               <th><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleRows} aria-label="Select visible CRM rows" /></th>
               <th><button type="button" onClick={() => changeSort("name")}>Lead {sort.key === "name" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
               <th><button type="button" onClick={() => changeSort("contact")}>Contact {sort.key === "contact" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
+              <th><button type="button" onClick={() => changeSort("created")}>Received {sort.key === "created" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
               <th><button type="button" onClick={() => changeSort("status")}>Status {sort.key === "status" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
               <th><button type="button" onClick={() => changeSort("owner")}>Owner {sort.key === "owner" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
               <th><button type="button" onClick={() => changeSort("followUp")}>Follow-up {sort.key === "followUp" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
@@ -7896,6 +7932,10 @@ function updateRecord(id, patch) {
                     <span>{record.contactEmail || record.email || "No email"}</span>
                     <small>{record.subject || record.message || "No summary"}</small>
                     <small className={`crm-sync ${record.syncState || "local"}`}>{crmSyncText(record)}</small>
+                  </td>
+                  <td>
+                    <strong>{record.createdAt ? formatShortDate(record.createdAt) : "Not recorded"}</strong>
+                    <small>{record.createdAt ? new Date(record.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : ""}</small>
                   </td>
                   <td><select value={record.status || "New"} onChange={(event) => updateRecord(record.id, { status: event.target.value })}>{crmStatuses.map((item) => <option key={item}>{item}</option>)}</select></td>
                   <td><select value={record.owner || "Unassigned"} onChange={(event) => updateRecord(record.id, { owner: event.target.value })}>{crmOwners.map((item) => <option key={item}>{item}</option>)}</select></td>
@@ -7922,6 +7962,7 @@ function sortCrmRecords(records, sort) {
     if (sort.key === "status") return record.status || record.stage || "New";
     if (sort.key === "owner") return record.owner || "Unassigned";
     if (sort.key === "followUp") return record.followUpDate || "9999-12-31";
+    if (sort.key === "created") return record.createdAt || (record.type === "Outreach" ? "0000-00-00" : "");
     return record.name || "";
   };
   return [...records].sort((a, b) => {
@@ -10113,6 +10154,10 @@ function mergeCrmRecords(demoRecords, updates, localRecords = getLocalEnquiries(
     };
   });
   return records;
+}
+
+function isWebsiteEnquiryRecord(record) {
+  return record?.type !== "Outreach" && ["supabase", "local", "demo"].includes(record?.source || "demo");
 }
 
 function isSupabaseCrmRecord(id, record) {

@@ -7475,6 +7475,10 @@ label {
   gap: 14px;
 }
 
+.crm-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .requirement-card,
 .onboarding-scr-grid article {
   display: grid;
@@ -8319,7 +8323,82 @@ label {
 }
 
 .crm-table {
-  min-width: 1040px;
+  min-width: 1160px;
+}
+
+.crm-enquiry-strip {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(243, 171, 73, 0.26);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 250, 241, 0.96) 100%),
+    radial-gradient(circle at 94% 6%, rgba(243, 171, 73, 0.18), transparent 30%);
+  box-shadow: 0 14px 34px rgba(38, 63, 169, 0.07);
+  padding: 16px;
+}
+
+.crm-enquiry-strip h3 {
+  color: var(--royal-dark);
+  font-size: clamp(1.1rem, 2vw, 1.45rem);
+  line-height: 1.1;
+  margin: 0;
+}
+
+.crm-enquiry-strip-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.crm-enquiry-strip-grid button {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid rgba(72, 104, 220, 0.14);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 14px;
+  text-align: left;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.crm-enquiry-strip-grid button:hover {
+  border-color: rgba(72, 104, 220, 0.34);
+  box-shadow: 0 12px 28px rgba(38, 63, 169, 0.1);
+  transform: translateY(-1px);
+}
+
+.crm-enquiry-strip-grid span {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.crm-enquiry-strip-grid strong {
+  color: var(--royal-dark);
+  font-size: 1rem;
+  line-height: 1.15;
+}
+
+.crm-enquiry-strip-grid small,
+.crm-enquiry-strip-grid p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.crm-enquiry-strip-grid p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .crm-table th:first-child,
@@ -13908,6 +13987,8 @@ th {
   .contact-layout,
   .route-grid,
   .assurance-matrix,
+  .crm-summary,
+  .crm-enquiry-strip-grid,
   .booking-intro,
   .booking-route-strip,
   .booking-guide,
