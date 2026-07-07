@@ -28,6 +28,96 @@ do $$ begin
 exception when duplicate_object then null;
 end $$;
 
+create table if not exists booking_invoices (
+  id text primary key,
+  booking_id text,
+  parent_id uuid references profiles(id) on delete set null,
+  parent_email text,
+  provider_payment_id text,
+  provider_reference text,
+  total_amount numeric(10,2) not null default 0,
+  paid_amount numeric(10,2) not null default 0,
+  refunded_amount numeric(10,2) not null default 0,
+  balance numeric(10,2) not null default 0,
+  currency text not null default 'GBP',
+  payment_status text not null default 'pending',
+  parent_portal_status text not null default 'Outstanding',
+  receipt_status text not null default 'not_issued',
+  finance_status text not null default 'awaiting_payment',
+  last_webhook_event_id uuid,
+  last_provider_event_id text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists ponchopay_webhook_events (
+  id uuid primary key default gen_random_uuid(),
+  provider_event_id text not null unique,
+  event_type text not null,
+  payment_id text,
+  booking_id text,
+  invoice_id text,
+  provider_reference text,
+  amount numeric(10,2),
+  expected_amount numeric(10,2),
+  currency text not null default 'GBP',
+  signature_status text not null default 'unverified',
+  processing_status text not null default 'received',
+  processing_outcome text,
+  raw_payload_hash text not null,
+  raw_payload jsonb not null default '{}'::jsonb,
+  source_path text,
+  received_at timestamptz not null default now(),
+  processed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists booking_receipts (
+  id uuid primary key default gen_random_uuid(),
+  invoice_id text not null references booking_invoices(id) on delete cascade,
+  provider_event_id text not null unique,
+  payment_id text,
+  provider_reference text,
+  receipt_number text not null unique,
+  amount numeric(10,2) not null default 0,
+  currency text not null default 'GBP',
+  delivery_status text not null default 'pending_email',
+  metadata jsonb not null default '{}'::jsonb,
+  issued_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists ponchopay_checkout_sessions (
+  id uuid primary key default gen_random_uuid(),
+  invoice_id text not null unique references booking_invoices(id) on delete cascade,
+  booking_id text,
+  parent_id uuid references profiles(id) on delete set null,
+  parent_email text,
+  provider_payment_id text,
+  provider_checkout_url text,
+  provider_reference text,
+  amount numeric(10,2) not null default 0,
+  currency text not null default 'GBP',
+  payment_method text not null default 'card',
+  payment_plan text not null default 'pay_now',
+  status text not null default 'created',
+  request_payload jsonb not null default '{}'::jsonb,
+  provider_response jsonb not null default '{}'::jsonb,
+  error_message text,
+  expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+do $$ begin
+  alter table booking_invoices
+    add constraint booking_invoices_last_webhook_event_fkey
+    foreign key (last_webhook_event_id) references ponchopay_webhook_events(id) on delete set null;
+exception when duplicate_object then null;
+end $$;
+
 create table if not exists parent_accounts (
   id uuid primary key default gen_random_uuid(),
   profile_id uuid unique references profiles(id) on delete set null,

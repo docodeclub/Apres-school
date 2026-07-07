@@ -4964,7 +4964,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const bookingRehearsalEvidencePercent = Math.round((bookingRehearsalEvidenceReady / bookingRehearsalEvidenceRows.length) * 100);
   const stagingBundleMigrations = [
     "0025_email_logs.sql",
-    "0028_booking_payment_foundations.sql",
+    "0041_booking_payment_foundations_backfill.sql",
     "0029_booking_core.sql",
     "0030_create_parent_booking_reservation.sql",
     "0031_seed_2026_wraparound_booking_sessions.sql",

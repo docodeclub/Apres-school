@@ -71,7 +71,7 @@ const functionNames = [
 ];
 
 const migrationFiles = [
-  "0028_booking_payment_foundations.sql",
+  "0041_booking_payment_foundations_backfill.sql",
   "0036_booking_payment_events.sql",
   "0037_ponchopay_webhook_service_grants.sql",
   "0038_booking_payment_service_grants.sql",
