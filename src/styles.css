@@ -31579,7 +31579,12 @@ th {
   }
 
   .booking-launch-page .lab-day-card:not(.active) .lab-day-main {
-    display: contents;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    width: 100%;
+    min-height: 54px;
   }
 
   .booking-launch-page .lab-day-card:not(.active) .lab-day-main strong,
