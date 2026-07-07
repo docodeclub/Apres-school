@@ -824,7 +824,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [parentLogin, setParentLogin] = useState({ username: "", password: "" });
   const [parentAccessMode, setParentAccessMode] = useState("signin");
   const [parentRegistration, setParentRegistration] = useState(() => readJson("apres-parent-registration-draft", defaultParentRegistration));
-  const [childRegistration, setChildRegistration] = useState(() => readJson("apres-child-registration-draft", defaultChildRegistration));
+  const [childRegistration, setChildRegistration] = useState(() => (isLaunchMode ? defaultChildRegistration : readJson("apres-child-registration-draft", defaultChildRegistration)));
   const [childRegistrationStep, setChildRegistrationStep] = useState("Basics");
   const [selectedParentBookingId, setSelectedParentBookingId] = useState("");
   const [parentSessionCancellingId, setParentSessionCancellingId] = useState("");
@@ -6197,11 +6197,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentAccountMode(realBookingServiceReady ? "live" : "demo");
     setParentLogin({ username: email, password: "" });
     setSelectedSchool(centre);
-    setChildRegistration((current) => {
-      const next = { ...current, school: current.school || centre };
-      localStorage.setItem("apres-child-registration-draft", JSON.stringify(next));
-      return next;
-    });
+    const freshChildRegistration = { ...defaultChildRegistration, school: centre, languages: ["English"] };
+    localStorage.setItem("apres-child-registration-draft", JSON.stringify(freshChildRegistration));
+    setChildRegistration(freshChildRegistration);
     localStorage.setItem("apres-parent-account-signed-in", "true");
     localStorage.setItem("apres-parent-account-mode", JSON.stringify(realBookingServiceReady ? "live" : "demo"));
     localStorage.removeItem("apres-parent-registration-draft");
