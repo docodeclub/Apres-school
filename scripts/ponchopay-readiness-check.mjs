@@ -71,10 +71,10 @@ const functionNames = [
 ];
 
 const migrationFiles = [
-  "0026_ponchopay_webhook_events.sql",
-  "0027_ponchopay_invoice_processing.sql",
-  "0028_ponchopay_checkout_sessions.sql",
+  "0028_booking_payment_foundations.sql",
   "0036_booking_payment_events.sql",
+  "0037_ponchopay_webhook_service_grants.sql",
+  "0038_booking_payment_service_grants.sql",
 ];
 
 const report = {

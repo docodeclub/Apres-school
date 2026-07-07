@@ -16,9 +16,7 @@ const stagingTarget = clean(process.env.BOOKING_STAGING_TARGET).toLowerCase();
 
 const migrationFiles = [
   "0025_email_logs.sql",
-  "0026_ponchopay_webhook_events.sql",
-  "0027_ponchopay_invoice_processing.sql",
-  "0028_ponchopay_checkout_sessions.sql",
+  "0028_booking_payment_foundations.sql",
   "0029_booking_core.sql",
   "0030_create_parent_booking_reservation.sql",
   "0031_seed_2026_wraparound_booking_sessions.sql",
@@ -27,6 +25,8 @@ const migrationFiles = [
   "0034_amend_parent_booking_add_items.sql",
   "0035_booking_payment_admin_actions.sql",
   "0036_booking_payment_events.sql",
+  "0037_ponchopay_webhook_service_grants.sql",
+  "0038_booking_payment_service_grants.sql",
 ];
 
 const functionDeploys = [
