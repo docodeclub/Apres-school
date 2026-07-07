@@ -8,10 +8,20 @@ const corsHeaders = {
 };
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-const serviceRoleKey = Deno.env.get("APRES_SERVICE_ROLE_KEY") ?? "";
+const serviceRoleKey =
+  Deno.env.get("APRES_SERVICE_ROLE_KEY") ??
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  "";
 const notificationTo = Deno.env.get("ENQUIRY_NOTIFICATION_TO") ?? "hello@apres-school.co.uk";
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
-const resendFrom = Deno.env.get("RESEND_FROM") ?? "Après School <hello@apres-school.co.uk>";
+const resendFrom =
+  Deno.env.get("APRES_EMAIL_FROM") ??
+  Deno.env.get("RESEND_FROM") ??
+  "Après School <hello@apres-school.co.uk>";
+const resendReplyTo =
+  Deno.env.get("APRES_REPLY_TO") ??
+  Deno.env.get("RESEND_REPLY_TO") ??
+  "hello@apres-school.co.uk";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
@@ -86,7 +96,30 @@ function stringValue(value: unknown) {
 }
 
 async function notifyByEmail(enquiry: ReturnType<typeof normalizeEnquiry>, enquiryId: string) {
-  if (!resendApiKey) return;
+  const subject = `New Après School enquiry: ${enquiry.type}`;
+  const text = [
+    `Name: ${enquiry.name}`,
+    `Email: ${enquiry.email}`,
+    `Organisation: ${enquiry.organisation || "N/A"}`,
+    `Type: ${enquiry.type}`,
+    `Subject: ${enquiry.subject || "N/A"}`,
+    `Role: ${enquiry.role || "N/A"}`,
+    "",
+    enquiry.message,
+  ].join("\n");
+
+  if (!resendApiKey) {
+    await logEmail({
+      recipientEmail: notificationTo,
+      recipientName: "Après School enquiries",
+      emailType: "enquiry_notification",
+      subject,
+      status: "queued_without_provider",
+      enquiryId,
+      metadata: { enquiryType: enquiry.type, senderEmail: enquiry.email, senderName: enquiry.name },
+    });
+    return;
+  }
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -97,24 +130,66 @@ async function notifyByEmail(enquiry: ReturnType<typeof normalizeEnquiry>, enqui
     body: JSON.stringify({
       from: resendFrom,
       to: [notificationTo],
-      subject: `New Après School enquiry: ${enquiry.type}`,
-      text: [
-        `Name: ${enquiry.name}`,
-        `Email: ${enquiry.email}`,
-        `Organisation: ${enquiry.organisation || "N/A"}`,
-        `Type: ${enquiry.type}`,
-        `Subject: ${enquiry.subject || "N/A"}`,
-        `Role: ${enquiry.role || "N/A"}`,
-        "",
-        enquiry.message,
-      ].join("\n"),
+      reply_to: enquiry.email || resendReplyTo,
+      subject,
+      text,
     }),
   });
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     console.error(`Email notification failed for enquiry ${enquiryId}: ${response.status} ${detail}`);
+    await logEmail({
+      recipientEmail: notificationTo,
+      recipientName: "Après School enquiries",
+      emailType: "enquiry_notification",
+      subject,
+      status: "failed",
+      errorMessage: `Resend email failed with ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`,
+      enquiryId,
+      metadata: { enquiryType: enquiry.type, senderEmail: enquiry.email, senderName: enquiry.name },
+    });
+    return;
   }
+
+  const result = await response.json().catch(() => null);
+  await logEmail({
+    recipientEmail: notificationTo,
+    recipientName: "Après School enquiries",
+    emailType: "enquiry_notification",
+    subject,
+    status: "sent",
+    providerMessageId: typeof result?.id === "string" ? result.id : "",
+    enquiryId,
+    metadata: { enquiryType: enquiry.type, senderEmail: enquiry.email, senderName: enquiry.name },
+  });
+}
+
+async function logEmail(entry: {
+  recipientEmail: string;
+  recipientName?: string;
+  emailType: string;
+  subject: string;
+  status: string;
+  providerMessageId?: string;
+  errorMessage?: string;
+  enquiryId?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const { error } = await supabase.from("email_logs").insert({
+    recipient_email: entry.recipientEmail,
+    recipient_name: entry.recipientName || null,
+    email_type: entry.emailType,
+    subject: entry.subject,
+    status: entry.status,
+    provider: "resend",
+    provider_message_id: entry.providerMessageId || null,
+    error_message: entry.errorMessage || null,
+    enquiry_id: entry.enquiryId || null,
+    metadata: entry.metadata || {},
+    sent_at: entry.status === "sent" ? new Date().toISOString() : null,
+  });
+  if (error) console.error(`Email log failed: ${error.message}`);
 }
 
 function json(body: Record<string, unknown>, status = 200) {

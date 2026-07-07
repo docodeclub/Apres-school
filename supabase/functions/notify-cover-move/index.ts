@@ -8,10 +8,20 @@ const corsHeaders = {
 };
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-const serviceRoleKey = Deno.env.get("APRES_SERVICE_ROLE_KEY") ?? "";
+const serviceRoleKey =
+  Deno.env.get("APRES_SERVICE_ROLE_KEY") ??
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  "";
 const operationsTo = Deno.env.get("OPERATIONS_NOTIFICATION_TO") ?? "hello@apres-school.co.uk";
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
-const resendFrom = Deno.env.get("RESEND_FROM") ?? "Après School <hello@apres-school.co.uk>";
+const resendFrom =
+  Deno.env.get("APRES_STAFF_EMAIL_FROM") ??
+  Deno.env.get("RESEND_FROM") ??
+  "Après School Team <staff@apres-school.co.uk>";
+const resendReplyTo =
+  Deno.env.get("APRES_REPLY_TO") ??
+  Deno.env.get("RESEND_REPLY_TO") ??
+  "hello@apres-school.co.uk";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
@@ -58,11 +68,39 @@ serve(async (request) => {
     if (error) throw error;
 
     if (resendApiKey) {
-      await sendCoverEmails(payload);
+      await sendCoverEmails(payload, data.id, actor.id);
       await supabase
         .from("cover_moves")
         .update({ email_status: "sent", sent_at: new Date().toISOString() })
         .eq("id", data.id);
+    } else {
+      await logCoverEmail({
+        to: payload.coverEmail,
+        name: payload.coverStaff,
+        subject: `Cover update: ${payload.siteName}`,
+        status: "queued_without_provider",
+        coverMoveId: data.id,
+        sentBy: actor.id,
+        metadata: { role: "covering_staff", siteName: payload.siteName },
+      });
+      await logCoverEmail({
+        to: payload.coveredEmail,
+        name: payload.coveredStaff,
+        subject: `Cover arranged: ${payload.siteName}`,
+        status: "queued_without_provider",
+        coverMoveId: data.id,
+        sentBy: actor.id,
+        metadata: { role: "covered_staff", siteName: payload.siteName },
+      });
+      await logCoverEmail({
+        to: operationsTo,
+        name: "Après School operations",
+        subject: `Cover move logged: ${payload.siteName}`,
+        status: "queued_without_provider",
+        coverMoveId: data.id,
+        sentBy: actor.id,
+        metadata: { role: "operations", siteName: payload.siteName },
+      });
     }
 
     await supabase.from("audit_log").insert({
@@ -128,7 +166,7 @@ function validatePayload(payload: ReturnType<typeof normalizePayload>) {
   return null;
 }
 
-async function sendCoverEmails(payload: ReturnType<typeof normalizePayload>) {
+async function sendCoverEmails(payload: ReturnType<typeof normalizePayload>, coverMoveId: string, sentBy: string) {
   const coverText = [
     `Hi ${payload.coverStaff},`,
     "",
@@ -162,13 +200,13 @@ async function sendCoverEmails(payload: ReturnType<typeof normalizePayload>) {
   ].join("\n");
 
   await Promise.all([
-    sendEmail(payload.coverEmail, `Cover update: ${payload.siteName}`, coverText),
-    sendEmail(payload.coveredEmail, `Cover arranged: ${payload.siteName}`, coveredText),
-    sendEmail(operationsTo, `Cover move logged: ${payload.siteName}`, opsText),
+    sendEmail(payload.coverEmail, payload.coverStaff, `Cover update: ${payload.siteName}`, coverText, coverMoveId, sentBy, { role: "covering_staff", siteName: payload.siteName }),
+    sendEmail(payload.coveredEmail, payload.coveredStaff, `Cover arranged: ${payload.siteName}`, coveredText, coverMoveId, sentBy, { role: "covered_staff", siteName: payload.siteName }),
+    sendEmail(operationsTo, "Après School operations", `Cover move logged: ${payload.siteName}`, opsText, coverMoveId, sentBy, { role: "operations", siteName: payload.siteName }),
   ]);
 }
 
-async function sendEmail(to: string, subject: string, text: string) {
+async function sendEmail(to: string, name: string, subject: string, text: string, coverMoveId: string, sentBy: string, metadata: Record<string, unknown>) {
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -178,14 +216,58 @@ async function sendEmail(to: string, subject: string, text: string) {
     body: JSON.stringify({
       from: resendFrom,
       to: [to],
+      reply_to: resendReplyTo,
       subject,
       text,
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`Resend email failed with ${response.status}`);
+    const detail = await response.text().catch(() => "");
+    const errorMessage = `Resend email failed with ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`;
+    await logCoverEmail({ to, name, subject, status: "failed", errorMessage, coverMoveId, sentBy, metadata });
+    throw new Error(errorMessage);
   }
+
+  const result = await response.json().catch(() => null);
+  await logCoverEmail({
+    to,
+    name,
+    subject,
+    status: "sent",
+    providerMessageId: typeof result?.id === "string" ? result.id : "",
+    coverMoveId,
+    sentBy,
+    metadata,
+  });
+}
+
+async function logCoverEmail(entry: {
+  to: string;
+  name?: string;
+  subject: string;
+  status: string;
+  providerMessageId?: string;
+  errorMessage?: string;
+  coverMoveId?: string;
+  sentBy?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const { error } = await supabase.from("email_logs").insert({
+    recipient_email: entry.to,
+    recipient_name: entry.name || null,
+    email_type: "cover_move_notification",
+    subject: entry.subject,
+    status: entry.status,
+    provider: "resend",
+    provider_message_id: entry.providerMessageId || null,
+    error_message: entry.errorMessage || null,
+    sent_by: entry.sentBy || null,
+    cover_move_id: entry.coverMoveId || null,
+    metadata: entry.metadata || {},
+    sent_at: entry.status === "sent" ? new Date().toISOString() : null,
+  });
+  if (error) console.error(`Email log failed: ${error.message}`);
 }
 
 function stringValue(value: unknown) {

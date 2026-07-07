@@ -106,11 +106,21 @@ function scanSourceForFrontendSecrets() {
       if (!/\.(js|jsx|ts|tsx|css|html|json|md|txt|xml|webmanifest)$/.test(file)) continue;
       const content = readFileSync(file, "utf8");
       for (const key of frontendForbidden) {
-        if (content.includes(key)) matches.push(`${file.replace(root + "/", "")}: ${key}`);
+        if (readsSecretFromFrontendEnv(content, key)) matches.push(`${file.replace(root + "/", "")}: ${key}`);
       }
     }
   }
   return { matches };
+}
+
+function readsSecretFromFrontendEnv(content, key) {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [
+    new RegExp(`import\\.meta\\.env\\.${escaped}\\b`),
+    new RegExp(`import\\.meta\\.env\\[['"\`]${escaped}['"\`]\\]`),
+    new RegExp(`process\\.env\\.${escaped}\\b`),
+    new RegExp(`process\\.env\\[['"\`]${escaped}['"\`]\\]`),
+  ].some((pattern) => pattern.test(content));
 }
 
 function walk(dir) {

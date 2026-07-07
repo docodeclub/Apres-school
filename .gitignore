@@ -11,3 +11,4 @@ public/assets/apres-highlights/privacy/
 public/assets/apres-highlights/privacy-png/
 .env*
 !.env.example
+!.env.staging.example

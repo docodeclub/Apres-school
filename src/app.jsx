@@ -123,6 +123,7 @@ const Upload = makeIcon("UP");
 const Users = makeIcon("US");
 const X = makeIcon("X");
 const Platform = lazy(() => import("./PlatformModule.jsx"));
+const BookingLab = lazy(() => import("./BookingLab.jsx"));
 
 const MAGICBOOKING_URL = "https://apres-school.magicbooking.co.uk/Identity/Account/Login";
 const PEBBLE_SUPPLIER_URL = "https://activities.bookpebble.co.uk/supplier/apres-school-1a30ba07-ffae-4d56-a896-2187e4f0a4b5";
@@ -185,8 +186,21 @@ const pagePaths = {
   Policies: "/policies",
 };
 const pathPages = Object.fromEntries(Object.entries(pagePaths).map(([page, path]) => [path, page]));
+const bookingPreviewToken = String(import.meta.env.VITE_BOOKING_PREVIEW_TOKEN || "").trim();
+
 function isPlatformPath() {
   return window.location.pathname === "/staff-login";
+}
+
+function hasBookingPreviewAccess() {
+  if (!bookingPreviewToken) return true;
+  const params = new URLSearchParams(window.location.search);
+  const candidate = params.get("preview") || params.get("booking_preview") || params.get("token");
+  if (candidate === bookingPreviewToken) {
+    sessionStorage.setItem("apres-booking-preview-token", bookingPreviewToken);
+    return true;
+  }
+  return sessionStorage.getItem("apres-booking-preview-token") === bookingPreviewToken;
 }
 
 function hasRecoveryHash() {
@@ -216,6 +230,17 @@ const pageKeywords = {
   Schools: "wraparound care for schools, extended school provision, school partnerships, holiday camps for schools, after school provision, parent offer",
   Contact: "school partnership enquiry, wraparound care enquiry, holiday camp enquiry, Après School contact",
 };
+const privatePrototypePages = new Set(["Booking Lab", "Launch Booking"]);
+
+function ensureMetaTag(selector, attributes) {
+  let element = document.querySelector(selector);
+  if (!element) {
+    element = document.createElement("meta");
+    document.head.appendChild(element);
+  }
+  Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+  return element;
+}
 
 function staffAssignments(person) {
   if (Array.isArray(person?.siteAssignments) && person.siteAssignments.length) return person.siteAssignments;
@@ -619,6 +644,7 @@ export default function App() {
   const [platformUnlocked, setPlatformUnlocked] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authUser, setAuthUser] = useState(null);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
   const [role, setRole] = useState("Admin");
   const [tab, setTab] = useState("Admin");
   const [menu, setMenu] = useState(false);
@@ -629,10 +655,12 @@ export default function App() {
     const meta = pageMeta[page] || pageMeta.Home;
     if (passwordRecovery) {
       document.title = "Reset Password | Après School";
+      ensureMetaTag('meta[name="robots"]', { name: "robots", content: "noindex, nofollow" });
       return;
     }
     if (platform) {
       document.title = "Staff Login | Après School";
+      ensureMetaTag('meta[name="robots"]', { name: "robots", content: "noindex, nofollow" });
       if (window.location.pathname !== "/staff-login") window.history.pushState({ page: "Staff Login" }, "", "/staff-login");
       return;
     }
@@ -646,11 +674,13 @@ export default function App() {
     const keywords = document.querySelector('meta[name="keywords"]');
     const canonical = document.querySelector('link[rel="canonical"]');
     const ogUrl = document.querySelector('meta[property="og:url"]');
+    const robots = ensureMetaTag('meta[name="robots"]', { name: "robots", content: "index, follow" });
     if (ogTitle) ogTitle.setAttribute("content", meta[0]);
     if (ogDescription) ogDescription.setAttribute("content", meta[1]);
     if (twitterTitle) twitterTitle.setAttribute("content", meta[0]);
     if (twitterDescription) twitterDescription.setAttribute("content", meta[1]);
     if (keywords) keywords.setAttribute("content", pageKeywords[page] || pageKeywords.Home);
+    robots.setAttribute("content", privatePrototypePages.has(page) ? "noindex, nofollow" : "index, follow");
     const nextPath = pagePaths[page] || "/";
     const canonicalUrl = `https://www.apres-school.co.uk${nextPath}`;
     if (canonical) canonical.setAttribute("href", canonicalUrl);
@@ -714,6 +744,7 @@ export default function App() {
     if (!user) {
       authUserIdRef.current = null;
       setAuthUser(null);
+      setMustChangePassword(false);
       setPlatformUnlocked(false);
       setRole("Staff");
       setTab("Staff");
@@ -730,14 +761,21 @@ export default function App() {
     setPlatformUnlocked(true);
 
     try {
-      const { getProfileRole } = await loadSupabaseModule();
-      const nextRole = await getProfileRole(user.id);
-      setRole(nextRole);
-      setTab(nextRole === "Staff" ? "Staff" : "Admin");
+      const { getProfileAccess } = await loadSupabaseModule();
+      const nextAccess = await getProfileAccess(user.id);
+      setRole(nextAccess.role);
+      setMustChangePassword(nextAccess.mustChangePassword);
+      setTab(nextAccess.role === "Staff" ? "Staff" : "Admin");
     } catch {
       setRole("Staff");
+      setMustChangePassword(false);
       setTab("Staff");
     }
+  }
+
+  async function handleForcedPasswordChanged(user) {
+    setMustChangePassword(false);
+    await applySession({ user });
   }
 
   async function handleAuthenticated(user) {
@@ -750,6 +788,7 @@ export default function App() {
   async function handleDemoAuthenticated(demoUser) {
     const demoData = await loadMockPlatformData();
     setAuthUser({ id: `demo-${demoUser.role.toLowerCase()}`, email: demoUser.email, app_metadata: { demo: true } });
+    setMustChangePassword(false);
     setRole(demoUser.role);
     setTab(demoUser.role === "Staff" ? "Staff" : "Admin");
     setPlatformData({
@@ -767,6 +806,7 @@ export default function App() {
       await signOutStaff();
     }
     setAuthUser(null);
+    setMustChangePassword(false);
     setPlatformUnlocked(false);
     setRole("Staff");
     setTab("Staff");
@@ -844,16 +884,70 @@ export default function App() {
       />
       {platform
         ? platformUnlocked
-          ? (
-            <Suspense fallback={<main className="login-page" id="main-content"><section className="login-card"><p className="eyebrow">Internal platform</p><h1>Loading workspace...</h1></section></main>}>
-              <Platform role={role} tab={tab} setTab={setTab} userEmail={authUser?.email} onSignOut={handleSignOut} data={platformData} />
-            </Suspense>
-          )
+          ? mustChangePassword
+            ? <ForcedPasswordChange userEmail={authUser?.email} onChanged={handleForcedPasswordChanged} onSignOut={handleSignOut} />
+            : (
+              <Suspense fallback={<main className="login-page" id="main-content"><section className="login-card"><p className="eyebrow">Internal platform</p><h1>Loading workspace...</h1></section></main>}>
+                <Platform role={role} tab={tab} setTab={setTab} userEmail={authUser?.email} onSignOut={handleSignOut} data={platformData} />
+              </Suspense>
+            )
           : <PlatformLogin authLoading={authLoading} setPlatform={setPlatform} onAuthenticated={handleAuthenticated} onDemoAuthenticated={handleDemoAuthenticated} />
         : passwordRecovery
           ? <PasswordReset onAuthenticated={handleAuthenticated} setPlatformMode={setPlatform} setPasswordRecovery={setPasswordRecovery} />
           : <PublicSite page={page} setPage={setPage} />}
     </div>
+  );
+}
+
+function ForcedPasswordChange({ userEmail, onChanged, onSignOut }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [status, setStatus] = useState({ tone: "warn", message: "This temporary password must be changed before you can open the staff platform." });
+  const saving = status?.tone === "info";
+
+  async function submit(event) {
+    event.preventDefault();
+
+    if (password.length < 10) {
+      setStatus({ tone: "bad", message: "Please use at least 10 characters." });
+      return;
+    }
+    if (password !== confirmPassword) {
+      setStatus({ tone: "bad", message: "Those passwords do not match." });
+      return;
+    }
+
+    setStatus({ tone: "info", message: "Updating your password..." });
+
+    try {
+      const { supabase, updateStaffPassword } = await loadSupabaseModule();
+      await updateStaffPassword(password);
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user) await onChanged(data.session.user);
+      setStatus({ tone: "good", message: "Password updated. Opening your staff workspace..." });
+    } catch (error) {
+      setStatus({ tone: "bad", message: error.message || "Unable to update your password." });
+    }
+  }
+
+  return (
+    <main className="login-page" id="main-content">
+      <section className="login-card">
+        <p className="eyebrow">Temporary password</p>
+        <h1>Choose your own password</h1>
+        <p>{userEmail ? `${userEmail} signed in with a temporary password.` : "You signed in with a temporary password."} Please set a new password before continuing.</p>
+        <form className="compact-form" onSubmit={submit}>
+          <label>New password<input required type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 10 characters" /></label>
+          <label>Confirm password<input required type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat new password" /></label>
+          <button className="button book" type="submit" disabled={saving}>{saving ? "Updating..." : "Change Password"}</button>
+        </form>
+        {status && <p className={`login-status ${status.tone}`}>{status.message}</p>}
+        <p className="security-note">Choose a password only you know. Admins will no longer be able to view it after this step.</p>
+        <div className="login-actions">
+          <button className="button light" type="button" onClick={onSignOut}>Sign out</button>
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -886,8 +980,12 @@ function Header({ page, setPage, platform, setPlatform, platformUnlocked, menu, 
 }
 
 function PublicSite({ page, setPage, setPlatform }) {
+  const isLaunchBooking = page === "Launch Booking";
+  const isPrivatePrototype = privatePrototypePages.has(page);
+  const previewAllowed = hasBookingPreviewAccess();
   return (
     <main id="main-content">
+      {isPrivatePrototype && !previewAllowed && <BookingPreviewGate setPage={setPage} />}
       {page === "Home" && <CampAnnouncement setPage={setPage} />}
       {page === "Home" && <Home setPage={setPage} setPlatform={setPlatform} />}
       {page === "Bookings" && <Bookings setPage={setPage} />}
@@ -899,6 +997,16 @@ function PublicSite({ page, setPage, setPlatform }) {
       {page === "Schools" && <Schools setPage={setPage} />}
       {page === "Magicbooking" && <MagicbookingGuide setPage={setPage} />}
       {page === "Book Pebble" && <BookPebbleGuide setPage={setPage} />}
+      {page === "Booking Lab" && previewAllowed && (
+        <Suspense fallback={<div className="platform-loading">Loading booking lab...</div>}>
+          <BookingLab setPage={setPage} />
+        </Suspense>
+      )}
+      {page === "Launch Booking" && previewAllowed && (
+        <Suspense fallback={<div className="platform-loading">Loading booking...</div>}>
+          <BookingLab setPage={setPage} mode="launch" />
+        </Suspense>
+      )}
       {page === "Payments" && <Payments setPage={setPage} />}
       {page === "Cancellations" && <Cancellations setPage={setPage} />}
       {page === "Policies" && <Policies setPage={setPage} />}
@@ -907,6 +1015,22 @@ function PublicSite({ page, setPage, setPlatform }) {
       <Footer setPage={setPage} />
       <MobileCTA page={page} setPage={setPage} />
     </main>
+  );
+}
+
+function BookingPreviewGate({ setPage }) {
+  return (
+    <section className="booking-preview-gate">
+      <div>
+        <p className="eyebrow">Private preview</p>
+        <h1>Booking preview is protected.</h1>
+        <p>This test journey is available only from an approved preview link while we prepare the booking launch.</p>
+        <div>
+          <button className="button book" type="button" onClick={() => setPage("Bookings")}>Current booking routes</button>
+          <button className="button light" type="button" onClick={() => setPage("Contact")}>Contact the team</button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1417,7 +1541,9 @@ function Notice({ title, text }) {
 }
 
 function HolidayClubs({ setPage }) {
-  const holidaySites = bookingSites.filter((site) => site.category === "Holiday Camps");
+  const holidaySites = bookingSites
+    .filter((site) => site.category === "Holiday Camps")
+    .map((site) => ({ ...site, url: holidayCampBookingUrl(site) }));
 
   return (
     <PageShell eyebrow="Holiday Camps" title="Holiday camps children are excited to come back to.">
@@ -1471,7 +1597,7 @@ function HolidayClubs({ setPage }) {
                   <span>{site.area}</span>
                   <span>{site.ages}</span>
                 </div>
-                <a className="button book" href={site.url} target="_blank" rel="noreferrer">Open {site.provider === "Book Pebble" ? "Pebble" : site.provider}</a>
+                <a className="button book" href={site.url} target="_blank" rel="noreferrer" aria-label={`Open ${site.provider === "Book Pebble" ? "Pebble" : site.provider} booking page for ${site.title}`}>Open {site.provider === "Book Pebble" ? "Pebble" : site.provider}</a>
               </div>
             </article>
           ))}
@@ -1500,6 +1626,13 @@ function HolidayClubs({ setPage }) {
       </section>
     </PageShell>
   );
+}
+
+function holidayCampBookingUrl(site) {
+  const title = String(site?.title || "").toLowerCase();
+  if (title.includes("shrewsbury")) return PEBBLE_SHREWSBURY_URL;
+  if (title.includes("rowans")) return PEBBLE_ROWANS_URL;
+  return site?.url || MAGICBOOKING_URL;
 }
 
 function NextCampCard({ setPage }) {
@@ -2495,6 +2628,7 @@ function Footer({ setPage }) {
         <div className="footer-column" key={heading}>
           <h3>{heading}</h3>
           {links.map((link) => <button key={link} type="button" onClick={() => setPage(link)}>{link}</button>)}
+          {heading === "Parents" && <a className="footer-beta-link" href="/launch-booking">Beta Booking System</a>}
         </div>
       ))}
       <div className="footer-contact">

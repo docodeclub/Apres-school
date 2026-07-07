@@ -1,5 +1,7 @@
 User-agent: *
 Allow: /
 Disallow: /staff-login
+Disallow: /booking-lab
+Disallow: /launch-booking
 
 Sitemap: https://www.apres-school.co.uk/sitemap.xml

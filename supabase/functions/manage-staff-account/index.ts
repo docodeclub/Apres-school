@@ -9,11 +9,18 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const serviceRoleKey =
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("APRES_SERVICE_ROLE_KEY") ??
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
-const resendFrom = Deno.env.get("RESEND_FROM") ?? "Après School <hello@apres-school.co.uk>";
+const resendFrom =
+  Deno.env.get("APRES_STAFF_EMAIL_FROM") ??
+  Deno.env.get("RESEND_FROM") ??
+  "Après School Team <staff@apres-school.co.uk>";
+const resendReplyTo =
+  Deno.env.get("APRES_REPLY_TO") ??
+  Deno.env.get("RESEND_REPLY_TO") ??
+  "hello@apres-school.co.uk";
 const defaultLoginUrl = Deno.env.get("STAFF_LOGIN_URL") ?? "https://www.apres-school.co.uk/staff-login";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
@@ -44,16 +51,52 @@ serve(async (request) => {
     await upsertProfile(user.id, payload);
     await linkStaffRecord(payload.staffRecordId, user.id);
 
+    const emailSubject = payload.action === "invite"
+      ? "Welcome to the Après School staff platform"
+      : "Your Après School staff platform password has been reset";
     let emailed = false;
     let emailError = "";
     if (resendApiKey) {
       try {
-        await sendAccountEmail(payload);
+        const providerMessageId = await sendAccountEmail(payload, emailSubject);
         emailed = true;
+        await logEmail({
+          recipientEmail: payload.email,
+          recipientName: payload.name,
+          emailType: payload.action === "invite" ? "staff_invite" : "staff_password_reset",
+          subject: emailSubject,
+          status: "sent",
+          providerMessageId,
+          sentBy: actor.id,
+          staffRecordId: payload.staffRecordId,
+          metadata: { role: payload.role, loginUrl: payload.loginUrl || defaultLoginUrl },
+        });
       } catch (error) {
         emailError = error instanceof Error ? error.message : "Email provider failed";
         console.error(emailError);
+        await logEmail({
+          recipientEmail: payload.email,
+          recipientName: payload.name,
+          emailType: payload.action === "invite" ? "staff_invite" : "staff_password_reset",
+          subject: emailSubject,
+          status: "failed",
+          errorMessage: emailError,
+          sentBy: actor.id,
+          staffRecordId: payload.staffRecordId,
+          metadata: { role: payload.role, loginUrl: payload.loginUrl || defaultLoginUrl },
+        });
       }
+    } else {
+      await logEmail({
+        recipientEmail: payload.email,
+        recipientName: payload.name,
+        emailType: payload.action === "invite" ? "staff_invite" : "staff_password_reset",
+        subject: emailSubject,
+        status: "queued_without_provider",
+        sentBy: actor.id,
+        staffRecordId: payload.staffRecordId,
+        metadata: { role: payload.role, loginUrl: payload.loginUrl || defaultLoginUrl },
+      });
     }
 
     await supabase.from("audit_log").insert({
@@ -244,14 +287,12 @@ async function upsertProfile(userId: string, payload: StaffAccountPayload) {
       email: payload.email,
       full_name: payload.name,
       role: payload.role.toLowerCase(),
+      must_change_password: true,
     }, { onConflict: "id" });
   if (error) throw error;
 }
 
-async function sendAccountEmail(payload: StaffAccountPayload) {
-  const subject = payload.action === "invite"
-    ? "Welcome to the Après School staff platform"
-    : "Your Après School staff platform password has been reset";
+async function sendAccountEmail(payload: StaffAccountPayload, subject: string) {
   const text = buildEmailText(payload);
 
   const response = await fetch("https://api.resend.com/emails", {
@@ -263,6 +304,7 @@ async function sendAccountEmail(payload: StaffAccountPayload) {
     body: JSON.stringify({
       from: resendFrom,
       to: [payload.email],
+      reply_to: resendReplyTo,
       subject,
       text,
     }),
@@ -272,6 +314,38 @@ async function sendAccountEmail(payload: StaffAccountPayload) {
     const detail = await safeResponseText(response);
     throw new Error(`Resend email failed with ${response.status}${detail ? `: ${detail}` : ""}`);
   }
+
+  const result = await response.json().catch(() => null);
+  return typeof result?.id === "string" ? result.id : "";
+}
+
+async function logEmail(entry: {
+  recipientEmail: string;
+  recipientName?: string;
+  emailType: string;
+  subject: string;
+  status: string;
+  providerMessageId?: string;
+  errorMessage?: string;
+  sentBy?: string;
+  staffRecordId?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const { error } = await supabase.from("email_logs").insert({
+    recipient_email: entry.recipientEmail,
+    recipient_name: entry.recipientName || null,
+    email_type: entry.emailType,
+    subject: entry.subject,
+    status: entry.status,
+    provider: "resend",
+    provider_message_id: entry.providerMessageId || null,
+    error_message: entry.errorMessage || null,
+    sent_by: entry.sentBy || null,
+    staff_record_id: entry.staffRecordId || null,
+    metadata: entry.metadata || {},
+    sent_at: entry.status === "sent" ? new Date().toISOString() : null,
+  });
+  if (error) console.error(`Email log failed: ${error.message}`);
 }
 
 async function safeResponseText(response: Response) {

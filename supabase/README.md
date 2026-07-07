@@ -16,6 +16,64 @@ supabase db reset
 supabase db push
 ```
 
+## Parent Booking Backend
+
+The parent booking implementation needs these migrations before a live-style booking can be submitted:
+
+- `0029_booking_core.sql`
+- `0030_create_parent_booking_reservation.sql`
+- `0031_seed_2026_wraparound_booking_sessions.sql`
+- `0032_cancel_parent_booking.sql`
+- `0033_amend_parent_booking_remove_items.sql`
+- `0034_amend_parent_booking_add_items.sql`
+- `0035_booking_payment_admin_actions.sql`
+
+Deploy the booking and payment functions after the schema is applied:
+
+```bash
+supabase functions deploy create-parent-booking
+supabase functions deploy update-parent-booking
+supabase functions deploy ponchopay-create-checkout
+supabase functions deploy ponchopay-callback --no-verify-jwt
+supabase functions deploy ponchopay-process-events
+```
+
+Local launch checks:
+
+```bash
+npm run validate:wraparound
+npm run validate:booking-map
+npm run check:booking-contract
+npm run check:booking-live
+```
+
+The launch booking page will show `Booking API / Supabase/auth needed` until `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, an authenticated parent profile and the booking migrations/functions are available. Once those are connected, the same checkout payload resolves to the seeded `session_blocks` using `labSessionId + sessionDate + sessionLabel`.
+
+Use the strict readiness check immediately before a hidden real-booking rehearsal:
+
+```bash
+npm run check:booking-live:strict
+```
+
+That command fails until the Supabase CLI, browser Supabase env, service-role key and PonchoPay secrets are available. It does not print secret values.
+
+To generate the hidden-staging deployment bundle for bookings:
+
+```bash
+npm run booking:staging-preflight
+npm run booking:staging-bundle
+```
+
+The bundle prints the exact migrations, Edge Functions, Supabase secrets, PonchoPay callback URLs and verification commands needed before running the admin-only real booking rehearsal.
+
+Run the guarded PonchoPay rehearsal only against the hidden staging setup:
+
+```bash
+PONCHOPAY_PENNY_TEST=live PONCHOPAY_PENNY_AMOUNT=0.01 npm run ponchopay:penny-test
+```
+
+The penny-test script refuses to run unless `PONCHOPAY_PENNY_TEST=live` is set and the amount is no more than £1. To exercise callback intake before using a real provider event, add `PONCHOPAY_SYNTHETIC_CALLBACKS=1`; it signs `payment_captured` and `payment_completed` callbacks with `PONCHOPAY_INTEGRATION_KEY`, runs the processor, then reports whether the invoice cleared, receipt was created and booking moved to confirmed.
+
 ## Important Notes
 
 - Keep staff evidence, payslips and incident attachments in private buckets only.
@@ -62,12 +120,40 @@ Set email secrets:
 supabase secrets set ENQUIRY_NOTIFICATION_TO=hello@apres-school.co.uk
 supabase secrets set OPERATIONS_NOTIFICATION_TO=hello@apres-school.co.uk
 supabase secrets set RESEND_API_KEY=...
-supabase secrets set RESEND_FROM="Après School <hello@apres-school.co.uk>"
+supabase secrets set APRES_EMAIL_FROM="Après School <hello@apres-school.co.uk>"
+supabase secrets set APRES_STAFF_EMAIL_FROM="Après School Team <staff@apres-school.co.uk>"
+supabase secrets set APRES_REPLY_TO=hello@apres-school.co.uk
+supabase secrets set STAFF_LOGIN_URL=https://www.apres-school.co.uk/staff-login
 ```
 
 The frontend calls the function when `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are configured. Without those values, enquiries are saved locally so development remains usable.
 
 Use the Supabase `sb_publishable_...` key for `VITE_SUPABASE_ANON_KEY` on new projects. The public enquiry function is deployed without JWT verification because website visitors are anonymous; writes still happen server-side through `APRES_SERVICE_ROLE_KEY`.
+
+## Email Logging
+
+Apply `0025_email_logs.sql` before turning on Resend. Staff invites, password resets, public enquiry notifications and cover-move notices write to `email_logs` with one of these statuses:
+
+- `sent` when Resend returns successfully,
+- `failed` when Resend rejects the message,
+- `queued_without_provider` when the app action completed but `RESEND_API_KEY` has not been configured yet.
+
+This keeps manual handover honest during rollout: the staff account can exist even when email delivery is not ready, and admins can still see exactly what happened.
+
+Recommended Resend setup:
+
+1. Add `apres-school.co.uk` inside Resend.
+2. Add the DKIM/SPF records Resend provides into Squarespace DNS.
+3. Wait until Resend shows the domain as verified.
+4. Create a restricted API key for this Supabase project.
+5. Add the Supabase secrets above.
+6. Redeploy the functions:
+
+```bash
+supabase functions deploy manage-staff-account
+supabase functions deploy notify-cover-move
+supabase functions deploy notify-public-enquiry --no-verify-jwt
+```
 
 ## CRM Updates
 
