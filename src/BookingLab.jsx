@@ -922,6 +922,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     launchStateCheckedRef.current = true;
     const storedMode = readJson("apres-parent-account-mode", "demo");
     const storedSignedIn = Boolean(readJson("apres-parent-account-signed-in", false));
+    setSelectedDays({});
+    setSelectedDayBlocks({});
+    setParentCheckoutOpen(false);
+    setBookingMode("Ad-hoc");
+    setDatePickerMode("All");
+    setLaunchFlowStep("Choices");
+    setLaunchExpandedDay("");
     if (storedSignedIn && storedMode !== "live") {
       localStorage.setItem("apres-parent-account-signed-in", "false");
       localStorage.setItem("apres-parent-account-mode", JSON.stringify("demo"));
@@ -969,10 +976,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const familyChildProfiles = activeFamilyMatchesLaunchAccount
     ? activeFamily.children?.map((child) => ({ ...child, school: child.school || "Guest" })) || []
     : [];
-  const allChildProfiles = [
-    ...familyChildProfiles,
-    ...labChildProfiles.filter((child) => !familyChildProfiles.some((familyChild) => familyChild.name === child.name)),
-  ];
+  const allChildProfiles = isLaunchMode
+    ? familyChildProfiles
+    : [
+      ...familyChildProfiles,
+      ...labChildProfiles.filter((child) => !familyChildProfiles.some((familyChild) => familyChild.name === child.name)),
+    ];
   const activeSession = sessions.find((session) => session.id === activeId) || sessions[0] || labSessions[0];
   const schoolOptions = [...new Set(sessions.map((session) => session.site))].sort();
   const launchRegisteredChildren = familyChildProfiles.filter((child) => child.name && !child.guest);
@@ -5924,8 +5933,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setRegisterDay(firstOpenDay);
     setStatus("");
     setSelectedAddOns((items) => items.filter((id) => labAddOns.find((item) => item.id === id && (item.appliesTo === "All" || item.appliesTo === session.type))));
-    setSelectedDays((current) => current[session.id]?.some((day) => sessionRows.some((row) => row.enabled && row.day === day)) ? current : { ...current, [session.id]: firstOpenDay ? [firstOpenDay] : [] });
-    if (firstOpenDay) {
+    setSelectedDays((current) => {
+      if (current[session.id]?.some((day) => sessionRows.some((row) => row.enabled && row.day === day))) return current;
+      return { ...current, [session.id]: isLaunchMode ? [] : firstOpenDay ? [firstOpenDay] : [] };
+    });
+    if (firstOpenDay && !isLaunchMode) {
       setSelectedDayBlocks((current) => current[`${session.id}::${firstOpenDay}`]?.length ? current : { ...current, [`${session.id}::${firstOpenDay}`]: sessionBlockKeys });
     }
     if (options.advance !== false) scrollToFlowSection(".lab-booking-range-panel", "center");
@@ -5944,7 +5956,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const chosenWeekdays = (regularWeekdays.length ? regularWeekdays : weekdayOptions).filter((weekday) => weekdayOptions.includes(weekday));
     const chosenBlocks = (regularBlockKeys.length ? regularBlockKeys : activeBlockKeys).filter((key) => activeBlockKeys.includes(key));
     const nextDays = mode === "Ad-hoc"
-      ? (selectedDays[activeSession.id]?.filter((day) => bookableDaySet.has(day)).length ? selectedDays[activeSession.id].filter((day) => bookableDaySet.has(day)) : openDays.slice(0, 1))
+      ? (selectedDays[activeSession.id]?.filter((day) => bookableDaySet.has(day)).length ? selectedDays[activeSession.id].filter((day) => bookableDaySet.has(day)) : isLaunchMode ? [] : openDays.slice(0, 1))
       : rangeDays.filter((day) => chosenWeekdays.some((weekday) => day.startsWith(weekday)));
     setSelectedDays((current) => ({ ...current, [activeSession.id]: nextDays }));
     setSelectedDayBlocks((current) => {
