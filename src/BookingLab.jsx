@@ -295,6 +295,13 @@ const childConsentRows = [
   "I consent to my child going home alone (Year 6 only)",
 ];
 
+const childRegistrationSteps = [
+  { id: "Basics", label: "Child", detail: "Profile and school" },
+  { id: "Contacts", label: "Contacts", detail: "Emergency contact" },
+  { id: "Health", label: "Health", detail: "Care notes" },
+  { id: "Consents", label: "Consents", detail: "Permissions" },
+];
+
 const defaultParentRegistration = {
   firstName: "",
   lastName: "",
@@ -810,6 +817,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [parentAccessMode, setParentAccessMode] = useState("signin");
   const [parentRegistration, setParentRegistration] = useState(() => readJson("apres-parent-registration-draft", defaultParentRegistration));
   const [childRegistration, setChildRegistration] = useState(() => readJson("apres-child-registration-draft", defaultChildRegistration));
+  const [childRegistrationStep, setChildRegistrationStep] = useState("Basics");
   const [selectedParentBookingId, setSelectedParentBookingId] = useState("");
   const [parentSessionCancellingId, setParentSessionCancellingId] = useState("");
   const [liveParentLedger, setLiveParentLedger] = useState({
@@ -6153,27 +6161,59 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     window.setTimeout(() => scrollToFlowSection(".lab-launch-registration-gate", "start"), 120);
   }
 
+  function childMissingBasics() {
+    return [
+      ["first name", childRegistration.firstName],
+      ["last name", childRegistration.lastName],
+      ["date of birth", childRegistration.dob],
+      ["gender", childRegistration.gender],
+      ["ethnicity", childRegistration.ethnicity],
+      ["relationship", childRegistration.relationship],
+      ["who they live with", childRegistration.livesWith],
+      ["parental responsibility", childRegistration.parentalResponsibility],
+      ["school", childRegistration.school || selectedSchool],
+      ["classroom or year group", childRegistration.classroom],
+      ["collection password", childRegistration.collectionPassword],
+    ].filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
+  }
+
+  function childMissingContacts() {
+    return [
+      ["emergency first name", childRegistration.emergencyFirstName],
+      ["emergency last name", childRegistration.emergencyLastName],
+      ["emergency mobile", childRegistration.emergencyMobile],
+    ].filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
+  }
+
+  function moveChildRegistrationStep(step) {
+    setChildRegistrationStep(step);
+    window.setTimeout(() => scrollToFlowSection(".lab-launch-child-form", "start"), 60);
+  }
+
+  function continueChildRegistrationStep(nextStep) {
+    const missingBasics = childMissingBasics();
+    if (childRegistrationStep === "Basics" && missingBasics.length) {
+      setStatus(`Complete ${missingBasics.slice(0, 3).join(", ")} before continuing.`);
+      return;
+    }
+    const missingContacts = childMissingContacts();
+    if (childRegistrationStep === "Contacts" && missingContacts.length) {
+      setStatus(`Add ${missingContacts.slice(0, 3).join(", ")} before continuing.`);
+      return;
+    }
+    setStatus("");
+    moveChildRegistrationStep(nextStep);
+  }
+
   async function registerLaunchChild(event) {
     event.preventDefault();
     if (parentAccountLoading) return;
-    const requiredFields = [
-      childRegistration.firstName,
-      childRegistration.lastName,
-      childRegistration.dob,
-      childRegistration.gender,
-      childRegistration.ethnicity,
-      childRegistration.relationship,
-      childRegistration.livesWith,
-      childRegistration.parentalResponsibility,
-      childRegistration.school || selectedSchool,
-      childRegistration.classroom,
-      childRegistration.collectionPassword,
-      childRegistration.emergencyFirstName,
-      childRegistration.emergencyLastName,
-      childRegistration.emergencyMobile,
-    ];
-    if (requiredFields.some((value) => !String(value || "").trim())) {
-      setStatus("Complete the child basics, school, collection password and emergency contact before booking.");
+    const missingBasics = childMissingBasics();
+    const missingContacts = childMissingContacts();
+    if (missingBasics.length || missingContacts.length) {
+      setChildRegistrationStep(missingBasics.length ? "Basics" : "Contacts");
+      setStatus(`Complete ${[...missingBasics, ...missingContacts].slice(0, 3).join(", ")} before booking.`);
+      window.setTimeout(() => scrollToFlowSection(".lab-launch-child-form", "start"), 60);
       return;
     }
     const childName = `${childRegistration.firstName} ${childRegistration.lastName}`.trim();
@@ -17679,6 +17719,20 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   </div>
                   <button type="button" onClick={signOutParentAccount}>Use another account</button>
                 </div>
+                <div className="lab-launch-child-progress" aria-label="Child registration steps">
+                  {childRegistrationSteps.map((step, index) => (
+                    <button
+                      className={childRegistrationStep === step.id ? "active" : ""}
+                      key={step.id}
+                      type="button"
+                      onClick={() => moveChildRegistrationStep(step.id)}
+                    >
+                      <span>{index + 1}. {step.label}</span>
+                      <small>{step.detail}</small>
+                    </button>
+                  ))}
+                </div>
+                {childRegistrationStep === "Basics" && <>
                 <div className="lab-form-grid">
                   <label>First name<input value={childRegistration.firstName} onChange={(event) => updateChildRegistration("firstName", event.target.value)} /></label>
                   <label>Last name<input value={childRegistration.lastName} onChange={(event) => updateChildRegistration("lastName", event.target.value)} /></label>
@@ -17698,7 +17752,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <label className="full">Religious / cultural needs<textarea rows="2" value={childRegistration.religiousInfo} onChange={(event) => updateChildRegistration("religiousInfo", event.target.value)} /></label>
                   <label className="full">Additional information<textarea rows="2" value={childRegistration.additionalInfo} onChange={(event) => updateChildRegistration("additionalInfo", event.target.value)} /></label>
                 </div>
-                <div className="lab-launch-child-section">
+                <div className="lab-launch-step-actions">
+                  <span>Next: emergency contact</span>
+                  <button type="button" onClick={() => continueChildRegistrationStep("Contacts")}>Continue</button>
+                </div>
+                </>}
+                {childRegistrationStep === "Contacts" && <div className="lab-launch-child-section">
                   <h4>Emergency and doctor contacts</h4>
                   <div className="lab-form-grid">
                     <label>Emergency title<input value={childRegistration.emergencyTitle} onChange={(event) => updateChildRegistration("emergencyTitle", event.target.value)} placeholder="Mrs" /></label>
@@ -17712,8 +17771,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     <label>Doctor surgery<input value={childRegistration.doctorSurgery} onChange={(event) => updateChildRegistration("doctorSurgery", event.target.value)} /></label>
                     <label>Doctor telephone<input value={childRegistration.doctorTelephone} onChange={(event) => updateChildRegistration("doctorTelephone", event.target.value)} /></label>
                   </div>
+                  <div className="lab-launch-step-actions">
+                    <button type="button" onClick={() => moveChildRegistrationStep("Basics")}>Back</button>
+                    <button type="button" onClick={() => continueChildRegistrationStep("Health")}>Continue</button>
+                  </div>
                 </div>
-                <div className="lab-launch-child-section">
+                }
+                {childRegistrationStep === "Health" && <div className="lab-launch-child-section">
                   <h4>Care, medical and SEND</h4>
                   <div className="lab-form-grid">
                     <label>Dietary need<select value={childRegistration.dietaryNeed} onChange={(event) => updateChildRegistration("dietaryNeed", event.target.value)}><option value="">None</option>{childDietaryOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
@@ -17733,8 +17797,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     <label>EHCP?<select value={childRegistration.sendEhcp} onChange={(event) => updateChildRegistration("sendEhcp", event.target.value)}><option>No</option><option>Yes</option></select></label>
                     <label className="full">SEND details<textarea rows="2" value={childRegistration.sendDetails} onChange={(event) => updateChildRegistration("sendDetails", event.target.value)} /></label>
                   </div>
+                  <div className="lab-launch-step-actions">
+                    <button type="button" onClick={() => moveChildRegistrationStep("Contacts")}>Back</button>
+                    <button type="button" onClick={() => moveChildRegistrationStep("Consents")}>Continue</button>
+                  </div>
                 </div>
-                <div className="lab-launch-child-section">
+                }
+                {childRegistrationStep === "Consents" && <div className="lab-launch-child-section">
                   <h4>Consents</h4>
                   <div className="lab-consent-grid">
                     {childConsentRows.map((row) => (
@@ -17748,10 +17817,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                       </div>
                     ))}
                   </div>
+                  <div className="lab-launch-form-actions">
+                    <button type="button" onClick={() => moveChildRegistrationStep("Health")}>Back</button>
+                    <button type="submit">Register child and book</button>
+                  </div>
                 </div>
-                <div className="lab-launch-form-actions">
-                  <button type="submit">Register child and book</button>
-                </div>
+                }
               </form>
             )}
           </section>

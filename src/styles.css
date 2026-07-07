@@ -26961,8 +26961,92 @@ th {
 }
 
 .lab-launch-child-section {
-  border-top: 1px solid rgba(37, 48, 79, 0.1);
-  padding-top: 14px;
+  border: 1px solid rgba(37, 48, 79, 0.1);
+  border-radius: 16px;
+  background: #fff;
+  padding: 14px;
+}
+
+.lab-launch-child-progress {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.lab-launch-child-progress button {
+  display: grid;
+  gap: 3px;
+  min-height: 58px;
+  border: 1px solid rgba(37, 48, 79, 0.12);
+  border-radius: 14px;
+  background: #fff;
+  color: #25304f;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+}
+
+.lab-launch-child-progress button.active {
+  border-color: rgba(77, 94, 219, 0.45);
+  background: #eef3ff;
+  color: var(--royal);
+  box-shadow: inset 0 0 0 1px rgba(77, 94, 219, 0.2);
+}
+
+.lab-launch-child-progress span {
+  font-weight: 950;
+}
+
+.lab-launch-child-progress small {
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.lab-launch-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid rgba(37, 48, 79, 0.08);
+  padding-top: 12px;
+}
+
+.lab-launch-step-actions span {
+  margin-right: auto;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.lab-launch-step-actions button {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--royal);
+  padding: 9px 16px;
+  font-weight: 950;
+}
+
+.lab-launch-step-actions button:last-child {
+  border-color: var(--royal);
+  background: var(--royal);
+  color: #fff;
+}
+
+@media (max-width: 760px) {
+  .lab-launch-child-progress {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lab-launch-step-actions {
+    justify-content: stretch;
+  }
+
+  .lab-launch-step-actions span,
+  .lab-launch-step-actions button {
+    width: 100%;
+  }
 }
 
 .lab-consent-grid {

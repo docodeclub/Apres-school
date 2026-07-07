@@ -135,13 +135,23 @@ async function findAuthUserByEmail(email: string) {
   let page = 1;
   while (page <= 20) {
     const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
-    if (error) throw error;
+    if (error) return findAuthUserByEmailFromDatabase(email, error.message);
     const found = data.users.find((user) => user.email?.toLowerCase() === targetEmail);
     if (found) return found;
     if (data.users.length < 1000) break;
     page += 1;
   }
   return null;
+}
+
+async function findAuthUserByEmailFromDatabase(email: string, adminApiError: string) {
+  const { data, error } = await supabase
+    .rpc("find_auth_user_id_by_email", { p_email: email })
+    .maybeSingle();
+
+  if (error) throw new Error(`Supabase Auth could not inspect existing users: ${adminApiError}`);
+  if (!data?.id) return null;
+  return { id: data.id, email: data.email };
 }
 
 async function upsertParentProfile(userId: string, payload: ParentRegistrationPayload) {
