@@ -12,6 +12,8 @@ const routes = [
   "book-pebble",
   "payments",
   "cancellations",
+  "launch-booking",
+  "booking-lab",
   "policies",
   "contact",
   "staff-application",
@@ -57,6 +59,18 @@ const routeMeta = {
     title: "Staff Login | Après School",
     description: "Secure staff and admin login for Après School.",
     keywords: "Après School staff login",
+    robots: "noindex,nofollow",
+  },
+  "launch-booking": {
+    title: "Beta Booking System | Après School",
+    description: "Private beta booking flow for Après School wraparound care and holiday camp testing.",
+    keywords: "Après School beta booking, wraparound booking, holiday camp booking",
+    robots: "noindex,nofollow",
+  },
+  "booking-lab": {
+    title: "Booking Lab | Après School",
+    description: "Private booking system lab for Après School testing.",
+    keywords: "Après School booking lab",
     robots: "noindex,nofollow",
   },
 };
