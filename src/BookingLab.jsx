@@ -729,6 +729,7 @@ function rangeFromPreset(mode, customStart, customEnd) {
 export default function BookingLab({ setPage, mode = "lab" }) {
   const isLaunchMode = mode === "launch";
   const didMountCheckoutRef = useRef(false);
+  const launchStateCheckedRef = useRef(false);
   const [labView, setLabView] = useState("Parent");
   const [customSessions, setCustomSessions] = useState(() => readJson("apres-booking-lab-activities", []));
   const [launchPlans, setLaunchPlans] = useState(() => readJson("apres-booking-lab-launch-plans", []));
@@ -745,7 +746,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const saved = readJson("apres-booking-lab-families", null);
     return Array.isArray(saved) && saved.length ? saved : defaultFamilyAccounts;
   });
-  const [activeFamilyId, setActiveFamilyId] = useState("family-demo");
+  const [activeFamilyId, setActiveFamilyId] = useState(() => readJson("apres-booking-lab-active-family-id", isLaunchMode ? "" : "family-demo"));
   const [selectedSchool, setSelectedSchool] = useState(() => (labSessions.find((session) => session.id === defaultBookingSessionId) || labSessions[0]).site);
   const [showLaunchSchoolList, setShowLaunchSchoolList] = useState(false);
   const [careType, setCareType] = useState("Wraparound");
@@ -808,8 +809,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [paymentPlan, setPaymentPlan] = useState("Pay now");
   const [parentPaymentCheckout, setParentPaymentCheckout] = useState(null);
   const [paymentReturnNotice, setPaymentReturnNotice] = useState(null);
-  const [parentAccountSignedIn, setParentAccountSignedIn] = useState(() => Boolean(readJson("apres-parent-account-signed-in", false)));
-  const [parentAccountMode, setParentAccountMode] = useState(() => readJson("apres-parent-account-mode", "demo"));
+  const [parentAccountSignedIn, setParentAccountSignedIn] = useState(() => {
+    const storedMode = readJson("apres-parent-account-mode", "demo");
+    const storedSignedIn = Boolean(readJson("apres-parent-account-signed-in", false));
+    return isLaunchMode ? storedSignedIn && storedMode === "live" : storedSignedIn;
+  });
+  const [parentAccountMode, setParentAccountMode] = useState(() => {
+    const storedMode = readJson("apres-parent-account-mode", "demo");
+    return isLaunchMode && storedMode !== "live" ? "demo" : storedMode;
+  });
   const [parentAccountLoading, setParentAccountLoading] = useState(false);
   const [parentAccountInviteRuns, setParentAccountInviteRuns] = useState(() => readJson("apres-parent-account-invite-runs", []));
   const [parentAccountInviteBusy, setParentAccountInviteBusy] = useState(false);
@@ -906,13 +914,37 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [activeRole, setActiveRole] = useState("Parent");
   const [status, setStatus] = useState("");
   useEffect(() => {
+    if (!activeFamilyId) return;
+    localStorage.setItem("apres-booking-lab-active-family-id", JSON.stringify(activeFamilyId));
+  }, [activeFamilyId]);
+  useEffect(() => {
+    if (!isLaunchMode || launchStateCheckedRef.current) return;
+    launchStateCheckedRef.current = true;
+    const storedMode = readJson("apres-parent-account-mode", "demo");
+    const storedSignedIn = Boolean(readJson("apres-parent-account-signed-in", false));
+    if (storedSignedIn && storedMode !== "live") {
+      localStorage.setItem("apres-parent-account-signed-in", "false");
+      localStorage.setItem("apres-parent-account-mode", JSON.stringify("demo"));
+      localStorage.removeItem("apres-child-registration-draft");
+      setParentAccountSignedIn(false);
+      setParentAccountMode("demo");
+      setParentLogin({ username: "", password: "" });
+      setChildRegistration(defaultChildRegistration);
+      setSelectedChildIds([]);
+    }
+  }, [isLaunchMode]);
+  useEffect(() => {
     if (!isLaunchMode) return undefined;
     window.scrollTo({ top: 0, behavior: "auto" });
     const resetTimer = window.setTimeout(() => window.scrollTo({ top: 0, behavior: "auto" }), 180);
     return () => window.clearTimeout(resetTimer);
   }, [isLaunchMode]);
   const sessions = [...labSessions, ...customSessions];
-  const activeFamily = families.find((family) => family.id === activeFamilyId) || families[0] || defaultFamilyAccounts[0];
+  const launchParentEmail = String(parentLogin.username || parentRegistration.email || "").trim().toLowerCase();
+  const launchAccountFamily = isLaunchMode && launchParentEmail
+    ? families.find((family) => String(family.email || "").trim().toLowerCase() === launchParentEmail)
+    : null;
+  const activeFamily = launchAccountFamily || families.find((family) => family.id === activeFamilyId) || families[0] || defaultFamilyAccounts[0];
   const launchFamilyName = isLaunchMode ? "Your account" : activeFamily.parentName;
   const launchFamilyContact = isLaunchMode ? "Saved email · saved phone" : `${activeFamily.email} · ${activeFamily.phone || "No phone recorded"}`;
   const activeNotificationPreferences = { ...defaultNotificationPreferences, ...(activeFamily.notificationPreferences || {}) };
@@ -931,7 +963,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const preference = notificationPreferenceForEmail(email, key);
     return preference === "Off" ? fallback : preference;
   };
-  const familyChildProfiles = activeFamily.children?.map((child) => ({ ...child, school: child.school || "Guest" })) || [];
+  const activeFamilyMatchesLaunchAccount = !isLaunchMode
+    || (activeFamily.id && activeFamily.id !== "family-demo")
+    || (launchParentEmail && String(activeFamily.email || "").trim().toLowerCase() === launchParentEmail);
+  const familyChildProfiles = activeFamilyMatchesLaunchAccount
+    ? activeFamily.children?.map((child) => ({ ...child, school: child.school || "Guest" })) || []
+    : [];
   const allChildProfiles = [
     ...familyChildProfiles,
     ...labChildProfiles.filter((child) => !familyChildProfiles.some((familyChild) => familyChild.name === child.name)),
@@ -17584,7 +17621,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       {labView === "Readiness" && <ReadinessLab onExport={exportReadinessPlan} />}
 
       {labView === "Parent" && <section className={`booking-lab-flow parent-flow-simple ${parentCheckoutOpen ? "parent-checkout-open" : ""}`} id="booking-lab-flow">
-        <div className="lab-booking-journey-shell">
+        {(!isLaunchMode || launchGateReady) && <div className="lab-booking-journey-shell">
           <div className="lab-booking-journey-head">
             <div>
               <p className="eyebrow">{isLaunchMode ? "Book care" : "Guided booking"}</p>
@@ -17609,8 +17646,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </article>
             ))}
           </div>
-        </div>
-        {isLaunchMode && (
+        </div>}
+        {isLaunchMode && launchGateReady && (
           <aside className="lab-current-booking" aria-label="Current booking summary">
             <div className="lab-current-booking-head">
               <span>Your booking</span>
