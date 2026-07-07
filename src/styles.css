@@ -31719,7 +31719,20 @@ th {
 .booking-launch-page.launch-step-checkout .lab-child-chips button.active {
   border-color: rgba(47, 125, 75, 0.38);
   background: #f1fbf6;
+  color: #163d26;
   box-shadow: inset 4px 0 0 #2f7d4b;
+}
+
+.booking-launch-page.launch-step-checkout .lab-child-chips button.active strong,
+.booking-launch-page.launch-step-checkout .lab-child-chips button.active small {
+  color: #163d26;
+  opacity: 1;
+}
+
+.booking-launch-page.launch-step-checkout .lab-child-chips button.active::after {
+  background: #ffffff;
+  color: #2f7d4b;
+  box-shadow: 0 2px 8px rgba(37, 48, 79, 0.1);
 }
 
 .booking-launch-page.launch-step-checkout .lab-payment-options label {

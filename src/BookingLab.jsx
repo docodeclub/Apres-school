@@ -3960,20 +3960,29 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   useEffect(() => {
     if (!isLaunchMode || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const paymentState = params.get("payment");
-    const invoiceId = params.get("invoice") || "";
-    if (!paymentState || paymentReturnNotice?.handledKey === `${paymentState}:${invoiceId}`) return;
+    const providerReturnId = params.get("id")
+      || params.get("payment_id")
+      || params.get("paymentId")
+      || params.get("ponchoPaymentId")
+      || "";
+    const reference = params.get("reference") || params.get("bookingReference") || params.get("booking_reference") || "";
+    const paymentState = params.get("payment") || (providerReturnId || reference ? "pending" : "");
+    const invoiceId = params.get("invoice") || params.get("invoiceId") || params.get("externalInvoiceId") || "";
+    const handledKey = `${paymentState}:${invoiceId || reference || providerReturnId}`;
+    if (!paymentState || paymentReturnNotice?.handledKey === handledKey) return;
 
     const matchingDraft = invoiceId
       ? drafts.find((draft) => draft.invoiceId === invoiceId || draft.invoiceNumber === invoiceId || draft.ponchoCheckout?.invoiceId === invoiceId)
-      : drafts[0];
+      : reference
+        ? drafts.find((draft) => draft.bookingReference === reference || draft.paymentReference === reference || draft.ponchoCheckout?.providerReference === reference) || drafts[0]
+        : drafts[0];
     const state = paymentState === "complete" || paymentState === "completed"
       ? "complete"
       : paymentState === "cancelled" || paymentState === "failed"
         ? paymentState
         : "pending";
     const nextNotice = {
-      handledKey: `${paymentState}:${invoiceId}`,
+      handledKey,
       state,
       invoiceId,
       bookingId: matchingDraft?.id || "",
@@ -3983,15 +3992,21 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           ? "Payment was cancelled"
           : state === "failed"
             ? "Payment needs another try"
-            : "Payment pending with PonchoPay",
+            : providerReturnId || reference
+              ? "Returned from PonchoPay"
+              : "Payment pending with PonchoPay",
       detail: state === "complete"
         ? "PonchoPay has returned you to the portal. The invoice will clear when the completed callback is processed."
         : state === "cancelled"
           ? "The booking is still visible. You can retry card payment or choose another available payment route."
           : state === "failed"
             ? "The booking has not been removed. Please retry payment or use a voucher/TFC route if available."
-            : "Your booking is held while PonchoPay sends the payment callback or matches the voucher/TFC reference. The invoice below will update automatically.",
+            : providerReturnId || reference
+              ? "Thanks. We are checking the secure payment callback now. Your booking and invoice will update automatically as soon as PonchoPay confirms the final status."
+              : "Your booking is held while PonchoPay sends the payment callback or matches the voucher/TFC reference. The invoice below will update automatically.",
       action: state === "complete" ? "Waiting for receipt" : state === "pending" ? "Waiting for PonchoPay" : "Parent action needed",
+      providerReturnId,
+      reference,
     };
     setPaymentReturnNotice(nextNotice);
     setLabView("Parent");
