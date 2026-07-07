@@ -205,6 +205,46 @@ function hasBookingPreviewAccess() {
   return sessionStorage.getItem("apres-booking-preview-token") === bookingPreviewToken;
 }
 
+function hasLaunchPaymentReturnParams() {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  return [
+    "payment",
+    "invoice",
+    "id",
+    "payment_id",
+    "paymentId",
+    "ponchoPaymentId",
+    "reference",
+    "bookingReference",
+    "booking_reference",
+  ].some((key) => params.has(key));
+}
+
+function LaunchBookingLoading() {
+  if (!hasLaunchPaymentReturnParams()) {
+    return <div className="platform-loading">Loading booking...</div>;
+  }
+
+  return (
+    <section className="launch-return-loading" aria-live="polite">
+      <div>
+        <img src="/assets/apres-school-text.png" alt="Après School" />
+        <p className="eyebrow">PonchoPay return</p>
+        <h1>Checking your payment.</h1>
+        <p>
+          Thanks for completing the secure payment step. We are opening your booking portal and matching the
+          PonchoPay update to your booking.
+        </p>
+        <div className="launch-return-loading__actions">
+          <a className="button book" href="/launch-booking">Open booking portal</a>
+          <a className="button light" href="/contact">Contact us</a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function hasRecoveryHash() {
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   return hash.get("type") === "recovery" || hash.has("access_token");
@@ -1009,7 +1049,7 @@ function PublicSite({ page, setPage, setPlatform }) {
         </Suspense>
       )}
       {page === "Launch Booking" && previewAllowed && (
-        <Suspense fallback={<div className="platform-loading">Loading booking...</div>}>
+        <Suspense fallback={<LaunchBookingLoading />}>
           <BookingLab setPage={setPage} mode="launch" />
         </Suspense>
       )}

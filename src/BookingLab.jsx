@@ -17719,6 +17719,20 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <span>3. Book</span>
               </div>
             </div>
+            {resolvedPaymentReturnNotice && (
+              <section className={`lab-payment-return-notice lab-payment-return-notice--gate state-${resolvedPaymentReturnNotice.state}`} aria-live="polite">
+                <div>
+                  <p className="eyebrow">Payment update</p>
+                  <h3>{resolvedPaymentReturnNotice.title}</h3>
+                  <p>{resolvedPaymentReturnNotice.detail}</p>
+                </div>
+                <div>
+                  <span>{resolvedPaymentReturnNotice.invoiceId ? "Booking reference received" : "Secure return received"}</span>
+                  <strong>{resolvedPaymentReturnNotice.action}</strong>
+                  <small>Sign in or create your parent account to view the booking and invoice status.</small>
+                </div>
+              </section>
+            )}
             {status && <div className={status.includes("Complete") || status.includes("Password") || status.includes("Accept") || status.includes("Register") || status.includes("Sign") ? "form-status warn" : "form-status success"}>{status}</div>}
             {!parentAccountSignedIn ? (
               <div className="lab-launch-account-grid">
