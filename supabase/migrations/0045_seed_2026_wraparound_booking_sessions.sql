@@ -1,3 +1,4 @@
+-- Renumbered from 0031 to avoid colliding with the applied backfill_dbs_clear_dates migration.
 create or replace function public.apres_stable_uuid(p_value text)
 returns uuid
 language sql

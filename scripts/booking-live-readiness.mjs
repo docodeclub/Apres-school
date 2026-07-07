@@ -24,7 +24,7 @@ const checks = [
     "metadata->>'labSessionId'",
     "metadata->>'sessionDate'",
   ]),
-  checkFile("2026/27 wraparound seed", "code", "supabase/migrations/0031_seed_2026_wraparound_booking_sessions.sql", [
+  checkFile("2026/27 wraparound seed", "code", "supabase/migrations/0045_seed_2026_wraparound_booking_sessions.sql", [
     "lab-willington-after",
     "lab-ripley-after",
     "lab-shrewsbury-after",

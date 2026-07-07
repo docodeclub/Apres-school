@@ -1,3 +1,4 @@
+-- Renumbered from 0030 to avoid colliding with the applied create_parent_booking_reservation migration.
 -- Adds Maisie Marsden's enhanced DBS certificate number to the SCR.
 -- Source: user-confirmed DBS details supplied 29 June 2026.
 -- Certificate number: 001933289972

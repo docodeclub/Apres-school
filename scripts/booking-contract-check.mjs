@@ -7,7 +7,7 @@ const root = process.cwd();
 const failures = [];
 
 const reservationSql = readFileSync(join(root, "supabase/migrations/0030_create_parent_booking_reservation.sql"), "utf8");
-const seedSql = readFileSync(join(root, "supabase/migrations/0031_seed_2026_wraparound_booking_sessions.sql"), "utf8");
+const seedSql = readFileSync(join(root, "supabase/migrations/0045_seed_2026_wraparound_booking_sessions.sql"), "utf8");
 const cancellationSql = readFileSync(join(root, "supabase/migrations/0032_cancel_parent_booking.sql"), "utf8");
 const amendmentSql = readFileSync(join(root, "supabase/migrations/0033_amend_parent_booking_remove_items.sql"), "utf8");
 const amendmentAddSql = readFileSync(join(root, "supabase/migrations/0034_amend_parent_booking_add_items.sql"), "utf8");

@@ -1,3 +1,4 @@
+-- Renumbered from 0025 to avoid colliding with the applied email_logs migration.
 create table if not exists public.platform_settings (
   key text primary key,
   value jsonb not null default '{}'::jsonb,

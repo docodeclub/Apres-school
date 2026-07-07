@@ -4967,7 +4967,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     "0041_booking_payment_foundations_backfill.sql",
     "0029_booking_core.sql",
     "0030_create_parent_booking_reservation.sql",
-    "0031_seed_2026_wraparound_booking_sessions.sql",
+    "0045_seed_2026_wraparound_booking_sessions.sql",
     "0032_cancel_parent_booking.sql",
     "0033_amend_parent_booking_remove_items.sql",
     "0034_amend_parent_booking_add_items.sql",

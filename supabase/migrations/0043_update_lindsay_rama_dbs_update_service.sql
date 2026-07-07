@@ -1,3 +1,4 @@
+-- Renumbered from 0029 to avoid colliding with the applied booking_core migration.
 -- Adds Lindsay's enhanced DBS certificate number and records DBS Update Service
 -- status for Lindsay and Rama.
 -- Source: user-confirmed DBS details supplied 29 June 2026.
