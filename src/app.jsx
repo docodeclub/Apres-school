@@ -184,6 +184,8 @@ const pagePaths = {
   Payments: "/payments",
   Cancellations: "/cancellations",
   Policies: "/policies",
+  "Launch Booking": "/launch-booking",
+  "Booking Lab": "/booking-lab",
 };
 const pathPages = Object.fromEntries(Object.entries(pagePaths).map(([page, path]) => [path, page]));
 const bookingPreviewToken = String(import.meta.env.VITE_BOOKING_PREVIEW_TOKEN || "").trim();
@@ -221,6 +223,8 @@ const pageMeta = {
   Payments: ["Payments & Vouchers | Après School", "Payment options, childcare vouchers and booking-platform guidance."],
   Cancellations: ["Cancellations & Amendments | Après School", "Guidance for amending or cancelling Après School bookings."],
   Policies: ["Policies | Après School", "Safeguarding, behaviour, health and safety, privacy and complaints policy summaries."],
+  "Launch Booking": ["Beta Booking System | Après School", "Private beta booking flow for Après School wraparound care and holiday camp testing."],
+  "Booking Lab": ["Booking Lab | Après School", "Private booking system lab for Après School testing."],
 };
 const pageKeywords = {
   Home: "Après School, wraparound care for schools, holiday camps, extended school provision, after school club, breakfast club, school partnerships",
@@ -229,6 +233,8 @@ const pageKeywords = {
   Wraparound: "wraparound care for schools, after school care, breakfast club, extended school day, school childcare, term-time childcare",
   Schools: "wraparound care for schools, extended school provision, school partnerships, holiday camps for schools, after school provision, parent offer",
   Contact: "school partnership enquiry, wraparound care enquiry, holiday camp enquiry, Après School contact",
+  "Launch Booking": "Après School beta booking, wraparound booking, holiday camp booking",
+  "Booking Lab": "Après School booking lab",
 };
 const privatePrototypePages = new Set(["Booking Lab", "Launch Booking"]);
 
