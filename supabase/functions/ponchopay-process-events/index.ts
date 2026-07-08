@@ -465,7 +465,7 @@ async function sendPaymentLifecycleEmail(
     emailType: shouldSendGuarantee ? "booking_card_guarantee_saved" : "booking_confirmation_receipt",
     subject,
     text: lines.join("\n"),
-    html: paragraphsToHtml(lines),
+    html: paragraphsToHtml(lines, { title: subject }),
     metadata: {
       invoiceId: invoice.id,
       bookingId: stringValue(invoice.booking_id),

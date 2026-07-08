@@ -265,7 +265,7 @@ async function sendBookingRequestEmail({
     emailType: dueToday > 0 ? "booking_payment_pending" : "booking_request_received",
     subject,
     text: lines.join("\n"),
-    html: paragraphsToHtml(lines),
+    html: paragraphsToHtml(lines, { title: subject }),
     sentBy: actor.id,
     metadata: {
       bookingId: stringValue(booking.id),

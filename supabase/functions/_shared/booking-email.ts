@@ -19,6 +19,11 @@ type BookingEmailInput = {
   metadata?: Record<string, unknown>;
 };
 
+type BookingEmailHtmlOptions = {
+  title?: string;
+  preheader?: string;
+};
+
 const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
 const resendFrom =
   Deno.env.get("APRES_BOOKING_EMAIL_FROM") ??
@@ -114,39 +119,70 @@ export function escapeHtml(value: unknown) {
     .replaceAll("'", "&#039;");
 }
 
-export function paragraphsToHtml(lines: string[]) {
+export function paragraphsToHtml(lines: string[], options: BookingEmailHtmlOptions = {}) {
   const cleanedLines = lines
     .map((line) => line.trim())
     .filter(Boolean);
   const paymentUrl = firstUrl(cleanedLines.find((line) => /^Secure payment link:/i.test(line)) || "");
+  const title = stringValue(options.title) || emailTitleFromLines(cleanedLines);
+  const preheader = stringValue(options.preheader) || emailPreheaderFromLines(cleanedLines);
   const content = cleanedLines
     .map((line, index) => lineToEmailHtml(line, index, paymentUrl))
     .join("");
 
   return `<!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#f3f6ff;font-family:Arial,Helvetica,sans-serif;color:${brandNavy};">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6ff;padding:28px 12px;">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="x-apple-disable-message-reformatting">
+  </head>
+  <body style="margin:0;padding:0;background:#eef3ff;font-family:Arial,Helvetica,sans-serif;color:${brandNavy};-webkit-text-size-adjust:100%;text-size-adjust:100%;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preheader)}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#eef3ff;padding:26px 10px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #dfe6ff;border-radius:24px;overflow:hidden;box-shadow:0 16px 44px rgba(37,48,79,0.12);">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #dbe5ff;border-radius:24px;overflow:hidden;box-shadow:0 18px 48px rgba(37,48,79,0.14);">
             <tr>
-              <td style="background:${brandBlue};padding:22px 26px;">
-                <img src="${escapeHtml(brandLogoUrl)}" alt="Après School" width="142" style="display:block;border:0;background:#ffffff;border-radius:16px;padding:10px;max-width:142px;height:auto;">
+              <td style="background:${brandBlue};padding:24px 24px 20px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td valign="middle" style="width:170px;">
+                      <img src="${escapeHtml(brandLogoUrl)}" alt="Après School" width="142" style="display:block;border:0;background:#ffffff;border-radius:16px;padding:10px;max-width:142px;height:auto;">
+                    </td>
+                    <td valign="middle" align="right" style="font-size:13px;line-height:1.4;color:#ffffff;font-weight:800;">
+                      Let's Learn and Play
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
             <tr>
               <td style="height:6px;background:${brandOrange};font-size:0;line-height:0;">&nbsp;</td>
             </tr>
             <tr>
-              <td style="padding:28px 26px 18px;">
+              <td style="padding:28px 24px 8px;">
+                <p style="margin:0 0 8px;font-size:12px;line-height:1.35;letter-spacing:1px;text-transform:uppercase;color:${brandOrange};font-weight:900;">Après School Bookings</p>
+                <h1 style="margin:0 0 18px;font-size:28px;line-height:1.16;color:${brandNavy};font-weight:900;">${escapeHtml(title)}</h1>
                 ${content}
               </td>
             </tr>
             <tr>
-              <td style="background:#f8fbff;padding:18px 26px;border-top:1px solid #e8edff;">
-                <p style="margin:0 0 6px;font-size:14px;line-height:1.5;color:${brandNavy};font-weight:800;">Après School</p>
-                <p style="margin:0;font-size:13px;line-height:1.5;color:#66708a;">Wraparound care, holiday clubs and school partnerships.</p>
+              <td style="padding:0 24px 24px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f8fbff;border:1px solid #e3ebff;border-radius:18px;">
+                  <tr>
+                    <td style="padding:16px 18px;">
+                      <p style="margin:0 0 6px;font-size:14px;line-height:1.5;color:${brandNavy};font-weight:900;">Need help?</p>
+                      <p style="margin:0;font-size:14px;line-height:1.55;color:#66708a;">Reply to this email or contact <a href="mailto:${escapeHtml(resendReplyTo)}" style="color:${brandBlue};font-weight:800;text-decoration:none;">${escapeHtml(resendReplyTo)}</a>.</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:${brandNavy};padding:20px 24px;border-top:1px solid #e8edff;">
+                <p style="margin:0 0 5px;font-size:15px;line-height:1.45;color:#ffffff;font-weight:900;">Après School</p>
+                <p style="margin:0;font-size:13px;line-height:1.5;color:#dce5ff;">Wraparound care, holiday clubs and school partnerships.</p>
               </td>
             </tr>
           </table>
@@ -162,15 +198,15 @@ function lineToEmailHtml(line: string, index: number, paymentUrl: string) {
   if (index === 0 && /^Hi\b/i.test(line)) {
     return `<p style="margin:0 0 18px;font-size:18px;line-height:1.45;color:${brandNavy};font-weight:800;">${escaped}</p>`;
   }
-  if (/^Reference:|^Total:|^Due today:|^Sessions:/i.test(line)) {
+  if (/^Reference:|^Total:|^Due today:|^Sessions:|^Invoice:|^Receipt:|^Amount paid:|^Amount protected:|^Additional amount:|^Removed value:|^Outstanding balance:|^Reason:/i.test(line)) {
     const [label, ...rest] = line.split(":");
-    return `<p style="margin:0 0 10px;font-size:15px;line-height:1.5;color:${brandNavy};"><strong style="color:${brandBlue};">${escapeHtml(label)}:</strong>${escapeHtml(rest.join(":"))}</p>`;
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 8px;background:#f7f9ff;border:1px solid #e3ebff;border-radius:14px;"><tr><td style="padding:12px 14px;"><p style="margin:0;font-size:15px;line-height:1.45;color:${brandNavy};"><strong style="color:${brandBlue};">${escapeHtml(label)}:</strong>${escapeHtml(rest.join(":"))}</p></td></tr></table>`;
   }
   if (/^Secure payment link:/i.test(line) && paymentUrl) {
-    return `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:22px 0 20px;"><tr><td style="border-radius:999px;background:${brandGreen};"><a href="${escapeHtml(paymentUrl)}" style="display:inline-block;padding:14px 22px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:900;border-radius:999px;">Complete secure payment</a></td></tr></table><p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#66708a;word-break:break-word;">Secure payment link: <a href="${escapeHtml(paymentUrl)}" style="color:${brandBlue};">${escapeHtml(paymentUrl)}</a></p>`;
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 20px;"><tr><td align="center" style="border-radius:999px;background:${brandGreen};"><a href="${escapeHtml(paymentUrl)}" style="display:block;padding:15px 22px;color:#ffffff;text-decoration:none;font-size:17px;font-weight:900;border-radius:999px;">Complete secure payment</a></td></tr></table><p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#66708a;word-break:break-word;">Secure payment link: <a href="${escapeHtml(paymentUrl)}" style="color:${brandBlue};font-weight:800;">${escapeHtml(paymentUrl)}</a></p>`;
   }
   if (/^Important:/i.test(line)) {
-    return `<p style="margin:20px 0 16px;padding:14px 16px;border-radius:16px;background:#fff7ed;border:1px solid #f7d7a2;font-size:14px;line-height:1.55;color:${brandNavy};"><strong>Important:</strong>${escaped.replace(/^Important:/i, "")}</p>`;
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:20px 0 16px;background:#fff7ed;border:1px solid #f7d7a2;border-radius:16px;"><tr><td style="padding:14px 16px;"><p style="margin:0;font-size:14px;line-height:1.55;color:${brandNavy};"><strong>Important:</strong>${escaped.replace(/^Important:/i, "")}</p></td></tr></table>`;
   }
   if (/^Thank you,|^Après School$/i.test(line)) {
     return `<p style="margin:0 0 8px;font-size:15px;line-height:1.5;color:${brandNavy};font-weight:800;">${escaped}</p>`;
@@ -180,6 +216,21 @@ function lineToEmailHtml(line: string, index: number, paymentUrl: string) {
 
 function firstUrl(value: string) {
   return value.match(/https?:\/\/\S+/)?.[0]?.replace(/[),.;]+$/, "") || "";
+}
+
+function emailTitleFromLines(lines: string[]) {
+  const reference = lines.find((line) => /^Reference:/i.test(line))?.split(":").slice(1).join(":").trim();
+  const invoice = lines.find((line) => /^Invoice:/i.test(line))?.split(":").slice(1).join(":").trim();
+  if (lines.some((line) => /^Secure payment link:/i.test(line))) return reference ? `Complete payment for ${reference}` : "Complete your payment";
+  if (lines.some((line) => /booking is confirmed/i.test(line))) return "Your booking is confirmed";
+  if (lines.some((line) => /guarantee has been saved/i.test(line))) return "Card guarantee saved";
+  if (lines.some((line) => /cancelled/i.test(line))) return "Booking cancellation recorded";
+  if (lines.some((line) => /updated/i.test(line))) return "Booking updated";
+  return invoice ? `Booking update for ${invoice}` : "Booking update";
+}
+
+function emailPreheaderFromLines(lines: string[]) {
+  return lines.find((line) => !/^Hi\b/i.test(line) && !/^Reference:|^Total:|^Due today:|^Secure payment link:/i.test(line)) || "Your Après School booking update.";
 }
 
 async function safeResponseText(response: Response) {

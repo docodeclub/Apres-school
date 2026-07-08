@@ -339,7 +339,7 @@ async function queuePaymentEmail({ actor, invoice, emailType, subject, body }: {
     emailType,
     subject,
     text: body,
-    html: paragraphsToHtml(body.split("\n")),
+    html: paragraphsToHtml(body.split("\n"), { title: subject }),
     sentBy: actor.id,
     metadata: {
       invoiceId: invoice.id,
@@ -403,7 +403,7 @@ async function sendBookingChangeEmail({
     emailType,
     subject,
     text: lines.join("\n"),
-    html: paragraphsToHtml(lines),
+    html: paragraphsToHtml(lines, { title: subject }),
     sentBy: actor.id,
     metadata: {
       bookingId: stringValue(booking.id),
