@@ -470,6 +470,30 @@ export async function updateLivePaymentAdminAction({ invoiceId, action, note = "
   return data;
 }
 
+export async function upsertLiveBookingSessionSetup(setup = {}) {
+  assertSupabase();
+  const payload = {
+    school: String(setup.school || "").trim(),
+    dateFrom: setup.dateFrom,
+    dateTo: setup.dateTo,
+    sessionLabel: String(setup.sessionLabel || "").trim(),
+    timeWindow: String(setup.timeWindow || "").trim(),
+    price: setup.price,
+    capacity: setup.capacity,
+    eligibility: String(setup.eligibility || "").trim(),
+    paymentRoute: String(setup.paymentRoute || "").trim(),
+    cancellationHours: setup.cancellationHours,
+  };
+  if (!payload.school) throw new Error("School is required.");
+  if (!payload.dateFrom || !payload.dateTo) throw new Error("Choose a date range.");
+  const { data, error } = await supabase.rpc("admin_upsert_booking_session_setup", {
+    p_setup: payload,
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
 function mapBookableSession(row) {
   const programme = row.programmes || {};
   const location = programme.locations || {};

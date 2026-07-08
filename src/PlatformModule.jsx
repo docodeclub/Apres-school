@@ -3,6 +3,7 @@ import {
   bookingSystemConfigured,
   fetchParentBookingLedger,
   updateLivePaymentAdminAction,
+  upsertLiveBookingSessionSetup,
 } from "./bookingSystem.js";
 
 const hasSupabaseConfig = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
@@ -1564,10 +1565,26 @@ function BookingAdmin({ data, access }) {
     }
   }
 
-  function saveSetupDraft() {
+  async function saveSetupDraft() {
+    setActionPending("setup");
     localStorage.setItem(bookingAdminSetupStorageKey, JSON.stringify(setupDraft));
-    addAuditLog("Booking setup draft saved", `${setupDraft.school} · ${setupDraft.sessionLabel} · ${formatCurrency(setupDraft.price)}`);
-    setStatus("Admin setup draft saved locally. Live table writes can be connected when the final table mapping is confirmed.");
+    try {
+      if (hasLiveLedger) {
+        const result = await upsertLiveBookingSessionSetup(setupDraft);
+        addAuditLog("Booking setup saved", `${result.school || setupDraft.school} · ${result.sessionLabel || setupDraft.sessionLabel} · ${result.sessionsUpserted || 0} sessions`);
+        setError("");
+        setStatus(`Booking setup saved live: ${result.sessionsUpserted || 0} weekday sessions updated for ${result.school || setupDraft.school}.`);
+        refreshLedger();
+      } else {
+        addAuditLog("Booking setup draft saved", `${setupDraft.school} · ${setupDraft.sessionLabel} · ${formatCurrency(setupDraft.price)}`);
+        setStatus("Admin setup draft saved locally. Supabase is not configured in this environment.");
+      }
+    } catch (setupError) {
+      setError(setupError?.message || "Could not save booking setup.");
+      setStatus("Setup saved locally, but the live booking tables were not updated.");
+    } finally {
+      setActionPending("");
+    }
   }
 
   function updateSetupField(field, value) {
@@ -1717,7 +1734,7 @@ function BookingAdmin({ data, access }) {
         <div>
           <p className="eyebrow">Admin only</p>
           <h3>Session setup controls.</h3>
-          <p>Dates, prices, capacity, eligibility and payment route stay in admin. This draft records the intended settings before live table writes are connected.</p>
+          <p>Dates, prices, capacity, eligibility and payment route stay in admin. Saving creates or updates parent-bookable weekday sessions for the selected range.</p>
         </div>
         <div className="booking-admin-setup-grid">
           <label><span>School</span><input value={setupDraft.school} onChange={(event) => updateSetupField("school", event.target.value)} /></label>
@@ -1731,7 +1748,9 @@ function BookingAdmin({ data, access }) {
           <label className="wide"><span>Eligibility</span><input value={setupDraft.eligibility} onChange={(event) => updateSetupField("eligibility", event.target.value)} /></label>
           <label className="wide"><span>Payment route</span><input value={setupDraft.paymentRoute} onChange={(event) => updateSetupField("paymentRoute", event.target.value)} /></label>
         </div>
-        <button className="button book" type="button" onClick={saveSetupDraft}>Save setup draft</button>
+        <button className="button book" type="button" onClick={saveSetupDraft} disabled={actionPending === "setup"}>
+          {actionPending === "setup" ? "Saving setup..." : hasLiveLedger ? "Save live setup" : "Save setup draft"}
+        </button>
       </section>
     </div>
   );
