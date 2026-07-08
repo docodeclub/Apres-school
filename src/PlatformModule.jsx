@@ -3,6 +3,7 @@ import {
   bookingSystemConfigured,
   fetchParentBookingLedger,
   updateLivePaymentAdminAction,
+  upsertLiveBookingSessionOverride,
   upsertLiveBookingSessionSetup,
 } from "./bookingSystem.js";
 
@@ -147,6 +148,7 @@ const staffPayOverridesStorageKey = "apres-staff-pay-overrides";
 const staffSiteOverridesStorageKey = "apres-staff-site-overrides";
 const formerStaffStorageKey = "apres-former-staff";
 const bookingAdminSetupStorageKey = "apres-booking-admin-setup";
+const bookingAdminOverrideStorageKey = "apres-booking-admin-override";
 
 function currentPayrollPeriod() {
   return new Date().toISOString().slice(0, 7);
@@ -1468,6 +1470,20 @@ function BookingAdmin({ data, access }) {
     paymentRoute: "PonchoPay card + vouchers",
     cancellationHours: "24",
   }));
+  const [dayOverride, setDayOverride] = useState(() => readJson(bookingAdminOverrideStorageKey, {
+    school: "Willington Prep",
+    sessionDate: "2026-09-03",
+    sessionLabel: "Session 1",
+    timeWindow: "15:30-16:00",
+    price: "6.80",
+    capacity: "24",
+    status: "open",
+    parentBookable: true,
+    eligibility: "Reception to Year 6",
+    paymentRoute: "PonchoPay card + vouchers",
+    cancellationHours: "24",
+    notes: "",
+  }));
   const hasLiveLedger = bookingSystemConfigured();
   const rows = normaliseBookingLedgerRows(ledger, data);
   const visibleRows = rows.filter((row) => {
@@ -1589,6 +1605,32 @@ function BookingAdmin({ data, access }) {
 
   function updateSetupField(field, value) {
     setSetupDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  async function saveDayOverride() {
+    setActionPending("override");
+    localStorage.setItem(bookingAdminOverrideStorageKey, JSON.stringify(dayOverride));
+    try {
+      if (hasLiveLedger) {
+        const result = await upsertLiveBookingSessionOverride(dayOverride);
+        addAuditLog("Booking day override saved", `${result.school || dayOverride.school} · ${result.sessionDate || dayOverride.sessionDate} · ${result.sessionLabel || dayOverride.sessionLabel}`);
+        setError("");
+        setStatus(`Day override saved live: ${result.school || dayOverride.school} · ${formatShortDate(result.sessionDate || dayOverride.sessionDate)} · ${result.sessionLabel || dayOverride.sessionLabel}.`);
+        refreshLedger();
+      } else {
+        addAuditLog("Booking day override draft saved", `${dayOverride.school} · ${dayOverride.sessionDate} · ${dayOverride.sessionLabel}`);
+        setStatus("Day override saved locally. Supabase is not configured in this environment.");
+      }
+    } catch (overrideError) {
+      setError(overrideError?.message || "Could not save day override.");
+      setStatus("Override saved locally, but the live booking tables were not updated.");
+    } finally {
+      setActionPending("");
+    }
+  }
+
+  function updateOverrideField(field, value) {
+    setDayOverride((current) => ({ ...current, [field]: value }));
   }
 
   function exportLedgerCsv() {
@@ -1730,28 +1772,67 @@ function BookingAdmin({ data, access }) {
         </aside>
       </section>
 
-      <section className="booking-admin-setup">
-        <div>
-          <p className="eyebrow">Admin only</p>
-          <h3>Session setup controls.</h3>
-          <p>Dates, prices, capacity, eligibility and payment route stay in admin. Saving creates or updates parent-bookable weekday sessions for the selected range.</p>
-        </div>
-        <div className="booking-admin-setup-grid">
-          <label><span>School</span><input value={setupDraft.school} onChange={(event) => updateSetupField("school", event.target.value)} /></label>
-          <label><span>From</span><input type="date" value={setupDraft.dateFrom} onChange={(event) => updateSetupField("dateFrom", event.target.value)} /></label>
-          <label><span>To</span><input type="date" value={setupDraft.dateTo} onChange={(event) => updateSetupField("dateTo", event.target.value)} /></label>
-          <label><span>Session</span><input value={setupDraft.sessionLabel} onChange={(event) => updateSetupField("sessionLabel", event.target.value)} /></label>
-          <label><span>Time</span><input value={setupDraft.timeWindow} onChange={(event) => updateSetupField("timeWindow", event.target.value)} /></label>
-          <label><span>Price</span><input type="number" min="0" step="0.01" value={setupDraft.price} onChange={(event) => updateSetupField("price", event.target.value)} /></label>
-          <label><span>Capacity</span><input type="number" min="0" step="1" value={setupDraft.capacity} onChange={(event) => updateSetupField("capacity", event.target.value)} /></label>
-          <label><span>Cancellation window</span><input type="number" min="0" step="1" value={setupDraft.cancellationHours} onChange={(event) => updateSetupField("cancellationHours", event.target.value)} /></label>
-          <label className="wide"><span>Eligibility</span><input value={setupDraft.eligibility} onChange={(event) => updateSetupField("eligibility", event.target.value)} /></label>
-          <label className="wide"><span>Payment route</span><input value={setupDraft.paymentRoute} onChange={(event) => updateSetupField("paymentRoute", event.target.value)} /></label>
-        </div>
-        <button className="button book" type="button" onClick={saveSetupDraft} disabled={actionPending === "setup"}>
-          {actionPending === "setup" ? "Saving setup..." : hasLiveLedger ? "Save live setup" : "Save setup draft"}
-        </button>
-      </section>
+      <div className="booking-admin-control-grid">
+        <section className="booking-admin-setup">
+          <div>
+            <p className="eyebrow">Admin only</p>
+            <h3>Session setup controls.</h3>
+            <p>Dates, prices, capacity, eligibility and payment route stay in admin. Saving creates or updates parent-bookable weekday sessions for the selected range.</p>
+          </div>
+          <div className="booking-admin-setup-grid">
+            <label><span>School</span><input value={setupDraft.school} onChange={(event) => updateSetupField("school", event.target.value)} /></label>
+            <label><span>From</span><input type="date" value={setupDraft.dateFrom} onChange={(event) => updateSetupField("dateFrom", event.target.value)} /></label>
+            <label><span>To</span><input type="date" value={setupDraft.dateTo} onChange={(event) => updateSetupField("dateTo", event.target.value)} /></label>
+            <label><span>Session</span><input value={setupDraft.sessionLabel} onChange={(event) => updateSetupField("sessionLabel", event.target.value)} /></label>
+            <label><span>Time</span><input value={setupDraft.timeWindow} onChange={(event) => updateSetupField("timeWindow", event.target.value)} /></label>
+            <label><span>Price</span><input type="number" min="0" step="0.01" value={setupDraft.price} onChange={(event) => updateSetupField("price", event.target.value)} /></label>
+            <label><span>Capacity</span><input type="number" min="0" step="1" value={setupDraft.capacity} onChange={(event) => updateSetupField("capacity", event.target.value)} /></label>
+            <label><span>Cancellation window</span><input type="number" min="0" step="1" value={setupDraft.cancellationHours} onChange={(event) => updateSetupField("cancellationHours", event.target.value)} /></label>
+            <label className="wide"><span>Eligibility</span><input value={setupDraft.eligibility} onChange={(event) => updateSetupField("eligibility", event.target.value)} /></label>
+            <label className="wide"><span>Payment route</span><input value={setupDraft.paymentRoute} onChange={(event) => updateSetupField("paymentRoute", event.target.value)} /></label>
+          </div>
+          <button className="button book" type="button" onClick={saveSetupDraft} disabled={actionPending === "setup"}>
+            {actionPending === "setup" ? "Saving setup..." : hasLiveLedger ? "Save live setup" : "Save setup draft"}
+          </button>
+        </section>
+
+        <section className="booking-admin-setup">
+          <div>
+            <p className="eyebrow">Day override</p>
+            <h3>Edit one day.</h3>
+            <p>Use this for a single changed day: close bookings, reduce capacity, change the time or adjust the price without changing the full term setup.</p>
+          </div>
+          <div className="booking-admin-setup-grid compact">
+            <label><span>School</span><input value={dayOverride.school} onChange={(event) => updateOverrideField("school", event.target.value)} /></label>
+            <label><span>Date</span><input type="date" value={dayOverride.sessionDate} onChange={(event) => updateOverrideField("sessionDate", event.target.value)} /></label>
+            <label><span>Session</span><input value={dayOverride.sessionLabel} onChange={(event) => updateOverrideField("sessionLabel", event.target.value)} /></label>
+            <label><span>Status</span><select value={dayOverride.status} onChange={(event) => {
+              const nextStatus = event.target.value;
+              setDayOverride((current) => ({
+                ...current,
+                status: nextStatus,
+                parentBookable: ["closed", "full", "cancelled"].includes(nextStatus) ? false : current.parentBookable,
+              }));
+            }}>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+              <option value="full">Full</option>
+              <option value="cancelled">Cancelled</option>
+            </select></label>
+            <label><span>Time</span><input value={dayOverride.timeWindow} onChange={(event) => updateOverrideField("timeWindow", event.target.value)} /></label>
+            <label><span>Price</span><input type="number" min="0" step="0.01" value={dayOverride.price} onChange={(event) => updateOverrideField("price", event.target.value)} /></label>
+            <label><span>Capacity</span><input type="number" min="0" step="1" value={dayOverride.capacity} onChange={(event) => updateOverrideField("capacity", event.target.value)} /></label>
+            <label><span>Cancellation window</span><input type="number" min="0" step="1" value={dayOverride.cancellationHours} onChange={(event) => updateOverrideField("cancellationHours", event.target.value)} /></label>
+            <label className="booking-admin-check"><input type="checkbox" checked={dayOverride.parentBookable !== false} disabled={["closed", "full", "cancelled"].includes(dayOverride.status)} onChange={(event) => updateOverrideField("parentBookable", event.target.checked)} /><span>Parents can book this day</span></label>
+            <label className="wide"><span>Eligibility</span><input value={dayOverride.eligibility} onChange={(event) => updateOverrideField("eligibility", event.target.value)} /></label>
+            <label className="wide"><span>Payment route</span><input value={dayOverride.paymentRoute} onChange={(event) => updateOverrideField("paymentRoute", event.target.value)} /></label>
+            <label className="wide"><span>Admin note</span><input value={dayOverride.notes} onChange={(event) => updateOverrideField("notes", event.target.value)} placeholder="Optional reason shown in audit" /></label>
+          </div>
+          <button className="button book" type="button" onClick={saveDayOverride} disabled={actionPending === "override"}>
+            {actionPending === "override" ? "Saving override..." : hasLiveLedger ? "Save day override" : "Save override draft"}
+          </button>
+        </section>
+      </div>
     </div>
   );
 }

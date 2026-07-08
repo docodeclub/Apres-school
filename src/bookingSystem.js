@@ -494,6 +494,33 @@ export async function upsertLiveBookingSessionSetup(setup = {}) {
   return data;
 }
 
+export async function upsertLiveBookingSessionOverride(override = {}) {
+  assertSupabase();
+  const status = String(override.status || "").trim();
+  const payload = {
+    school: String(override.school || "").trim(),
+    sessionDate: override.sessionDate,
+    sessionLabel: String(override.sessionLabel || "").trim(),
+    timeWindow: String(override.timeWindow || "").trim(),
+    price: override.price,
+    capacity: override.capacity,
+    status,
+    parentBookable: override.parentBookable !== false && !["closed", "cancelled", "full"].includes(status),
+    eligibility: String(override.eligibility || "").trim(),
+    paymentRoute: String(override.paymentRoute || "").trim(),
+    cancellationHours: override.cancellationHours,
+    notes: String(override.notes || "").trim(),
+  };
+  if (!payload.school) throw new Error("School is required.");
+  if (!payload.sessionDate) throw new Error("Choose the day to override.");
+  const { data, error } = await supabase.rpc("admin_upsert_booking_session_override", {
+    p_override: payload,
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
 function mapBookableSession(row) {
   const programme = row.programmes || {};
   const location = programme.locations || {};

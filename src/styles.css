@@ -4749,6 +4749,12 @@ label {
   box-shadow: var(--shadow-soft);
 }
 
+.booking-admin-control-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+
 .booking-admin-hero {
   display: flex;
   justify-content: space-between;
@@ -4842,7 +4848,8 @@ label {
 .booking-admin-toolbar input,
 .booking-admin-toolbar select,
 .booking-admin-note textarea,
-.booking-admin-setup-grid input {
+.booking-admin-setup-grid input,
+.booking-admin-setup-grid select {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--line);
@@ -5006,6 +5013,34 @@ label {
 
 .booking-admin-setup-grid .wide {
   grid-column: span 2;
+}
+
+.booking-admin-setup-grid.compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.booking-admin-check {
+  align-content: end;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f8faff;
+  padding: 10px 12px;
+  text-transform: none;
+}
+
+.booking-admin-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--green);
+}
+
+.booking-admin-check span {
+  color: var(--royal-dark);
+  font-size: 0.9rem;
+  font-weight: 950;
+  text-transform: none;
 }
 
 .camp-announcement {
@@ -11511,7 +11546,8 @@ th {
 
   .booking-admin-toolbar,
   .booking-admin-row,
-  .booking-admin-setup-grid {
+  .booking-admin-setup-grid,
+  .booking-admin-setup-grid.compact {
     grid-template-columns: 1fr;
   }
 
