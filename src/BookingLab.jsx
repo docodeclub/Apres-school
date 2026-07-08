@@ -3960,13 +3960,21 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   useEffect(() => {
     if (!isLaunchMode || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
+    const returnPath = window.location.pathname;
+    const pathPaymentState = returnPath.includes("/booking/success")
+      ? "complete"
+      : returnPath.includes("/booking/cancel")
+        ? "cancelled"
+        : returnPath.includes("/booking/") || returnPath.includes("/ponchopay/return")
+          ? "pending"
+          : "";
     const providerReturnId = params.get("id")
       || params.get("payment_id")
       || params.get("paymentId")
       || params.get("ponchoPaymentId")
       || "";
     const reference = params.get("reference") || params.get("bookingReference") || params.get("booking_reference") || "";
-    const paymentState = params.get("payment") || (providerReturnId || reference ? "pending" : "");
+    const paymentState = params.get("payment") || pathPaymentState || (providerReturnId || reference ? "pending" : "");
     const invoiceId = params.get("invoice") || params.get("invoiceId") || params.get("externalInvoiceId") || "";
     const handledKey = `${paymentState}:${invoiceId || reference || providerReturnId}`;
     if (!paymentState || paymentReturnNotice?.handledKey === handledKey) return;
