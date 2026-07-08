@@ -12191,6 +12191,10 @@ th {
     backdrop-filter: blur(14px);
   }
 
+  body:has(.booking-launch-page.launch-gated) .mobile-cta {
+    display: none;
+  }
+
   .mobile-cta.home-hidden {
     display: none;
   }
@@ -31417,6 +31421,110 @@ th {
 }
 
 @media (max-width: 760px) {
+  .booking-launch-page.launch-gated .booking-lab-flow {
+    width: 100%;
+  }
+
+  .booking-launch-page .lab-launch-registration-gate {
+    width: min(100%, 334px);
+    margin: 0 auto;
+    gap: 12px;
+    border-radius: 18px;
+    padding: 12px;
+  }
+
+  .booking-launch-page .lab-launch-gate-head,
+  .booking-launch-page .lab-launch-child-head {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .booking-launch-page .lab-launch-gate-head h2 {
+    font-size: 1.6rem;
+    line-height: 1.02;
+  }
+
+  .booking-launch-page .lab-launch-gate-head p:not(.eyebrow) {
+    max-width: none;
+    font-size: 0.92rem;
+    line-height: 1.32;
+  }
+
+  .booking-launch-page .lab-launch-gate-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-content: stretch;
+    gap: 6px;
+  }
+
+  .booking-launch-page .lab-launch-gate-steps span {
+    padding: 7px 6px;
+    text-align: center;
+    font-size: 0.72rem;
+  }
+
+  .booking-launch-page .lab-launch-auth-card,
+  .booking-launch-page .lab-launch-child-form {
+    border-radius: 16px;
+    padding: 11px;
+  }
+
+  .booking-launch-page .lab-launch-auth-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .booking-launch-page .lab-launch-auth-tabs button,
+  .booking-launch-page .lab-launch-form-actions button,
+  .booking-launch-page .lab-launch-child-head button {
+    min-height: 42px;
+    padding: 8px 10px;
+  }
+
+  .booking-launch-page .lab-launch-signin-form {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .booking-launch-page .lab-launch-form-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+
+  .booking-launch-page .lab-launch-form-actions button {
+    width: 100%;
+  }
+
+  .booking-launch-page .lab-launch-registration-form .lab-form-grid,
+  .booking-launch-page .lab-launch-child-form .lab-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-launch-page .lab-launch-child-progress {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .booking-launch-page .lab-launch-child-progress button {
+    min-height: 54px;
+    padding: 8px;
+  }
+
+  .booking-launch-page .lab-launch-step-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+
+  .booking-launch-page .lab-launch-step-actions span {
+    margin-right: 0;
+  }
+
+  .booking-launch-page .lab-launch-step-actions button {
+    width: 100%;
+  }
+
   .booking-launch-page .lab-beta-reassurance,
   .booking-launch-page .lab-beta-reassurance > div:first-child {
     grid-template-columns: 1fr;

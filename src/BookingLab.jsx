@@ -810,13 +810,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [parentPaymentCheckout, setParentPaymentCheckout] = useState(null);
   const [paymentReturnNotice, setPaymentReturnNotice] = useState(null);
   const [parentAccountSignedIn, setParentAccountSignedIn] = useState(() => {
+    if (isLaunchMode) return false;
     const storedMode = readJson("apres-parent-account-mode", "demo");
     const storedSignedIn = Boolean(readJson("apres-parent-account-signed-in", false));
-    return isLaunchMode ? storedSignedIn && storedMode === "live" : storedSignedIn;
+    return storedSignedIn && Boolean(storedMode);
   });
   const [parentAccountMode, setParentAccountMode] = useState(() => {
     const storedMode = readJson("apres-parent-account-mode", "demo");
-    return isLaunchMode && storedMode !== "live" ? "demo" : storedMode;
+    return isLaunchMode ? "live" : storedMode;
   });
   const [parentAccountLoading, setParentAccountLoading] = useState(false);
   const [parentAccountInviteRuns, setParentAccountInviteRuns] = useState(() => readJson("apres-parent-account-invite-runs", []));
@@ -931,10 +932,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setLaunchExpandedDay("");
     if (storedSignedIn && storedMode !== "live") {
       localStorage.setItem("apres-parent-account-signed-in", "false");
-      localStorage.setItem("apres-parent-account-mode", JSON.stringify("demo"));
+      localStorage.setItem("apres-parent-account-mode", JSON.stringify("live"));
       localStorage.removeItem("apres-child-registration-draft");
       setParentAccountSignedIn(false);
-      setParentAccountMode("demo");
+      setParentAccountMode("live");
       setParentLogin({ username: "", password: "" });
       setChildRegistration(defaultChildRegistration);
       setSelectedChildIds([]);
@@ -971,7 +972,6 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     return preference === "Off" ? fallback : preference;
   };
   const activeFamilyMatchesLaunchAccount = !isLaunchMode
-    || (activeFamily.id && activeFamily.id !== "family-demo")
     || (launchParentEmail && String(activeFamily.email || "").trim().toLowerCase() === launchParentEmail);
   const familyChildProfiles = activeFamilyMatchesLaunchAccount
     ? activeFamily.children?.map((child) => ({ ...child, school: child.school || "Guest" })) || []
@@ -4065,13 +4065,32 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     }
   }
 
+  function clearLaunchParentSession(message = "") {
+    setParentAccountSignedIn(false);
+    setParentAccountMode(isLaunchMode ? "live" : "demo");
+    setParentLogin({ username: "", password: "" });
+    setSelectedChildIds([]);
+    setLiveParentLedger({ invoices: [], bookings: [], fetchedAt: "", loading: false, error: "" });
+    localStorage.setItem("apres-parent-account-signed-in", "false");
+    localStorage.setItem("apres-parent-account-mode", JSON.stringify(isLaunchMode ? "live" : "demo"));
+    if (isLaunchMode) {
+      setLaunchParentPortalOpen(false);
+      setConfirmation(null);
+    }
+    if (message) setStatus(message);
+  }
+
   useEffect(() => {
     if (!realBookingServiceReady) return undefined;
     let cancelled = false;
 
     getParentAuthSession()
       .then((session) => {
-        if (cancelled || !session?.user) return;
+        if (cancelled) return null;
+        if (!session?.user) {
+          if (isLaunchMode) clearLaunchParentSession();
+          return null;
+        }
         return fetchParentAccount();
       })
       .then((account) => {
@@ -4084,18 +4103,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       })
       .catch(() => {
         if (cancelled) return;
-        if (parentAccountMode === "live") {
-          setParentAccountSignedIn(false);
-          setParentAccountMode("demo");
-          localStorage.setItem("apres-parent-account-signed-in", "false");
-          localStorage.setItem("apres-parent-account-mode", JSON.stringify("demo"));
-        }
+        if (parentAccountMode === "live" || isLaunchMode) clearLaunchParentSession();
       });
 
     return () => {
       cancelled = true;
     };
-  }, [realBookingServiceReady]);
+  }, [realBookingServiceReady, isLaunchMode]);
 
   useEffect(() => {
     if (!realBookingServiceReady || !parentAccountSignedIn || parentAccountMode !== "live" || (!launchParentPortalOpen && !["Parent", "Audit", "Payments"].includes(labView))) return;
@@ -6094,6 +6108,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   async function registerLaunchParent(event) {
     event.preventDefault();
     if (parentAccountLoading) return;
+    if (isLaunchMode && !realBookingServiceReady) {
+      setStatus("Parent account creation is temporarily unavailable. Please try again shortly.");
+      return;
+    }
     const email = parentRegistration.email.trim().toLowerCase();
     const confirmEmail = parentRegistration.confirmEmail.trim().toLowerCase();
     const password = parentRegistration.password;
@@ -6214,14 +6232,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setActiveFamilyId(familyId);
     setSelectedChildIds([]);
     setParentAccountSignedIn(true);
-    setParentAccountMode(realBookingServiceReady ? "live" : "demo");
+    setParentAccountMode(isLaunchMode || realBookingServiceReady ? "live" : "demo");
     setParentLogin({ username: email, password: "" });
     setSelectedSchool(centre);
     const freshChildRegistration = { ...defaultChildRegistration, school: centre, languages: ["English"] };
     localStorage.setItem("apres-child-registration-draft", JSON.stringify(freshChildRegistration));
     setChildRegistration(freshChildRegistration);
     localStorage.setItem("apres-parent-account-signed-in", "true");
-    localStorage.setItem("apres-parent-account-mode", JSON.stringify(realBookingServiceReady ? "live" : "demo"));
+    localStorage.setItem("apres-parent-account-mode", JSON.stringify(isLaunchMode || realBookingServiceReady ? "live" : "demo"));
     localStorage.removeItem("apres-parent-registration-draft");
     setParentAccountLoading(false);
     setStatus(realBookingServiceReady ? "Parent account created. Add your child before booking." : "Account created for beta testing. Add your child before booking.");
@@ -6873,7 +6891,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         return;
       } catch (error) {
         const allowDemoFallback = (username === familyEmail || username === parentDemoUsername.toLowerCase()) && password.length >= 6;
-        if (!allowDemoFallback) {
+        if (isLaunchMode || !allowDemoFallback) {
           setStatus(`Parent sign in failed: ${error instanceof Error ? error.message : "Check the email and password."}`);
           return;
         }
@@ -6883,7 +6901,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       }
     }
 
-    if ((username === familyEmail || username === parentDemoUsername.toLowerCase()) && password.length >= 6) {
+    if (!isLaunchMode && (username === familyEmail || username === parentDemoUsername.toLowerCase()) && password.length >= 6) {
       setParentAccountSignedIn(true);
       setParentAccountMode("demo");
       localStorage.setItem("apres-parent-account-signed-in", "true");
@@ -6894,7 +6912,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       return;
     }
     setParentAccountLoading(false);
-    setStatus("Use the parent email and password to manage bookings.");
+    setStatus(isLaunchMode ? "Sign in with the parent email and password, or create a new account first." : "Use the parent email and password to manage bookings.");
   }
 
   async function signOutParentAccount() {
@@ -6910,9 +6928,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       }
     }
     setParentAccountSignedIn(false);
-    setParentAccountMode("demo");
+    setParentAccountMode(isLaunchMode ? "live" : "demo");
     localStorage.setItem("apres-parent-account-signed-in", "false");
-    localStorage.setItem("apres-parent-account-mode", JSON.stringify("demo"));
+    localStorage.setItem("apres-parent-account-mode", JSON.stringify(isLaunchMode ? "live" : "demo"));
     setParentLogin({ username: "", password: "" });
     setLiveParentLedger({ invoices: [], bookings: [], fetchedAt: "", loading: false, error: "" });
     setParentAccountLoading(false);
@@ -18125,10 +18143,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   Password
                   <input type="password" value={parentLogin.password} onChange={(event) => setParentLogin((current) => ({ ...current, password: event.target.value }))} placeholder="Password" />
                 </label>
-                <div>
-                  <button type="submit" disabled={parentAccountLoading}>{parentAccountLoading ? "Signing in..." : "Sign in"}</button>
-                  <button type="button" disabled={parentAccountLoading} onClick={() => setParentLogin({ username: parentDemoUsername, password: parentDemoPassword })}>Use demo login</button>
-                </div>
+	                <div>
+	                  <button type="submit" disabled={parentAccountLoading}>{parentAccountLoading ? "Signing in..." : "Sign in"}</button>
+	                  {!isLaunchMode && <button type="button" disabled={parentAccountLoading} onClick={() => setParentLogin({ username: parentDemoUsername, password: parentDemoPassword })}>Use demo login</button>}
+	                </div>
               </form>
             )}
             {parentAccountSignedIn && <>
