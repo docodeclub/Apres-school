@@ -51,6 +51,24 @@ export async function getProfileRole(userId) {
   return normalizeRole(data?.role);
 }
 
+export async function getProfileAccess(userId) {
+  if (!supabase || !userId) return { role: "Staff", mustChangePassword: false, active: false };
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role, active, must_change_password")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data?.active) return { role: "Staff", mustChangePassword: false, active: false };
+
+  return {
+    role: normalizeRole(data.role),
+    mustChangePassword: Boolean(data.must_change_password),
+    active: true,
+  };
+}
+
 export function normalizeRole(role) {
   const value = String(role || "staff").toLowerCase();
   if (value === "superadmin") return "Superadmin";

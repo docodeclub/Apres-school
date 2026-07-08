@@ -853,7 +853,6 @@ export default function App() {
 
   async function applySession(session) {
     const user = session?.user || null;
-    const sameSignedInUser = user?.id && authUserIdRef.current === user.id;
 
     if (!user) {
       authUserIdRef.current = null;
@@ -862,11 +861,6 @@ export default function App() {
       setPlatformUnlocked(false);
       setRole("Staff");
       setTab("Staff");
-      return;
-    }
-
-    if (sameSignedInUser) {
-      setPlatformUnlocked(true);
       return;
     }
 
