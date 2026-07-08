@@ -162,11 +162,11 @@ const APRES_IMG = {
 };
 
 const nav = ["Home", "Bookings", "Holiday Clubs", "Wraparound", "Schools", "Contact"];
-const platformTabs = ["Staff", "Admin", "Users", "HR", "HR Files", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Bookings", "Users", "HR", "HR Files", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
   ["People", ["Users", "SCR", "HR", "HR Files"]],
-  ["Sites", ["Rota", "Hours", "Sessions", "Ofsted"]],
+  ["Sites", ["Bookings", "Rota", "Hours", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
   ["Finance", ["Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],

@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  bookingSystemConfigured,
+  fetchParentBookingLedger,
+  updateLivePaymentAdminAction,
+} from "./bookingSystem.js";
 
 const hasSupabaseConfig = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 let supabaseModulePromise;
@@ -101,11 +106,11 @@ const Users = makeIcon("US");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Bookings", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
   ["People", ["Users", "SCR", "HR", "HR Files"]],
-  ["Sites", ["Schools", "Rota", "Hours", "Sessions", "Ofsted"]],
+  ["Sites", ["Schools", "Bookings", "Rota", "Hours", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
   ["Finance", ["Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
@@ -113,6 +118,7 @@ const platformGroups = [
 const platformTabHints = {
   Staff: "Personal shifts, documents, pay and rewards",
   Admin: "Key actions across staffing, compliance and bookings",
+  Bookings: "Bookings, payments, capacity and admin-only setup controls",
   Users: "Invite staff and reset access",
   HR: "Reporting lines and manager structure",
   "HR Files": "Contracts, payslips and staff documents",
@@ -139,6 +145,7 @@ const payrollRunsStorageKey = "apres-payroll-runs";
 const staffPayOverridesStorageKey = "apres-staff-pay-overrides";
 const staffSiteOverridesStorageKey = "apres-staff-site-overrides";
 const formerStaffStorageKey = "apres-former-staff";
+const bookingAdminSetupStorageKey = "apres-booking-admin-setup";
 
 function currentPayrollPeriod() {
   return new Date().toISOString().slice(0, 7);
@@ -1018,6 +1025,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         />
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
+        {tab === "Bookings" && <BookingAdmin data={enrichedData} access={access} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && (
           <HRHierarchy
@@ -1435,6 +1443,397 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenIns
       </DashboardGrid>
     </>
   );
+}
+
+function BookingAdmin({ data, access }) {
+  const [ledger, setLedger] = useState({ invoices: [], bookings: [], fetchedAt: "" });
+  const [status, setStatus] = useState("Loading booking ledger...");
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [siteFilter, setSiteFilter] = useState("all");
+  const [selectedId, setSelectedId] = useState("");
+  const [actionPending, setActionPending] = useState("");
+  const [adminNote, setAdminNote] = useState("");
+  const [setupDraft, setSetupDraft] = useState(() => readJson(bookingAdminSetupStorageKey, {
+    school: "Willington Prep",
+    dateFrom: "2026-09-03",
+    dateTo: "2026-12-18",
+    sessionLabel: "Session 1",
+    timeWindow: "15:30-16:00",
+    price: "6.80",
+    capacity: "24",
+    eligibility: "Reception to Year 6",
+    paymentRoute: "PonchoPay card + vouchers",
+    cancellationHours: "24",
+  }));
+  const hasLiveLedger = bookingSystemConfigured();
+  const rows = normaliseBookingLedgerRows(ledger, data);
+  const visibleRows = rows.filter((row) => {
+    const haystack = [row.reference, row.parent, row.email, row.children, row.site, row.status, row.paymentStatus].join(" ").toLowerCase();
+    const matchesQuery = !query.trim() || haystack.includes(query.trim().toLowerCase());
+    const matchesStatus = statusFilter === "all" || row.statusGroup === statusFilter;
+    const matchesSite = siteFilter === "all" || row.site === siteFilter;
+    return matchesQuery && matchesStatus && matchesSite;
+  });
+  const selected = rows.find((row) => row.id === selectedId) || visibleRows[0] || rows[0] || null;
+  const sites = Array.from(new Set(rows.map((row) => row.site).filter(Boolean))).sort();
+  const pendingCount = rows.filter((row) => row.statusGroup === "pending").length;
+  const paidCount = rows.filter((row) => row.statusGroup === "paid").length;
+  const outstanding = rows.reduce((total, row) => total + Number(row.balance || 0), 0);
+  const capacityAlerts = rows.filter((row) => row.capacityNote).length;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLedger() {
+      setError("");
+      if (!hasLiveLedger) {
+        if (!cancelled) {
+          setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+          setStatus("Using local booking examples until Supabase is available.");
+        }
+        return;
+      }
+      try {
+        setStatus("Loading live Supabase booking ledger...");
+        const nextLedger = await fetchParentBookingLedger({ limit: 120 });
+        if (cancelled) return;
+        setLedger(nextLedger);
+        setStatus(`Live ledger loaded${nextLedger.fetchedAt ? ` at ${formatDateTime(nextLedger.fetchedAt)}` : ""}.`);
+      } catch (loadError) {
+        if (cancelled) return;
+        setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+        setError(loadError?.message || "Could not load live bookings.");
+        setStatus("Live ledger unavailable. Showing safe local examples.");
+      }
+    }
+    loadLedger();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasLiveLedger]);
+
+  useEffect(() => {
+    const selectedStillVisible = visibleRows.some((row) => row.id === selectedId);
+    if ((!selectedId || !selectedStillVisible) && visibleRows[0]) {
+      setSelectedId(visibleRows[0].id);
+    }
+  }, [selectedId, visibleRows]);
+
+  function refreshLedger() {
+    if (!hasLiveLedger) {
+      setStatus("Local examples refreshed.");
+      setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+      return;
+    }
+    setLedger((current) => ({ ...current, fetchedAt: "" }));
+    fetchParentBookingLedger({ limit: 120 })
+      .then((nextLedger) => {
+        setLedger(nextLedger);
+        setError("");
+        setStatus(`Live ledger refreshed at ${formatDateTime(new Date().toISOString())}.`);
+      })
+      .catch((refreshError) => {
+        setError(refreshError?.message || "Could not refresh bookings.");
+        setStatus("Refresh failed. Existing rows are still visible.");
+      });
+  }
+
+  async function runPaymentAction(action) {
+    if (!selected) return;
+    setActionPending(action);
+    const label = action === "resend_payment_link" ? "Payment link resent" : action === "resend_receipt" ? "Receipt resent" : "Finance review marked";
+    try {
+      if (hasLiveLedger && selected.invoiceId) {
+        await updateLivePaymentAdminAction({
+          invoiceId: selected.invoiceId,
+          action,
+          note: adminNote || `${label} from staff admin bookings.`,
+        });
+        const nextLedger = await fetchParentBookingLedger({ limit: 120 });
+        setLedger(nextLedger);
+      }
+      addAuditLog(label, `${selected.reference} · ${selected.parent}`);
+      setStatus(`${label} for ${selected.reference}.`);
+      setAdminNote("");
+    } catch (actionError) {
+      setError(actionError?.message || "Payment action failed.");
+      setStatus("Payment action could not be completed.");
+    } finally {
+      setActionPending("");
+    }
+  }
+
+  function saveSetupDraft() {
+    localStorage.setItem(bookingAdminSetupStorageKey, JSON.stringify(setupDraft));
+    addAuditLog("Booking setup draft saved", `${setupDraft.school} · ${setupDraft.sessionLabel} · ${formatCurrency(setupDraft.price)}`);
+    setStatus("Admin setup draft saved locally. Live table writes can be connected when the final table mapping is confirmed.");
+  }
+
+  function updateSetupField(field, value) {
+    setSetupDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function exportLedgerCsv() {
+    const header = ["Reference", "Parent", "Email", "Children", "Site", "First session", "Status", "Payment", "Total", "Balance"];
+    const lines = visibleRows.map((row) => [
+      row.reference,
+      row.parent,
+      row.email,
+      row.children,
+      row.site,
+      row.firstDate,
+      row.status,
+      row.paymentStatus,
+      row.total,
+      row.balance,
+    ].map(csvCell).join(","));
+    const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `apres-bookings-${dateInputValue(new Date())}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setStatus(`Exported ${visibleRows.length} booking rows.`);
+  }
+
+  return (
+    <div className="booking-admin">
+      <section className="booking-admin-hero">
+        <div>
+          <p className="eyebrow">Admin bookings</p>
+          <h2>Booking command centre.</h2>
+          <p>Track parent bookings, payment state, children, sessions and the commercial settings only admins should control.</p>
+        </div>
+        <div className="booking-admin-hero-actions">
+          <button className="button light" type="button" onClick={refreshLedger}>Refresh</button>
+          <button className="button light" type="button" onClick={exportLedgerCsv}>Export CSV</button>
+        </div>
+      </section>
+
+      <DashboardGrid className="booking-admin-metrics">
+        <Metric icon={<CalendarDays />} label="Bookings" value={rows.length} tone="blue" />
+        <Metric icon={<PoundSterling />} label="Outstanding" value={formatCurrency(outstanding)} tone={outstanding ? "amber" : "green"} />
+        <Metric icon={<Clock />} label="Pending payment" value={pendingCount} tone={pendingCount ? "amber" : "green"} />
+        <Metric icon={<ShieldCheck />} label="Confirmed" value={paidCount} tone="green" />
+      </DashboardGrid>
+
+      <div className="booking-admin-status">
+        <span>{status}</span>
+        {error && <strong>{error}</strong>}
+        {capacityAlerts > 0 && <Badge value={`${capacityAlerts} capacity note${capacityAlerts === 1 ? "" : "s"}`} />}
+      </div>
+
+      <section className="booking-admin-layout">
+        <div className="booking-admin-list-panel">
+          <div className="booking-admin-toolbar">
+            <label>
+              <span>Search</span>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Parent, child, school or reference" />
+            </label>
+            <label>
+              <span>Status</span>
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="all">All</option>
+                <option value="pending">Needs payment</option>
+                <option value="guaranteed">Guaranteed</option>
+                <option value="paid">Paid</option>
+                <option value="attention">Needs admin</option>
+              </select>
+            </label>
+            <label>
+              <span>School</span>
+              <select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
+                <option value="all">All schools</option>
+                {sites.map((site) => <option key={site} value={site}>{site}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="booking-admin-list">
+            {visibleRows.map((row) => (
+              <button key={row.id} type="button" className={`booking-admin-row ${selected?.id === row.id ? "active" : ""}`} onClick={() => setSelectedId(row.id)}>
+                <span>
+                  <strong>{row.reference}</strong>
+                  <small>{row.parent} · {row.children}</small>
+                </span>
+                <span>
+                  <strong>{row.site}</strong>
+                  <small>{row.firstDate || "No session date"}</small>
+                </span>
+                <span>
+                  <Badge value={row.statusLabel} />
+                  <small>{row.paymentLabel}</small>
+                </span>
+                <strong>{formatCurrency(row.total)}</strong>
+              </button>
+            ))}
+            {!visibleRows.length && <EmptyList title="No matching bookings" text="Clear the filters or refresh the live ledger." />}
+          </div>
+        </div>
+
+        <aside className="booking-admin-detail">
+          {selected ? (
+            <>
+              <div className="booking-admin-detail-head">
+                <span>
+                  <small>Selected booking</small>
+                  <strong>{selected.reference}</strong>
+                </span>
+                <Badge value={selected.statusLabel} />
+              </div>
+              <dl className="booking-admin-facts">
+                <div><dt>Parent</dt><dd>{selected.parent}<small>{selected.email}</small></dd></div>
+                <div><dt>Children</dt><dd>{selected.children}</dd></div>
+                <div><dt>School</dt><dd>{selected.site}</dd></div>
+                <div><dt>Payment</dt><dd>{selected.paymentLabel}<small>{formatCurrency(selected.balance)} outstanding</small></dd></div>
+              </dl>
+              <div className="booking-admin-session-list">
+                {selected.items.map((item) => (
+                  <article key={item.id}>
+                    <strong>{item.sessionLabel || "Session"}</strong>
+                    <span>{formatShortDate(item.startsAt)} · {sessionTimeRange(item)}</span>
+                    <small>{item.childName || selected.children} · {formatCurrency(item.lineTotal || item.unitAmount)}</small>
+                  </article>
+                ))}
+              </div>
+              <label className="booking-admin-note">
+                <span>Admin note</span>
+                <textarea value={adminNote} onChange={(event) => setAdminNote(event.target.value)} placeholder="Optional note for the audit trail" />
+              </label>
+              <div className="booking-admin-actions">
+                <button type="button" onClick={() => runPaymentAction("resend_payment_link")} disabled={actionPending || !selected.invoiceId || selected.balance <= 0}>{actionPending === "resend_payment_link" ? "Sending..." : "Resend payment link"}</button>
+                <button type="button" onClick={() => runPaymentAction("resend_receipt")} disabled={actionPending || !selected.invoiceId}>{actionPending === "resend_receipt" ? "Sending..." : "Resend receipt"}</button>
+                <button type="button" onClick={() => runPaymentAction("mark_finance_review")} disabled={actionPending || !selected.invoiceId}>{actionPending === "mark_finance_review" ? "Saving..." : "Mark finance review"}</button>
+              </div>
+            </>
+          ) : (
+            <EmptyList title="Choose a booking" text="Select a booking from the ledger to see sessions, payment and parent details." />
+          )}
+        </aside>
+      </section>
+
+      <section className="booking-admin-setup">
+        <div>
+          <p className="eyebrow">Admin only</p>
+          <h3>Session setup controls.</h3>
+          <p>Dates, prices, capacity, eligibility and payment route stay in admin. This draft records the intended settings before live table writes are connected.</p>
+        </div>
+        <div className="booking-admin-setup-grid">
+          <label><span>School</span><input value={setupDraft.school} onChange={(event) => updateSetupField("school", event.target.value)} /></label>
+          <label><span>From</span><input type="date" value={setupDraft.dateFrom} onChange={(event) => updateSetupField("dateFrom", event.target.value)} /></label>
+          <label><span>To</span><input type="date" value={setupDraft.dateTo} onChange={(event) => updateSetupField("dateTo", event.target.value)} /></label>
+          <label><span>Session</span><input value={setupDraft.sessionLabel} onChange={(event) => updateSetupField("sessionLabel", event.target.value)} /></label>
+          <label><span>Time</span><input value={setupDraft.timeWindow} onChange={(event) => updateSetupField("timeWindow", event.target.value)} /></label>
+          <label><span>Price</span><input type="number" min="0" step="0.01" value={setupDraft.price} onChange={(event) => updateSetupField("price", event.target.value)} /></label>
+          <label><span>Capacity</span><input type="number" min="0" step="1" value={setupDraft.capacity} onChange={(event) => updateSetupField("capacity", event.target.value)} /></label>
+          <label><span>Cancellation window</span><input type="number" min="0" step="1" value={setupDraft.cancellationHours} onChange={(event) => updateSetupField("cancellationHours", event.target.value)} /></label>
+          <label className="wide"><span>Eligibility</span><input value={setupDraft.eligibility} onChange={(event) => updateSetupField("eligibility", event.target.value)} /></label>
+          <label className="wide"><span>Payment route</span><input value={setupDraft.paymentRoute} onChange={(event) => updateSetupField("paymentRoute", event.target.value)} /></label>
+        </div>
+        <button className="button book" type="button" onClick={saveSetupDraft}>Save setup draft</button>
+      </section>
+    </div>
+  );
+}
+
+function normaliseBookingLedgerRows(ledger, data) {
+  const invoices = new Map((ledger.invoices || []).map((invoice) => [invoice.id, invoice]));
+  const liveRows = (ledger.bookings || []).map((booking) => {
+    const invoice = invoices.get(booking.invoiceId) || Array.from(invoices.values()).find((item) => item.bookingId === booking.id) || {};
+    const items = booking.items?.length ? booking.items : invoice.metadata?.items || [];
+    const firstItem = items[0] || {};
+    const paymentStatus = invoice.paymentStatus || booking.status || "pending_payment";
+    const balance = Number(invoice.balance ?? booking.outstandingBalance ?? 0);
+    const statusGroup = bookingStatusGroup(paymentStatus, invoice.financeStatus, balance);
+    return {
+      id: booking.id || invoice.id,
+      invoiceId: invoice.id || booking.invoiceId || "",
+      reference: booking.bookingReference || invoice.providerReference || invoice.id || "Booking",
+      parent: booking.parentName || invoice.metadata?.parentName || booking.parentEmail || invoice.parentEmail || "Parent",
+      email: booking.parentEmail || invoice.parentEmail || "",
+      children: childNamesFromItems(items),
+      site: firstItem.siteName || booking.metadata?.siteName || invoice.metadata?.siteName || "School not recorded",
+      firstDate: firstItem.startsAt ? formatShortDate(firstItem.startsAt) : "",
+      status: booking.status || paymentStatus,
+      paymentStatus,
+      statusGroup,
+      statusLabel: bookingStatusLabel(paymentStatus, invoice.financeStatus, balance),
+      paymentLabel: paymentRouteLabel(booking, invoice),
+      total: Number(invoice.totalAmount ?? booking.totalAmount ?? 0),
+      balance,
+      capacityNote: booking.metadata?.capacityNote || "",
+      items: items.length ? items : [{ id: `${booking.id || invoice.id}-summary`, childName: childNamesFromItems(items), sessionLabel: "Booking summary", startsAt: booking.createdAt, lineTotal: Number(invoice.totalAmount ?? booking.totalAmount ?? 0) }],
+    };
+  });
+  return liveRows.length ? liveRows : demoBookingAdminRows(data);
+}
+
+function demoBookingAdminRows(data) {
+  const fallbackSchool = data?.schools?.[0]?.name || "Willington Prep";
+  return [
+    demoBookingRow("demo-paid", "APR-WIL-1001", "Lindsay Lindsay", "lindsay@example.com", "Dolly Ewing", fallbackSchool, "2026-09-03T15:30:00", "Session 1", 6.8, 0, "Paid", "paid"),
+    demoBookingRow("demo-voucher", "APR-RIP-1002", "Sam Patel", "sam@example.com", "Arlo Patel", "Ripley Court", "2026-09-04T16:00:00", "Session 2", 11.3, 0, "Voucher guaranteed", "guaranteed"),
+    demoBookingRow("demo-pending", "APR-SHS-1003", "Emma Brown", "emma@example.com", "Noah Brown", "Shrewsbury House School", "2026-09-07T15:30:00", "Session 1", 6.8, 6.8, "Payment pending", "pending"),
+  ];
+}
+
+function demoBookingRow(id, reference, parent, email, child, site, startsAt, sessionLabel, total, balance, statusLabel, statusGroup) {
+  return {
+    id,
+    invoiceId: "",
+    reference,
+    parent,
+    email,
+    children: child,
+    site,
+    firstDate: formatShortDate(startsAt),
+    status: statusLabel,
+    paymentStatus: statusLabel,
+    statusGroup,
+    statusLabel,
+    paymentLabel: balance > 0 ? "PonchoPay link sent" : statusGroup === "guaranteed" ? "PonchoPay voucher guarantee" : "Card paid",
+    total,
+    balance,
+    capacityNote: "",
+    items: [{ id: `${id}-item`, childName: child, siteName: site, sessionLabel, startsAt, endsAt: new Date(new Date(startsAt).getTime() + 30 * 60000).toISOString(), unitAmount: total, lineTotal: total }],
+  };
+}
+
+function bookingStatusGroup(paymentStatus, financeStatus, balance) {
+  const combined = `${paymentStatus || ""} ${financeStatus || ""}`.toLowerCase();
+  if (combined.includes("review") || combined.includes("failed") || combined.includes("cancel")) return "attention";
+  if (combined.includes("guarantee") || combined.includes("voucher") || combined.includes("reconciliation")) return "guaranteed";
+  if (combined.includes("paid") || combined.includes("captured") || combined.includes("complete") || balance <= 0) return "paid";
+  return "pending";
+}
+
+function bookingStatusLabel(paymentStatus, financeStatus, balance) {
+  const group = bookingStatusGroup(paymentStatus, financeStatus, balance);
+  if (group === "attention") return "Needs admin";
+  if (group === "guaranteed") return "Guaranteed";
+  if (group === "paid") return "Paid";
+  return "Needs payment";
+}
+
+function paymentRouteLabel(booking, invoice) {
+  const route = booking.paymentRoute || invoice.checkoutSessions?.[0]?.paymentMethod || booking.paymentMethod || invoice.financeStatus || "PonchoPay";
+  return String(route || "PonchoPay").replace(/_/g, " ");
+}
+
+function childNamesFromItems(items = []) {
+  const names = Array.from(new Set(items.map((item) => item.childName).filter(Boolean)));
+  return names.join(", ") || "Child not recorded";
+}
+
+function sessionTimeRange(item) {
+  if (!item.startsAt && !item.endsAt) return "Time not recorded";
+  const formatTime = (value) => value ? new Date(value).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
+  return [formatTime(item.startsAt), formatTime(item.endsAt)].filter(Boolean).join("-");
+}
+
+function csvCell(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
 
 function UserManagement({ data }) {
@@ -10795,6 +11194,7 @@ function iconFor(item) {
     Sessions: <Clock />,
     Rota: <CalendarDays />,
     Hours: <Clock />,
+    Bookings: <BookOpen />,
     Incidents: <Bell />,
     CRM: <Mail />,
     Users: <Users />,
