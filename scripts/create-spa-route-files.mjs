@@ -18,6 +18,12 @@ const routes = [
   "contact",
   "staff-application",
   "staff-login",
+  "booking/success",
+  "booking/cancel",
+  "booking/cancelled",
+  "booking/payment",
+  "booking/return",
+  "ponchopay/return",
 ];
 const routeMeta = {
   "": {
@@ -73,6 +79,42 @@ const routeMeta = {
     keywords: "Après School booking lab",
     robots: "noindex,nofollow",
   },
+  "booking/success": {
+    title: "Payment Return | Après School Bookings",
+    description: "Secure payment return for the Après School beta booking system.",
+    keywords: "Après School booking payment return",
+    robots: "noindex,nofollow",
+  },
+  "booking/cancel": {
+    title: "Payment Return | Après School Bookings",
+    description: "Secure payment return for the Après School beta booking system.",
+    keywords: "Après School booking payment return",
+    robots: "noindex,nofollow",
+  },
+  "booking/cancelled": {
+    title: "Payment Return | Après School Bookings",
+    description: "Secure payment return for the Après School beta booking system.",
+    keywords: "Après School booking payment return",
+    robots: "noindex,nofollow",
+  },
+  "booking/payment": {
+    title: "Payment Return | Après School Bookings",
+    description: "Secure payment return for the Après School beta booking system.",
+    keywords: "Après School booking payment return",
+    robots: "noindex,nofollow",
+  },
+  "booking/return": {
+    title: "Payment Return | Après School Bookings",
+    description: "Secure payment return for the Après School beta booking system.",
+    keywords: "Après School booking payment return",
+    robots: "noindex,nofollow",
+  },
+  "ponchopay/return": {
+    title: "Payment Return | Après School Bookings",
+    description: "Secure payment return for the Après School beta booking system.",
+    keywords: "Après School booking payment return",
+    robots: "noindex,nofollow",
+  },
 };
 
 function escapeAttribute(value) {
@@ -102,7 +144,9 @@ await writeFile(indexPath, htmlForRoute("", indexHtml));
 
 for (const route of routes) {
   const routeHtml = htmlForRoute(route, indexHtml);
-  await writeFile(path.join(distDir, `${route}.html`), routeHtml);
+  const routeFile = path.join(distDir, `${route}.html`);
+  await mkdir(path.dirname(routeFile), { recursive: true });
+  await writeFile(routeFile, routeHtml);
   const routeDir = path.join(distDir, route);
   await mkdir(routeDir, { recursive: true });
   await writeFile(path.join(routeDir, "index.html"), routeHtml);
