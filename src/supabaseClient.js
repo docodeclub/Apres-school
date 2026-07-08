@@ -36,6 +36,19 @@ export async function updateStaffPassword(password) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.auth.updateUser({ password });
   if (error) throw error;
+
+  const userId = data?.user?.id || (await supabase.auth.getUser()).data?.user?.id;
+  if (userId) {
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        must_change_password: false,
+        password_changed_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
+    if (profileError) throw profileError;
+  }
+
   return data;
 }
 
