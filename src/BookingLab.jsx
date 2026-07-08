@@ -3960,6 +3960,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   useEffect(() => {
     if (!isLaunchMode || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const getReturnParam = (...keys) => {
+      for (const key of keys) {
+        const value = params.get(key) || hashParams.get(key);
+        if (value) return value;
+      }
+      return "";
+    };
     const returnPath = window.location.pathname;
     const pathPaymentState = returnPath.includes("/booking/success")
       ? "complete"
@@ -3968,14 +3976,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         : returnPath.includes("/booking/") || returnPath.includes("/ponchopay/return")
           ? "pending"
           : "";
-    const providerReturnId = params.get("id")
-      || params.get("payment_id")
-      || params.get("paymentId")
-      || params.get("ponchoPaymentId")
-      || "";
-    const reference = params.get("reference") || params.get("bookingReference") || params.get("booking_reference") || "";
-    const paymentState = params.get("payment") || pathPaymentState || (providerReturnId || reference ? "pending" : "");
-    const invoiceId = params.get("invoice") || params.get("invoiceId") || params.get("externalInvoiceId") || "";
+    const providerReturnId = getReturnParam("id", "payment_id", "paymentId", "ponchoPaymentId");
+    const reference = getReturnParam("reference", "bookingReference", "booking_reference");
+    const paymentState = getReturnParam("payment", "status", "state") || pathPaymentState || (providerReturnId || reference ? "pending" : "");
+    const invoiceId = getReturnParam("invoice", "invoiceId", "externalInvoiceId");
     const handledKey = `${paymentState}:${invoiceId || reference || providerReturnId}`;
     if (!paymentState || paymentReturnNotice?.handledKey === handledKey) return;
 

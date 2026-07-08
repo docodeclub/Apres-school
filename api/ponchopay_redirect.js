@@ -38,7 +38,8 @@ export default function handler(request, response) {
   params.set("payment", state);
 
   const destination = state === "cancelled" || state === "failed" ? "/booking/cancel" : "/booking/success";
-  const location = `${destination}?${params.toString()}`;
+  const encodedParams = params.toString();
+  const location = `${destination}?${encodedParams}#${encodedParams}`;
   response.setHeader("Cache-Control", "no-store");
   response.redirect(302, location);
 }
