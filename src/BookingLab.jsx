@@ -17769,7 +17769,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <p>{resolvedPaymentReturnNotice.detail}</p>
                 </div>
                 <div>
-                  <span>{resolvedPaymentReturnNotice.invoiceId ? "Booking reference received" : "Secure return received"}</span>
+                  <span>{resolvedPaymentReturnNotice.invoiceId || resolvedPaymentReturnNotice.reference || "Secure return received"}</span>
                   <strong>{resolvedPaymentReturnNotice.action}</strong>
                   <small>Sign in or create your parent account to view the booking and invoice status.</small>
                 </div>
@@ -18302,7 +18302,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <p>{resolvedPaymentReturnNotice.detail}</p>
                 </div>
                 <div>
-                  <span>{resolvedPaymentReturnNotice.invoiceId || "Latest invoice"}</span>
+                  <span>{resolvedPaymentReturnNotice.invoiceId || resolvedPaymentReturnNotice.reference || "Latest invoice"}</span>
                   <strong>{resolvedPaymentReturnNotice.action}</strong>
                   <small>{resolvedPaymentReturnNotice.source}{resolvedPaymentReturnNotice.liveStatus ? ` · ${resolvedPaymentReturnNotice.liveStatus}` : resolvedPaymentReturnNotice.bookingId ? " · matched to this booking" : " · open the invoice below"}</small>
                   <div className="lab-payment-return-actions">
