@@ -221,21 +221,87 @@ function hasLaunchPaymentReturnParams() {
   ].some((key) => params.has(key));
 }
 
+function isBookingPaymentReturnPath(pathname = window.location.pathname) {
+  return [
+    "/booking/success",
+    "/booking/cancel",
+    "/booking/cancelled",
+    "/booking/payment",
+    "/booking/return",
+    "/ponchopay/return",
+    "/api/ponchopay_redirect",
+  ].includes(pathname);
+}
+
+function getLaunchPaymentReturnDetails() {
+  if (typeof window === "undefined") {
+    return {
+      state: "pending",
+      reference: "",
+      title: "Checking your payment.",
+      detail: "We are matching the secure payment update to your booking.",
+    };
+  }
+  const params = new URLSearchParams(window.location.search);
+  const pathname = window.location.pathname;
+  const rawState = (params.get("payment") || params.get("status") || params.get("state") || "").toLowerCase();
+  const state = pathname.includes("cancel") || rawState === "cancelled" || rawState === "canceled"
+    ? "cancelled"
+    : rawState === "complete" || rawState === "completed" || rawState === "captured" || pathname.includes("success")
+      ? "complete"
+      : "pending";
+  const reference = params.get("reference")
+    || params.get("bookingReference")
+    || params.get("booking_reference")
+    || params.get("invoice")
+    || params.get("invoiceId")
+    || "";
+
+  if (state === "complete") {
+    return {
+      state,
+      reference,
+      title: "Payment received.",
+      detail: "Thanks. We are opening your booking portal and matching PonchoPay's callback to your invoice.",
+    };
+  }
+  if (state === "cancelled") {
+    return {
+      state,
+      reference,
+      title: "Payment was not completed.",
+      detail: "No confirmed booking is created from this return alone. You can sign in, review the booking and try again if needed.",
+    };
+  }
+  return {
+    state,
+    reference,
+    title: "Checking your payment.",
+    detail: "Thanks for completing the secure payment step. We are matching the PonchoPay update to your booking.",
+  };
+}
+
 function LaunchBookingLoading() {
   if (!hasLaunchPaymentReturnParams()) {
     return <div className="platform-loading">Loading booking...</div>;
   }
+  const returnDetails = getLaunchPaymentReturnDetails();
 
   return (
-    <section className="launch-return-loading" aria-live="polite">
+    <section className={`launch-return-loading state-${returnDetails.state}`} aria-live="polite">
       <div>
         <img src="/assets/apres-school-text.png" alt="Après School" />
         <p className="eyebrow">PonchoPay return</p>
-        <h1>Checking your payment.</h1>
-        <p>
-          Thanks for completing the secure payment step. We are opening your booking portal and matching the
-          PonchoPay update to your booking.
-        </p>
+        <h1>{returnDetails.title}</h1>
+        <p>{returnDetails.detail}</p>
+        {returnDetails.reference && (
+          <dl className="launch-return-loading__reference">
+            <div>
+              <dt>Reference</dt>
+              <dd>{returnDetails.reference}</dd>
+            </div>
+          </dl>
+        )}
         <div className="launch-return-loading__actions">
           <a className="button book" href="/launch-booking">Open booking portal</a>
           <a className="button light" href="/contact">Contact us</a>
@@ -680,6 +746,7 @@ const bookingRoutes = [
 ];
 
 function getInitialPage() {
+  if (isBookingPaymentReturnPath(window.location.pathname)) return "Launch Booking";
   return pathPages[window.location.pathname] || "Home";
 }
 
@@ -727,12 +794,13 @@ export default function App() {
     if (twitterDescription) twitterDescription.setAttribute("content", meta[1]);
     if (keywords) keywords.setAttribute("content", pageKeywords[page] || pageKeywords.Home);
     robots.setAttribute("content", privatePrototypePages.has(page) ? "noindex, nofollow" : "index, follow");
+    const keepPaymentReturnPath = page === "Launch Booking" && isBookingPaymentReturnPath(window.location.pathname);
     const nextPath = pagePaths[page] || "/";
     const canonicalUrl = `https://www.apres-school.co.uk${nextPath}`;
     if (canonical) canonical.setAttribute("href", canonicalUrl);
     if (ogUrl) ogUrl.setAttribute("content", canonicalUrl);
-    if (window.location.pathname !== nextPath) window.history.pushState({ page }, "", nextPath);
-    window.scrollTo({ top: 0, behavior: "auto" });
+    if (!keepPaymentReturnPath && window.location.pathname !== nextPath) window.history.pushState({ page }, "", nextPath);
+    if (!keepPaymentReturnPath) window.scrollTo({ top: 0, behavior: "auto" });
   }, [page, platform, passwordRecovery]);
 
   useEffect(() => {
@@ -1028,7 +1096,7 @@ function Header({ page, setPage, platform, setPlatform, platformUnlocked, menu, 
 function PublicSite({ page, setPage, setPlatform }) {
   const isLaunchBooking = page === "Launch Booking";
   const isPrivatePrototype = privatePrototypePages.has(page);
-  const previewAllowed = hasBookingPreviewAccess();
+  const previewAllowed = hasBookingPreviewAccess() || (isLaunchBooking && isBookingPaymentReturnPath(window.location.pathname));
   return (
     <main id="main-content">
       {isPrivatePrototype && !previewAllowed && <BookingPreviewGate setPage={setPage} />}

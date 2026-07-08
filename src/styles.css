@@ -102,11 +102,77 @@
   line-height: 1.6;
 }
 
+.launch-return-loading__reference {
+  margin: 22px 0 0;
+  padding: 0;
+}
+
+.launch-return-loading__reference div {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(74, 104, 218, 0.15);
+  border-radius: 16px;
+  background: rgba(244, 247, 255, 0.9);
+  padding: 14px 16px;
+}
+
+.launch-return-loading__reference dt {
+  color: #68708a;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.launch-return-loading__reference dd {
+  margin: 0;
+  color: var(--royal-dark);
+  font-size: clamp(0.92rem, 2.8vw, 1.05rem);
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
 .launch-return-loading__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 26px;
+}
+
+.launch-return-loading.state-complete > div {
+  border-color: rgba(50, 133, 83, 0.22);
+  box-shadow: 0 24px 70px rgba(50, 133, 83, 0.12);
+}
+
+.launch-return-loading.state-cancelled > div,
+.launch-return-loading.state-failed > div {
+  border-color: rgba(184, 82, 69, 0.18);
+}
+
+@media (max-width: 560px) {
+  .launch-return-loading {
+    min-height: calc(100svh - 72px);
+    align-items: start;
+    padding: 24px 12px 40px;
+  }
+
+  .launch-return-loading > div {
+    border-radius: 18px;
+    padding: 22px 18px;
+  }
+
+  .launch-return-loading img {
+    width: 124px;
+  }
+
+  .launch-return-loading__actions {
+    flex-direction: column;
+  }
+
+  .launch-return-loading__actions .button {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 * {
@@ -12191,7 +12257,8 @@ th {
     backdrop-filter: blur(14px);
   }
 
-  body:has(.booking-launch-page.launch-gated) .mobile-cta {
+  body:has(.booking-launch-page.launch-gated) .mobile-cta,
+  body:has(.booking-lab-page) .mobile-cta {
     display: none;
   }
 
@@ -15557,6 +15624,22 @@ th {
   margin: 12px auto 28px;
 }
 
+.lab-view-parent .booking-lab-flow.parent-account-open {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.lab-view-parent .booking-lab-flow.parent-account-open .lab-search-panel {
+  display: none;
+}
+
+.lab-view-parent .booking-lab-flow.parent-account-open .lab-booking-panel {
+  display: contents;
+}
+
+.lab-view-parent .booking-lab-flow.parent-account-open .lab-parent-portal {
+  grid-column: 1 / -1;
+}
+
 .lab-view-parent .lab-booking-journey-shell {
   padding: 12px;
 }
@@ -16345,6 +16428,10 @@ th {
   scroll-margin-top: 210px;
 }
 
+.lab-view-parent .lab-parent-portal {
+  order: -20;
+}
+
 .lab-parent-history {
   order: 13;
 }
@@ -16374,6 +16461,14 @@ th {
   padding: 14px;
 }
 
+.lab-parent-portal {
+  display: grid;
+  gap: 12px;
+  background:
+    linear-gradient(180deg, rgba(248, 251, 255, 0.96), #fff 42%),
+    #fff;
+}
+
 .lab-parent-portal-head,
 .lab-selected-head,
 .lab-checkout-header {
@@ -16381,6 +16476,44 @@ th {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
+}
+
+.lab-parent-portal-head {
+  border: 1px solid rgba(49, 75, 184, 0.13);
+  border-radius: 16px;
+  background: #fff;
+  padding: 13px;
+}
+
+.lab-parent-portal-title {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.lab-parent-portal-title h2 {
+  font-size: clamp(1.55rem, 2.1vw, 2.2rem);
+}
+
+.lab-parent-portal-title p:not(.eyebrow) {
+  max-width: 56ch;
+}
+
+.lab-parent-portal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.lab-parent-portal-meta span {
+  width: fit-content;
+  border: 1px solid rgba(49, 75, 184, 0.12);
+  border-radius: 999px;
+  background: #f8fbff;
+  color: var(--royal-dark);
+  padding: 6px 9px;
+  font-size: 0.76rem;
+  font-weight: 950;
 }
 
 .lab-parent-portal-actions {
@@ -16408,7 +16541,6 @@ th {
 .lab-parent-account-admin {
   display: grid;
   gap: 12px;
-  margin-top: 10px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: #f8fbff;
@@ -16416,7 +16548,7 @@ th {
 }
 
 .lab-parent-login-panel {
-  grid-template-columns: minmax(220px, 1.3fr) repeat(2, minmax(160px, 0.75fr)) auto;
+  grid-template-columns: minmax(260px, 1.35fr) repeat(2, minmax(160px, 0.7fr)) auto;
   align-items: end;
 }
 
@@ -16431,6 +16563,46 @@ th {
 .lab-parent-account-admin p {
   margin: 0;
   color: var(--muted);
+}
+
+.lab-parent-login-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.lab-parent-login-preview article {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid rgba(49, 75, 184, 0.11);
+  border-radius: 12px;
+  background: #fff;
+  padding: 9px;
+}
+
+.lab-parent-login-preview span,
+.lab-parent-login-preview small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.lab-parent-login-preview strong {
+  color: var(--royal-dark);
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+
+.lab-parent-session-manager {
+  background: #fff;
+}
+
+.lab-parent-session-manager,
+.lab-parent-invoice-centre {
+  box-shadow: 0 12px 26px rgba(49, 75, 184, 0.06);
 }
 
 .lab-parent-account-admin {
@@ -16647,6 +16819,10 @@ th {
   gap: 8px;
 }
 
+.lab-parent-portal-cards {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .lab-parent-portal-cards article,
 .lab-parent-wallet article,
 .lab-total-card,
@@ -16657,6 +16833,11 @@ th {
   border-radius: 14px;
   background: #f8fbff;
   padding: 11px;
+}
+
+.lab-parent-portal-cards article {
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(49, 75, 184, 0.02);
 }
 
 .lab-live-ledger-strip {
@@ -16748,6 +16929,7 @@ th {
 .lab-payment-return-notice > div:last-child {
   display: grid;
   gap: 3px;
+  min-width: 0;
   border: 1px solid rgba(49, 75, 184, 0.12);
   border-radius: 14px;
   background: #fff;
@@ -16777,6 +16959,29 @@ th {
 .lab-payment-return-notice.state-cancelled strong,
 .lab-payment-return-notice.state-failed strong {
   color: #8a3a12;
+}
+
+@media (max-width: 760px) {
+  .lab-payment-return-notice {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    padding: 12px;
+  }
+
+  .lab-payment-return-notice h3 {
+    font-size: clamp(1.16rem, 5.6vw, 1.5rem);
+    line-height: 1.08;
+  }
+
+  .lab-payment-return-notice p:not(.eyebrow),
+  .lab-payment-return-notice small {
+    font-size: 0.88rem;
+    line-height: 1.42;
+  }
+
+  .lab-payment-return-notice > div:last-child {
+    padding: 10px;
+  }
 }
 
 .lab-parent-invoice-head {
@@ -31057,7 +31262,7 @@ th {
 
   .booking-launch-page .lab-child-chips button {
     min-height: 48px;
-    padding: 8px 9px;
+    padding: 8px 76px 8px 9px;
   }
 
   .booking-launch-page .lab-child-chips button strong {
@@ -31877,18 +32082,19 @@ th {
   min-height: 58px;
   border-color: rgba(37, 48, 79, 0.1);
   background: #fbfcff;
+  padding-right: 82px;
 }
 
 .booking-launch-page.launch-step-checkout .lab-child-chips button.active {
   border-color: rgba(47, 125, 75, 0.38);
-  background: #f1fbf6;
-  color: #163d26;
+  background: #f1fbf6 !important;
+  color: #163d26 !important;
   box-shadow: inset 4px 0 0 #2f7d4b;
 }
 
 .booking-launch-page.launch-step-checkout .lab-child-chips button.active strong,
 .booking-launch-page.launch-step-checkout .lab-child-chips button.active small {
-  color: #163d26;
+  color: #163d26 !important;
   opacity: 1;
 }
 
@@ -32023,6 +32229,7 @@ th {
 
   .lab-view-parent .lab-parent-portal-head,
   .lab-view-parent .lab-parent-login-panel,
+  .lab-view-parent .lab-parent-login-preview,
   .lab-view-parent .lab-parent-session-head,
   .lab-view-parent .lab-parent-account-admin-grid,
   .lab-view-parent .lab-parent-booking-detail,

@@ -6915,6 +6915,17 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setStatus(isLaunchMode ? "Sign in with the parent email and password, or create a new account first." : "Use the parent email and password to manage bookings.");
   }
 
+  function openDemoParentAccount() {
+    if (isLaunchMode || parentAccountLoading) return;
+    setParentLogin({ username: parentDemoUsername, password: parentDemoPassword });
+    setParentAccountSignedIn(true);
+    setParentAccountMode("demo");
+    localStorage.setItem("apres-parent-account-signed-in", "true");
+    localStorage.setItem("apres-parent-account-mode", JSON.stringify("demo"));
+    setStatus("Parent account signed in. Bookings, invoices and credit are now visible.");
+    window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 80);
+  }
+
   async function signOutParentAccount() {
     if (parentAccountLoading) return;
     setParentAccountLoading(true);
@@ -17668,7 +17679,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
 
       {labView === "Readiness" && <ReadinessLab onExport={exportReadinessPlan} />}
 
-      {labView === "Parent" && <section className={`booking-lab-flow parent-flow-simple ${parentCheckoutOpen ? "parent-checkout-open" : ""}`} id="booking-lab-flow">
+      {labView === "Parent" && <section className={`booking-lab-flow parent-flow-simple ${parentCheckoutOpen ? "parent-checkout-open" : ""} ${!isLaunchMode && parentAccountSignedIn ? "parent-account-open" : ""}`} id="booking-lab-flow">
         {(!isLaunchMode || launchGateReady) && <div className="lab-booking-journey-shell">
           <div className="lab-booking-journey-head">
             <div>
@@ -18110,10 +18121,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         <div className="lab-booking-panel">
           {(!isLaunchMode || launchParentPortalOpen) && <section className="lab-parent-portal">
             <div className="lab-parent-portal-head">
-              <div>
-                <p className="eyebrow">Parent portal</p>
+              <div className="lab-parent-portal-title">
+                <p className="eyebrow">Family account</p>
                 <h2>{launchFamilyName}</h2>
-                <p>{launchFamilyContact}</p>
+                <p>{parentAccountSignedIn ? "Track booked days, invoices, receipts and account credit in one place." : "Sign in to view bookings, invoices, receipts and account credit."}</p>
+                <div className="lab-parent-portal-meta">
+                  <span>{launchFamilyContact}</span>
+                  <span>{parentAccountSignedIn ? "Secure portal active" : "Sign in required"}</span>
+                </div>
               </div>
               <div className="lab-parent-portal-actions">
                 {parentAccountSignedIn && <span className="lab-parent-auth-state">{parentAccountMode === "live" ? "Live account" : "Demo account"}</span>}
@@ -18125,15 +18140,32 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 {parentAccountSignedIn ? (
                   <button className="button light" type="button" onClick={signOutParentAccount} disabled={parentAccountLoading}>{parentAccountLoading ? "Signing out..." : "Sign out"}</button>
                 ) : null}
-                <button className="button light" type="button" onClick={() => setLabView("Family")}>Edit Family Records</button>
+                <button className="button light" type="button" onClick={() => setLabView("Family")}>Family details</button>
               </div>
             </div>
             {!parentAccountSignedIn && (
               <form className="lab-parent-login-panel" onSubmit={signInParentAccount}>
                 <div>
-                  <p className="eyebrow">Parent account</p>
-                  <h3>{realBookingServiceReady ? "Sign in to manage bookings" : "Demo sign in"}</h3>
-                  <p>{realBookingServiceReady ? "Use the parent's Supabase account to view live bookings, cancel future sessions and use account credit." : "Parents need their own username and password before they can view bookings, cancel future sessions or use account credit."}</p>
+                  <p className="eyebrow">Secure sign in</p>
+                  <h3>{realBookingServiceReady ? "Manage your family account" : "Preview the parent account"}</h3>
+                  <p>{realBookingServiceReady ? "Use the parent's account to view live bookings, cancel future sessions and use account credit." : "Parents use their own username and password before they can view bookings, cancel future sessions or use account credit."}</p>
+                  <div className="lab-parent-login-preview" aria-label="Parent account preview">
+                    <article>
+                      <span>Bookings</span>
+                      <strong>Booked days</strong>
+                      <small>Dates, sessions and cancellation options.</small>
+                    </article>
+                    <article>
+                      <span>Invoices</span>
+                      <strong>Payments</strong>
+                      <small>Paid, unpaid, card, voucher and TFC status.</small>
+                    </article>
+                    <article>
+                      <span>Credit</span>
+                      <strong>Balance</strong>
+                      <small>Credit from cancelled future sessions.</small>
+                    </article>
+                  </div>
                 </div>
                 <label>
                   Username or email
@@ -18145,7 +18177,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 </label>
 	                <div>
 	                  <button type="submit" disabled={parentAccountLoading}>{parentAccountLoading ? "Signing in..." : "Sign in"}</button>
-	                  {!isLaunchMode && <button type="button" disabled={parentAccountLoading} onClick={() => setParentLogin({ username: parentDemoUsername, password: parentDemoPassword })}>Use demo login</button>}
+	                  {!isLaunchMode && <button type="button" disabled={parentAccountLoading} onClick={openDemoParentAccount}>Preview account</button>}
 	                </div>
               </form>
             )}
@@ -18186,7 +18218,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             <section className="lab-parent-session-manager">
               <div className="lab-parent-session-head">
                 <div>
-                  <p className="eyebrow">My booked days</p>
+                  <p className="eyebrow">Bookings</p>
                   <h3>{selectedParentBooking ? selectedParentBooking.activity : "No bookings yet"}</h3>
                   <p>{selectedParentBooking ? `${selectedParentBooking.site} · ${selectedParentBookingRows.length} booked day${selectedParentBookingRows.length === 1 ? "" : "s"} visible` : "Future bookings will appear here once payment has been completed."}</p>
                 </div>
