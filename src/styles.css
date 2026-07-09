@@ -5264,6 +5264,117 @@ label {
   font-weight: 850;
 }
 
+.booking-finance-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(72, 103, 216, 0.18);
+  border-radius: 18px;
+  background: #fff;
+  padding: 14px;
+}
+
+.booking-finance-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.booking-finance-head span {
+  display: grid;
+  gap: 3px;
+}
+
+.booking-finance-head small,
+.booking-finance-card small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.booking-finance-head strong,
+.booking-finance-trail > strong {
+  color: var(--royal-dark);
+  line-height: 1.15;
+}
+
+.booking-finance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.booking-finance-card {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f8faff;
+  padding: 11px;
+}
+
+.booking-finance-card.good {
+  border-color: rgba(45, 132, 81, 0.24);
+  background: #f0fbf4;
+}
+
+.booking-finance-card.warn {
+  border-color: rgba(247, 170, 70, 0.35);
+  background: #fff9ed;
+}
+
+.booking-finance-card strong {
+  color: var(--royal-dark);
+  font-size: 0.98rem;
+  line-height: 1.1;
+}
+
+.booking-finance-card span,
+.booking-finance-event small,
+.booking-finance-event time,
+.booking-finance-trail p {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 850;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.booking-finance-trail {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.booking-finance-event {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px;
+}
+
+.booking-finance-event span {
+  color: var(--ink);
+  font-weight: 950;
+}
+
+.booking-finance-event small {
+  grid-column: 1 / -1;
+}
+
+.booking-finance-event time {
+  color: var(--royal);
+  white-space: nowrap;
+}
+
 .booking-admin-note textarea {
   min-height: 92px;
   resize: vertical;
@@ -11835,6 +11946,7 @@ th {
 
   .booking-admin-toolbar,
   .booking-admin-row,
+  .booking-finance-grid,
   .booking-admin-setup-grid,
   .booking-admin-setup-grid.compact {
     grid-template-columns: 1fr;

@@ -1754,6 +1754,8 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
   const paidCount = rows.filter((row) => row.statusGroup === "paid").length;
   const outstanding = rows.reduce((total, row) => total + Number(row.balance || 0), 0);
   const capacityAlerts = rows.filter((row) => row.capacityNote).length;
+  const selectedFinanceFacts = selected ? buildBookingFinanceFacts(selected) : [];
+  const selectedTimeline = selected ? buildBookingTimelineItems(selected) : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -2025,6 +2027,36 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
                   </article>
                 ))}
               </div>
+              <section className="booking-finance-panel">
+                <div className="booking-finance-head">
+                  <span>
+                    <small>Finance detail</small>
+                    <strong>Invoice, PonchoPay and reconciliation</strong>
+                  </span>
+                  <Badge value={selected.financeStatusLabel} />
+                </div>
+                <div className="booking-finance-grid">
+                  {selectedFinanceFacts.map((fact) => (
+                    <article key={fact.label} className={`booking-finance-card ${fact.tone || ""}`}>
+                      <small>{fact.label}</small>
+                      <strong>{fact.value}</strong>
+                      {fact.detail && <span>{fact.detail}</span>}
+                    </article>
+                  ))}
+                </div>
+                <div className="booking-finance-trail">
+                  <strong>Payment and email trail</strong>
+                  {selectedTimeline.length ? selectedTimeline.map((event) => (
+                    <article key={event.id} className="booking-finance-event">
+                      <span>{event.label}</span>
+                      <small>{event.detail}</small>
+                      <time>{event.when}</time>
+                    </article>
+                  )) : (
+                    <p>No payment events, receipts or admin actions have been recorded yet.</p>
+                  )}
+                </div>
+              </section>
               <label className="booking-admin-note">
                 <span>Admin note</span>
                 <textarea value={adminNote} onChange={(event) => setAdminNote(event.target.value)} placeholder="Optional note for the audit trail" />
@@ -2130,7 +2162,23 @@ function normaliseBookingLedgerRows(ledger, data) {
       statusLabel: bookingStatusLabel(paymentStatus, invoice.financeStatus, balance),
       paymentLabel: paymentRouteLabel(booking, invoice),
       total: Number(invoice.totalAmount ?? booking.totalAmount ?? 0),
+      paidAmount: Number(invoice.paidAmount ?? 0),
+      refundedAmount: Number(invoice.refundedAmount ?? 0),
       balance,
+      currency: invoice.currency || "GBP",
+      providerPaymentId: invoice.providerPaymentId || invoice.checkoutSessions?.[0]?.providerPaymentId || "",
+      providerReference: invoice.providerReference || invoice.checkoutSessions?.[0]?.providerReference || "",
+      parentPortalStatus: invoice.parentPortalStatus || "",
+      receiptStatus: invoice.receiptStatus || "",
+      financeStatus: invoice.financeStatus || "",
+      lastProviderEventId: invoice.lastProviderEventId || "",
+      createdAt: booking.createdAt || invoice.createdAt || "",
+      updatedAt: booking.updatedAt || invoice.updatedAt || "",
+      metadata: { ...(invoice.metadata || {}), ...(booking.metadata || {}) },
+      receipts: invoice.receipts || [],
+      adminActions: invoice.adminActions || [],
+      checkoutSessions: invoice.checkoutSessions || [],
+      financeStatusLabel: financeStatusLabel(invoice, booking, balance),
       capacityNote: booking.metadata?.capacityNote || "",
       items: items.length ? items : [{ id: `${booking.id || invoice.id}-summary`, childName: childNamesFromItems(items), sessionLabel: "Booking summary", startsAt: booking.createdAt, lineTotal: Number(invoice.totalAmount ?? booking.totalAmount ?? 0) }],
     };
@@ -2164,7 +2212,23 @@ function demoBookingRow(id, reference, parent, email, child, site, startsAt, ses
     statusLabel,
     paymentLabel: balance > 0 ? "PonchoPay link sent" : statusGroup === "guaranteed" ? "PonchoPay voucher guarantee" : "Card paid",
     total,
+    paidAmount: Math.max(total - balance, 0),
+    refundedAmount: 0,
     balance,
+    currency: "GBP",
+    providerPaymentId: statusGroup === "pending" ? "Not created" : `demo-${reference.toLowerCase()}`,
+    providerReference: reference,
+    parentPortalStatus: statusGroup === "pending" ? "payment_required" : "visible",
+    receiptStatus: statusGroup === "paid" ? "sent" : "not_sent",
+    financeStatus: statusGroup,
+    lastProviderEventId: statusGroup === "pending" ? "" : `evt-${id}`,
+    createdAt: startsAt,
+    updatedAt: startsAt,
+    metadata: {},
+    receipts: statusGroup === "paid" ? [{ id: `${id}-receipt`, receiptNumber: `R-${reference}`, amount: total, deliveryStatus: "sent", issuedAt: startsAt }] : [],
+    adminActions: [],
+    checkoutSessions: [{ id: `${id}-checkout`, providerPaymentId: `demo-${reference.toLowerCase()}`, providerReference: reference, paymentMethod: statusGroup === "guaranteed" ? "childcare_voucher_card_guarantee" : "card", paymentPlan: "pay_now", status: statusGroup === "pending" ? "created" : "completed", amount: total, createdAt: startsAt, updatedAt: startsAt }],
+    financeStatusLabel: statusGroup === "guaranteed" ? "Voucher guaranteed" : statusGroup === "paid" ? "Reconciled" : "Awaiting payment",
     capacityNote: "",
     items: [{ id: `${id}-item`, childName: child, siteName: site, sessionLabel, startsAt, endsAt: new Date(new Date(startsAt).getTime() + 30 * 60000).toISOString(), unitAmount: total, lineTotal: total }],
   };
@@ -2189,6 +2253,116 @@ function bookingStatusLabel(paymentStatus, financeStatus, balance) {
 function paymentRouteLabel(booking, invoice) {
   const route = booking.paymentRoute || invoice.checkoutSessions?.[0]?.paymentMethod || booking.paymentMethod || invoice.financeStatus || "PonchoPay";
   return String(route || "PonchoPay").replace(/_/g, " ");
+}
+
+function financeStatusLabel(invoice = {}, booking = {}, balance = 0) {
+  const session = invoice.checkoutSessions?.[0] || {};
+  const route = `${booking.paymentRoute || session.paymentMethod || booking.paymentMethod || ""}`.toLowerCase();
+  const finance = `${invoice.financeStatus || invoice.paymentStatus || session.status || ""}`.toLowerCase();
+  if (finance.includes("fallback")) return "Fallback card paid";
+  if (finance.includes("reconciled") || (balance <= 0 && (finance.includes("paid") || finance.includes("complete")))) return "Reconciled";
+  if (route.includes("voucher") || finance.includes("voucher") || finance.includes("guarantee")) return "Voucher guaranteed";
+  if (finance.includes("failed") || finance.includes("cancel")) return "Payment attention";
+  if (balance <= 0) return "Paid";
+  return "Awaiting payment";
+}
+
+function buildBookingFinanceFacts(row) {
+  const latestSession = latestByDate(row.checkoutSessions, "updatedAt") || latestByDate(row.checkoutSessions, "createdAt") || {};
+  const latestReceipt = latestByDate(row.receipts, "issuedAt") || {};
+  const guaranteed = [row.paymentLabel, row.financeStatus, latestSession.paymentMethod].join(" ").toLowerCase().includes("voucher")
+    || [row.paymentLabel, row.financeStatus, latestSession.paymentMethod].join(" ").toLowerCase().includes("guarantee");
+  return [
+    {
+      label: "Invoice",
+      value: row.invoiceId ? row.reference : "Not created",
+      detail: row.invoiceId ? `Portal: ${humaniseStatus(row.parentPortalStatus || row.status)}` : "Booking has no linked invoice yet",
+      tone: row.invoiceId ? "good" : "warn",
+    },
+    {
+      label: "PonchoPay",
+      value: row.providerPaymentId && row.providerPaymentId !== "Not created" ? "Linked" : "Not linked",
+      detail: row.providerPaymentId && row.providerPaymentId !== "Not created" ? row.providerPaymentId : humaniseStatus(latestSession.status || "checkout pending"),
+      tone: row.providerPaymentId && row.providerPaymentId !== "Not created" ? "good" : "warn",
+    },
+    {
+      label: "Payment route",
+      value: humaniseStatus(latestSession.paymentMethod || row.paymentLabel || "PonchoPay"),
+      detail: humaniseStatus(latestSession.paymentPlan || row.metadata?.paymentPlan || "single payment"),
+    },
+    {
+      label: "Voucher guarantee",
+      value: guaranteed ? "In use" : "Not used",
+      detail: guaranteed ? "Card guarantee protects the place while vouchers reconcile" : "Card or direct payment route",
+      tone: guaranteed ? "good" : "",
+    },
+    {
+      label: "Balance",
+      value: `${formatCurrency(row.paidAmount || 0)} paid`,
+      detail: `${formatCurrency(row.balance || 0)} outstanding · ${formatCurrency(row.refundedAmount || 0)} refunded`,
+      tone: Number(row.balance || 0) > 0 ? "warn" : "good",
+    },
+    {
+      label: "Receipt/email",
+      value: humaniseStatus(row.receiptStatus || latestReceipt.deliveryStatus || "not sent"),
+      detail: latestReceipt.receiptNumber ? `${latestReceipt.receiptNumber} · ${formatDateTime(latestReceipt.issuedAt)}` : "No issued receipt recorded",
+      tone: String(row.receiptStatus || latestReceipt.deliveryStatus || "").toLowerCase().includes("sent") ? "good" : "warn",
+    },
+  ];
+}
+
+function buildBookingTimelineItems(row) {
+  const events = [];
+  (row.checkoutSessions || []).forEach((session) => {
+    events.push({
+      id: `checkout-${session.id}`,
+      label: `PonchoPay ${humaniseStatus(session.status || "checkout")}`,
+      detail: [humaniseStatus(session.paymentMethod || "payment method"), formatCurrency(session.amount || row.total || 0), session.providerReference].filter(Boolean).join(" · "),
+      date: session.updatedAt || session.createdAt,
+    });
+  });
+  (row.receipts || []).forEach((receipt) => {
+    events.push({
+      id: `receipt-${receipt.id}`,
+      label: `Receipt ${humaniseStatus(receipt.deliveryStatus || "issued")}`,
+      detail: [receipt.receiptNumber, formatCurrency(receipt.amount || 0), receipt.providerReference].filter(Boolean).join(" · "),
+      date: receipt.issuedAt,
+    });
+  });
+  (row.adminActions || []).forEach((action) => {
+    events.push({
+      id: `action-${action.id}`,
+      label: humaniseStatus(action.action || "Admin action"),
+      detail: [action.actorEmail, humaniseStatus(action.status || ""), action.note].filter(Boolean).join(" · "),
+      date: action.createdAt,
+    });
+  });
+  if (row.lastProviderEventId) {
+    events.push({
+      id: `provider-${row.lastProviderEventId}`,
+      label: "Latest provider event",
+      detail: row.lastProviderEventId,
+      date: row.updatedAt,
+    });
+  }
+  return events
+    .filter((event) => event.date || event.detail)
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+    .slice(0, 8)
+    .map((event) => ({ ...event, when: event.date ? formatDateTime(event.date) : "No date recorded" }));
+}
+
+function latestByDate(items = [], key) {
+  return [...items].filter((item) => item?.[key]).sort((a, b) => new Date(b[key]) - new Date(a[key]))[0] || null;
+}
+
+function humaniseStatus(value) {
+  if (!value) return "Not recorded";
+  return String(value)
+    .replace(/[_-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function childNamesFromItems(items = []) {
