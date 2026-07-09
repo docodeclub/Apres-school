@@ -1246,6 +1246,10 @@ function StaffDashboard({ data, access, userEmail }) {
 
 function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenInspectionView }) {
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
+  const [dashboardLedger, setDashboardLedger] = useState({ invoices: [], bookings: [], fetchedAt: "" });
+  const [dashboardLedgerStatus, setDashboardLedgerStatus] = useState("Loading booking ledger...");
+  const [dashboardLedgerError, setDashboardLedgerError] = useState("");
+  const hasLiveBookingLedger = bookingSystemConfigured();
   const staffWithScrState = applyScrChecklistState(data.staff);
   const renewalItems = buildScrRenewalItems(staffWithScrState);
   const expiredRenewals = renewalItems.filter((item) => item.status === "Expired").length;
@@ -1279,10 +1283,55 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenIns
     ["Ofsted", "Site readiness and inspection window", "Ofsted"],
     ["Hours", "Paid windows and approvals", "Hours"],
   ];
+  const bookingRows = hasLiveBookingLedger && !dashboardLedgerError
+    ? normaliseBookingLedgerRows({
+      ...dashboardLedger,
+      bookings: dashboardLedger.bookings?.length ? dashboardLedger.bookings : [],
+      invoices: dashboardLedger.invoices?.length ? dashboardLedger.invoices : [],
+      useDemoFallback: false,
+    }, data)
+    : normaliseBookingLedgerRows(dashboardLedger, data);
+  const dashboardMetrics = buildAdminBookingDashboardMetrics(bookingRows, data, {
+    staffNeedingAction,
+    pendingDocs,
+    submittedEvidence: submittedEvidence.length,
+    suitabilityActions,
+    pendingCoverMoves,
+    websiteEnquiries: newWebsiteEnquiries || websiteEnquiries.length,
+    expiredRenewals,
+  });
+  const dashboardUpdatedLabel = dashboardLedger.fetchedAt ? `Updated ${formatDateTime(dashboardLedger.fetchedAt)}` : dashboardLedgerStatus;
   useEffect(() => {
     if (!data.scrRenewalRequests || !Object.keys(data.scrRenewalRequests).length) return;
     setRenewalRequests((current) => ({ ...current, ...data.scrRenewalRequests }));
   }, [data.scrRenewalRequests]);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDashboardLedger() {
+      if (!hasLiveBookingLedger) {
+        setDashboardLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+        setDashboardLedgerStatus("Demo ledger until live booking credentials are present.");
+        return;
+      }
+      setDashboardLedgerStatus("Loading live booking ledger...");
+      setDashboardLedgerError("");
+      try {
+        const nextLedger = await fetchParentBookingLedger({ limit: 250 });
+        if (cancelled) return;
+        setDashboardLedger(nextLedger);
+        setDashboardLedgerStatus(nextLedger.bookings?.length ? "Live booking ledger loaded." : "Live ledger connected. No bookings found yet.");
+      } catch (error) {
+        if (cancelled) return;
+        setDashboardLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+        setDashboardLedgerStatus("Showing demo ledger.");
+        setDashboardLedgerError(error?.message || "Could not load live booking ledger.");
+      }
+    }
+    loadDashboardLedger();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasLiveBookingLedger]);
   function saveRenewalRequests(next) {
     setRenewalRequests(next);
     localStorage.setItem(scrRenewalRequestsStorageKey, JSON.stringify(next));
@@ -1363,6 +1412,113 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenIns
   }
   return (
     <>
+      <section className="admin-engine-room">
+        <div className="admin-engine-copy">
+          <p className="eyebrow">Admin dashboard</p>
+          <h2>{access?.isScoped ? `${access.scopeLabel || "Site"} control room.` : "Engine room."}</h2>
+          <p>The operating picture for bookings, income, payments and the few operational issues that genuinely need attention.</p>
+          <div className="admin-engine-kpis">
+            <article>
+              <span>Sessions today</span>
+              <strong>{data.sessions.length}</strong>
+              <small>{dashboardMetrics.sessionBlocks} booked session blocks in ledger</small>
+            </article>
+            <article>
+              <span>Payment health</span>
+              <strong>{dashboardMetrics.paymentHealth}%</strong>
+              <small>{dashboardMetrics.paidCount + dashboardMetrics.guaranteedCount}/{dashboardMetrics.bookingCount || 0} paid or guaranteed</small>
+            </article>
+            <article>
+              <span>Booking fill</span>
+              <strong>{dashboardMetrics.bookingFill}%</strong>
+              <small>{dashboardMetrics.activeSites} active booking site{dashboardMetrics.activeSites === 1 ? "" : "s"}</small>
+            </article>
+            <article>
+              <span>Open actions</span>
+              <strong>{dashboardMetrics.openActions}</strong>
+              <small>Compliance, payment and delivery prompts</small>
+            </article>
+          </div>
+        </div>
+        <aside className="admin-engine-finance-card">
+          <span>Current booking ledger</span>
+          <strong>{formatCurrency(dashboardMetrics.bookedValue)}</strong>
+          <p>Booked value</p>
+          <dl>
+            <div><dt>Collected / guaranteed</dt><dd>{formatCurrency(dashboardMetrics.collectedValue)}</dd></div>
+            <div><dt>Outstanding</dt><dd>{formatCurrency(dashboardMetrics.outstandingValue)}</dd></div>
+            <div><dt>Projected retained</dt><dd>{formatCurrency(dashboardMetrics.projectedRetained)}</dd></div>
+            <div><dt>Bookings</dt><dd>{dashboardMetrics.bookingCount}</dd></div>
+          </dl>
+          <button className="button success" type="button" onClick={() => onOpenTab("Bookings")}>Open bookings</button>
+          <small>{dashboardLedgerError || dashboardUpdatedLabel}</small>
+        </aside>
+      </section>
+      <section className="admin-finance-strip">
+        <article>
+          <span>Booked this week</span>
+          <strong>{formatCurrency(dashboardMetrics.weekBookedValue)}</strong>
+          <small>{dashboardMetrics.weekBookings} booking{dashboardMetrics.weekBookings === 1 ? "" : "s"} in the next 7 days</small>
+        </article>
+        <article className="blue">
+          <span>Collected / guaranteed</span>
+          <strong>{formatCurrency(dashboardMetrics.collectedValue)}</strong>
+          <small>{dashboardMetrics.paidCount} paid · {dashboardMetrics.guaranteedCount} guaranteed</small>
+        </article>
+        <article className={dashboardMetrics.outstandingValue ? "amber" : ""}>
+          <span>Outstanding</span>
+          <strong>{formatCurrency(dashboardMetrics.outstandingValue)}</strong>
+          <small>{dashboardMetrics.pendingPaymentCount} payment action{dashboardMetrics.pendingPaymentCount === 1 ? "" : "s"}</small>
+        </article>
+        <article>
+          <span>Projected retained</span>
+          <strong>{formatCurrency(dashboardMetrics.projectedRetained)}</strong>
+          <small>Private admin-only margin model</small>
+        </article>
+      </section>
+      <section className="admin-risk-strip">
+        <article>
+          <span>{dashboardMetrics.bookingFill}%</span>
+          <strong>Booking utilisation</strong>
+          <small>{dashboardMetrics.sessionBlocks} enrolled sessions across live orders</small>
+        </article>
+        <article className={dashboardMetrics.websiteEnquiries ? "amber" : ""}>
+          <span>{dashboardMetrics.websiteEnquiries}</span>
+          <strong>Open enquiries</strong>
+          <small>New parent or school contact follow-ups</small>
+        </article>
+        <article className={dashboardMetrics.scrRisk ? "red" : ""}>
+          <span>{dashboardMetrics.scrRisk}</span>
+          <strong>SCR risk</strong>
+          <small>Expired evidence, submitted evidence or suitability prompts</small>
+        </article>
+        <article className={dashboardMetrics.deliveryIssues ? "amber" : ""}>
+          <span>{dashboardMetrics.deliveryIssues}</span>
+          <strong>Delivery watch</strong>
+          <small>Cover moves, unread policies or capacity notes</small>
+        </article>
+      </section>
+      <section className="admin-control-room">
+        <div>
+          <p className="eyebrow">Control room</p>
+          <h2>The four places admin actually needs most.</h2>
+          <p>Everything else stays in the navigation. These are the daily levers for launch: money, bookings, people and site readiness.</p>
+        </div>
+        <div className="admin-control-cards">
+          {[
+            ["Finance", "Revenue, payment actions and reconciliation", "Pay", PoundSterling],
+            ["Bookings", "Products, orders, capacity and PonchoPay flow", "Bookings", CalendarDays],
+            ["People", "Staff, users and SCR assurance", "SCR", Users],
+            ["Schools", "Site contracts, setup and delivery readiness", "Schools", ShieldCheck],
+          ].map(([title, text, target, Icon]) => (
+            <button key={title} type="button" onClick={() => onOpenTab(target)}>
+              <Icon />
+              <strong>{title}</strong>
+              <span>{text}</span>
+            </button>
+          ))}
+        </div>
+      </section>
       <section className="ops-briefing">
         <div>
           <p className="eyebrow">Today’s priorities</p>
@@ -1446,6 +1602,70 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenIns
       </DashboardGrid>
     </>
   );
+}
+
+function buildAdminBookingDashboardMetrics(rows, data, signals = {}) {
+  const now = new Date();
+  const weekAhead = new Date(now);
+  weekAhead.setDate(now.getDate() + 7);
+  const bookedValue = rows.reduce((sum, row) => sum + Number(row.total || 0), 0);
+  const outstandingValue = rows.reduce((sum, row) => sum + Math.max(0, Number(row.balance || 0)), 0);
+  const collectedValue = Math.max(0, bookedValue - outstandingValue);
+  const paidCount = rows.filter((row) => row.statusGroup === "paid").length;
+  const guaranteedCount = rows.filter((row) => row.statusGroup === "guaranteed").length;
+  const pendingPaymentCount = rows.filter((row) => ["pending", "attention"].includes(row.statusGroup)).length;
+  const sessionBlocks = rows.reduce((sum, row) => sum + Math.max(1, row.items?.length || 0), 0);
+  const capacityNotes = rows.filter((row) => row.capacityNote).length;
+  const weekRows = rows.filter((row) => {
+    const date = bookingRowFirstDate(row);
+    return date && date >= startOfDay(now) && date <= endOfDay(weekAhead);
+  });
+  const weekBookedValue = weekRows.reduce((sum, row) => sum + Number(row.total || 0), 0);
+  const activeSites = new Set(rows.map((row) => row.site).filter(Boolean)).size;
+  const paymentHealth = rows.length ? Math.round(((paidCount + guaranteedCount) / rows.length) * 100) : 100;
+  const notionalCapacity = Math.max(sessionBlocks, (data.sessions?.length || 1) * 8);
+  const bookingFill = notionalCapacity ? Math.min(100, Math.round((sessionBlocks / notionalCapacity) * 100)) : 0;
+  const scrRisk = Number(signals.submittedEvidence || 0) + Number(signals.expiredRenewals || 0) + Number(signals.suitabilityActions || 0);
+  const deliveryIssues = Number(signals.pendingCoverMoves || 0) + Number(signals.pendingDocs || 0) + capacityNotes;
+  return {
+    bookingCount: rows.length,
+    bookedValue,
+    outstandingValue,
+    collectedValue,
+    projectedRetained: Math.round(bookedValue * 0.62 * 100) / 100,
+    paidCount,
+    guaranteedCount,
+    pendingPaymentCount,
+    sessionBlocks,
+    activeSites,
+    paymentHealth,
+    bookingFill,
+    weekBookings: weekRows.length,
+    weekBookedValue,
+    websiteEnquiries: Number(signals.websiteEnquiries || 0),
+    scrRisk,
+    deliveryIssues,
+    openActions: pendingPaymentCount + scrRisk + deliveryIssues + Number(signals.staffNeedingAction || 0),
+  };
+}
+
+function bookingRowFirstDate(row) {
+  const startsAt = row.items?.find((item) => item.startsAt)?.startsAt;
+  if (!startsAt) return null;
+  const date = new Date(startsAt);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function startOfDay(date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function endOfDay(date) {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
 }
 
 function BookingAdmin({ data, access }) {
@@ -1866,7 +2086,8 @@ function normaliseBookingLedgerRows(ledger, data) {
       items: items.length ? items : [{ id: `${booking.id || invoice.id}-summary`, childName: childNamesFromItems(items), sessionLabel: "Booking summary", startsAt: booking.createdAt, lineTotal: Number(invoice.totalAmount ?? booking.totalAmount ?? 0) }],
     };
   });
-  return liveRows.length ? liveRows : demoBookingAdminRows(data);
+  if (liveRows.length) return liveRows;
+  return ledger.useDemoFallback === false ? [] : demoBookingAdminRows(data);
 }
 
 function demoBookingAdminRows(data) {
