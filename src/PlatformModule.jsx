@@ -826,6 +826,7 @@ const defaultStaffAvatar = "/assets/internal/default-staff-avatar.png";
 function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const [staffProfileTargetId, setStaffProfileTargetId] = useState("");
   const [scrInspectionTarget, setScrInspectionTarget] = useState("");
+  const [bookingAdminFocus, setBookingAdminFocus] = useState("");
   const [viewRole, setViewRole] = useState(role);
   const [previewUserId, setPreviewUserId] = useState("");
   const [openNavGroup, setOpenNavGroup] = useState(() => localStorage.getItem("apres-platform-open-nav-group") || "");
@@ -910,6 +911,13 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
     localStorage.setItem("apres-platform-open-nav-group", "People");
     setTab("SCR");
     addAuditLog("Site SCR focus opened", "Admin dashboard quick action");
+  }
+
+  function openBookingAdminFocus(focus = "") {
+    setBookingAdminFocus(focus);
+    setOpenNavGroup("Sites");
+    localStorage.setItem("apres-platform-open-nav-group", "Sites");
+    setTab("Bookings");
   }
 
   function updateStaffPayOverride(staffId, patch) {
@@ -1027,8 +1035,8 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
           access={access}
         />
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
-        {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
-        {tab === "Bookings" && <BookingAdmin data={enrichedData} access={access} />}
+        {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
+        {tab === "Bookings" && <BookingAdmin data={enrichedData} access={access} initialFocus={bookingAdminFocus} onClearInitialFocus={() => setBookingAdminFocus("")} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && (
           <HRHierarchy
@@ -1244,7 +1252,7 @@ function StaffDashboard({ data, access, userEmail }) {
   );
 }
 
-function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenInspectionView }) {
+function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenStaffProfile, onOpenInspectionView }) {
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const [dashboardLedger, setDashboardLedger] = useState({ invoices: [], bookings: [], fetchedAt: "" });
   const [dashboardLedgerStatus, setDashboardLedgerStatus] = useState("Loading booking ledger...");
@@ -1450,31 +1458,31 @@ function AdminDashboard({ data, access, onOpenTab, onOpenStaffProfile, onOpenIns
             <div><dt>Projected retained</dt><dd>{formatCurrency(dashboardMetrics.projectedRetained)}</dd></div>
             <div><dt>Bookings</dt><dd>{dashboardMetrics.bookingCount}</dd></div>
           </dl>
-          <button className="button success" type="button" onClick={() => onOpenTab("Bookings")}>Open bookings</button>
+          <button className="button success" type="button" onClick={() => onOpenBookingFocus ? onOpenBookingFocus("all") : onOpenTab("Bookings")}>Open bookings</button>
           <small>{dashboardLedgerError || dashboardUpdatedLabel}</small>
         </aside>
       </section>
       <section className="admin-finance-strip">
-        <article>
+        <button type="button" onClick={() => onOpenBookingFocus ? onOpenBookingFocus("week") : onOpenTab("Bookings")}>
           <span>Booked this week</span>
           <strong>{formatCurrency(dashboardMetrics.weekBookedValue)}</strong>
           <small>{dashboardMetrics.weekBookings} booking{dashboardMetrics.weekBookings === 1 ? "" : "s"} in the next 7 days</small>
-        </article>
-        <article className="blue">
+        </button>
+        <button type="button" className="blue" onClick={() => onOpenBookingFocus ? onOpenBookingFocus("collected") : onOpenTab("Bookings")}>
           <span>Collected / guaranteed</span>
           <strong>{formatCurrency(dashboardMetrics.collectedValue)}</strong>
           <small>{dashboardMetrics.paidCount} paid · {dashboardMetrics.guaranteedCount} guaranteed</small>
-        </article>
-        <article className={dashboardMetrics.outstandingValue ? "amber" : ""}>
+        </button>
+        <button type="button" className={dashboardMetrics.outstandingValue ? "amber" : ""} onClick={() => onOpenBookingFocus ? onOpenBookingFocus("outstanding") : onOpenTab("Bookings")}>
           <span>Outstanding</span>
           <strong>{formatCurrency(dashboardMetrics.outstandingValue)}</strong>
           <small>{dashboardMetrics.pendingPaymentCount} payment action{dashboardMetrics.pendingPaymentCount === 1 ? "" : "s"}</small>
-        </article>
-        <article>
+        </button>
+        <button type="button" onClick={() => onOpenBookingFocus ? onOpenBookingFocus("all") : onOpenTab("Bookings")}>
           <span>Projected retained</span>
           <strong>{formatCurrency(dashboardMetrics.projectedRetained)}</strong>
           <small>Private admin-only margin model</small>
-        </article>
+        </button>
       </section>
       <section className="admin-risk-strip">
         <article>
@@ -1656,6 +1664,31 @@ function bookingRowFirstDate(row) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function bookingRowMatchesFocus(row, focus) {
+  if (!focus || focus === "all") return true;
+  if (focus === "outstanding") return Number(row.balance || 0) > 0 || ["pending", "attention"].includes(row.statusGroup);
+  if (focus === "collected") return ["paid", "guaranteed"].includes(row.statusGroup) || Number(row.balance || 0) <= 0;
+  if (focus === "week") {
+    const firstDate = bookingRowFirstDate(row);
+    if (!firstDate) return false;
+    const now = new Date();
+    const weekAhead = new Date(now);
+    weekAhead.setDate(now.getDate() + 7);
+    return firstDate >= startOfDay(now) && firstDate <= endOfDay(weekAhead);
+  }
+  return true;
+}
+
+function bookingFocusLabel(focus) {
+  const labels = {
+    all: "All bookings",
+    outstanding: "Outstanding payments",
+    collected: "Collected or guaranteed",
+    week: "Bookings in the next 7 days",
+  };
+  return labels[focus] || "Dashboard focus";
+}
+
 function startOfDay(date) {
   const next = new Date(date);
   next.setHours(0, 0, 0, 0);
@@ -1668,13 +1701,14 @@ function endOfDay(date) {
   return next;
 }
 
-function BookingAdmin({ data, access }) {
+function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) {
   const [ledger, setLedger] = useState({ invoices: [], bookings: [], fetchedAt: "" });
   const [status, setStatus] = useState("Loading booking ledger...");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [siteFilter, setSiteFilter] = useState("all");
+  const [focusFilter, setFocusFilter] = useState(initialFocus || "");
   const [selectedId, setSelectedId] = useState("");
   const [actionPending, setActionPending] = useState("");
   const [adminNote, setAdminNote] = useState("");
@@ -1711,7 +1745,8 @@ function BookingAdmin({ data, access }) {
     const matchesQuery = !query.trim() || haystack.includes(query.trim().toLowerCase());
     const matchesStatus = statusFilter === "all" || row.statusGroup === statusFilter;
     const matchesSite = siteFilter === "all" || row.site === siteFilter;
-    return matchesQuery && matchesStatus && matchesSite;
+    const matchesFocus = bookingRowMatchesFocus(row, focusFilter);
+    return matchesQuery && matchesStatus && matchesSite && matchesFocus;
   });
   const selected = rows.find((row) => row.id === selectedId) || visibleRows[0] || rows[0] || null;
   const sites = Array.from(new Set(rows.map((row) => row.site).filter(Boolean))).sort();
@@ -1749,6 +1784,14 @@ function BookingAdmin({ data, access }) {
       cancelled = true;
     };
   }, [hasLiveLedger]);
+
+  useEffect(() => {
+    if (!initialFocus) return;
+    setFocusFilter(initialFocus);
+    setQuery("");
+    setStatusFilter("all");
+    setSiteFilter("all");
+  }, [initialFocus]);
 
   useEffect(() => {
     const selectedStillVisible = visibleRows.some((row) => row.id === selectedId);
@@ -1877,6 +1920,11 @@ function BookingAdmin({ data, access }) {
     setStatus(`Exported ${visibleRows.length} booking rows.`);
   }
 
+  function clearDashboardFocus() {
+    setFocusFilter("");
+    onClearInitialFocus?.();
+  }
+
   return (
     <div className="booking-admin">
       <section className="booking-admin-hero">
@@ -1899,9 +1947,10 @@ function BookingAdmin({ data, access }) {
       </DashboardGrid>
 
       <div className="booking-admin-status">
-        <span>{status}</span>
+        <span>{focusFilter ? `${bookingFocusLabel(focusFilter)} · ${visibleRows.length} matching booking${visibleRows.length === 1 ? "" : "s"}` : status}</span>
         {error && <strong>{error}</strong>}
         {capacityAlerts > 0 && <Badge value={`${capacityAlerts} capacity note${capacityAlerts === 1 ? "" : "s"}`} />}
+        {focusFilter && <button type="button" onClick={clearDashboardFocus}>Clear dashboard focus</button>}
       </div>
 
       <section className="booking-admin-layout">

@@ -4707,7 +4707,7 @@ label {
   margin-bottom: 16px;
 }
 
-.admin-finance-strip article,
+.admin-finance-strip button,
 .admin-risk-strip article {
   display: grid;
   gap: 10px;
@@ -4718,15 +4718,22 @@ label {
   color: #315b45;
   padding: 18px;
   box-shadow: 0 12px 28px rgba(38, 63, 169, 0.06);
+  text-align: left;
 }
 
-.admin-finance-strip article.blue {
+.admin-finance-strip button:hover {
+  border-color: rgba(39, 143, 91, 0.34);
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px rgba(38, 63, 169, 0.1);
+}
+
+.admin-finance-strip button.blue {
   border-color: rgba(72, 103, 216, 0.22);
   background: #eef2ff;
   color: var(--royal);
 }
 
-.admin-finance-strip article.amber,
+.admin-finance-strip button.amber,
 .admin-risk-strip article.amber {
   border-color: rgba(242, 165, 76, 0.26);
   background: #fff7e8;
@@ -5075,6 +5082,19 @@ label {
 
 .booking-admin-status strong {
   color: var(--red);
+}
+
+.booking-admin-status button {
+  border: 1px solid rgba(72, 103, 216, 0.22);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--royal);
+  padding: 8px 12px;
+  font-weight: 950;
+}
+
+.booking-admin-status button:hover {
+  background: #eef2ff;
 }
 
 .booking-admin-layout {
