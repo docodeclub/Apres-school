@@ -18,6 +18,7 @@ const routes = [
   "contact",
   "staff-application",
   "staff-login",
+  "tutor",
   "booking/success",
   "booking/cancel",
   "booking/cancelled",
@@ -65,6 +66,12 @@ const routeMeta = {
     title: "Staff Login | Après School",
     description: "Secure staff and admin login for Après School.",
     keywords: "Après School staff login",
+    robots: "noindex,nofollow",
+  },
+  tutor: {
+    title: "Admin Dashboard | Après School",
+    description: "Secure staff and admin dashboard for Après School.",
+    keywords: "Après School admin dashboard",
     robots: "noindex,nofollow",
   },
   "launch-booking": {

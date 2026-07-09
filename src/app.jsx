@@ -191,7 +191,7 @@ const pathPages = Object.fromEntries(Object.entries(pagePaths).map(([page, path]
 const bookingPreviewToken = String(import.meta.env.VITE_BOOKING_PREVIEW_TOKEN || "").trim();
 
 function isPlatformPath() {
-  return window.location.pathname === "/staff-login";
+  return window.location.pathname === "/staff-login" || window.location.pathname === "/tutor";
 }
 
 function hasBookingPreviewAccess() {
