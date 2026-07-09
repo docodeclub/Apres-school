@@ -108,19 +108,20 @@ const Users = makeIcon("US");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Bookings", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Bookings", "Finance", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
   ["People", ["Users", "SCR", "HR", "HR Files"]],
   ["Sites", ["Schools", "Bookings", "Rota", "Hours", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
-  ["Finance", ["Pay", "Rewards"]],
+  ["Finance", ["Finance", "Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
 ];
 const platformTabHints = {
   Staff: "Personal shifts, documents, pay and rewards",
   Admin: "Key actions across staffing, compliance and bookings",
   Bookings: "Bookings, payments, capacity and admin-only setup controls",
+  Finance: "Parent balances, PonchoPay reconciliation, vouchers and refunds",
   Users: "Invite staff and reset access",
   HR: "Reporting lines and manager structure",
   "HR Files": "Contracts, payslips and staff documents",
@@ -1037,6 +1038,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
         {tab === "Bookings" && <BookingAdmin data={enrichedData} access={access} initialFocus={bookingAdminFocus} onClearInitialFocus={() => setBookingAdminFocus("")} />}
+        {tab === "Finance" && <BookingFinance data={enrichedData} access={access} onOpenBookingFocus={openBookingAdminFocus} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && (
           <HRHierarchy
@@ -1514,7 +1516,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
         </div>
         <div className="admin-control-cards">
           {[
-            ["Finance", "Revenue, payment actions and reconciliation", "Pay", PoundSterling],
+            ["Finance", "Revenue, payment actions and reconciliation", "Finance", PoundSterling],
             ["Bookings", "Products, orders, capacity and PonchoPay flow", "Bookings", CalendarDays],
             ["People", "Staff, users and SCR assurance", "SCR", Users],
             ["Schools", "Site contracts, setup and delivery readiness", "Schools", ShieldCheck],
@@ -1687,6 +1689,56 @@ function bookingFocusLabel(focus) {
     week: "Bookings in the next 7 days",
   };
   return labels[focus] || "Dashboard focus";
+}
+
+function bookingFinanceBucket(row) {
+  const text = [
+    row.status,
+    row.paymentStatus,
+    row.statusLabel,
+    row.financeStatus,
+    row.financeStatusLabel,
+    row.paymentLabel,
+    row.parentPortalStatus,
+    row.providerPaymentId,
+    ...(row.checkoutSessions || []).map((session) => `${session.status || ""} ${session.paymentMethod || ""} ${session.paymentPlan || ""}`),
+  ].join(" ").toLowerCase();
+  if (Number(row.refundedAmount || 0) > 0 || text.includes("refund") || text.includes("credit")) return "refunds";
+  if (text.includes("failed") || text.includes("cancel") || text.includes("review") || row.statusGroup === "attention") return "failed";
+  if (text.includes("voucher") || text.includes("guarantee") || text.includes("tax-free") || text.includes("tfc")) return "voucher";
+  if (Number(row.balance || 0) > 0 || row.statusGroup === "pending") return "outstanding";
+  return "reconciled";
+}
+
+function buildBookingFinanceSummary(rows) {
+  const booked = rows.reduce((total, row) => total + Number(row.total || 0), 0);
+  const outstanding = rows.reduce((total, row) => total + Math.max(0, Number(row.balance || 0)), 0);
+  const refunded = rows.reduce((total, row) => total + Number(row.refundedAmount || 0), 0);
+  const needsAction = rows.filter((row) => bookingFinanceBucket(row) === "failed").length;
+  return {
+    booked,
+    outstanding,
+    refunded,
+    needsAction,
+    collectedOrGuaranteed: Math.max(0, booked - outstanding),
+  };
+}
+
+function buildBookingFinanceViewCounts(rows) {
+  const counts = { outstanding: 0, voucher: 0, failed: 0, refunds: 0, reconciled: 0, all: rows.length };
+  rows.forEach((row) => {
+    const bucket = bookingFinanceBucket(row);
+    counts[bucket] = (counts[bucket] || 0) + 1;
+    if (Number(row.balance || 0) > 0 && bucket !== "outstanding") counts.outstanding += 1;
+  });
+  return counts;
+}
+
+function bookingFinanceFocusForRow(row) {
+  if (!row) return "all";
+  if (Number(row.balance || 0) > 0 || row.statusGroup === "pending") return "outstanding";
+  if (row.statusGroup === "paid" || row.statusGroup === "guaranteed") return "collected";
+  return "all";
 }
 
 function startOfDay(date) {
@@ -2134,6 +2186,304 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
           </button>
         </section>
       </div>
+    </div>
+  );
+}
+
+function BookingFinance({ data, onOpenBookingFocus }) {
+  const [ledger, setLedger] = useState({ invoices: [], bookings: [], fetchedAt: "" });
+  const [status, setStatus] = useState("Loading booking finance...");
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState("outstanding");
+  const [selectedId, setSelectedId] = useState("");
+  const [actionPending, setActionPending] = useState("");
+  const [adminNote, setAdminNote] = useState("");
+  const hasLiveLedger = bookingSystemConfigured();
+  const rows = normaliseBookingLedgerRows(ledger, data);
+  const financeRows = rows.map((row) => ({ ...row, financeBucket: bookingFinanceBucket(row) }));
+  const visibleRows = financeRows.filter((row) => {
+    const haystack = [
+      row.reference,
+      row.parent,
+      row.email,
+      row.children,
+      row.site,
+      row.statusLabel,
+      row.financeStatusLabel,
+      row.paymentLabel,
+      row.providerPaymentId,
+    ].join(" ").toLowerCase();
+    const matchesQuery = !query.trim() || haystack.includes(query.trim().toLowerCase());
+    const matchesView = view === "all" || row.financeBucket === view || (view === "outstanding" && Number(row.balance || 0) > 0);
+    return matchesQuery && matchesView;
+  });
+  const selected = financeRows.find((row) => row.id === selectedId) || visibleRows[0] || financeRows[0] || null;
+  const selectedFinanceFacts = selected ? buildBookingFinanceFacts(selected) : [];
+  const selectedTimeline = selected ? buildBookingTimelineItems(selected) : [];
+  const totals = buildBookingFinanceSummary(financeRows);
+  const viewCounts = buildBookingFinanceViewCounts(financeRows);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadFinance() {
+      setError("");
+      if (!hasLiveLedger) {
+        if (!cancelled) {
+          setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+          setStatus("Using local examples until Supabase is available.");
+        }
+        return;
+      }
+      try {
+        setStatus("Loading live PonchoPay and booking ledger...");
+        const nextLedger = await fetchParentBookingLedger({ limit: 250 });
+        if (cancelled) return;
+        setLedger(nextLedger);
+        setStatus(`Live finance ledger loaded${nextLedger.fetchedAt ? ` at ${formatDateTime(nextLedger.fetchedAt)}` : ""}.`);
+      } catch (loadError) {
+        if (cancelled) return;
+        setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+        setError(loadError?.message || "Could not load finance ledger.");
+        setStatus("Live ledger unavailable. Showing safe local examples.");
+      }
+    }
+    loadFinance();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasLiveLedger]);
+
+  useEffect(() => {
+    const selectedStillVisible = visibleRows.some((row) => row.id === selectedId);
+    if ((!selectedId || !selectedStillVisible) && visibleRows[0]) {
+      setSelectedId(visibleRows[0].id);
+    }
+  }, [selectedId, visibleRows]);
+
+  function refreshLedger() {
+    if (!hasLiveLedger) {
+      setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+      setStatus("Local finance examples refreshed.");
+      return;
+    }
+    setStatus("Refreshing finance ledger...");
+    fetchParentBookingLedger({ limit: 250 })
+      .then((nextLedger) => {
+        setLedger(nextLedger);
+        setError("");
+        setStatus(`Finance ledger refreshed at ${formatDateTime(new Date().toISOString())}.`);
+      })
+      .catch((refreshError) => {
+        setError(refreshError?.message || "Could not refresh finance ledger.");
+        setStatus("Refresh failed. Existing rows are still visible.");
+      });
+  }
+
+  async function runFinanceAction(action) {
+    if (!selected) return;
+    setActionPending(action);
+    const label = action === "resend_payment_link" ? "Payment link resent" : action === "resend_receipt" ? "Receipt resent" : "Finance review marked";
+    try {
+      if (hasLiveLedger && selected.invoiceId) {
+        await updateLivePaymentAdminAction({
+          invoiceId: selected.invoiceId,
+          action,
+          note: adminNote || `${label} from finance control room.`,
+        });
+        const nextLedger = await fetchParentBookingLedger({ limit: 250 });
+        setLedger(nextLedger);
+      }
+      addAuditLog(label, `${selected.reference} · ${selected.parent}`);
+      setStatus(`${label} for ${selected.reference}.`);
+      setAdminNote("");
+    } catch (actionError) {
+      setError(actionError?.message || "Finance action failed.");
+      setStatus("Finance action could not be completed.");
+    } finally {
+      setActionPending("");
+    }
+  }
+
+  function exportFinanceCsv() {
+    const header = ["Reference", "Parent", "Email", "Children", "Site", "Finance status", "Payment route", "Total", "Paid", "Outstanding", "Refunded", "Provider payment"];
+    const lines = visibleRows.map((row) => [
+      row.reference,
+      row.parent,
+      row.email,
+      row.children,
+      row.site,
+      row.financeStatusLabel,
+      row.paymentLabel,
+      row.total,
+      row.paidAmount,
+      row.balance,
+      row.refundedAmount,
+      row.providerPaymentId,
+    ].map(csvCell).join(","));
+    const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `apres-booking-finance-${dateInputValue(new Date())}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setStatus(`Exported ${visibleRows.length} finance rows.`);
+  }
+
+  return (
+    <div className="booking-finance-console">
+      <section className="booking-finance-hero">
+        <div>
+          <p className="eyebrow">Finance</p>
+          <h2>Booking finance control room.</h2>
+          <p>Track parent balances, PonchoPay status, voucher guarantees, refunds and the payment actions that need admin attention.</p>
+        </div>
+        <div className="booking-finance-hero-actions">
+          <button className="button light" type="button" onClick={refreshLedger}>Refresh</button>
+          <button className="button light" type="button" onClick={exportFinanceCsv}>Export CSV</button>
+          <button className="button book" type="button" onClick={() => onOpenBookingFocus?.("all")}>Open bookings</button>
+        </div>
+      </section>
+
+      <section className="booking-finance-kpis" aria-label="Booking finance summary">
+        <article>
+          <span>Booked value</span>
+          <strong>{formatCurrency(totals.booked)}</strong>
+          <small>{financeRows.length} order{financeRows.length === 1 ? "" : "s"} in the ledger</small>
+        </article>
+        <article className={totals.outstanding ? "warn" : "good"}>
+          <span>Outstanding</span>
+          <strong>{formatCurrency(totals.outstanding)}</strong>
+          <small>{viewCounts.outstanding} parent balance{viewCounts.outstanding === 1 ? "" : "s"} to chase</small>
+        </article>
+        <article className="good">
+          <span>Collected/guaranteed</span>
+          <strong>{formatCurrency(totals.collectedOrGuaranteed)}</strong>
+          <small>{viewCounts.voucher} voucher guarantee{viewCounts.voucher === 1 ? "" : "s"}</small>
+        </article>
+        <article className={totals.needsAction ? "danger" : "good"}>
+          <span>Needs action</span>
+          <strong>{totals.needsAction}</strong>
+          <small>Failed, cancelled or manual finance review</small>
+        </article>
+        <article className={totals.refunded ? "warn" : ""}>
+          <span>Refunds/credits</span>
+          <strong>{formatCurrency(totals.refunded)}</strong>
+          <small>{viewCounts.refunds} refund or credit row{viewCounts.refunds === 1 ? "" : "s"}</small>
+        </article>
+      </section>
+
+      <div className="booking-finance-status">
+        <span>{status}</span>
+        {error && <strong>{error}</strong>}
+      </div>
+
+      <section className="booking-finance-workspace">
+        <div className="booking-finance-list-panel">
+          <div className="booking-finance-toolbar">
+            <label>
+              <span>Search finance</span>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Parent, child, reference or provider ID" />
+            </label>
+          </div>
+          <div className="booking-finance-tabs" role="tablist" aria-label="Finance filters">
+            {[
+              ["outstanding", "Outstanding"],
+              ["voucher", "Vouchers"],
+              ["failed", "Failed"],
+              ["refunds", "Refunds"],
+              ["reconciled", "Reconciled"],
+              ["all", "All"],
+            ].map(([key, label]) => (
+              <button key={key} type="button" className={view === key ? "active" : ""} onClick={() => setView(key)}>
+                <span>{label}</span>
+                <small>{viewCounts[key] || 0}</small>
+              </button>
+            ))}
+          </div>
+          <div className="booking-finance-list">
+            {visibleRows.map((row) => (
+              <button key={row.id} type="button" className={`booking-finance-row ${selected?.id === row.id ? "active" : ""}`} onClick={() => setSelectedId(row.id)}>
+                <span>
+                  <strong>{row.reference}</strong>
+                  <small>{row.parent} · {row.children}</small>
+                </span>
+                <span>
+                  <strong>{row.site}</strong>
+                  <small>{row.firstDate || "No session date"}</small>
+                </span>
+                <span>
+                  <Badge value={row.financeStatusLabel || row.statusLabel} />
+                  <small>{row.paymentLabel}</small>
+                </span>
+                <span className="booking-finance-money">
+                  <strong>{formatCurrency(row.balance || 0)}</strong>
+                  <small>Outstanding</small>
+                </span>
+              </button>
+            ))}
+            {!visibleRows.length && <EmptyList title="No finance rows" text="Try another finance filter or refresh the live ledger." />}
+          </div>
+        </div>
+
+        <aside className="booking-finance-detail-panel">
+          {selected ? (
+            <>
+              <div className="booking-finance-detail-head">
+                <span>
+                  <small>Selected order</small>
+                  <strong>{selected.reference}</strong>
+                  <em>{selected.parent} · {selected.email || "No email recorded"}</em>
+                </span>
+                <Badge value={selected.financeStatusLabel || selected.statusLabel} />
+              </div>
+              <div className="booking-finance-grid">
+                {selectedFinanceFacts.map((fact) => (
+                  <article key={fact.label} className={`booking-finance-card ${fact.tone || ""}`}>
+                    <small>{fact.label}</small>
+                    <strong>{fact.value}</strong>
+                    {fact.detail && <span>{fact.detail}</span>}
+                  </article>
+                ))}
+              </div>
+              <section className="booking-finance-order">
+                <h3>Order</h3>
+                <dl>
+                  <div><dt>Total</dt><dd>{formatCurrency(selected.total || 0)}</dd></div>
+                  <div><dt>Paid</dt><dd>{formatCurrency(selected.paidAmount || 0)}</dd></div>
+                  <div><dt>Outstanding</dt><dd>{formatCurrency(selected.balance || 0)}</dd></div>
+                  <div><dt>Refunded</dt><dd>{formatCurrency(selected.refundedAmount || 0)}</dd></div>
+                </dl>
+              </section>
+              <div className="booking-finance-trail">
+                <strong>Payment and reconciliation trail</strong>
+                {selectedTimeline.length ? selectedTimeline.map((event) => (
+                  <article key={event.id} className="booking-finance-event">
+                    <span>{event.label}</span>
+                    <small>{event.detail}</small>
+                    <time>{event.when}</time>
+                  </article>
+                )) : (
+                  <p>No payment events, receipts or admin actions have been recorded yet.</p>
+                )}
+              </div>
+              <label className="booking-admin-note">
+                <span>Admin note</span>
+                <textarea value={adminNote} onChange={(event) => setAdminNote(event.target.value)} placeholder="Optional note for the finance audit trail" />
+              </label>
+              <div className="booking-finance-actions">
+                <button type="button" onClick={() => runFinanceAction("resend_payment_link")} disabled={actionPending || !selected.invoiceId || selected.balance <= 0}>{actionPending === "resend_payment_link" ? "Sending..." : "Resend payment link"}</button>
+                <button type="button" onClick={() => runFinanceAction("resend_receipt")} disabled={actionPending || !selected.invoiceId}>{actionPending === "resend_receipt" ? "Sending..." : "Resend receipt"}</button>
+                <button type="button" onClick={() => runFinanceAction("mark_finance_review")} disabled={actionPending || !selected.invoiceId}>{actionPending === "mark_finance_review" ? "Saving..." : "Mark review"}</button>
+                <button type="button" onClick={() => onOpenBookingFocus?.(bookingFinanceFocusForRow(selected))}>Open in bookings</button>
+              </div>
+            </>
+          ) : (
+            <EmptyList title="Choose a finance row" text="Select a booking to see PonchoPay, invoice, receipt and reconciliation detail." />
+          )}
+        </aside>
+      </section>
     </div>
   );
 }
@@ -11734,6 +12084,7 @@ function iconFor(item) {
     Ofsted: <ShieldCheck />,
     Documents: <FileText />,
     Pay: <PoundSterling />,
+    Finance: <PoundSterling />,
     Rewards: <Award />,
     Sessions: <Clock />,
     Rota: <CalendarDays />,
