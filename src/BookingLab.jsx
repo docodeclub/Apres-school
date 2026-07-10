@@ -66,6 +66,8 @@ import {
 import DataModelLab from "./bookingLab/DataModelLab.jsx";
 import ReadinessLab from "./bookingLab/ReadinessLab.jsx";
 
+const bookingLabViews = ["Parent", "Family", "Operations", "Collection", "Setup", "Schools", "Audit", "Pilot", "Payments", "Support", "Staffing", "Capacity", "Comms", "QA", "Launch Gate", "Data Model", "Readiness"];
+
 const defaultMessageTemplates = [
   {
     id: "template-confirmation",
@@ -765,6 +767,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [expandedSetupDayKey, setExpandedSetupDayKey] = useState("");
   const [setupDryRunOpen, setSetupDryRunOpen] = useState(false);
   const [setupInviteDryRunOpen, setSetupInviteDryRunOpen] = useState(false);
+  const [capacityScheduleEditKey, setCapacityScheduleEditKey] = useState("");
   const [openingRehearsals, setOpeningRehearsals] = useState(() => readJson("apres-booking-lab-opening-rehearsals", {}));
   const [bulkSetupPatch, setBulkSetupPatch] = useState({ capacity: "", price: "", route: "PonchoPay card + vouchers" });
   const [activeSchoolContractId, setActiveSchoolContractId] = useState(defaultSchoolContracts[0].id);
@@ -893,6 +896,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [handoverAcknowledgements, setHandoverAcknowledgements] = useState(() => readJson("apres-booking-lab-handover-acknowledgements", {}));
   const [staffAssignments, setStaffAssignments] = useState(() => readJson("apres-booking-lab-staff-assignments", []));
   const [capacityOverrides, setCapacityOverrides] = useState(() => readJson("apres-booking-lab-capacity-overrides", {}));
+  const [capacityScheduleOverrides, setCapacityScheduleOverrides] = useState(() => readJson("apres-booking-lab-capacity-schedule-overrides", {}));
   const [setupDayOverrides, setSetupDayOverrides] = useState(() => readJson("apres-booking-lab-session-day-overrides", {}));
   const [messageTemplates, setMessageTemplates] = useState(() => {
     const saved = readJson("apres-booking-lab-message-templates", null);
@@ -1027,8 +1031,25 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const key = `${activeSession.id}-${day}`;
     const override = setupDayOverrides[key] || {};
     const selectedBlockKeys = selectedBlockKeysForDay(day);
-    const selectedBlocks = activeSessionBlocks.filter((block) => selectedBlockKeys.includes(block.key));
+    const selectedBlocks = activeSessionBlocks
+      .filter((block) => selectedBlockKeys.includes(block.key))
+      .map((block) => {
+        const blockOverride = capacityScheduleOverrides[`${activeSession.id}::${day}::${block.key}`] || {};
+        return {
+          ...block,
+          ...blockOverride,
+          label: blockOverride.label || block.label,
+          start: blockOverride.start || block.start,
+          end: blockOverride.end || block.end,
+          price: Number(blockOverride.price ?? block.price),
+          capacity: Number(blockOverride.capacity ?? block.capacity ?? override.capacity ?? activeSession.capacity),
+        };
+      })
+      .filter((block) => block.published !== false);
     const blockTotal = selectedBlocks.reduce((sum, block) => sum + Number(block.price || 0), 0);
+    const selectedBlockCapacity = selectedBlocks.length
+      ? Math.min(...selectedBlocks.map((block) => Number(block.capacity || override.capacity || activeSession.capacity)))
+      : Number(override.capacity ?? activeSession.capacity);
     const firstBlock = selectedBlocks[0];
     const lastBlock = selectedBlocks[selectedBlocks.length - 1];
     return {
@@ -1036,7 +1057,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       day,
       enabled: override.enabled !== false,
       time: override.time || (firstBlock && lastBlock ? `${firstBlock.start}-${lastBlock.end}` : activeSession.time),
-      capacity: Number(override.capacity ?? activeSession.capacity),
+      capacity: selectedBlockCapacity,
       price: Number(override.price ?? (blockTotal || activeSession.price)),
       paymentRoute: override.paymentRoute || activeSession.paymentRoute || "PonchoPay card + vouchers",
       note: override.note || "",
@@ -2541,6 +2562,40 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ["Average fill", `${capacityRows.length ? Math.round(capacityRows.reduce((sum, row) => sum + row.fill, 0) / capacityRows.length) : 0}%`, "Confirmed children only"],
     ["Offers sent", String(capacityOfferMessages.length), "Local parent offer messages"],
   ];
+  const capacityScheduleRows = capacitySession.days.flatMap((day) => {
+    const dayKey = `${capacitySession.id}-${day}`;
+    const dayOverride = setupDayOverrides[dayKey] || {};
+    const dayCapacity = Number(capacityOverrides[dayKey] ?? dayOverride.capacity ?? capacitySession.capacity);
+    const dayTime = dayOverride.time || capacitySession.time || "";
+    const [dayStart = "", dayEnd = ""] = dayTime.split("-").map((item) => item.trim());
+    return normaliseSessionBlocks(capacitySession).map((block) => {
+      const rowKey = `${capacitySession.id}::${day}::${block.key}`;
+      const rowOverride = capacityScheduleOverrides[rowKey] || {};
+      const start = rowOverride.start || block.start || dayStart;
+      const end = rowOverride.end || block.end || dayEnd;
+      const label = rowOverride.label || block.label || capacitySession.title;
+      const price = Number(rowOverride.price ?? block.price ?? dayOverride.price ?? capacitySession.price);
+      const capacity = Number(rowOverride.capacity ?? dayCapacity);
+      const published = rowOverride.published ?? (dayOverride.enabled !== false);
+      return {
+        key: rowKey,
+        dayKey,
+        day,
+        dayOfWeek: day.split(",")[0] || day,
+        blockKey: block.key,
+        matchKey: String(block.label || block.key || "").toLowerCase(),
+        label,
+        customLabel: rowOverride.customLabel || "",
+        start,
+        end,
+        price,
+        capacity,
+        published,
+        changed: Boolean(rowOverride.label || rowOverride.customLabel || rowOverride.start || rowOverride.end || rowOverride.price !== undefined || rowOverride.capacity !== undefined || rowOverride.published !== undefined),
+      };
+    });
+  });
+  const activeCapacityScheduleRow = capacityScheduleRows.find((row) => row.key === capacityScheduleEditKey) || null;
   const setupOverrideRows = setupSession.days.map((day) => {
     const key = `${setupSession.id}-${day}`;
     const override = setupDayOverrides[key] || {};
@@ -5845,6 +5900,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const can = (action) => rolePermissions[activeRole]?.actions.includes(action);
   const canView = (view) => rolePermissions[activeRole]?.views.includes(view);
   const roleLockText = `${activeRole} role cannot use this action in the prototype. Switch to Admin for sensitive booking controls.`;
+
+  useEffect(() => {
+    if (isLaunchMode || typeof window === "undefined") return;
+    const requestedView = new URLSearchParams(window.location.search).get("view");
+    if (!requestedView || !bookingLabViews.includes(requestedView)) return;
+    const roleForView = Object.entries(rolePermissions).find(([, permission]) => permission.views.includes(requestedView))?.[0] || "Admin";
+    if (!canView(requestedView)) setActiveRole(roleForView);
+    setLabView(requestedView);
+  }, [activeRole, isLaunchMode]);
 
   function toggleDay(day) {
     if (!bookableDaySet.has(day)) {
@@ -9813,6 +9877,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     localStorage.setItem("apres-booking-lab-capacity-overrides", JSON.stringify(nextOverrides));
   }
 
+  function persistCapacityScheduleOverrides(nextOverrides) {
+    setCapacityScheduleOverrides(nextOverrides);
+    localStorage.setItem("apres-booking-lab-capacity-schedule-overrides", JSON.stringify(nextOverrides));
+  }
+
   function persistSetupDayOverrides(nextOverrides) {
     setSetupDayOverrides(nextOverrides);
     localStorage.setItem("apres-booking-lab-session-day-overrides", JSON.stringify(nextOverrides));
@@ -10018,6 +10087,50 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       impact: "Default booking setup changed during unlocked settlement period",
     });
     setStatus(`${setupSession.site} defaults updated. Existing day overrides stay in place.`);
+  }
+
+  function saveCapacityScheduleEdit(event) {
+    event.preventDefault();
+    if (!activeCapacityScheduleRow) return;
+    const form = new FormData(event.currentTarget);
+    const applySimilar = form.get("applySimilar") === "on";
+    const capacity = Math.max(0, Number(form.get("capacity") || 0));
+    const price = Math.max(0, Number(form.get("price") || 0));
+    const patch = {
+      label: String(form.get("label") || activeCapacityScheduleRow.label).trim(),
+      customLabel: String(form.get("customLabel") || "").trim(),
+      start: String(form.get("start") || activeCapacityScheduleRow.start || "").trim(),
+      end: String(form.get("end") || activeCapacityScheduleRow.end || "").trim(),
+      price,
+      capacity,
+      published: form.get("published") === "on",
+      updatedAt: new Date().toISOString(),
+    };
+    const targets = (applySimilar
+      ? capacityScheduleRows.filter((row) => row.matchKey === activeCapacityScheduleRow.matchKey)
+      : [activeCapacityScheduleRow]
+    );
+    const targetDays = [...new Set(targets.map((row) => row.day))];
+    if (!requireUnlockedSettlementPeriod("Session schedule edit", targetDays)) return;
+
+    const nextScheduleOverrides = { ...capacityScheduleOverrides };
+    targets.forEach((row) => {
+      nextScheduleOverrides[row.key] = { ...(nextScheduleOverrides[row.key] || {}), ...patch };
+    });
+    persistCapacityScheduleOverrides(nextScheduleOverrides);
+
+    recordGovernanceEvent(applySimilar ? "Similar sessions changed" : "Session schedule changed", `${capacitySession.site}: ${patch.label} updated for ${targetDays.length} day${targetDays.length === 1 ? "" : "s"}.`, {
+      category: "Session setup",
+      risk: "High",
+      approvalRequired: true,
+      reason: approvalReason,
+    });
+    recordSettlementCorrection(applySimilar ? "Similar sessions changed" : "Session schedule changed", `${capacitySession.site}: price, capacity, time or published state changed.`, {
+      category: "Session setup",
+      impact: `${targetDays.length} schedule row${targetDays.length === 1 ? "" : "s"} changed during unlocked settlement period`,
+    });
+    setCapacityScheduleEditKey("");
+    setStatus(`${patch.label} saved${applySimilar ? ` across ${targetDays.length} matching days` : ""}.`);
   }
 
   function seedWaitlistDemand() {
@@ -13047,7 +13160,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       </section>}
 
       {!isLaunchMode && <section className="lab-view-tabs" aria-label="Booking lab views">
-        {["Parent", "Family", "Operations", "Collection", "Setup", "Schools", "Audit", "Pilot", "Payments", "Support", "Staffing", "Capacity", "Comms", "QA", "Launch Gate", "Data Model", "Readiness"].map((view) => (
+        {bookingLabViews.map((view) => (
           <button className={labView === view ? "active" : ""} disabled={!canView(view)} key={view} type="button" onClick={() => setLabView(view)}>{view}</button>
         ))}
       </section>}
@@ -16687,6 +16800,73 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </article>
             ))}
           </div>
+          <section className="lab-capacity-schedule">
+            <div className="lab-capacity-schedule-head">
+              <div>
+                <p className="eyebrow">Admin schedule setup</p>
+                <h3>Session price and capacity</h3>
+                <p>Edit one session row, or apply the same timing, price, capacity and published state to matching sessions across the week.</p>
+              </div>
+              <div>
+                <span>{capacityScheduleRows.filter((row) => row.published).length} published</span>
+                <strong>{capacityScheduleRows.filter((row) => row.changed).length} overrides</strong>
+              </div>
+            </div>
+            <div className="lab-capacity-schedule-table-wrap">
+              <table className="lab-capacity-schedule-table">
+                <thead>
+                  <tr>
+                    <th>Published</th>
+                    <th>Day</th>
+                    <th>Time</th>
+                    <th>Group title</th>
+                    <th>Custom label</th>
+                    <th>Places</th>
+                    <th>Cost</th>
+                    <th>Edit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {capacityScheduleRows.slice(0, 50).map((row) => (
+                    <tr key={row.key} className={row.published ? "" : "unpublished"}>
+                      <td><span className={row.published ? "lab-capacity-published" : "lab-capacity-published muted"}>{row.published ? "Yes" : "No"}</span></td>
+                      <td>{row.dayOfWeek}</td>
+                      <td>{row.start}-{row.end}</td>
+                      <td>{row.label}</td>
+                      <td>{row.customLabel || "Not set"}</td>
+                      <td>{row.capacity}</td>
+                      <td>{money(row.price)}</td>
+                      <td><button type="button" onClick={() => setCapacityScheduleEditKey(row.key)}>Edit</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {activeCapacityScheduleRow && (
+              <form className="lab-capacity-session-editor" onSubmit={saveCapacityScheduleEdit}>
+                <div className="lab-capacity-session-editor-head">
+                  <div>
+                    <p className="eyebrow">Edit session</p>
+                    <h4>{activeCapacityScheduleRow.dayOfWeek} · {activeCapacityScheduleRow.label}</h4>
+                  </div>
+                  <label><input defaultChecked={activeCapacityScheduleRow.published} name="published" type="checkbox" /> Published</label>
+                </div>
+                <label className="lab-capacity-similar-toggle"><input name="applySimilar" type="checkbox" /> Similar sessions: apply to all other days</label>
+                <div className="lab-capacity-session-editor-grid">
+                  <label>Group title<input name="label" defaultValue={activeCapacityScheduleRow.label} /></label>
+                  <label>Custom label<input name="customLabel" defaultValue={activeCapacityScheduleRow.customLabel} placeholder="Optional parent/admin label" /></label>
+                  <label>Start<input name="start" type="time" defaultValue={activeCapacityScheduleRow.start} /></label>
+                  <label>End<input name="end" type="time" defaultValue={activeCapacityScheduleRow.end} /></label>
+                  <label>Cost<input min="0" name="price" step="0.01" type="number" defaultValue={activeCapacityScheduleRow.price} /></label>
+                  <label>Places available<input min="0" name="capacity" step="1" type="number" defaultValue={activeCapacityScheduleRow.capacity} /></label>
+                </div>
+                <div className="lab-capacity-session-editor-actions">
+                  <button type="button" onClick={() => setCapacityScheduleEditKey("")}>Cancel</button>
+                  <button type="submit">Save</button>
+                </div>
+              </form>
+            )}
+          </section>
           <section className="lab-capacity-command">
             <div>
               <p className="eyebrow">Capacity command</p>

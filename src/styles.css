@@ -15860,6 +15860,7 @@ th {
 
 .lab-capacity-hero,
 .lab-capacity-command,
+.lab-capacity-schedule,
 .lab-capacity-grid > article,
 .lab-capacity-offers {
   border: 1px solid var(--line);
@@ -15878,6 +15879,8 @@ th {
 }
 
 .lab-capacity-hero h2,
+.lab-capacity-schedule h3,
+.lab-capacity-session-editor h4,
 .lab-capacity-command h3,
 .lab-capacity-grid h3,
 .lab-capacity-offers h3 {
@@ -15886,6 +15889,7 @@ th {
 }
 
 .lab-capacity-hero p:not(.eyebrow),
+.lab-capacity-schedule p:not(.eyebrow),
 .lab-capacity-command p {
   margin: 0;
   color: var(--muted);
@@ -15988,11 +15992,167 @@ th {
 }
 
 .lab-capacity-cards strong,
+.lab-capacity-schedule strong,
 .lab-capacity-command strong,
 .lab-capacity-days strong,
 .lab-waitlist-queue strong,
 .lab-capacity-offers strong {
   color: var(--royal-dark);
+}
+
+.lab-capacity-schedule {
+  display: grid;
+  gap: 12px;
+}
+
+.lab-capacity-schedule-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.lab-capacity-schedule-head > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.lab-capacity-schedule-head > div:last-child {
+  display: grid;
+  min-width: 150px;
+  gap: 3px;
+  border: 1px solid #bee8cc;
+  border-radius: 14px;
+  background: #f1fbf6;
+  padding: 10px;
+  text-align: right;
+}
+
+.lab-capacity-schedule-head span,
+.lab-capacity-schedule-table td,
+.lab-capacity-session-editor label,
+.lab-capacity-similar-toggle {
+  color: var(--muted);
+}
+
+.lab-capacity-schedule-table-wrap {
+  overflow-x: auto;
+}
+
+.lab-capacity-schedule-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+.lab-capacity-schedule-table th,
+.lab-capacity-schedule-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.lab-capacity-schedule-table th {
+  color: var(--royal-dark);
+  font-size: 0.78rem;
+  letter-spacing: 0;
+}
+
+.lab-capacity-schedule-table tr.unpublished td {
+  background: #f8fbff;
+  color: #8b95aa;
+}
+
+.lab-capacity-published {
+  display: inline-flex;
+  border-radius: 999px;
+  background: #e6f7ee;
+  color: #24663c;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.lab-capacity-published.muted {
+  background: #eef3ff;
+  color: var(--muted);
+}
+
+.lab-capacity-schedule-table button,
+.lab-capacity-session-editor-actions button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--royal);
+  padding: 8px 11px;
+  font-weight: 900;
+}
+
+.lab-capacity-schedule-table button,
+.lab-capacity-session-editor-actions button:last-child {
+  border-color: var(--royal);
+  background: var(--royal);
+  color: #fff;
+}
+
+.lab-capacity-session-editor {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #bfd0ff;
+  border-radius: 16px;
+  background: #f8fbff;
+  padding: 14px;
+}
+
+.lab-capacity-session-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.lab-capacity-session-editor-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.lab-capacity-session-editor-head label,
+.lab-capacity-similar-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 900;
+}
+
+.lab-capacity-session-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.lab-capacity-session-editor-grid label {
+  display: grid;
+  gap: 6px;
+  font-weight: 900;
+}
+
+.lab-capacity-session-editor-grid input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--royal-dark);
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.lab-capacity-session-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .lab-capacity-command {
@@ -16415,6 +16575,8 @@ th {
 	  .lab-capacity-command,
 	  .lab-capacity-command > div:last-child,
 	  .lab-capacity-cards,
+    .lab-capacity-schedule-head,
+    .lab-capacity-session-editor-grid,
 	  .lab-capacity-grid,
     .lab-admin-ops-head,
     .lab-admin-ops-head > div:last-child,
