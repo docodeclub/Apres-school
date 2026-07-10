@@ -29622,6 +29622,12 @@ th {
   color: #163d26;
 }
 
+.booking-launch-page .lab-day-card.full:not(.selected) {
+  border-color: #dce4f1;
+  background: #f7f9fd;
+  color: #526078;
+}
+
 .booking-launch-page .lab-day-card.focused-review-day {
   border-color: #2f7d4b;
   box-shadow:
@@ -29695,6 +29701,17 @@ th {
 .booking-launch-page .lab-day-card.active .lab-day-availability {
   background: rgba(47, 125, 75, 0.14);
   color: #163d26;
+}
+
+.booking-launch-page .lab-day-card.full:not(.selected) .lab-day-availability {
+  background: #eef1f7;
+  color: #526078;
+}
+
+.booking-launch-page .lab-day-card.full:not(.selected) .lab-day-main-action {
+  border: 1px solid #d1d9e8;
+  background: #eef1f7;
+  color: #526078;
 }
 
 .booking-launch-page .lab-day-main > small {
@@ -29846,6 +29863,32 @@ th {
   background: #f1fbf6;
   color: #163d26;
   box-shadow: 0 0 0 1px rgba(47, 125, 75, 0.12);
+}
+
+.booking-launch-page .lab-day-blocks button.full,
+.booking-launch-page .lab-day-blocks button:disabled {
+  cursor: not-allowed;
+  border-color: #dce4f1;
+  background: #f7f9fd;
+  color: #526078;
+  opacity: 1;
+}
+
+.booking-launch-page .lab-day-blocks button.full::before,
+.booking-launch-page .lab-day-blocks button:disabled::before {
+  border-color: #c3ccdc;
+  background: #eef1f7;
+}
+
+.booking-launch-page .lab-day-blocks button.full span,
+.booking-launch-page .lab-day-blocks button.full small,
+.booking-launch-page .lab-day-blocks button.full strong,
+.booking-launch-page .lab-day-blocks button.full em,
+.booking-launch-page .lab-day-blocks button:disabled span,
+.booking-launch-page .lab-day-blocks button:disabled small,
+.booking-launch-page .lab-day-blocks button:disabled strong,
+.booking-launch-page .lab-day-blocks button:disabled em {
+  color: #526078;
 }
 
 .booking-launch-page .lab-day-blocks button.active em {

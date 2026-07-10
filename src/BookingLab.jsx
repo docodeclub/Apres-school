@@ -1183,11 +1183,21 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const sameLaunchFamily = draftEmail && activeEmail && draftEmail === activeEmail;
     return !(draft.launchDemoBooking || (sameLaunchFamily && String(draft.id || "").startsWith("lab-booking-")));
   };
-  const selectedCapacityRows = pickedDayRows.map((row) => {
+  const capacitySnapshotForDay = (day, capacity = activeDayRows.find((row) => row.day === day)?.capacity || activeSession.capacity) => {
     const booked = drafts
-      .filter((draft) => draftCountsForCapacity(draft, activeSession.id, row.day))
+      .filter((draft) => draftCountsForCapacity(draft, activeSession.id, day))
       .reduce((sum, draft) => sum + Number(draft.childCount || 1), 0);
-    const remaining = Math.max(0, row.capacity - booked);
+    const numericCapacity = Number(capacity || 0);
+    const remaining = Math.max(0, numericCapacity - booked);
+    return {
+      booked,
+      capacity: numericCapacity,
+      remaining,
+      fullForSelection: childCount > remaining,
+    };
+  };
+  const selectedCapacityRows = pickedDayRows.map((row) => {
+    const { booked, remaining } = capacitySnapshotForDay(row.day, row.capacity);
     const fillAfterBooking = row.capacity ? ((booked + childCount) / row.capacity) * 100 : 100;
     return { ...row, booked, remaining, fillAfterBooking };
   });
@@ -5819,6 +5829,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     }
     const blockStoreKey = `${activeSession.id}::${day}`;
     const removing = pickedDays.includes(day);
+    if (!removing && isLaunchMode && capacitySnapshotForDay(day).fullForSelection) {
+      setStatus("That day is full for the selected child. Choose another date or reduce the number of children.");
+      return;
+    }
     setSelectedDays((current) => {
       const existing = current[activeSession.id] || [];
       const next = removing ? existing.filter((item) => item !== day) : [...existing, day];
@@ -5844,6 +5858,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     }
     const blockStoreKey = `${activeSession.id}::${day}`;
     const blockKey = block.key;
+    const currentKeysForDay = selectedBlockKeysForDay(day);
+    const addingBlock = !pickedDays.includes(day) || !currentKeysForDay.includes(blockKey);
+    if (addingBlock && isLaunchMode && capacitySnapshotForDay(day).fullForSelection) {
+      setStatus("That session is full for the selected child. Choose another session or date.");
+      return;
+    }
     setSelectedDays((current) => {
       const existingDays = current[activeSession.id] || [];
       return existingDays.includes(day) ? current : { ...current, [activeSession.id]: [...existingDays, day] };
@@ -19055,13 +19075,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     {(expandedDateMonths[group.month] ? group.rows : group.rows.slice(0, launchVisibleDayLimit)).map((row) => {
                       const dayPicked = pickedDays.includes(row.day);
                       const dayOpen = isLaunchMode ? (dayPicked && (launchExpandedDay ? launchExpandedDay === row.day : pickedDays[0] === row.day)) : dayPicked;
+                      const dayCapacity = capacitySnapshotForDay(row.day, row.capacity);
+                      const dayFull = isLaunchMode && dayCapacity.fullForSelection;
+                      const canAddDay = !dayFull || dayPicked;
                       return (
-                      <article id={`lab-day-${safeDomId(row.day)}`} className={`lab-day-card ${dayPicked ? "selected" : ""} ${dayOpen ? "active open" : ""} ${launchExpandedDay === row.day ? "focused-review-day" : ""}`} key={row.day}>
-                        <button className="lab-day-main" type="button" aria-pressed={dayPicked} onClick={() => (isLaunchMode && dayPicked ? setLaunchExpandedDay(row.day) : toggleDay(row.day))}>
+                      <article id={`lab-day-${safeDomId(row.day)}`} className={`lab-day-card ${dayPicked ? "selected" : ""} ${dayOpen ? "active open" : ""} ${dayFull ? "full" : ""} ${launchExpandedDay === row.day ? "focused-review-day" : ""}`} key={row.day}>
+                        <button className="lab-day-main" type="button" aria-pressed={dayPicked} disabled={!canAddDay} onClick={() => (isLaunchMode && dayPicked ? setLaunchExpandedDay(row.day) : toggleDay(row.day))}>
                           <strong>{isLaunchMode ? row.day.split(",")[0] : row.day}</strong>
                           {isLaunchMode && <span className="lab-day-date-tail">{row.day.includes(",") ? row.day.split(",").slice(1).join(",").trim() : row.day}</span>}
-                          <span className="lab-day-availability">{selectedCapacityRows.find((item) => item.day === row.day)?.remaining ?? row.capacity} places left</span>
-                          {isLaunchMode && <span className="lab-day-main-action">{dayPicked ? dayOpen ? "Editing" : "Edit" : "Add day"}</span>}
+                          <span className="lab-day-availability">{dayFull ? "Full" : `${dayCapacity.remaining} places left`}</span>
+                          {isLaunchMode && <span className="lab-day-main-action">{dayFull && !dayPicked ? "Full" : dayPicked ? dayOpen ? "Editing" : "Edit" : "Add day"}</span>}
                           <small>{money(row.price)} · {row.blockSummary || row.time}</small>
                           <em>{row.paymentRoute}</em>
                           {row.note && <small>{row.note}</small>}
@@ -19074,14 +19097,18 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                           </div>
                         )}
                         <div className="lab-day-blocks" aria-label={`${row.day} session blocks`}>
-                          {row.blocks.map((block, index) => (
-                            <button className={dayPicked && row.selectedBlockKeys.includes(block.key) ? "active" : ""} key={block.key} type="button" aria-pressed={dayPicked && row.selectedBlockKeys.includes(block.key)} onClick={() => toggleDayBlock(row.day, block)}>
+                          {row.blocks.map((block, index) => {
+                            const blockSelected = dayPicked && row.selectedBlockKeys.includes(block.key);
+                            const blockDisabled = dayFull && !blockSelected;
+                            return (
+                            <button className={`${blockSelected ? "active" : ""} ${blockDisabled ? "full" : ""}`} key={block.key} type="button" aria-pressed={blockSelected} disabled={blockDisabled} onClick={() => toggleDayBlock(row.day, block)}>
                               <span>{`Session ${index + 1}`}</span>
                               <small>{isLaunchMode ? `${block.start}-${block.end}` : `${block.label} · ${block.start}-${block.end}`}</small>
                               <strong>{money(block.price)}</strong>
-                              {isLaunchMode && <em>{dayPicked && row.selectedBlockKeys.includes(block.key) ? "Selected" : "Add"}</em>}
+                              {isLaunchMode && <em>{blockDisabled ? "Full" : blockSelected ? "Selected" : "Add"}</em>}
                             </button>
-                          ))}
+                          );
+                          })}
                         </div>
                       </article>
                     );
