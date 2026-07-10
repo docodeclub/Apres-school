@@ -147,15 +147,21 @@ async function getInvoice(invoiceId: string) {
 }
 
 function buildInvoiceState(event: WebhookEvent, currentInvoice: Record<string, unknown> | null) {
-  const totalAmount = moneyValue(currentInvoice?.total_amount) || event.expected_amount || event.amount || 0;
+  const totalAmount = moneyValue(currentInvoice?.total_amount) || normaliseEventAmount(event.expected_amount || event.amount, 0);
   const currentPaid = moneyValue(currentInvoice?.paid_amount) || 0;
   const currentRefunded = moneyValue(currentInvoice?.refunded_amount) || 0;
-  const eventAmount = Math.max(0, Number(event.amount || 0));
+  const eventAmount = normaliseEventAmount(event.amount, totalAmount);
   const rawParent = typeof event.raw_payload?.parent === "object" && event.raw_payload.parent ? event.raw_payload.parent as Record<string, unknown> : {};
+  const rawMetadata =
+    metadataObject(event.raw_payload?.metadata) ||
+    metadataObject(event.raw_payload?.callbackMetadata) ||
+    {};
   const parentEmail =
     stringValue(event.raw_payload?.parentEmail) ||
     stringValue(event.raw_payload?.parent_email) ||
     stringValue(rawParent.email) ||
+    stringValue(rawMetadata.parentEmail) ||
+    stringValue(rawMetadata.parent_email) ||
     stringValue(currentInvoice?.parent_email);
 
   const base = {
@@ -177,6 +183,7 @@ function buildInvoiceState(event: WebhookEvent, currentInvoice: Record<string, u
     last_provider_event_id: event.provider_event_id,
     metadata: {
       ...(isObject(currentInvoice?.metadata) ? currentInvoice?.metadata as Record<string, unknown> : {}),
+      ...(isObject(rawMetadata) ? rawMetadata as Record<string, unknown> : {}),
       lastEventType: event.event_type,
       lastProviderReference: event.provider_reference,
     },
@@ -355,7 +362,7 @@ async function ensureReceipt(event: WebhookEvent, invoiceId: string) {
       payment_id: event.payment_id,
       provider_reference: event.provider_reference,
       receipt_number: receiptNumber,
-      amount: Math.max(0, Number(event.amount || event.expected_amount || 0)),
+      amount: normaliseEventAmount(event.amount || event.expected_amount, 0),
       currency: event.currency || "GBP",
       delivery_status: "pending_email",
       metadata: { eventType: event.event_type },
@@ -532,6 +539,25 @@ function bookingStatusForInvoice(paymentStatus: string) {
 
 function shouldIssueReceipt(eventType: string) {
   return ["payment_completed", "payment_reconciled", "fallback_card_charged", "recurring_payment_captured"].includes(eventType);
+}
+
+function normaliseEventAmount(value: unknown, invoiceTotal: number) {
+  const numeric = moneyValue(value);
+  if (numeric <= 0) return 0;
+  if (invoiceTotal > 0 && numeric > invoiceTotal * 10) return Math.round((numeric / 100 + Number.EPSILON) * 100) / 100;
+  if (invoiceTotal === 0 && numeric >= 100 && Number.isInteger(numeric)) return Math.round((numeric / 100 + Number.EPSILON) * 100) / 100;
+  return numeric;
+}
+
+function metadataObject(value: unknown) {
+  if (isObject(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return isObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 async function markEvent(id: string, processingStatus: string, outcome: string) {

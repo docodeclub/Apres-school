@@ -239,6 +239,7 @@ async function handlePaymentAdminAction(input: PaymentAdminActionInput) {
       })
       : null;
 
+  // Both booking_payment_link and booking_payment_receipt actions flow through email_logs for resend audit history.
   const nextFinanceStatus = financeStatusForPaymentAdminAction(action, invoice);
   const nextPortalStatus = parentPortalStatusForPaymentAdminAction(action, invoice);
   const updatePayload: Record<string, unknown> = {

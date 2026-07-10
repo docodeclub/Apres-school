@@ -12730,9 +12730,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       bookingId,
       title: opened ? "Secure payment window opened" : isLaunchMode ? "Opening secure payment" : "Secure payment link ready",
       detail: opened
-        ? "Complete the PonchoPay step. Your booking confirms automatically when PonchoPay sends the callback."
+        ? "Complete the PonchoPay step. Your booking confirms automatically when PonchoPay sends the callback; the booking confirms only after payment is authorised."
         : isLaunchMode
-          ? "We are taking you to PonchoPay. Your booking confirms automatically when PonchoPay sends the callback."
+          ? "We are taking you to PonchoPay. Your booking confirms automatically when PonchoPay sends the callback; the booking confirms only after payment is authorised."
         : "Use the secure payment button. Your booking confirms automatically when PonchoPay sends the callback.",
       action: "Waiting for callback",
     });

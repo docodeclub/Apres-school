@@ -103,17 +103,20 @@ serve(async (request) => {
       .insert(insertPayload);
 
     if (isDuplicateError(error)) {
+      const processorResult = await triggerEventProcessor(event.providerEventId);
       return json({
         eventAccepted: true,
         duplicate: true,
         providerEventId: event.providerEventId,
         eventType: event.eventType,
-        processingStatus: "ignored_duplicate",
+        processingStatus: "duplicate_reprocessed",
+        processor: processorResult,
       });
     }
 
     if (error) throw error;
     await mirrorBookingPaymentEvent(insertPayload);
+    const processorResult = await triggerEventProcessor(event.providerEventId);
 
     await supabase.from("audit_log").insert({
       action: "ponchopay_webhook_received",
@@ -135,6 +138,7 @@ serve(async (request) => {
       eventType: event.eventType,
       processingStatus: "received",
       nextAction: event.nextAction,
+      processor: processorResult,
     });
   } catch (error) {
     console.error(error);
@@ -176,7 +180,11 @@ function normalisePonchoPayEvent(payload: Record<string, unknown>, sourcePath: s
   const data = objectValue(payload.data);
   const payment = objectValue(payload.payment) || objectValue(data.payment);
   const invoice = objectValue(payload.invoice) || objectValue(data.invoice);
-  const metadata = objectValue(payload.metadata) || objectValue(data.metadata) || objectValue(payment.metadata) || {};
+  const metadata =
+    metadataObject(payload.metadata) ||
+    metadataObject(data.metadata) ||
+    metadataObject(payment.metadata) ||
+    {};
   const eventType =
     stringValue(payload.eventType) ||
     stringValue(payload.event_type) ||
@@ -241,6 +249,50 @@ function normalisePonchoPayEvent(payload: Record<string, unknown>, sourcePath: s
     outcome: outcomeForEvent(eventType),
     nextAction: nextActionForEvent(eventType),
   };
+}
+
+async function triggerEventProcessor(providerEventId: string) {
+  if (!providerEventId) return { attempted: false, reason: "missing_provider_event_id" };
+
+  const processorToken = Deno.env.get("PONCHOPAY_PROCESSOR_TOKEN") ?? "";
+  try {
+    const response = await fetch(`${supabaseUrl.replace(/\/$/, "")}/functions/v1/ponchopay-process-events`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        ...(processorToken ? { "x-processor-token": processorToken } : {}),
+      },
+      body: JSON.stringify({ eventId: providerEventId, limit: 1 }),
+    });
+    const body = await response.json().catch(() => ({}));
+    return {
+      attempted: true,
+      ok: response.ok,
+      status: response.status,
+      processed: Number(body?.processed || 0),
+      failed: Number(body?.failed || 0),
+      skipped: Number(body?.skipped || 0),
+      error: stringValue(body?.error) || null,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      ok: false,
+      error: errorMessage(error) || "Unable to trigger PonchoPay event processor",
+    };
+  }
+}
+
+function metadataObject(value: unknown) {
+  if (isObject(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return isObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function validateEvent(event: ReturnType<typeof normalisePonchoPayEvent>) {
