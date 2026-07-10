@@ -2409,7 +2409,17 @@ function SchoolFinance({ data, access }) {
       if (!customer?.accountsEmail) throw new Error("Add an accounts email to the customer before sending.");
       const { exportFinanceInvoicePdf } = await import("./pdfExports.js");
       const pdfBytes = exportFinanceInvoicePdf(invoice, customer || {}, finance.settings || {}, { returnBytes: true });
-      const subject = (finance.settings?.defaultEmailSubject || "Invoice {InvoiceNumber} from Après School").replace("{InvoiceNumber}", invoice.invoiceNumber);
+      const replacements = {
+        InvoiceNumber: invoice.invoiceNumber,
+        CustomerName: customer?.customerName || "",
+        Contact: customer?.accountsContact || customer?.customerName || "Accounts team",
+        DueDate: formatShortDate(invoice.dueDate),
+      };
+      const applyFinanceTemplate = (template) => Object.entries(replacements).reduce(
+        (text, [key, value]) => text.replaceAll(`{${key}}`, value),
+        template || "",
+      );
+      const subject = applyFinanceTemplate(finance.settings?.defaultEmailSubject || "Invoice {InvoiceNumber} from Après School");
       const body = (finance.settings?.defaultEmailBody || [
         `Dear ${customer?.accountsContact || customer?.customerName || "Accounts team"},`,
         "",
@@ -2419,12 +2429,12 @@ function SchoolFinance({ data, access }) {
         "",
         "Thank you,",
         "Après School Finance",
-      ].join("\n")).replaceAll("{InvoiceNumber}", invoice.invoiceNumber).replaceAll("{CustomerName}", customer?.customerName || "");
+      ].join("\n"));
       const result = await sendFinanceInvoiceEmail({
         invoiceId,
         to: customer.accountsEmail,
         subject,
-        body,
+        body: applyFinanceTemplate(body),
         pdfBase64: bytesToBase64(pdfBytes),
         pdfFilename: `apres-invoice-${invoice.invoiceNumber}.pdf`,
       });

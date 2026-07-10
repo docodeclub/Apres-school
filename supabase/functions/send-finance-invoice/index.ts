@@ -50,7 +50,8 @@ serve(async (request) => {
     const invoice = await loadInvoice(payload.invoiceId);
     if (!invoice.invoice_number) return json({ error: "Approve and number this invoice before emailing it." }, 400);
 
-    const recipient = payload.to || invoice.finance_customers?.accounts_email || "";
+    const customer = relatedCustomer(invoice);
+    const recipient = payload.to || customer?.accounts_email || "";
     if (!recipient.includes("@")) return json({ error: "The customer does not have a valid accounts email." }, 400);
 
     const subject = payload.subject || `Invoice ${invoice.invoice_number} from Après School`;
@@ -99,7 +100,7 @@ serve(async (request) => {
 
     await logEmail({
       recipientEmail: recipient,
-      recipientName: invoice.finance_customers?.accounts_contact || invoice.finance_customers?.customer_name || "",
+      recipientName: customer?.accounts_contact || customer?.customer_name || "",
       subject,
       status: emailStatus,
       providerMessageId,
@@ -269,8 +270,17 @@ async function safeResponseText(response: Response) {
   }
 }
 
+function relatedCustomer(invoice: Record<string, unknown>) {
+  const relation = invoice.finance_customers as
+    | { customer_name?: string; accounts_contact?: string; accounts_email?: string }
+    | { customer_name?: string; accounts_contact?: string; accounts_email?: string }[]
+    | null
+    | undefined;
+  return Array.isArray(relation) ? relation[0] || null : relation || null;
+}
+
 function buildDefaultBody(invoice: Record<string, unknown>) {
-  const customer = invoice.finance_customers as { customer_name?: string } | null;
+  const customer = relatedCustomer(invoice);
   return [
     `Dear ${customer?.customer_name || "Accounts team"},`,
     "",
