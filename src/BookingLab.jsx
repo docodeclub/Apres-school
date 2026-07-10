@@ -5635,11 +5635,35 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const adminOpsCriticalBookings = bookingReviewRows.filter((row) => row.reviewState !== "Approved" && (row.priority === "High" || row.reviewState === "Payment check" || row.missing.length));
   const adminOpsCapacityPressure = capacityPressureRows.filter((row) => row.pressure === "High");
   const adminOpsMoneyRows = financeRows.filter((row) => row.status !== "Prototype paid" && row.status !== "Cancelled");
+  const adminOpsBookedRevenue = financeRows
+    .filter((row) => row.status !== "Cancelled")
+    .reduce((sum, row) => sum + row.total, 0);
+  const adminOpsCollectedRevenue = livePaymentDeskRows.length
+    ? livePaymentDeskRows.reduce((sum, row) => sum + Number(row.paidAmount || 0), 0)
+    : financeRows.filter((row) => row.status === "Prototype paid").reduce((sum, row) => sum + row.total, 0);
+  const adminOpsOutstandingRevenue = livePaymentDeskRows.length
+    ? livePaymentDeskRows.reduce((sum, row) => sum + row.balance, 0)
+    : ponchoRows.reduce((sum, row) => sum + Math.max(0, row.balance || 0), 0);
+  const adminOpsConfirmedRows = bookingReviewRows.filter((row) => row.reviewState === "Approved" || row.payment === "Paid" || row.draft.status === "Prototype paid");
+  const adminOpsAverageFill = occupancyRows.length ? Math.round(occupancyRows.reduce((sum, row) => sum + row.fill, 0) / occupancyRows.length) : 0;
+  const adminOpsProcessingPayments = livePaymentDeskRows.filter((row) => row.lane === "processing").length || adminLiveProcessingRows.length;
+  const adminOpsFinanceCards = [
+    ["Booked", money(adminOpsBookedRevenue), `${financeRows.filter((row) => row.status !== "Cancelled").length} active booking${financeRows.filter((row) => row.status !== "Cancelled").length === 1 ? "" : "s"}`],
+    ["Collected", money(adminOpsCollectedRevenue), livePaymentDeskRows.length ? "From live invoices" : "Local paid rows"],
+    ["Outstanding", money(adminOpsOutstandingRevenue), `${livePaymentDeskRows.filter((row) => row.balance > 0).length || ponchoOutstandingRows.length} balance${(livePaymentDeskRows.filter((row) => row.balance > 0).length || ponchoOutstandingRows.length) === 1 ? "" : "s"}`],
+    ["Credit held", money(creditLiability), "Parent credits from changes"],
+  ];
+  const adminOpsHealthRows = [
+    ["Payment flow", ponchoProblemRows.length ? "Needs review" : adminOpsProcessingPayments ? "Processing" : "Clear", `${adminOpsProcessingPayments} processing · ${ponchoProblemRows.length} issue${ponchoProblemRows.length === 1 ? "" : "s"}`],
+    ["Capacity", adminOpsCapacityPressure.length ? "Pressure" : "Available", `${capacityFullDays} full · ${capacityOverbookedDays} overbooked`],
+    ["Register", registerRows.length ? `${checkedOutCount}/${registerRows.length}` : "No rows", registerRows.length ? `${registerCompletion}% collected` : "No live register loaded"],
+    ["Reviews", adminOpsCriticalBookings.length ? "Action needed" : "Ready", `${adminOpsConfirmedRows.length}/${bookingReviewRows.length || 0} confirmed or paid`],
+  ];
   const adminOpsControlCards = [
     ["Today", `${registerRows.length} child${registerRows.length === 1 ? "" : "ren"}`, `${activeSession.site} · ${registerDay}`],
     ["Walk-ins", String(attendanceChargeRows.length), `${attendanceInvoiceQueue.length} invoice-ready · ${attendanceNeedsParentMatch} need match`],
     ["Booking review", String(adminOpsCriticalBookings.length), `${bookingReviewRows.filter((row) => row.reviewState !== "Approved").length} open review${bookingReviewRows.filter((row) => row.reviewState !== "Approved").length === 1 ? "" : "s"}`],
-    ["Capacity", String(adminOpsCapacityPressure.length), `${capacityOverbookedDays} overbooked · ${capacityFullDays} full`],
+    ["Capacity", `${adminOpsAverageFill}%`, `${capacityOverbookedDays} overbooked · ${capacityFullDays} full`],
     ["Payments", String(adminOpsMoneyRows.length), `${pendingWithoutReference.length} missing reference · ${ponchoProblemRows.length} PonchoPay issue${ponchoProblemRows.length === 1 ? "" : "s"}`],
   ];
   const adminOpsActionRows = [
@@ -5773,15 +5797,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       actions: [["Open register", "Operations"], ["Collection", "Collection"], ["Support", "Support"]],
     },
     Admin: {
-      view: "Setup",
-      title: "Admin booking control",
-      text: "Own dates, pricing, capacity, eligibility, payment routes and launch rules before bookings open to parents.",
+      view: "Operations",
+      title: "Booking engine room",
+      text: "See revenue, capacity, payment flow and launch blockers before they become parent-facing issues.",
       metrics: [
-        ["Open dates", `${setupOpenDays}/${setupOverrideRows.length}`],
-        ["Overrides", String(editedSetupRows.length)],
-        ["Routes", String(setupRouteCount || 0)],
+        ["Booked", money(adminOpsBookedRevenue)],
+        ["Outstanding", money(adminOpsOutstandingRevenue)],
+        ["Capacity", `${adminOpsAverageFill}%`],
       ],
-      actions: [["Launch Gate", "Launch Gate"], ["Setup controls", "Setup"], ["Capacity", "Capacity"]],
+      actions: [["Booking desk", "Operations"], ["Capacity", "Capacity"], ["Setup controls", "Setup"]],
     },
     Finance: {
       view: "Payments",
@@ -13090,15 +13114,33 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             <section className="lab-admin-ops-control">
               <div className="lab-admin-ops-head">
                 <div>
-                  <p className="eyebrow">Admin bookings control room</p>
+                  <p className="eyebrow">Admin booking engine</p>
                   <h2>{adminOpsNextMove}</h2>
-                  <p>One launch desk for daily bookings, walk-ins, payment exceptions and capacity pressure. Admin still owns setup changes; managers can run the day.</p>
+                  <p>Revenue, bookings, payment flow and capacity in one place. Admin owns dates, prices, capacity and routes; managers can run the day without changing setup.</p>
                 </div>
                 <div>
                   <button type="button" onClick={() => setLabView("Audit")}>Review Bookings</button>
                   <button type="button" onClick={() => setLabView("Payments")}>Payment Desk</button>
                   <button type="button" onClick={() => setLabView("Capacity")}>Capacity</button>
                 </div>
+              </div>
+              <div className="lab-admin-ops-finance" aria-label="Admin finance snapshot">
+                {adminOpsFinanceCards.map(([label, value, detail]) => (
+                  <article key={label}>
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                    <small>{detail}</small>
+                  </article>
+                ))}
+              </div>
+              <div className="lab-admin-ops-health" aria-label="Launch health signals">
+                {adminOpsHealthRows.map(([label, state, detail]) => (
+                  <article key={label}>
+                    <span>{label}</span>
+                    <strong>{state}</strong>
+                    <small>{detail}</small>
+                  </article>
+                ))}
               </div>
               <div className="lab-admin-ops-cards">
                 {adminOpsControlCards.map(([label, value, detail]) => (
