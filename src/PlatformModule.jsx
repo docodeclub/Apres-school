@@ -2251,7 +2251,11 @@ function applyFinanceEmailTemplate(template = "", invoice = {}, customer = {}) {
     InvoiceNumber: invoice.invoiceNumber || invoice.draftReference || "",
     CustomerName: customer?.customerName || "",
     Contact: customer?.accountsContact || customer?.customerName || "Accounts team",
+    InvoiceDate: formatShortDate(invoice.invoiceDate),
     DueDate: formatShortDate(invoice.dueDate),
+    Total: formatCurrency(invoice.total || 0),
+    AmountPaid: formatCurrency(invoice.amountPaid || 0),
+    BalanceDue: formatCurrency(invoice.balanceDue ?? invoice.total ?? 0),
   };
   return Object.entries(replacements).reduce(
     (text, [key, value]) => text.replaceAll(`{${key}}`, value),
@@ -2275,6 +2279,36 @@ function createFinanceInvoiceEmailDraft(invoice = {}, customer = {}, settings = 
     "Après School",
   ].join("\n");
   return {
+    emailKind: "invoice",
+    invoiceId: invoice.id || "",
+    invoiceNumber: invoice.invoiceNumber || invoice.draftReference || "",
+    customerName: customer?.customerName || invoice.customerName || "Customer",
+    to: customer?.accountsEmail || "",
+    cc: "",
+    bcc: "",
+    subject: applyFinanceEmailTemplate(subjectTemplate, invoice, customer),
+    body: applyFinanceEmailTemplate(bodyTemplate, invoice, customer),
+    pdfFilename: invoice.invoiceNumber ? `apres-invoice-${invoice.invoiceNumber}.pdf` : "apres-invoice.pdf",
+  };
+}
+
+function createFinanceInvoiceReminderDraft(invoice = {}, customer = {}, settings = {}) {
+  const subjectTemplate = "Payment reminder: invoice {InvoiceNumber} from Après School";
+  const bodyTemplate = [
+    "Dear {Contact},",
+    "",
+    "I hope you are well.",
+    "",
+    "This is a polite reminder that invoice {InvoiceNumber} for {BalanceDue} remains outstanding and was due on {DueDate}.",
+    "",
+    "I have attached a copy of the invoice for ease of reference. Please use the invoice number as the payment reference when paying by BACS.",
+    "",
+    "Kind regards,",
+    "",
+    settings?.companyName || "Après School Finance",
+  ].join("\n");
+  return {
+    emailKind: "payment_reminder",
     invoiceId: invoice.id || "",
     invoiceNumber: invoice.invoiceNumber || invoice.draftReference || "",
     customerName: customer?.customerName || invoice.customerName || "Customer",
@@ -2456,6 +2490,25 @@ function SchoolFinance({ data, access }) {
     setEmailPreview(createFinanceInvoiceEmailDraft(invoice, customer, finance.settings || {}));
   }
 
+  function openFinanceReminderPreview(invoiceId) {
+    const invoice = invoices.find((item) => item.id === invoiceId);
+    const customer = customers.find((item) => item.id === invoice?.customerId);
+    const balance = Number(invoice?.balanceDue ?? invoice?.total ?? 0);
+    if (!invoice?.invoiceNumber) {
+      setStatus("Approve and number this invoice before sending a reminder.");
+      return;
+    }
+    if (balance <= 0) {
+      setStatus("This invoice has no outstanding balance to chase.");
+      return;
+    }
+    if (!customer?.accountsEmail) {
+      setStatus("Add an accounts email to the customer before sending a reminder.");
+      return;
+    }
+    setEmailPreview(createFinanceInvoiceReminderDraft(invoice, customer, finance.settings || {}));
+  }
+
   async function recordInvoiceEmail(draft = emailPreview) {
     const invoiceId = draft?.invoiceId;
     if (!invoiceId) return;
@@ -2470,6 +2523,7 @@ function SchoolFinance({ data, access }) {
       const pdfBytes = exportFinanceInvoicePdf(invoice, customer || {}, finance.settings || {}, { returnBytes: true });
       const result = await sendFinanceInvoiceEmail({
         invoiceId,
+        emailKind: draft.emailKind || "invoice",
         to: draft.to,
         cc: draft.cc,
         bcc: draft.bcc,
@@ -2478,9 +2532,16 @@ function SchoolFinance({ data, access }) {
         pdfBase64: bytesToBase64(pdfBytes),
         pdfFilename: draft.pdfFilename || `apres-invoice-${invoice.invoiceNumber}.pdf`,
       });
-      addAuditLog("Finance invoice emailed", invoice.invoiceNumber || invoiceId);
+      const isReminder = draft.emailKind === "payment_reminder";
+      addAuditLog(isReminder ? "Finance invoice reminder sent" : "Finance invoice emailed", invoice.invoiceNumber || invoiceId);
       setEmailPreview(null);
-      await refreshFinance(result?.emailed ? "Invoice emailed with PDF attached." : "Invoice email was queued, but the email provider did not send it.");
+      await refreshFinance(result?.emailed
+        ? isReminder
+          ? "Payment reminder emailed with PDF attached."
+          : "Invoice emailed with PDF attached."
+        : isReminder
+          ? "Payment reminder was queued, but the email provider did not send it."
+          : "Invoice email was queued, but the email provider did not send it.");
     } catch (error) {
       setStatus(error?.message || "Invoice email could not be sent.");
     } finally {
@@ -2620,6 +2681,7 @@ function SchoolFinance({ data, access }) {
                 saving={saving}
                 onApprove={approveInvoice}
                 onEmail={openFinanceEmailPreview}
+                onReminder={openFinanceReminderPreview}
                 onPdf={downloadInvoicePdf}
                 onRecordPayment={recordPayment}
               />
@@ -2777,13 +2839,14 @@ function SchoolFinance({ data, access }) {
 
 function FinanceInvoiceEmailModal({ draft, setDraft, saving, onClose, onSend }) {
   const update = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+  const isReminder = draft.emailKind === "payment_reminder";
   return (
     <div className="platform-modal-backdrop" role="presentation">
       <section className="hr-dismiss-modal finance-email-modal" role="dialog" aria-modal="true" aria-labelledby="finance-email-preview-title">
         <button className="modal-close" type="button" aria-label="Close invoice email preview" onClick={onClose}><X size={18} /></button>
-        <p className="eyebrow">Invoice email</p>
-        <h3 id="finance-email-preview-title">Check before sending</h3>
-        <p>{draft.invoiceNumber} for {draft.customerName}. The PDF invoice will be attached automatically.</p>
+        <p className="eyebrow">{isReminder ? "Payment reminder" : "Invoice email"}</p>
+        <h3 id="finance-email-preview-title">{isReminder ? "Check reminder before sending" : "Check before sending"}</h3>
+        <p>{draft.invoiceNumber} for {draft.customerName}. {isReminder ? "A copy of the invoice PDF will be attached for reference." : "The PDF invoice will be attached automatically."}</p>
         <div className="finance-email-preview-grid">
           <label><span>To</span><input type="email" value={draft.to} onChange={(event) => update("to", event.target.value)} /></label>
           <label><span>CC</span><input value={draft.cc} onChange={(event) => update("cc", event.target.value)} placeholder="Optional, comma separated" /></label>
@@ -2794,14 +2857,14 @@ function FinanceInvoiceEmailModal({ draft, setDraft, saving, onClose, onSend }) 
         </div>
         <div className="dismiss-modal-actions">
           <button type="button" className="button secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="button book" disabled={saving || !draft.to || !draft.subject || !draft.body} onClick={onSend}>{saving ? "Sending..." : "Send now"}</button>
+          <button type="button" className="button book" disabled={saving || !draft.to || !draft.subject || !draft.body} onClick={onSend}>{saving ? "Sending..." : isReminder ? "Send reminder" : "Send now"}</button>
         </div>
       </section>
     </div>
   );
 }
 
-function FinanceSelectedInvoicePanel({ invoice, customer, activity, paymentDraft, setPaymentDraft, canManageFinance, saving, onApprove, onEmail, onPdf, onRecordPayment }) {
+function FinanceSelectedInvoicePanel({ invoice, customer, activity, paymentDraft, setPaymentDraft, canManageFinance, saving, onApprove, onEmail, onReminder, onPdf, onRecordPayment }) {
   if (!invoice) {
     return <EmptyList title="Choose an invoice" text="Select an invoice from the register to see the workflow, payment controls and audit trail." />;
   }
@@ -2809,6 +2872,7 @@ function FinanceSelectedInvoicePanel({ invoice, customer, activity, paymentDraft
   const canApprove = ["Draft", "Submitted"].includes(invoice.status);
   const canSend = Boolean(invoice.invoiceNumber);
   const canPay = balance > 0 && !["Draft", "Void", "Credited"].includes(invoice.status);
+  const canRemind = canSend && canPay;
   const steps = buildFinanceWorkflowSteps(invoice);
   return (
     <div className="finance-command-panel">
@@ -2843,6 +2907,9 @@ function FinanceSelectedInvoicePanel({ invoice, customer, activity, paymentDraft
         <button type="button" className="button secondary" onClick={() => onPdf(invoice)}>View PDF</button>
         <button type="button" className="button book" disabled={!canManageFinance || !canSend || saving === `email-${invoice.id}`} onClick={() => onEmail(invoice.id)}>
           {saving === `email-${invoice.id}` ? "Sending..." : "Send invoice"}
+        </button>
+        <button type="button" className="button secondary" disabled={!canManageFinance || !canRemind || saving === `email-${invoice.id}`} onClick={() => onReminder(invoice.id)}>
+          {saving === `email-${invoice.id}` ? "Sending..." : "Send reminder"}
         </button>
       </div>
 
@@ -2902,6 +2969,8 @@ function FinanceInvoiceEmailHistory({ emails = [] }) {
       </div>
       <div className="finance-email-history-list">
         {sortedEmails.map((email) => {
+          const isReminder = email.emailKind === "payment_reminder";
+          const kindLabel = isReminder ? "Reminder" : "Invoice";
           const providerAccepted = String(email.status || "").toLowerCase() === "sent" && Boolean(email.providerMessageId);
           const statusText = providerAccepted
             ? "Resend accepted"
@@ -2915,9 +2984,9 @@ function FinanceInvoiceEmailHistory({ emails = [] }) {
               <div className="finance-email-history-head">
                 <span>
                   <strong>{email.subject || "No subject recorded"}</strong>
-                  <small>{formatDateTime(email.sentAt)} · {statusText}</small>
+                  <small>{kindLabel} · {formatDateTime(email.sentAt)} · {statusText}</small>
                 </span>
-                <Badge value={statusText} />
+                <Badge value={kindLabel} />
               </div>
               <dl>
                 <div><dt>To</dt><dd>{email.to || "Not recorded"}</dd></div>
@@ -3164,7 +3233,9 @@ function buildFinanceInvoiceActivity(invoice = {}, auditEvents = []) {
     ...(invoice.emails || []).map((email) => ({
       id: `email-${email.id}`,
       whenRaw: email.sentAt || invoice.sentAt || invoice.updatedAt || "",
-      label: email.status === "sent" ? "Invoice email sent" : "Invoice email recorded",
+      label: email.emailKind === "payment_reminder"
+        ? email.status === "sent" ? "Payment reminder sent" : "Payment reminder recorded"
+        : email.status === "sent" ? "Invoice email sent" : "Invoice email recorded",
       detail: [email.to, email.subject].filter(Boolean).join(" · "),
     })),
     ...(invoice.payments || []).map((payment) => ({

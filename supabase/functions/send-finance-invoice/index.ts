@@ -46,6 +46,7 @@ serve(async (request) => {
     const payload = normalizePayload(await request.json());
     const validationError = validatePayload(payload);
     if (validationError) return json({ error: validationError }, 400);
+    const isReminder = payload.emailKind === "payment_reminder";
 
     const invoice = await loadInvoice(payload.invoiceId);
     if (!invoice.invoice_number) return json({ error: "Approve and number this invoice before emailing it." }, 400);
@@ -93,6 +94,7 @@ serve(async (request) => {
       provider_message_id: providerMessageId || null,
       metadata: {
         provider: "resend",
+        emailKind: payload.emailKind,
         attachmentFilename: payload.pdfFilename || `apres-invoice-${invoice.invoice_number}.pdf`,
         error: emailError,
       },
@@ -101,6 +103,7 @@ serve(async (request) => {
     await logEmail({
       recipientEmail: recipient,
       recipientName: customer?.accounts_contact || customer?.customer_name || "",
+      emailType: isReminder ? "finance_invoice_reminder" : "finance_invoice",
       subject,
       status: emailStatus,
       providerMessageId,
@@ -110,12 +113,13 @@ serve(async (request) => {
         invoiceId: invoice.id,
         invoiceNumber: invoice.invoice_number,
         customerId: invoice.customer_id,
+        emailKind: payload.emailKind,
         cc: payload.cc,
         bcc: payload.bcc,
       },
     });
 
-    if (emailed) {
+    if (emailed && !isReminder) {
       await supabase
         .from("finance_invoices")
         .update({
@@ -131,14 +135,18 @@ serve(async (request) => {
       invoice_id: invoice.id,
       customer_id: invoice.customer_id,
       actor_id: actor.id,
-      action: emailed ? "Invoice emailed" : "Invoice email queued",
+      action: isReminder
+        ? emailed ? "Payment reminder emailed" : "Payment reminder queued"
+        : emailed ? "Invoice emailed" : "Invoice email queued",
       detail: `${invoice.invoice_number} to ${recipient}`,
-      metadata: { cc: payload.cc, bcc: payload.bcc, emailStatus, emailError },
+      metadata: { cc: payload.cc, bcc: payload.bcc, emailStatus, emailError, emailKind: payload.emailKind },
     });
 
     await supabase.from("audit_log").insert({
       actor_id: actor.id,
-      action: emailed ? "finance_invoice_emailed" : "finance_invoice_email_not_sent",
+      action: isReminder
+        ? emailed ? "finance_invoice_reminder_emailed" : "finance_invoice_reminder_not_sent"
+        : emailed ? "finance_invoice_emailed" : "finance_invoice_email_not_sent",
       table_name: "finance_invoices",
       record_id: invoice.id,
       metadata: {
@@ -146,10 +154,11 @@ serve(async (request) => {
         module: "School Finance",
         emailStatus,
         emailError,
+        emailKind: payload.emailKind,
       },
     });
 
-    return json({ emailed, emailStatus, emailError, providerMessageId, recipient });
+    return json({ emailed, emailStatus, emailError, providerMessageId, recipient, emailKind: payload.emailKind });
   } catch (error) {
     console.error(error);
     return json({ error: error instanceof Error ? error.message : "Unable to send finance invoice" }, 500);
@@ -238,6 +247,7 @@ async function sendEmail(entry: {
 async function logEmail(entry: {
   recipientEmail: string;
   recipientName?: string;
+  emailType?: string;
   subject: string;
   status: string;
   providerMessageId?: string;
@@ -248,7 +258,7 @@ async function logEmail(entry: {
   const { error } = await supabase.from("email_logs").insert({
     recipient_email: entry.recipientEmail,
     recipient_name: entry.recipientName || null,
-    email_type: "finance_invoice",
+    email_type: entry.emailType || "finance_invoice",
     subject: entry.subject,
     status: entry.status,
     provider: "resend",
@@ -296,6 +306,7 @@ function buildDefaultBody(invoice: Record<string, unknown>) {
 function normalizePayload(payload: Record<string, unknown>) {
   return {
     invoiceId: stringValue(payload.invoiceId),
+    emailKind: normalizeEmailKind(payload.emailKind || payload.type),
     to: stringValue(payload.to || payload.toEmail).toLowerCase(),
     cc: stringList(payload.cc),
     bcc: stringList(payload.bcc),
@@ -304,6 +315,10 @@ function normalizePayload(payload: Record<string, unknown>) {
     pdfBase64: stringValue(payload.pdfBase64),
     pdfFilename: stringValue(payload.pdfFilename),
   };
+}
+
+function normalizeEmailKind(value: unknown) {
+  return stringValue(value) === "payment_reminder" ? "payment_reminder" : "invoice";
 }
 
 function validatePayload(payload: ReturnType<typeof normalizePayload>) {

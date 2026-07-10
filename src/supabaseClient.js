@@ -1993,6 +1993,7 @@ export async function sendFinanceInvoiceEmail(payload = {}) {
   const { data, error } = await supabase.functions.invoke(financeInvoiceFunctionName, {
     body: {
       invoiceId: payload.invoiceId,
+      emailKind: payload.emailKind || "invoice",
       to: payload.to || payload.toEmail || "",
       cc: payload.cc || "",
       bcc: payload.bcc || "",
@@ -2209,6 +2210,7 @@ function mapFinanceEmail(record = {}) {
     bcc: record.bcc || "",
     subject: record.subject || "",
     body: record.body || "",
+    emailKind: metadata.emailKind || metadata.type || "invoice",
     status: record.status || "",
     sentAt: record.sent_at || "",
     providerMessageId: record.provider_message_id || "",
