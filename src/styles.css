@@ -5692,6 +5692,118 @@ label {
   font-weight: 950;
 }
 
+.booking-finance-recommendation,
+.booking-finance-action-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  padding: 14px;
+}
+
+.booking-finance-recommendation {
+  border-color: rgba(72, 103, 216, 0.18);
+  background: #f7f9ff;
+}
+
+.booking-finance-recommendation.good {
+  border-color: rgba(45, 132, 81, 0.24);
+  background: #f0fbf4;
+}
+
+.booking-finance-recommendation.warn,
+.booking-finance-recommendation.voucher,
+.booking-finance-recommendation.outstanding {
+  border-color: rgba(247, 170, 70, 0.34);
+  background: #fff9ed;
+}
+
+.booking-finance-recommendation.danger {
+  border-color: rgba(234, 59, 69, 0.24);
+  background: #fff4f4;
+}
+
+.booking-finance-recommendation small,
+.booking-finance-action-panel span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.booking-finance-recommendation strong,
+.booking-finance-action-panel h3 {
+  color: var(--royal-dark);
+  font-size: 1rem;
+  line-height: 1.15;
+}
+
+.booking-finance-recommendation p,
+.booking-finance-action-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.booking-finance-action-grid {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.55fr) minmax(150px, 0.8fr);
+  gap: 10px;
+}
+
+.booking-finance-action-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.booking-finance-action-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.booking-finance-action-grid input,
+.booking-finance-action-grid select {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 850;
+}
+
+.booking-finance-action-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.booking-finance-action-buttons button {
+  border: 1px solid rgba(72, 103, 216, 0.22);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--royal-dark);
+  padding: 10px;
+  font-weight: 950;
+}
+
+.booking-finance-action-buttons button:first-child,
+.booking-finance-action-buttons button:nth-child(3) {
+  border-color: rgba(45, 132, 81, 0.28);
+  background: #f0fbf4;
+  color: var(--green-dark);
+}
+
+.booking-finance-action-buttons button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .booking-finance-actions button {
   border: 1px solid rgba(72, 103, 216, 0.26);
   border-radius: 999px;
@@ -12266,6 +12378,8 @@ th {
   .booking-finance-kpis,
   .booking-finance-row,
   .booking-finance-order dl,
+  .booking-finance-action-grid,
+  .booking-finance-action-buttons,
   .booking-admin-setup-grid,
   .booking-admin-setup-grid.compact {
     grid-template-columns: 1fr;

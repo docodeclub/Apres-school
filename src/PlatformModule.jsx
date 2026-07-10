@@ -1741,6 +1741,43 @@ function bookingFinanceFocusForRow(row) {
   return "all";
 }
 
+function buildBookingFinanceRecommendation(row) {
+  const bucket = bookingFinanceBucket(row);
+  if (bucket === "voucher") {
+    return {
+      tone: "voucher",
+      title: "Watch the voucher guarantee",
+      detail: "Mark it reconciled when PonchoPay confirms the voucher. If the voucher does not arrive, log the fallback card charge so the parent balance and audit trail stay clear.",
+    };
+  }
+  if (bucket === "refunds") {
+    return {
+      tone: "warn",
+      title: "Confirm the credit route",
+      detail: "Record whether this should remain as parent account credit or move to a card refund request, then keep the action against this invoice.",
+    };
+  }
+  if (Number(row.balance || 0) > 0) {
+    return {
+      tone: "outstanding",
+      title: "Chase the outstanding balance",
+      detail: "Resend the payment link first. If the parent has paid by voucher, move this to voucher reconciliation so it does not look like a card debt.",
+    };
+  }
+  if (bucket === "failed") {
+    return {
+      tone: "danger",
+      title: "Review before confirming care",
+      detail: "Check the provider reference, payment event trail and parent record before confirming the place or issuing a new payment route.",
+    };
+  }
+  return {
+    tone: "good",
+    title: "No finance action needed",
+    detail: "This invoice looks paid, reconciled or guaranteed. Keep receipts and payment events for audit only.",
+  };
+}
+
 function startOfDay(date) {
   const next = new Date(date);
   next.setHours(0, 0, 0, 0);
@@ -2199,6 +2236,11 @@ function BookingFinance({ data, onOpenBookingFocus }) {
   const [selectedId, setSelectedId] = useState("");
   const [actionPending, setActionPending] = useState("");
   const [adminNote, setAdminNote] = useState("");
+  const [financeActionDraft, setFinanceActionDraft] = useState({
+    amount: "",
+    reason: "",
+    creditType: "session_credit",
+  });
   const hasLiveLedger = bookingSystemConfigured();
   const rows = normaliseBookingLedgerRows(ledger, data);
   const financeRows = rows.map((row) => ({ ...row, financeBucket: bookingFinanceBucket(row) }));
@@ -2221,6 +2263,7 @@ function BookingFinance({ data, onOpenBookingFocus }) {
   const selected = financeRows.find((row) => row.id === selectedId) || visibleRows[0] || financeRows[0] || null;
   const selectedFinanceFacts = selected ? buildBookingFinanceFacts(selected) : [];
   const selectedTimeline = selected ? buildBookingTimelineItems(selected) : [];
+  const selectedRecommendation = selected ? buildBookingFinanceRecommendation(selected) : null;
   const totals = buildBookingFinanceSummary(financeRows);
   const viewCounts = buildBookingFinanceViewCounts(financeRows);
 
@@ -2261,6 +2304,21 @@ function BookingFinance({ data, onOpenBookingFocus }) {
     }
   }, [selectedId, visibleRows]);
 
+  useEffect(() => {
+    if (!selected) return;
+    const suggestedAmount = Number(selected.balance || 0) > 0
+      ? selected.balance
+      : Number(selected.refundedAmount || 0) > 0
+        ? selected.refundedAmount
+        : selected.total || "";
+    setFinanceActionDraft({
+      amount: suggestedAmount ? String(suggestedAmount) : "",
+      reason: "",
+      creditType: selected.financeBucket === "voucher" ? "voucher_reconciliation" : "session_credit",
+    });
+    setAdminNote("");
+  }, [selected?.id]);
+
   function refreshLedger() {
     if (!hasLiveLedger) {
       setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
@@ -2280,16 +2338,43 @@ function BookingFinance({ data, onOpenBookingFocus }) {
       });
   }
 
+  function updateFinanceActionDraft(key, value) {
+    setFinanceActionDraft((current) => ({ ...current, [key]: value }));
+  }
+
   async function runFinanceAction(action) {
     if (!selected) return;
+    const actionAmount = Number(financeActionDraft.amount || 0);
+    const needsAmount = ["record_credit_note", "request_refund", "mark_fallback_card_charge"].includes(action);
+    if (needsAmount && (!Number.isFinite(actionAmount) || actionAmount <= 0)) {
+      setError("Enter an amount before recording that finance action.");
+      setStatus("Finance action needs an amount.");
+      return;
+    }
     setActionPending(action);
-    const label = action === "resend_payment_link" ? "Payment link resent" : action === "resend_receipt" ? "Receipt resent" : "Finance review marked";
+    const label = {
+      resend_payment_link: "Payment link resent",
+      resend_receipt: "Receipt resent",
+      mark_finance_review: "Finance review marked",
+      record_credit_note: "Credit note recorded",
+      request_refund: "Refund request logged",
+      mark_voucher_reconciled: "Voucher marked reconciled",
+      mark_fallback_card_charge: "Fallback card charge logged",
+    }[action] || "Finance action recorded";
     try {
       if (hasLiveLedger && selected.invoiceId) {
         await updateLivePaymentAdminAction({
           invoiceId: selected.invoiceId,
           action,
           note: adminNote || `${label} from finance control room.`,
+          amount: actionAmount || null,
+          reason: financeActionDraft.reason,
+          metadata: {
+            creditType: financeActionDraft.creditType,
+            bookingReference: selected.reference,
+            parentEmail: selected.email,
+            source: "booking_finance_control_room",
+          },
         });
         const nextLedger = await fetchParentBookingLedger({ limit: 250 });
         setLedger(nextLedger);
@@ -2297,6 +2382,7 @@ function BookingFinance({ data, onOpenBookingFocus }) {
       addAuditLog(label, `${selected.reference} · ${selected.parent}`);
       setStatus(`${label} for ${selected.reference}.`);
       setAdminNote("");
+      setFinanceActionDraft((current) => ({ ...current, reason: "" }));
     } catch (actionError) {
       setError(actionError?.message || "Finance action failed.");
       setStatus("Finance action could not be completed.");
@@ -2468,6 +2554,53 @@ function BookingFinance({ data, onOpenBookingFocus }) {
                   <p>No payment events, receipts or admin actions have been recorded yet.</p>
                 )}
               </div>
+              {selectedRecommendation && (
+                <section className={`booking-finance-recommendation ${selectedRecommendation.tone || ""}`}>
+                  <small>Recommended next step</small>
+                  <strong>{selectedRecommendation.title}</strong>
+                  <p>{selectedRecommendation.detail}</p>
+                </section>
+              )}
+              <section className="booking-finance-action-panel">
+                <div>
+                  <h3>Reconciliation actions</h3>
+                  <p>Use these for finance events that need an audit trail before or after PonchoPay settles the money.</p>
+                </div>
+                <div className="booking-finance-action-grid">
+                  <label>
+                    <span>Amount</span>
+                    <input
+                      value={financeActionDraft.amount}
+                      onChange={(event) => updateFinanceActionDraft("amount", event.target.value)}
+                      inputMode="decimal"
+                      placeholder="0.00"
+                    />
+                  </label>
+                  <label>
+                    <span>Type</span>
+                    <select value={financeActionDraft.creditType} onChange={(event) => updateFinanceActionDraft("creditType", event.target.value)}>
+                      <option value="session_credit">Session credit</option>
+                      <option value="refund_to_card">Refund to card</option>
+                      <option value="voucher_reconciliation">Voucher reconciliation</option>
+                      <option value="fallback_card">Fallback card</option>
+                    </select>
+                  </label>
+                  <label className="wide">
+                    <span>Reason</span>
+                    <input
+                      value={financeActionDraft.reason}
+                      onChange={(event) => updateFinanceActionDraft("reason", event.target.value)}
+                      placeholder="Short reason shown in the audit trail"
+                    />
+                  </label>
+                </div>
+                <div className="booking-finance-action-buttons">
+                  <button type="button" onClick={() => runFinanceAction("record_credit_note")} disabled={actionPending || !selected.invoiceId}>{actionPending === "record_credit_note" ? "Saving..." : "Record credit note"}</button>
+                  <button type="button" onClick={() => runFinanceAction("request_refund")} disabled={actionPending || !selected.invoiceId}>{actionPending === "request_refund" ? "Saving..." : "Request refund"}</button>
+                  <button type="button" onClick={() => runFinanceAction("mark_voucher_reconciled")} disabled={actionPending || !selected.invoiceId}>{actionPending === "mark_voucher_reconciled" ? "Saving..." : "Mark voucher reconciled"}</button>
+                  <button type="button" onClick={() => runFinanceAction("mark_fallback_card_charge")} disabled={actionPending || !selected.invoiceId}>{actionPending === "mark_fallback_card_charge" ? "Saving..." : "Log fallback charge"}</button>
+                </div>
+              </section>
               <label className="booking-admin-note">
                 <span>Admin note</span>
                 <textarea value={adminNote} onChange={(event) => setAdminNote(event.target.value)} placeholder="Optional note for the finance audit trail" />

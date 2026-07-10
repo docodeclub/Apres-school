@@ -30,8 +30,10 @@ type UpdateBookingRequest = {
   bookingItemIds?: string[];
   booking_item_ids?: string[];
   items?: Array<Record<string, unknown>>;
+  amount?: number | string;
   reason?: string;
   note?: string;
+  metadata?: Record<string, unknown>;
 };
 
 serve(async (request) => {
@@ -50,7 +52,16 @@ serve(async (request) => {
     const bookingId = stringValue(body.bookingId) || stringValue(body.booking_id);
     const invoiceId = stringValue(body.invoiceId) || stringValue(body.invoice_id);
 
-    if (["resend_payment_link", "resend_receipt", "mark_finance_review", "payment_admin_action"].includes(action)) {
+    if ([
+      "resend_payment_link",
+      "resend_receipt",
+      "mark_finance_review",
+      "record_credit_note",
+      "request_refund",
+      "mark_voucher_reconciled",
+      "mark_fallback_card_charge",
+      "payment_admin_action",
+    ].includes(action)) {
       if (!invoiceId) return json({ error: "Invoice id is required." }, 400);
       if (!["admin", "superadmin", "finance"].includes(String(actor.role || "").toLowerCase())) {
         return json({ error: "Only admin or finance users can update live payment actions." }, 403);
@@ -60,6 +71,9 @@ serve(async (request) => {
         invoiceId,
         action,
         note: stringValue(body.note) || stringValue(body.reason),
+        amount: body.amount,
+        reason: stringValue(body.reason),
+        metadata: isObject(body.metadata) ? body.metadata : {},
       });
       return json(result);
     }
@@ -156,6 +170,9 @@ type PaymentAdminActionInput = {
   invoiceId: string;
   action: string;
   note: string;
+  amount?: number | string;
+  reason?: string;
+  metadata?: Record<string, unknown>;
 };
 
 async function handlePaymentAdminAction(input: PaymentAdminActionInput) {
@@ -201,6 +218,9 @@ async function handlePaymentAdminAction(input: PaymentAdminActionInput) {
   const action = input.action === "payment_admin_action"
     ? "mark_finance_review"
     : input.action;
+  const actionAmount = moneyValue(input.amount);
+  const actionReason = stringValue(input.reason);
+  const actionMetadata = isObject(input.metadata) ? input.metadata : {};
   const emailLog = action === "resend_payment_link"
     ? await queuePaymentEmail({
       actor: input.actor,
@@ -219,39 +239,38 @@ async function handlePaymentAdminAction(input: PaymentAdminActionInput) {
       })
       : null;
 
-  const nextFinanceStatus = action === "mark_finance_review"
-    ? "finance_review"
-    : action === "resend_payment_link"
-      ? "payment_link_resent"
-      : action === "resend_receipt"
-        ? "receipt_resent"
-        : stringValue(invoice.finance_status) || "awaiting_payment";
+  const nextFinanceStatus = financeStatusForPaymentAdminAction(action, invoice);
+  const nextPortalStatus = parentPortalStatusForPaymentAdminAction(action, invoice);
+  const updatePayload: Record<string, unknown> = {
+    finance_status: nextFinanceStatus,
+    parent_portal_status: nextPortalStatus,
+    metadata: {
+      ...(isObject(invoice.metadata) ? invoice.metadata : {}),
+      lastAdminAction: {
+        action,
+        amount: actionAmount || null,
+        reason: actionReason || null,
+        at: new Date().toISOString(),
+        by: input.actor.id,
+        note: input.note,
+        emailLogId: emailLog?.id || null,
+        metadata: actionMetadata,
+      },
+    },
+    updated_at: new Date().toISOString(),
+  };
 
-  const nextPortalStatus = action === "resend_payment_link"
-    ? "Payment link resent"
-    : action === "resend_receipt"
-      ? "Receipt resent"
-      : action === "mark_finance_review"
-        ? "Finance review"
-        : stringValue(invoice.parent_portal_status) || "Outstanding";
+  if (action === "mark_voucher_reconciled") {
+    const totalAmount = moneyValue(invoice.total_amount);
+    updatePayload.paid_amount = totalAmount;
+    updatePayload.balance = 0;
+    updatePayload.payment_status = "payment_reconciled";
+    updatePayload.receipt_status = "voucher_reconciled";
+  }
 
   const { error: updateError } = await supabase
     .from("booking_invoices")
-    .update({
-      finance_status: nextFinanceStatus,
-      parent_portal_status: nextPortalStatus,
-      metadata: {
-        ...(isObject(invoice.metadata) ? invoice.metadata : {}),
-        lastAdminAction: {
-          action,
-          at: new Date().toISOString(),
-          by: input.actor.id,
-          note: input.note,
-          emailLogId: emailLog?.id || null,
-        },
-      },
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq("id", invoice.id);
 
   if (updateError) throw updateError;
@@ -262,7 +281,7 @@ async function handlePaymentAdminAction(input: PaymentAdminActionInput) {
       invoice_id: invoice.id,
       booking_id: stringValue(invoice.booking_id) || null,
       action,
-      status: emailLog ? emailLog.status : "recorded",
+      status: paymentAdminActionStatus(action, emailLog?.status),
       actor_id: input.actor.id,
       actor_email: input.actor.email,
       actor_role: input.actor.role,
@@ -271,7 +290,13 @@ async function handlePaymentAdminAction(input: PaymentAdminActionInput) {
       message_log_id: emailLog?.id || null,
       note: input.note || null,
       metadata: {
+        amount: actionAmount || null,
+        reason: actionReason || null,
+        ...actionMetadata,
         balance: moneyValue(invoice.balance),
+        totalAmount: moneyValue(invoice.total_amount),
+        paidAmount: moneyValue(invoice.paid_amount),
+        refundedAmount: moneyValue(invoice.refunded_amount),
         paymentStatus: stringValue(invoice.payment_status),
         receiptStatus: stringValue(invoice.receipt_status),
         checkoutStatus: stringValue(checkout?.status),
@@ -293,6 +318,8 @@ async function handlePaymentAdminAction(input: PaymentAdminActionInput) {
       parentEmail: stringValue(invoice.parent_email),
       financeStatus: nextFinanceStatus,
       emailLogId: emailLog?.id || null,
+      amount: actionAmount || null,
+      reason: actionReason || null,
       note: input.note,
     },
   });
@@ -305,6 +332,57 @@ async function handlePaymentAdminAction(input: PaymentAdminActionInput) {
     emailLog,
     adminAction,
   };
+}
+
+function financeStatusForPaymentAdminAction(action: string, invoice: Record<string, unknown>) {
+  switch (action) {
+    case "mark_finance_review":
+      return "finance_review";
+    case "resend_payment_link":
+      return "payment_link_resent";
+    case "resend_receipt":
+      return "receipt_resent";
+    case "record_credit_note":
+      return "credit_note_recorded";
+    case "request_refund":
+      return "refund_requested";
+    case "mark_voucher_reconciled":
+      return "voucher_reconciled";
+    case "mark_fallback_card_charge":
+      return "fallback_card_charge_logged";
+    default:
+      return stringValue(invoice.finance_status) || "awaiting_payment";
+  }
+}
+
+function parentPortalStatusForPaymentAdminAction(action: string, invoice: Record<string, unknown>) {
+  switch (action) {
+    case "resend_payment_link":
+      return "Payment link resent";
+    case "resend_receipt":
+      return "Receipt resent";
+    case "mark_finance_review":
+      return "Finance review";
+    case "record_credit_note":
+      return "Credit note recorded";
+    case "request_refund":
+      return "Refund requested";
+    case "mark_voucher_reconciled":
+      return "Paid by childcare voucher";
+    case "mark_fallback_card_charge":
+      return "Fallback card charge logged";
+    default:
+      return stringValue(invoice.parent_portal_status) || "Outstanding";
+  }
+}
+
+function paymentAdminActionStatus(action: string, emailStatus = "") {
+  const allowed = new Set(["queued", "sent", "recorded", "review_required", "completed", "failed"]);
+  if (allowed.has(emailStatus)) return emailStatus;
+  if (emailStatus) return "sent";
+  if (["mark_finance_review", "request_refund", "mark_fallback_card_charge"].includes(action)) return "review_required";
+  if (["record_credit_note", "mark_voucher_reconciled"].includes(action)) return "completed";
+  return "recorded";
 }
 
 async function getActor(authHeader: string): Promise<Actor | null> {

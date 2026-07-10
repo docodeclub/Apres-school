@@ -454,7 +454,7 @@ export async function addParentBookingItems({ bookingId, items = [], reason = ""
   return data;
 }
 
-export async function updateLivePaymentAdminAction({ invoiceId, action, note = "" } = {}) {
+export async function updateLivePaymentAdminAction({ invoiceId, action, note = "", amount = null, reason = "", metadata = {} } = {}) {
   assertSupabase();
   if (!invoiceId) throw new Error("Choose an invoice first.");
   if (!action) throw new Error("Choose a payment action.");
@@ -463,6 +463,9 @@ export async function updateLivePaymentAdminAction({ invoiceId, action, note = "
       action,
       invoiceId,
       note,
+      amount,
+      reason,
+      metadata,
     },
   });
   if (error) throw error;
