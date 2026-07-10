@@ -10687,6 +10687,58 @@ tfoot td {
   margin-top: 4px;
 }
 
+.finance-email-modal {
+  max-width: 760px;
+  width: min(100%, 760px);
+}
+
+.finance-email-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.finance-email-preview-grid label {
+  color: var(--muted);
+  display: grid;
+  font-size: 0.76rem;
+  font-weight: 950;
+  gap: 7px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.finance-email-preview-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.finance-email-preview-grid input,
+.finance-email-preview-grid textarea {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink);
+  padding: 12px 13px;
+  font: inherit;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.finance-email-preview-grid textarea {
+  min-height: 210px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .finance-email-preview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .lab-parent-payment-modal,
 .lab-cancellation-modal,
 .lab-admin-action-modal,

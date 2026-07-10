@@ -2246,6 +2246,47 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+function applyFinanceEmailTemplate(template = "", invoice = {}, customer = {}) {
+  const replacements = {
+    InvoiceNumber: invoice.invoiceNumber || invoice.draftReference || "",
+    CustomerName: customer?.customerName || "",
+    Contact: customer?.accountsContact || customer?.customerName || "Accounts team",
+    DueDate: formatShortDate(invoice.dueDate),
+  };
+  return Object.entries(replacements).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, value),
+    template || "",
+  );
+}
+
+function createFinanceInvoiceEmailDraft(invoice = {}, customer = {}, settings = {}) {
+  const subjectTemplate = settings?.defaultEmailSubject || "Invoice {InvoiceNumber} from Après School";
+  const bodyTemplate = settings?.defaultEmailBody || [
+    "Dear {Contact},",
+    "",
+    "Please find attached invoice {InvoiceNumber}.",
+    "",
+    "Payment is requested by {DueDate}.",
+    "",
+    "Please pay by BACS using the invoice number as the payment reference.",
+    "",
+    "Kind regards,",
+    "",
+    "Après School",
+  ].join("\n");
+  return {
+    invoiceId: invoice.id || "",
+    invoiceNumber: invoice.invoiceNumber || invoice.draftReference || "",
+    customerName: customer?.customerName || invoice.customerName || "Customer",
+    to: customer?.accountsEmail || "",
+    cc: "",
+    bcc: "",
+    subject: applyFinanceEmailTemplate(subjectTemplate, invoice, customer),
+    body: applyFinanceEmailTemplate(bodyTemplate, invoice, customer),
+    pdfFilename: invoice.invoiceNumber ? `apres-invoice-${invoice.invoiceNumber}.pdf` : "apres-invoice.pdf",
+  };
+}
+
 function SchoolFinance({ data, access }) {
   const canViewFinance = ["Admin", "Superadmin"].includes(access?.role);
   const canManageFinance = access?.role === "Superadmin" || access?.role === "Admin";
@@ -2260,6 +2301,7 @@ function SchoolFinance({ data, access }) {
   const [customerDraft, setCustomerDraft] = useState(() => createFinanceCustomerDraft());
   const [paymentDraft, setPaymentDraft] = useState({ amount: "", paidAt: dateInputValue(new Date()), reference: "", notes: "" });
   const [settingsDraft, setSettingsDraft] = useState(() => emptySchoolFinanceData(data).settings);
+  const [emailPreview, setEmailPreview] = useState(null);
   const [saving, setSaving] = useState("");
 
   useEffect(() => {
@@ -2400,46 +2442,44 @@ function SchoolFinance({ data, access }) {
     }
   }
 
-  async function recordInvoiceEmail(invoiceId) {
+  function openFinanceEmailPreview(invoiceId) {
+    const invoice = invoices.find((item) => item.id === invoiceId);
+    const customer = customers.find((item) => item.id === invoice?.customerId);
+    if (!invoice?.invoiceNumber) {
+      setStatus("Approve and number this invoice before emailing it.");
+      return;
+    }
+    if (!customer?.accountsEmail) {
+      setStatus("Add an accounts email to the customer before sending.");
+      return;
+    }
+    setEmailPreview(createFinanceInvoiceEmailDraft(invoice, customer, finance.settings || {}));
+  }
+
+  async function recordInvoiceEmail(draft = emailPreview) {
+    const invoiceId = draft?.invoiceId;
+    if (!invoiceId) return;
     setSaving(`email-${invoiceId}`);
     try {
       const { sendFinanceInvoiceEmail } = await loadSupabaseModule();
       const invoice = invoices.find((item) => item.id === invoiceId);
       const customer = customers.find((item) => item.id === invoice?.customerId);
       if (!invoice?.invoiceNumber) throw new Error("Approve and number this invoice before emailing it.");
-      if (!customer?.accountsEmail) throw new Error("Add an accounts email to the customer before sending.");
+      if (!draft?.to?.includes("@")) throw new Error("Add a valid recipient before sending.");
       const { exportFinanceInvoicePdf } = await import("./pdfExports.js");
       const pdfBytes = exportFinanceInvoicePdf(invoice, customer || {}, finance.settings || {}, { returnBytes: true });
-      const replacements = {
-        InvoiceNumber: invoice.invoiceNumber,
-        CustomerName: customer?.customerName || "",
-        Contact: customer?.accountsContact || customer?.customerName || "Accounts team",
-        DueDate: formatShortDate(invoice.dueDate),
-      };
-      const applyFinanceTemplate = (template) => Object.entries(replacements).reduce(
-        (text, [key, value]) => text.replaceAll(`{${key}}`, value),
-        template || "",
-      );
-      const subject = applyFinanceTemplate(finance.settings?.defaultEmailSubject || "Invoice {InvoiceNumber} from Après School");
-      const body = (finance.settings?.defaultEmailBody || [
-        `Dear ${customer?.accountsContact || customer?.customerName || "Accounts team"},`,
-        "",
-        `Please find attached invoice ${invoice.invoiceNumber}.`,
-        "",
-        "Payment details are included on the invoice. Please use the invoice number as the payment reference.",
-        "",
-        "Thank you,",
-        "Après School Finance",
-      ].join("\n"));
       const result = await sendFinanceInvoiceEmail({
         invoiceId,
-        to: customer.accountsEmail,
-        subject,
-        body: applyFinanceTemplate(body),
+        to: draft.to,
+        cc: draft.cc,
+        bcc: draft.bcc,
+        subject: draft.subject,
+        body: draft.body,
         pdfBase64: bytesToBase64(pdfBytes),
-        pdfFilename: `apres-invoice-${invoice.invoiceNumber}.pdf`,
+        pdfFilename: draft.pdfFilename || `apres-invoice-${invoice.invoiceNumber}.pdf`,
       });
       addAuditLog("Finance invoice emailed", invoice.invoiceNumber || invoiceId);
+      setEmailPreview(null);
       await refreshFinance(result?.emailed ? "Invoice emailed with PDF attached." : "Invoice email was queued, but the email provider did not send it.");
     } catch (error) {
       setStatus(error?.message || "Invoice email could not be sent.");
@@ -2566,7 +2606,7 @@ function SchoolFinance({ data, access }) {
                 <button type="button" className="button secondary" onClick={() => { setInvoiceDraft(createFinanceInvoiceDraft()); setSelectedInvoiceId(""); }}>New invoice</button>
               </div>
             </div>
-            <FinanceInvoiceTable invoices={invoiceMatches} customers={customers} onSelect={setSelectedInvoiceId} onEdit={editInvoice} onPdf={downloadInvoicePdf} onApprove={approveInvoice} onEmail={recordInvoiceEmail} saving={saving} />
+            <FinanceInvoiceTable invoices={invoiceMatches} customers={customers} onSelect={setSelectedInvoiceId} onEdit={editInvoice} onPdf={downloadInvoicePdf} onApprove={approveInvoice} onEmail={openFinanceEmailPreview} saving={saving} />
           </section>
           <div className="finance-invoice-side">
             <section className="section-card">
@@ -2579,7 +2619,7 @@ function SchoolFinance({ data, access }) {
                 canManageFinance={canManageFinance}
                 saving={saving}
                 onApprove={approveInvoice}
-                onEmail={recordInvoiceEmail}
+                onEmail={openFinanceEmailPreview}
                 onPdf={downloadInvoicePdf}
                 onRecordPayment={recordPayment}
               />
@@ -2715,12 +2755,48 @@ function SchoolFinance({ data, access }) {
             <label><span>Sort code</span><input value={settingsDraft.bankSortCode || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, bankSortCode: event.target.value }))} /></label>
             <label><span>Account number</span><input value={settingsDraft.bankAccountNumber || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, bankAccountNumber: event.target.value }))} /></label>
             <label><span>Invoice prefix</span><input value={settingsDraft.invoicePrefix || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, invoicePrefix: event.target.value }))} /></label>
+            <label className="wide"><span>Default email subject</span><input value={settingsDraft.defaultEmailSubject || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, defaultEmailSubject: event.target.value }))} /></label>
             <label className="wide"><span>Default invoice footer</span><textarea value={settingsDraft.defaultInvoiceFooter || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, defaultInvoiceFooter: event.target.value }))} /></label>
             <label className="wide"><span>Default email body</span><textarea value={settingsDraft.defaultEmailBody || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, defaultEmailBody: event.target.value }))} /></label>
           </div>
           <button type="button" className="button book" disabled={!canManageFinance || saving === "settings"} onClick={saveSettings}>{saving === "settings" ? "Saving..." : "Save finance settings"}</button>
         </section>
       )}
+      {emailPreview && (
+        <FinanceInvoiceEmailModal
+          draft={emailPreview}
+          setDraft={setEmailPreview}
+          saving={saving === `email-${emailPreview.invoiceId}`}
+          onClose={() => setEmailPreview(null)}
+          onSend={() => recordInvoiceEmail(emailPreview)}
+        />
+      )}
+    </div>
+  );
+}
+
+function FinanceInvoiceEmailModal({ draft, setDraft, saving, onClose, onSend }) {
+  const update = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+  return (
+    <div className="platform-modal-backdrop" role="presentation">
+      <section className="hr-dismiss-modal finance-email-modal" role="dialog" aria-modal="true" aria-labelledby="finance-email-preview-title">
+        <button className="modal-close" type="button" aria-label="Close invoice email preview" onClick={onClose}><X size={18} /></button>
+        <p className="eyebrow">Invoice email</p>
+        <h3 id="finance-email-preview-title">Check before sending</h3>
+        <p>{draft.invoiceNumber} for {draft.customerName}. The PDF invoice will be attached automatically.</p>
+        <div className="finance-email-preview-grid">
+          <label><span>To</span><input type="email" value={draft.to} onChange={(event) => update("to", event.target.value)} /></label>
+          <label><span>CC</span><input value={draft.cc} onChange={(event) => update("cc", event.target.value)} placeholder="Optional, comma separated" /></label>
+          <label><span>BCC</span><input value={draft.bcc} onChange={(event) => update("bcc", event.target.value)} placeholder="Optional, comma separated" /></label>
+          <label><span>PDF attachment</span><input value={draft.pdfFilename} onChange={(event) => update("pdfFilename", event.target.value)} /></label>
+          <label className="wide"><span>Subject</span><input value={draft.subject} onChange={(event) => update("subject", event.target.value)} /></label>
+          <label className="wide"><span>Message</span><textarea value={draft.body} onChange={(event) => update("body", event.target.value)} /></label>
+        </div>
+        <div className="dismiss-modal-actions">
+          <button type="button" className="button secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="button book" disabled={saving || !draft.to || !draft.subject || !draft.body} onClick={onSend}>{saving ? "Sending..." : "Send now"}</button>
+        </div>
+      </section>
     </div>
   );
 }
