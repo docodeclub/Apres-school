@@ -2306,6 +2306,7 @@ function SchoolFinance({ data, access }) {
   const selectedInvoice = invoices.find((invoice) => invoice.id === selectedInvoiceId) || invoices[0] || null;
   const customerForInvoice = selectedInvoice ? customers.find((customer) => customer.id === selectedInvoice.customerId) : null;
   const invoiceMatches = filterFinanceInvoices(invoices, query, customers);
+  const selectedInvoiceActivity = selectedInvoice ? buildFinanceInvoiceActivity(selectedInvoice, finance.audit || finance.auditEvents || []) : [];
   const kpis = calculateSchoolFinanceKpis(invoices);
   const reports = calculateSchoolFinanceReports(invoices, customers, finance.locations || []);
 
@@ -2560,44 +2561,64 @@ function SchoolFinance({ data, access }) {
                 <p className="eyebrow">Invoices</p>
                 <h2>Invoice register</h2>
               </div>
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search invoice, customer, PO or school" />
+              <div className="finance-toolbar-actions">
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search invoice, customer, PO or school" />
+                <button type="button" className="button secondary" onClick={() => { setInvoiceDraft(createFinanceInvoiceDraft()); setSelectedInvoiceId(""); }}>New invoice</button>
+              </div>
             </div>
             <FinanceInvoiceTable invoices={invoiceMatches} customers={customers} onSelect={setSelectedInvoiceId} onEdit={editInvoice} onPdf={downloadInvoicePdf} onApprove={approveInvoice} onEmail={recordInvoiceEmail} saving={saving} />
           </section>
-          <section className="section-card">
-            <p className="eyebrow">{invoiceDraft.id ? "Edit invoice" : "New invoice"}</p>
-            <h2>{invoiceDraft.id ? invoiceDraft.invoiceNumber || "Draft invoice" : "Create school invoice"}</h2>
-            <div className="finance-form">
-              <label><span>Customer</span><select value={invoiceDraft.customerId} onChange={(event) => setInvoiceField("customerId", event.target.value)}><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.customerName}</option>)}</select></label>
-              <label><span>School / site</span><select value={invoiceDraft.locationId} onChange={(event) => setInvoiceField("locationId", event.target.value)}><option value="">No linked school</option>{(finance.locations || []).map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
-              <label><span>Service type</span><select value={invoiceDraft.serviceType} onChange={(event) => setInvoiceField("serviceType", event.target.value)}>{financeServiceTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
-              <label><span>Invoice date</span><input type="date" value={invoiceDraft.invoiceDate} onChange={(event) => setInvoiceField("invoiceDate", event.target.value)} /></label>
-              <label><span>Due date</span><input type="date" value={invoiceDraft.dueDate} onChange={(event) => setInvoiceField("dueDate", event.target.value)} /></label>
-              <label><span>PO number</span><input value={invoiceDraft.purchaseOrder} onChange={(event) => setInvoiceField("purchaseOrder", event.target.value)} /></label>
-              <label><span>Service start</span><input type="date" value={invoiceDraft.servicePeriodStart} onChange={(event) => setInvoiceField("servicePeriodStart", event.target.value)} /></label>
-              <label><span>Service end</span><input type="date" value={invoiceDraft.servicePeriodEnd} onChange={(event) => setInvoiceField("servicePeriodEnd", event.target.value)} /></label>
-              <label className="wide"><span>Title</span><input value={invoiceDraft.title} onChange={(event) => setInvoiceField("title", event.target.value)} placeholder="Sports day staffing at..." /></label>
-              <label className="wide"><span>Notes on invoice</span><textarea value={invoiceDraft.notes} onChange={(event) => setInvoiceField("notes", event.target.value)} /></label>
-            </div>
-            <div className="finance-lines">
-              <div className="finance-lines-head"><strong>Invoice lines</strong><button type="button" className="button secondary" onClick={addInvoiceLine}>Add line</button></div>
-              {invoiceDraft.lines.map((line) => (
-                <div className="finance-line" key={line.id}>
-                  <input className="line-description" value={line.description} onChange={(event) => setInvoiceLine(line.id, "description", event.target.value)} placeholder="Description" />
-                  <input type="number" min="0" step="0.01" value={line.quantity} onChange={(event) => setInvoiceLine(line.id, "quantity", event.target.value)} aria-label="Quantity" />
-                  <input value={line.unit} onChange={(event) => setInvoiceLine(line.id, "unit", event.target.value)} aria-label="Unit" />
-                  <input type="number" min="0" step="0.01" value={line.unitPrice} onChange={(event) => setInvoiceLine(line.id, "unitPrice", event.target.value)} aria-label="Unit price" />
-                  <select value={line.vatRate} onChange={(event) => setInvoiceLine(line.id, "vatRate", event.target.value)}>{financeVatRates.map((rate) => <option key={rate}>{rate}</option>)}</select>
-                  <button type="button" className="button secondary" onClick={() => removeInvoiceLine(line.id)}>Remove</button>
-                </div>
-              ))}
-              <div className="finance-total-preview">
-                <span>Draft total</span>
-                <strong>{formatCurrency(calculateFinanceDraftTotal(invoiceDraft.lines))}</strong>
+          <div className="finance-invoice-side">
+            <section className="section-card">
+              <FinanceSelectedInvoicePanel
+                invoice={selectedInvoice}
+                customer={customerForInvoice}
+                activity={selectedInvoiceActivity}
+                paymentDraft={paymentDraft}
+                setPaymentDraft={setPaymentDraft}
+                canManageFinance={canManageFinance}
+                saving={saving}
+                onApprove={approveInvoice}
+                onEmail={recordInvoiceEmail}
+                onPdf={downloadInvoicePdf}
+                onRecordPayment={recordPayment}
+              />
+            </section>
+            <section className="section-card finance-editor-card">
+              <p className="eyebrow">{invoiceDraft.id ? "Edit invoice" : "New invoice"}</p>
+              <h2>{invoiceDraft.id ? invoiceDraft.invoiceNumber || "Draft invoice" : "Create school invoice"}</h2>
+              <div className="finance-form">
+                <label><span>Customer</span><select value={invoiceDraft.customerId} onChange={(event) => setInvoiceField("customerId", event.target.value)}><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.customerName}</option>)}</select></label>
+                <label><span>School / site</span><select value={invoiceDraft.locationId} onChange={(event) => setInvoiceField("locationId", event.target.value)}><option value="">No linked school</option>{(finance.locations || []).map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+                <label><span>Service type</span><select value={invoiceDraft.serviceType} onChange={(event) => setInvoiceField("serviceType", event.target.value)}>{financeServiceTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
+                <label><span>Invoice date</span><input type="date" value={invoiceDraft.invoiceDate} onChange={(event) => setInvoiceField("invoiceDate", event.target.value)} /></label>
+                <label><span>Due date</span><input type="date" value={invoiceDraft.dueDate} onChange={(event) => setInvoiceField("dueDate", event.target.value)} /></label>
+                <label><span>PO number</span><input value={invoiceDraft.purchaseOrder} onChange={(event) => setInvoiceField("purchaseOrder", event.target.value)} /></label>
+                <label><span>Service start</span><input type="date" value={invoiceDraft.servicePeriodStart} onChange={(event) => setInvoiceField("servicePeriodStart", event.target.value)} /></label>
+                <label><span>Service end</span><input type="date" value={invoiceDraft.servicePeriodEnd} onChange={(event) => setInvoiceField("servicePeriodEnd", event.target.value)} /></label>
+                <label className="wide"><span>Title</span><input value={invoiceDraft.title} onChange={(event) => setInvoiceField("title", event.target.value)} placeholder="Sports day staffing at..." /></label>
+                <label className="wide"><span>Notes on invoice</span><textarea value={invoiceDraft.notes} onChange={(event) => setInvoiceField("notes", event.target.value)} /></label>
               </div>
-            </div>
-            <button type="button" className="button book" onClick={saveInvoice} disabled={!canManageFinance || saving === "invoice" || !invoiceDraft.customerId}>{saving === "invoice" ? "Saving..." : "Save invoice draft"}</button>
-          </section>
+              <div className="finance-lines">
+                <div className="finance-lines-head"><strong>Invoice lines</strong><button type="button" className="button secondary" onClick={addInvoiceLine}>Add line</button></div>
+                {invoiceDraft.lines.map((line) => (
+                  <div className="finance-line" key={line.id}>
+                    <input className="line-description" value={line.description} onChange={(event) => setInvoiceLine(line.id, "description", event.target.value)} placeholder="Description" />
+                    <input type="number" min="0" step="0.01" value={line.quantity} onChange={(event) => setInvoiceLine(line.id, "quantity", event.target.value)} aria-label="Quantity" />
+                    <input value={line.unit} onChange={(event) => setInvoiceLine(line.id, "unit", event.target.value)} aria-label="Unit" />
+                    <input type="number" min="0" step="0.01" value={line.unitPrice} onChange={(event) => setInvoiceLine(line.id, "unitPrice", event.target.value)} aria-label="Unit price" />
+                    <select value={line.vatRate} onChange={(event) => setInvoiceLine(line.id, "vatRate", event.target.value)}>{financeVatRates.map((rate) => <option key={rate}>{rate}</option>)}</select>
+                    <button type="button" className="button secondary" onClick={() => removeInvoiceLine(line.id)}>Remove</button>
+                  </div>
+                ))}
+                <div className="finance-total-preview">
+                  <span>Draft total</span>
+                  <strong>{formatCurrency(calculateFinanceDraftTotal(invoiceDraft.lines))}</strong>
+                </div>
+              </div>
+              <button type="button" className="button book" onClick={saveInvoice} disabled={!canManageFinance || saving === "invoice" || !invoiceDraft.customerId}>{saving === "invoice" ? "Saving..." : "Save invoice draft"}</button>
+            </section>
+          </div>
         </div>
       )}
 
@@ -2700,23 +2721,92 @@ function SchoolFinance({ data, access }) {
           <button type="button" className="button book" disabled={!canManageFinance || saving === "settings"} onClick={saveSettings}>{saving === "settings" ? "Saving..." : "Save finance settings"}</button>
         </section>
       )}
+    </div>
+  );
+}
 
-      {selectedInvoice && view === "Invoices" && (
-        <section className="section-card finance-payment-panel">
-          <div>
-            <p className="eyebrow">BACS payment tracking</p>
-            <h2>{selectedInvoice.invoiceNumber || "Draft invoice"} · {customerForInvoice?.customerName || "Customer"}</h2>
-            <p className="muted">Balance due: {formatCurrency(selectedInvoice.balanceDue ?? selectedInvoice.total)}. Multiple and partial payments can be recorded.</p>
-          </div>
-          <div className="finance-form compact">
-            <label><span>Amount</span><input type="number" min="0" step="0.01" value={paymentDraft.amount} onChange={(event) => setPaymentDraft((current) => ({ ...current, amount: event.target.value }))} /></label>
-            <label><span>Date paid</span><input type="date" value={paymentDraft.paidAt} onChange={(event) => setPaymentDraft((current) => ({ ...current, paidAt: event.target.value }))} /></label>
-            <label><span>Reference</span><input value={paymentDraft.reference} onChange={(event) => setPaymentDraft((current) => ({ ...current, reference: event.target.value }))} /></label>
-            <label><span>Notes</span><input value={paymentDraft.notes} onChange={(event) => setPaymentDraft((current) => ({ ...current, notes: event.target.value }))} /></label>
-          </div>
-          <button type="button" className="button book" disabled={!canManageFinance || saving === "payment" || !Number(paymentDraft.amount)} onClick={recordPayment}>{saving === "payment" ? "Recording..." : "Record BACS payment"}</button>
-        </section>
-      )}
+function FinanceSelectedInvoicePanel({ invoice, customer, activity, paymentDraft, setPaymentDraft, canManageFinance, saving, onApprove, onEmail, onPdf, onRecordPayment }) {
+  if (!invoice) {
+    return <EmptyList title="Choose an invoice" text="Select an invoice from the register to see the workflow, payment controls and audit trail." />;
+  }
+  const balance = Number(invoice.balanceDue ?? invoice.total ?? 0);
+  const canApprove = ["Draft", "Submitted"].includes(invoice.status);
+  const canSend = Boolean(invoice.invoiceNumber);
+  const canPay = balance > 0 && !["Draft", "Void", "Credited"].includes(invoice.status);
+  const steps = buildFinanceWorkflowSteps(invoice);
+  return (
+    <div className="finance-command-panel">
+      <header className="finance-command-head">
+        <div>
+          <p className="eyebrow">Selected invoice</p>
+          <h2>{invoice.invoiceNumber || invoice.draftReference || "Draft invoice"}</h2>
+          <p>{customer?.customerName || invoice.customerName || "Customer"}{invoice.purchaseOrder ? ` · PO ${invoice.purchaseOrder}` : ""}</p>
+        </div>
+        <Badge value={invoice.status || "Draft"} />
+      </header>
+
+      <div className="finance-command-money">
+        <article><span>Total</span><strong>{formatCurrency(invoice.total)}</strong></article>
+        <article><span>Paid</span><strong>{formatCurrency(invoice.amountPaid || 0)}</strong></article>
+        <article className={balance > 0 ? "warn" : "good"}><span>Balance</span><strong>{formatCurrency(balance)}</strong></article>
+      </div>
+
+      <div className="finance-workflow-steps" aria-label="Invoice workflow">
+        {steps.map((step) => (
+          <article key={step.label} className={step.state}>
+            <span>{step.label}</span>
+            <small>{step.detail}</small>
+          </article>
+        ))}
+      </div>
+
+      <div className="finance-command-actions">
+        <button type="button" className="button secondary" disabled={!canManageFinance || !canApprove || saving === `approve-${invoice.id}`} onClick={() => onApprove(invoice.id)}>
+          {saving === `approve-${invoice.id}` ? "Approving..." : "Approve"}
+        </button>
+        <button type="button" className="button secondary" onClick={() => onPdf(invoice)}>View PDF</button>
+        <button type="button" className="button book" disabled={!canManageFinance || !canSend || saving === `email-${invoice.id}`} onClick={() => onEmail(invoice.id)}>
+          {saving === `email-${invoice.id}` ? "Sending..." : "Send invoice"}
+        </button>
+      </div>
+
+      <section className="finance-command-block">
+        <div className="finance-command-block-head">
+          <span>
+            <small>BACS payment</small>
+            <strong>Record money received</strong>
+          </span>
+          <button type="button" className="button secondary" disabled={!canPay} onClick={() => setPaymentDraft((current) => ({ ...current, amount: String(balance.toFixed(2)), reference: invoice.invoiceNumber || current.reference }))}>Use balance</button>
+        </div>
+        <div className="finance-form compact">
+          <label><span>Amount</span><input type="number" min="0" step="0.01" value={paymentDraft.amount} onChange={(event) => setPaymentDraft((current) => ({ ...current, amount: event.target.value }))} /></label>
+          <label><span>Date paid</span><input type="date" value={paymentDraft.paidAt} onChange={(event) => setPaymentDraft((current) => ({ ...current, paidAt: event.target.value }))} /></label>
+          <label><span>Reference</span><input value={paymentDraft.reference} onChange={(event) => setPaymentDraft((current) => ({ ...current, reference: event.target.value }))} /></label>
+          <label><span>Notes</span><input value={paymentDraft.notes} onChange={(event) => setPaymentDraft((current) => ({ ...current, notes: event.target.value }))} /></label>
+        </div>
+        <button type="button" className="button book" disabled={!canManageFinance || !canPay || saving === "payment" || !Number(paymentDraft.amount)} onClick={onRecordPayment}>
+          {saving === "payment" ? "Recording..." : "Record BACS payment"}
+        </button>
+      </section>
+
+      <section className="finance-command-block">
+        <div className="finance-command-block-head">
+          <span>
+            <small>Trail</small>
+            <strong>Email, payment and audit history</strong>
+          </span>
+        </div>
+        <div className="finance-activity-list">
+          {activity.slice(0, 8).map((item) => (
+            <article key={item.id}>
+              <span>{item.label}</span>
+              <small>{item.detail}</small>
+              <time>{item.when}</time>
+            </article>
+          ))}
+          {!activity.length && <p className="muted">No activity has been recorded for this invoice yet.</p>}
+        </div>
+      </section>
     </div>
   );
 }
@@ -2926,6 +3016,48 @@ function mapToReportRows(map) {
 
 function flattenFinancePayments(invoices) {
   return invoices.flatMap((invoice) => (invoice.payments || []).map((payment) => ({ ...payment, invoiceNumber: invoice.invoiceNumber || "Draft invoice" }))).sort((a, b) => String(b.paidAt || "").localeCompare(String(a.paidAt || "")));
+}
+
+function buildFinanceWorkflowSteps(invoice = {}) {
+  const approved = Boolean(invoice.invoiceNumber || invoice.approvedAt || !["Draft", "Submitted"].includes(invoice.status));
+  const sent = Boolean(invoice.sentAt || (invoice.emails || []).some((email) => ["sent", "recorded"].includes(String(email.status || "").toLowerCase())) || ["Sent", "Viewed", "Part Paid", "Paid", "Overdue"].includes(invoice.status));
+  const paid = Number(invoice.balanceDue ?? invoice.total ?? 0) <= 0 && Number(invoice.total || 0) > 0;
+  return [
+    { label: "Draft", detail: invoice.draftReference || "Saved invoice details", state: "done" },
+    { label: "Approved", detail: approved ? invoice.invoiceNumber || "Number assigned" : "Needs approval", state: approved ? "done" : "pending" },
+    { label: "Sent", detail: sent ? formatShortDate(invoice.sentAt || invoice.emails?.[0]?.sentAt) : "Email not sent", state: sent ? "done" : approved ? "active" : "pending" },
+    { label: "Paid", detail: paid ? "Balance cleared" : `${formatCurrency(invoice.balanceDue ?? invoice.total ?? 0)} due`, state: paid ? "done" : sent ? "active" : "pending" },
+  ];
+}
+
+function buildFinanceInvoiceActivity(invoice = {}, auditEvents = []) {
+  const events = [
+    ...(invoice.emails || []).map((email) => ({
+      id: `email-${email.id}`,
+      whenRaw: email.sentAt || invoice.sentAt || invoice.updatedAt || "",
+      label: email.status === "sent" ? "Invoice email sent" : "Invoice email recorded",
+      detail: [email.to, email.subject].filter(Boolean).join(" · "),
+    })),
+    ...(invoice.payments || []).map((payment) => ({
+      id: `payment-${payment.id}`,
+      whenRaw: payment.recordedAt || payment.paidAt || "",
+      label: "BACS payment recorded",
+      detail: `${formatCurrency(payment.amount)}${payment.reference ? ` · ${payment.reference}` : ""}`,
+    })),
+    ...(auditEvents || []).filter((event) => event.invoiceId === invoice.id).map((event) => ({
+      id: `audit-${event.id}`,
+      whenRaw: event.createdAt || "",
+      label: event.action || "Audit event",
+      detail: [event.detail, event.actor].filter(Boolean).join(" · "),
+    })),
+  ];
+  return events
+    .filter((event) => event.label)
+    .sort((a, b) => String(b.whenRaw || "").localeCompare(String(a.whenRaw || "")))
+    .map((event) => ({
+      ...event,
+      when: event.whenRaw ? formatDateTime(event.whenRaw) : "Time not recorded",
+    }));
 }
 
 function calculateFinanceDraftTotal(lines = []) {
