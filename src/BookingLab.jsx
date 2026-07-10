@@ -97,7 +97,7 @@ const defaultMessageTemplates = [
     channel: "Email",
     trigger: "Voucher/TFC reference saved",
     subject: "{paymentMethod} reference saved for {activity}",
-    body: "Hi {parent}, your {paymentMethod} reference has been saved for {activity}. Your place remains reserved while PonchoPay matches the payment. The invoice will show as outstanding until it clears.",
+    body: "Hi {parent}, your {paymentMethod} reference has been saved for {activity}. Your booking is confirmed while PonchoPay matches the payment automatically. The invoice will update when it clears.",
   },
   {
     id: "template-card-failed",
@@ -3834,7 +3834,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const nextCheckoutStep = checkoutSteps[Math.min(checkoutSteps.length - 1, checkoutStepIndex + 1)];
   const previousCheckoutStep = checkoutSteps[Math.max(0, checkoutStepIndex - 1)];
   const checkoutActionLabel = isWaitlist
-    ? "Join waitlist"
+    ? "Change selection"
     : activePaymentPlan === "Monthly"
       ? "Continue to PonchoPay"
       : effectivePaymentMethod === "card"
@@ -3843,11 +3843,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           ? "Book and invoice"
           : "Continue to PonchoPay";
   const checkoutActionSummary = isWaitlist
-    ? "No payment is taken until a place is confirmed."
+    ? "One or more selected sessions are full. Choose another date or remove a session before checkout."
     : activePaymentPlan === "Monthly"
-      ? isLaunchMode ? "PonchoPay opens securely to set up the payment plan before the booking is confirmed." : "PonchoPay handles the monthly payment schedule before confirmation."
+      ? isLaunchMode ? "PonchoPay opens securely to set up the payment plan and confirm the booking automatically." : "PonchoPay handles the monthly payment schedule before confirmation."
       : effectivePaymentMethod === "card"
-        ? isLaunchMode ? "PonchoPay opens a secure card window. The booking confirms only after payment is authorised." : "PonchoPay takes the card payment first and sends the receipt after authorisation."
+        ? isLaunchMode ? "PonchoPay opens a secure card window and confirms the booking automatically after authorisation." : "PonchoPay takes the card payment first and sends the receipt after authorisation."
         : effectivePaymentMethod === "invoice"
           ? isLaunchMode ? "Your place is reserved now. We will follow up if anything else is needed." : "The place is reserved now and finance follows up through the invoice route."
           : isLaunchMode
@@ -4445,7 +4445,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           effectivePaymentMethod === "card" ? "PonchoPay mandate tracked" : "Voucher/TFC payments matched",
         ]
       : [
-        effectivePaymentMethod === "card" ? "Card authorised" : "Place reserved",
+        effectivePaymentMethod === "card" ? "Card authorised" : "Booking guaranteed",
         effectivePaymentMethod === "card" ? "Receipt issued" : "Invoice issued",
         effectivePaymentMethod === "card" ? "Balance clear" : "Payment matched automatically",
       ];
@@ -4453,7 +4453,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ["Booked", parentActivityLabel(activeSession), `${activeSession.site} · ${pickedDays.length} day${pickedDays.length === 1 ? "" : "s"}`],
     ["Sessions", `${selectedBlockCount || pickedDays.length} selected`, pickedDaysSummary || "Choose dates"],
     ["Children", selectedChildren.map((child) => child.name).join(", ") || "Saved child", selectedCareFlags.length ? selectedCareFlags.join(" · ") : "No selected care flags"],
-    ["Payment", activePaymentPlan === "Monthly" ? monthlyScheduleSummary : selectedPaymentLabel, activePaymentPlan === "Monthly" ? `${money(dueTodayAmount)} first payment via PonchoPay` : effectivePaymentMethod === "card" ? "Authorised before confirmation" : "Card guarantee while matched"],
+    ["Payment", activePaymentPlan === "Monthly" ? monthlyScheduleSummary : selectedPaymentLabel, activePaymentPlan === "Monthly" ? `${money(dueTodayAmount)} first payment via PonchoPay` : effectivePaymentMethod === "card" ? "Authorised in PonchoPay" : "Confirmed with card guarantee"],
     ["Booking API", realBookingReadinessLabel, realBookingReadinessDetail],
   ];
   const parentAgreementRows = [
@@ -4555,12 +4555,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const confirmationHeroText = confirmation?.status === "Waitlist"
     ? "We have saved the request and will confirm the place before any payment is taken."
     : confirmation?.paymentPlan === "Monthly"
-      ? isLaunchMode ? "Open PonchoPay to set up the monthly plan. The booking confirms after the provider confirms payment setup." : "Open PonchoPay to set up the monthly plan before the booking is confirmed."
+      ? isLaunchMode ? "Open PonchoPay to set up the monthly plan and confirm the booking automatically." : "Open PonchoPay to set up the monthly plan before the booking is confirmed."
       : confirmationHasCheckoutUrl
         ? "Open the secure payment link to complete the booking. Your portal will update when PonchoPay confirms the payment."
         : confirmation?.paymentMethod === "card"
-        ? "Card payment still needs to complete in PonchoPay before the booking is confirmed."
-        : isLaunchMode ? "PonchoPay still needs the card guarantee before voucher or Tax-Free Childcare reconciliation can protect the booking." : "PonchoPay will store the card guarantee and match the voucher or Tax-Free Childcare payment automatically.";
+        ? "Complete the card payment in PonchoPay and the booking will confirm automatically."
+        : isLaunchMode ? "Complete the PonchoPay card guarantee and the booking will confirm automatically while voucher or Tax-Free Childcare reconciliation runs." : "PonchoPay will store the card guarantee and match the voucher or Tax-Free Childcare payment automatically.";
   const confirmationOutcomeRows = confirmation ? [
     ["Booking", confirmation?.status === "Waitlist" ? "Request saved" : confirmationOutstanding > 0 || confirmationHasCheckoutUrl ? "Pending PonchoPay" : "Confirmed", `${confirmationChildren} · ${confirmationDayCount} session${confirmationDayCount === 1 ? "" : "s"}`],
     ["Invoice", confirmationInvoiceStatus, confirmationParentEmail],
@@ -8337,7 +8337,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         receivedAmount: mismatch ? payload.amount : draft.receivedAmount,
         reconciledAt: draft.reconciledAt || "",
         paymentStatus: eventType === "payment_captured" ? "Payment captured" : eventType === "payment_reported_complete" ? "Awaiting PonchoPay match" : failed ? "Payment failed" : draft.paymentStatus,
-        invoiceStatus: eventType === "payment_captured" ? "Place reserved; awaiting completion" : eventType === "payment_reported_complete" ? "Payment reported; awaiting match" : failed ? "Payment failed; action needed" : draft.invoiceStatus,
+        invoiceStatus: eventType === "payment_captured" ? "Payment captured; confirming booking" : eventType === "payment_reported_complete" ? "Payment reported; awaiting match" : failed ? "Payment failed; action needed" : draft.invoiceStatus,
         mismatchReason: mismatch ? `PonchoPay sandbox mismatch: received ${money(payload.amount)} against ${money(payload.expectedAmount)}.` : draft.mismatchReason || "",
         paymentTimeline: [
           ...(draft.paymentTimeline || []),
@@ -10257,7 +10257,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       return `Hi ${parent}, your ${draft.activity} booking at ${draft.site} is reserved. Please complete payment or add your voucher/TFC reference within ${rules.paymentDueHours} hours so PonchoPay can reconcile it automatically. The invoice remains visible in your parent portal until it clears.`;
     }
     if (template === "Payment reference" || template === "Payment reference saved") {
-      return `Hi ${parent}, your ${methodLabel} reference has been saved for ${draft.activity}. Your place remains reserved while PonchoPay matches the payment. We will issue the receipt when it clears.`;
+      return `Hi ${parent}, your ${methodLabel} reference has been saved for ${draft.activity}. Your booking is confirmed while PonchoPay matches the payment automatically. We will issue the receipt when it clears.`;
     }
     if (template === "Card payment failed") {
       return `Hi ${parent}, your card payment for ${draft.activity} did not complete. Your booking is still visible in the parent portal, and you can retry the payment or choose another available route.`;
@@ -12338,7 +12338,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         invoiceId: result?.invoice?.id || result?.checkout?.invoiceId || "",
         providerPaymentId: result?.checkout?.providerPaymentId || result?.invoice?.providerPaymentId || "",
         providerReference: result?.checkout?.providerReference || result?.invoice?.providerReference || "",
-        invoiceStatus: result?.invoice?.status || result?.checkout?.invoiceStatus || (result?.booking ? "Invoice created" : "Invoice not confirmed"),
+        invoiceStatus: result?.invoice?.status || result?.checkout?.invoiceStatus || (result?.booking ? "Invoice created" : "Invoice pending"),
         receiptStatus: result?.receipt?.status || result?.invoice?.receiptStatus || (result?.notifications?.length ? "Queued" : ""),
         receiptNumber: result?.receipt?.receiptNumber || "",
         parentComms: result?.notifications?.length ? "Queued" : result?.checkout?.checkoutUrl ? "Receipt ready" : "Not confirmed",
@@ -12489,16 +12489,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       bookingId,
       title: opened ? "Secure payment window opened" : isLaunchMode ? "Opening secure payment" : "Secure payment link ready",
       detail: opened
-        ? "Complete the PonchoPay step. The booking stays pending until PonchoPay sends the callback."
+        ? "Complete the PonchoPay step. Your booking confirms automatically when PonchoPay sends the callback."
         : isLaunchMode
-          ? "We are taking you to PonchoPay. The booking stays pending until PonchoPay sends the callback."
-        : "Use the secure payment button. The booking stays pending until PonchoPay sends the callback.",
+          ? "We are taking you to PonchoPay. Your booking confirms automatically when PonchoPay sends the callback."
+        : "Use the secure payment button. Your booking confirms automatically when PonchoPay sends the callback.",
       action: "Waiting for callback",
     });
     setStatus(opened
-      ? "PonchoPay checkout opened. The booking will confirm only after the payment callback."
+      ? "PonchoPay checkout opened. The booking will confirm automatically after the payment or card guarantee completes."
       : isLaunchMode
-        ? "Opening PonchoPay checkout. The booking will confirm only after the payment callback."
+        ? "Opening PonchoPay checkout. The booking will confirm automatically after the payment or card guarantee completes."
       : "PonchoPay checkout is ready. Use the secure payment button to continue.");
     return Boolean(opened || isLaunchMode);
   }
@@ -12516,6 +12516,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     }
     if (rulesBlocked) {
       setStatus("Booking blocked by the rules engine. Use an admin override or adjust the selected children/activity.");
+      return;
+    }
+    if (isLaunchMode && isWaitlist) {
+      setStatus("One or more selected sessions are full. Remove those sessions or choose another date before checkout.");
+      scrollToFlowSection(".lab-launch-booking-panel", "start");
       return;
     }
     const form = new FormData(event.currentTarget);
@@ -12663,18 +12668,18 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         ? ` ${realBookingResult.message}`
         : "";
     const launchCheckoutStatus = isWaitlist
-        ? "Request saved. We will confirm availability and email the next step."
+        ? "One or more selected sessions are full. Remove those sessions or choose another date before checkout."
       : activePaymentPlan === "Monthly"
         ? ponchoCheckout.checkoutUrl
-          ? checkoutOpened ? "PonchoPay checkout opened. Complete the payment plan there before the booking is confirmed." : "Secure PonchoPay link is ready. Open it to set up the payment plan before the booking is confirmed."
-          : "Booking request saved. PonchoPay setup must complete before confirmation."
+          ? checkoutOpened ? "PonchoPay checkout opened. Complete the payment plan there and the booking will confirm automatically." : "Secure PonchoPay link is ready. Open it to set up the payment plan and confirm automatically."
+          : "Booking request saved. PonchoPay setup will confirm the booking automatically."
         : effectivePaymentMethod === "card"
           ? ponchoCheckout.checkoutUrl
-            ? checkoutOpened ? "PonchoPay checkout opened. Complete card payment there to confirm the booking." : "Secure PonchoPay link is ready. Open it to complete card payment before the booking is confirmed."
-            : "Booking request saved. Card payment must complete in PonchoPay before confirmation."
+            ? checkoutOpened ? "PonchoPay checkout opened. Complete card payment there and the booking will confirm automatically." : "Secure PonchoPay link is ready. Open it to complete card payment and confirm automatically."
+            : "Booking request saved. Card payment will confirm the booking automatically through PonchoPay."
           : ponchoCheckout.checkoutUrl
-            ? checkoutOpened ? "PonchoPay checkout opened. Add the card guarantee there so voucher/TFC reconciliation can run." : "Secure PonchoPay link is ready. Open it to add the card guarantee so voucher/TFC reconciliation can run."
-            : "Booking request saved. PonchoPay must collect the card guarantee before confirmation.";
+            ? checkoutOpened ? "PonchoPay checkout opened. Add the card guarantee there and the booking will confirm automatically while reconciliation runs." : "Secure PonchoPay link is ready. Open it to add the card guarantee and confirm automatically."
+            : "Booking request saved. PonchoPay card guarantee will confirm the booking automatically while reconciliation runs.";
     setStatus(isLaunchMode
       ? `${launchCheckoutStatus}${realBookingNotice}`
       : isWaitlist
@@ -16299,7 +16304,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         ? "Payment failed. Parent should retry card or choose another route."
                         : activePaymentRow.status === "Partially refunded"
                           ? "Partial refund or account credit created and awaiting finance resolution."
-                          : "Place reserved while payment reference or card action is completed."}</p>
+                          : "Payment route started. Confirmation follows automatically through PonchoPay."}</p>
                   </div>
                 </>
               ) : (
@@ -19191,7 +19196,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </div>
             </section>
           )}
-          {isWaitlist && <div className="lab-capacity-warning">Selected children exceed visible capacity. Checkout will create a waitlist request instead of a confirmed booking.</div>}
+          {isWaitlist && <div className="lab-capacity-warning">Selected children exceed visible capacity. Reduce the selection before checkout; full sessions cannot be booked yet.</div>}
 
           <form key={activeFamily.id} className={`lab-checkout ${confirmation ? "confirmed" : ""}`} onSubmit={submitBooking}>
             <div className="lab-checkout-header">

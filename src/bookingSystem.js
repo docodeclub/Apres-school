@@ -486,6 +486,8 @@ export async function upsertLiveBookingSessionSetup(setup = {}) {
     eligibility: String(setup.eligibility || "").trim(),
     paymentRoute: String(setup.paymentRoute || "").trim(),
     cancellationHours: setup.cancellationHours,
+    applySimilar: setup.applySimilar !== false,
+    applyScope: setup.applySimilar === false ? "single_session_range" : "matching_session_name",
   };
   if (!payload.school) throw new Error("School is required.");
   if (!payload.dateFrom || !payload.dateTo) throw new Error("Choose a date range.");

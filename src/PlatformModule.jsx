@@ -1812,6 +1812,7 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
     eligibility: "Reception to Year 6",
     paymentRoute: "PonchoPay card + vouchers",
     cancellationHours: "24",
+    applySimilar: true,
   }));
   const [dayOverride, setDayOverride] = useState(() => readJson(bookingAdminOverrideStorageKey, {
     school: "Willington Prep",
@@ -1943,7 +1944,7 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
         const result = await upsertLiveBookingSessionSetup(setupDraft);
         addAuditLog("Booking setup saved", `${result.school || setupDraft.school} · ${result.sessionLabel || setupDraft.sessionLabel} · ${result.sessionsUpserted || 0} sessions`);
         setError("");
-        setStatus(`Booking setup saved live: ${result.sessionsUpserted || 0} weekday sessions updated for ${result.school || setupDraft.school}.`);
+        setStatus(`Booking setup saved live: ${result.sessionsUpserted || 0} matching ${result.sessionLabel || setupDraft.sessionLabel} sessions updated for ${result.school || setupDraft.school}.`);
         refreshLedger();
       } else {
         addAuditLog("Booking setup draft saved", `${setupDraft.school} · ${setupDraft.sessionLabel} · ${formatCurrency(setupDraft.price)}`);
@@ -2167,7 +2168,7 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
           <div>
             <p className="eyebrow">Admin only</p>
             <h3>Session setup controls.</h3>
-            <p>Dates, prices, capacity, eligibility and payment route stay in admin. Saving creates or updates parent-bookable weekday sessions for the selected range.</p>
+            <p>Dates, prices, capacity, eligibility and payment route stay in admin. Saving updates the matching session name across every weekday in the selected range.</p>
           </div>
           <div className="booking-admin-setup-grid">
             <label><span>School</span><input value={setupDraft.school} onChange={(event) => updateSetupField("school", event.target.value)} /></label>
@@ -2180,6 +2181,7 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
             <label><span>Cancellation window</span><input type="number" min="0" step="1" value={setupDraft.cancellationHours} onChange={(event) => updateSetupField("cancellationHours", event.target.value)} /></label>
             <label className="wide"><span>Eligibility</span><input value={setupDraft.eligibility} onChange={(event) => updateSetupField("eligibility", event.target.value)} /></label>
             <label className="wide"><span>Payment route</span><input value={setupDraft.paymentRoute} onChange={(event) => updateSetupField("paymentRoute", event.target.value)} /></label>
+            <label className="booking-admin-check wide"><input type="checkbox" checked={setupDraft.applySimilar !== false} onChange={(event) => updateSetupField("applySimilar", event.target.checked)} /><span>Apply price and capacity to all matching {setupDraft.sessionLabel || "sessions"} in this date range</span></label>
           </div>
           <button className="button book" type="button" onClick={saveSetupDraft} disabled={actionPending === "setup"}>
             {actionPending === "setup" ? "Saving setup..." : hasLiveLedger ? "Save live setup" : "Save setup draft"}

@@ -189,9 +189,9 @@ function buildInvoiceState(event: WebhookEvent, currentInvoice: Record<string, u
       return {
         ...base,
         payment_status: "payment_guaranteed",
-        parent_portal_status: "Card guarantee saved; awaiting childcare payment match",
+        parent_portal_status: "Card guarantee saved; booking confirmed",
         finance_status: "guaranteed_pending_reconciliation",
-        processingOutcome: "Card guarantee created; place remains held while PonchoPay reconciles voucher/TFC",
+        processingOutcome: "Card guarantee created; booking confirmed while PonchoPay reconciles voucher/TFC",
       };
     case "payment_failed":
       return {
@@ -205,9 +205,9 @@ function buildInvoiceState(event: WebhookEvent, currentInvoice: Record<string, u
       return {
         ...base,
         payment_status: "reserved",
-        parent_portal_status: "Place reserved; awaiting completion",
+        parent_portal_status: "Payment captured; completing confirmation",
         finance_status: "captured_pending_completion",
-        processingOutcome: "Payment captured; booking remains reserved while completion is awaited",
+        processingOutcome: "Payment captured by PonchoPay; booking confirmation can continue automatically",
       };
     case "payment_reported_complete":
       return {
@@ -426,14 +426,14 @@ async function sendPaymentLifecycleEmail(
   const receiptNumber = stringValue(receipt?.receipt_number) || stringValue(invoice.provider_reference) || stringValue(invoice.id);
   const amountPaid = moneyValue(invoice.paid_amount) || moneyValue(receipt?.amount);
   const subject = shouldSendGuarantee
-    ? `Card guarantee saved for booking ${stringValue(invoice.booking_id) || stringValue(invoice.id)}`
+    ? `Your Après School booking is confirmed`
     : `Your Après School booking is confirmed`;
   const lines = shouldSendGuarantee
     ? [
       `Hi ${firstName},`,
       "",
-      "Your card guarantee has been saved through PonchoPay.",
-      "Your place is held while your childcare voucher or Tax-Free Childcare payment is matched automatically.",
+      "Your Après School booking is confirmed.",
+      "Your card guarantee has been saved through PonchoPay while your childcare voucher or Tax-Free Childcare payment is matched automatically.",
       "",
       `Invoice: ${invoice.id}`,
       `Amount protected: ${formatMoney(moneyValue(invoice.total_amount), stringValue(invoice.currency) || "GBP")}`,
@@ -514,9 +514,9 @@ function bookingStatusForInvoice(paymentStatus: string) {
     case "bank_confirmed":
     case "reconciled":
     case "paid_by_fallback_card":
-      return "confirmed";
     case "payment_guaranteed":
     case "payment_plan_active":
+      return "confirmed";
     case "part_paid":
     case "failed":
     case "reserved":

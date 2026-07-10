@@ -288,9 +288,9 @@ function normaliseEventType(value: string) {
 function outcomeForEvent(eventType: string) {
   switch (eventType) {
     case "payment_captured":
-      return "Place reserved; receipt waits for completion rules";
+      return "Payment captured; booking confirmation can continue automatically";
     case "guarantee_created":
-      return "Card guarantee stored; booking can move to guaranteed pending reconciliation";
+      return "Card guarantee stored; booking can confirm while reconciliation runs";
     case "payment_reported_complete":
       return "Parent reported complete; invoice remains pending while PonchoPay matches funds";
     case "payment_completed":

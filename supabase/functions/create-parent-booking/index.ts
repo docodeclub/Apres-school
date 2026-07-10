@@ -229,13 +229,13 @@ async function sendBookingRequestEmail({
   const checkoutUrl = stringValue(checkout?.checkoutUrl) || stringValue(checkout?.providerCheckoutUrl);
   const bookingReference = stringValue(booking.bookingReference) || stringValue(booking.id);
   const subject = dueToday > 0
-    ? `Complete payment for booking ${bookingReference}`
-    : `Booking request received ${bookingReference}`;
+    ? `Complete secure payment for booking ${bookingReference}`
+    : `Booking received ${bookingReference}`;
   const itemSummary = summariseItems(items);
   const firstName = firstNameFrom(parentName || actor.full_name || actor.email);
   const statusLine = dueToday > 0
-    ? "Your place is reserved while payment is completed through PonchoPay."
-    : "We have received your booking request and no payment is due today.";
+    ? "Your selected place is available. Complete payment through PonchoPay and we will confirm the booking automatically."
+    : "Your booking has been received and no payment is due today.";
   const paymentLine = checkoutUrl
     ? `Secure payment link: ${checkoutUrl}`
     : dueToday > 0
@@ -244,7 +244,7 @@ async function sendBookingRequestEmail({
   const lines = [
     `Hi ${firstName},`,
     "",
-    existing ? "We found your existing booking request." : "We have received your booking request.",
+    existing ? "We found your existing booking request." : "We have received your booking.",
     statusLine,
     "",
     `Reference: ${bookingReference}`,
@@ -253,7 +253,9 @@ async function sendBookingRequestEmail({
     itemSummary ? `Sessions: ${itemSummary}` : "",
     paymentLine,
     "",
-    "Important: your booking is confirmed only after payment or the card guarantee is completed through PonchoPay.",
+    dueToday > 0
+      ? "Once PonchoPay confirms payment or the card guarantee, your confirmation and receipt will be sent automatically."
+      : "Your booking confirmation is being prepared.",
     "",
     "Thank you,",
     "Après School",

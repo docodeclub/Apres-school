@@ -78,7 +78,7 @@ export const PONCHOPAY_EXCEPTION_PLAYBOOK = [
 
 export const PONCHOPAY_PARENT_STATES = [
   ["Paid", "Receipt available", "Card payment or matched voucher/TFC clears the parent balance immediately."],
-  ["Pending", "Place reserved", "Voucher/TFC reference is saved and the invoice remains visible until PonchoPay matches it."],
+  ["Pending", "Booking guaranteed", "Voucher/TFC reference is saved and the invoice remains visible until PonchoPay matches it."],
   ["Delayed", "We are checking it", "Parent gets reassuring copy; finance sees the row in mismatch or awaiting-match queues."],
   ["Failed", "Retry payment", "Parent can retry card or choose another permitted route without losing the booking."],
 ];
@@ -241,7 +241,7 @@ export const PONCHOPAY_SANDBOX_WEBHOOKS = [
   {
     eventType: "payment_captured",
     label: "Captured",
-    parentState: "Place reserved",
+    parentState: "Booking guaranteed",
     resultStatus: "Payment reference pending",
     detail: "Card authorisation or express payment captured; wait for completed callback before receipt.",
   },
