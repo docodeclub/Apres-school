@@ -2201,6 +2201,7 @@ function mapFinancePayment(record = {}) {
 }
 
 function mapFinanceEmail(record = {}) {
+  const metadata = record.metadata || {};
   return {
     id: record.id,
     to: record.recipient || "",
@@ -2210,6 +2211,10 @@ function mapFinanceEmail(record = {}) {
     body: record.body || "",
     status: record.status || "",
     sentAt: record.sent_at || "",
+    providerMessageId: record.provider_message_id || "",
+    attachmentFilename: metadata.attachmentFilename || "",
+    errorMessage: metadata.error || "",
+    provider: metadata.provider || "resend",
   };
 }
 

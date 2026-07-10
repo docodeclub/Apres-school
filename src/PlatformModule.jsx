@@ -2865,6 +2865,8 @@ function FinanceSelectedInvoicePanel({ invoice, customer, activity, paymentDraft
         </button>
       </section>
 
+      <FinanceInvoiceEmailHistory emails={invoice.emails || []} />
+
       <section className="finance-command-block">
         <div className="finance-command-block-head">
           <span>
@@ -2884,6 +2886,57 @@ function FinanceSelectedInvoicePanel({ invoice, customer, activity, paymentDraft
         </div>
       </section>
     </div>
+  );
+}
+
+function FinanceInvoiceEmailHistory({ emails = [] }) {
+  const sortedEmails = [...emails].sort((a, b) => String(b.sentAt || "").localeCompare(String(a.sentAt || "")));
+  return (
+    <section className="finance-command-block">
+      <div className="finance-command-block-head">
+        <span>
+          <small>Email history</small>
+          <strong>What was sent</strong>
+        </span>
+        <Badge value={`${sortedEmails.length} records`} />
+      </div>
+      <div className="finance-email-history-list">
+        {sortedEmails.map((email) => {
+          const providerAccepted = String(email.status || "").toLowerCase() === "sent" && Boolean(email.providerMessageId);
+          const statusText = providerAccepted
+            ? "Resend accepted"
+            : email.status === "failed"
+              ? "Failed"
+              : email.status === "queued_without_provider"
+                ? "Queued, provider missing"
+                : email.status || "Recorded";
+          return (
+            <article key={email.id}>
+              <div className="finance-email-history-head">
+                <span>
+                  <strong>{email.subject || "No subject recorded"}</strong>
+                  <small>{formatDateTime(email.sentAt)} · {statusText}</small>
+                </span>
+                <Badge value={statusText} />
+              </div>
+              <dl>
+                <div><dt>To</dt><dd>{email.to || "Not recorded"}</dd></div>
+                {email.cc && <div><dt>CC</dt><dd>{email.cc}</dd></div>}
+                {email.bcc && <div><dt>BCC</dt><dd>{email.bcc}</dd></div>}
+                <div><dt>Attachment</dt><dd>{email.attachmentFilename || "Invoice PDF"}</dd></div>
+                <div><dt>Provider ID</dt><dd>{email.providerMessageId || "Not returned"}</dd></div>
+              </dl>
+              <details>
+                <summary>View message body</summary>
+                <pre>{email.body || "No message body recorded."}</pre>
+              </details>
+              {email.errorMessage && <p className="finance-email-error">{email.errorMessage}</p>}
+            </article>
+          );
+        })}
+        {!sortedEmails.length && <p className="muted">No invoice emails have been sent yet.</p>}
+      </div>
+    </section>
   );
 }
 
