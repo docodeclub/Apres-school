@@ -768,6 +768,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [setupDryRunOpen, setSetupDryRunOpen] = useState(false);
   const [setupInviteDryRunOpen, setSetupInviteDryRunOpen] = useState(false);
   const [capacityScheduleEditKey, setCapacityScheduleEditKey] = useState("");
+  const [capacitySpecialDayKey, setCapacitySpecialDayKey] = useState("");
   const [openingRehearsals, setOpeningRehearsals] = useState(() => readJson("apres-booking-lab-opening-rehearsals", {}));
   const [bulkSetupPatch, setBulkSetupPatch] = useState({ capacity: "", price: "", route: "PonchoPay card + vouchers" });
   const [activeSchoolContractId, setActiveSchoolContractId] = useState(defaultSchoolContracts[0].id);
@@ -2577,6 +2578,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       const price = Number(rowOverride.price ?? block.price ?? dayOverride.price ?? capacitySession.price);
       const capacity = Number(rowOverride.capacity ?? dayCapacity);
       const published = rowOverride.published ?? (dayOverride.enabled !== false);
+      const specialDay = rowOverride.specialDay || null;
       return {
         key: rowKey,
         dayKey,
@@ -2591,11 +2593,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         price,
         capacity,
         published,
-        changed: Boolean(rowOverride.label || rowOverride.customLabel || rowOverride.start || rowOverride.end || rowOverride.price !== undefined || rowOverride.capacity !== undefined || rowOverride.published !== undefined),
+        specialDay,
+        changed: Boolean(rowOverride.label || rowOverride.customLabel || rowOverride.start || rowOverride.end || rowOverride.price !== undefined || rowOverride.capacity !== undefined || rowOverride.published !== undefined || rowOverride.specialDay),
       };
     });
   });
   const activeCapacityScheduleRow = capacityScheduleRows.find((row) => row.key === capacityScheduleEditKey) || null;
+  const activeCapacitySpecialDayRow = capacityScheduleRows.find((row) => row.key === capacitySpecialDayKey) || null;
+  const capacitySpecialDayRows = capacityScheduleRows.filter((row) => row.specialDay);
   const setupOverrideRows = setupSession.days.map((day) => {
     const key = `${setupSession.id}-${day}`;
     const override = setupDayOverrides[key] || {};
@@ -10133,6 +10138,85 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setStatus(`${patch.label} saved${applySimilar ? ` across ${targetDays.length} matching days` : ""}.`);
   }
 
+  function saveCapacitySpecialDay(event) {
+    event.preventDefault();
+    if (!activeCapacitySpecialDayRow) return;
+    const form = new FormData(event.currentTarget);
+    const applyWholeDay = form.get("applyWholeDay") === "on";
+    const closed = form.get("specialStatus") === "closed";
+    const capacity = Math.max(0, Number(form.get("capacity") || activeCapacitySpecialDayRow.capacity || 0));
+    const price = Math.max(0, Number(form.get("price") || activeCapacitySpecialDayRow.price || 0));
+    const specialDayPatch = {
+      reason: String(form.get("reason") || "One-off change").trim(),
+      note: String(form.get("note") || "").trim(),
+      closed,
+      updatedAt: new Date().toISOString(),
+    };
+    const patch = {
+      customLabel: String(form.get("customLabel") || activeCapacitySpecialDayRow.customLabel || "").trim(),
+      start: String(form.get("start") || activeCapacitySpecialDayRow.start || "").trim(),
+      end: String(form.get("end") || activeCapacitySpecialDayRow.end || "").trim(),
+      price,
+      capacity,
+      published: !closed,
+      updatedAt: new Date().toISOString(),
+    };
+    const targets = applyWholeDay
+      ? capacityScheduleRows.filter((row) => row.day === activeCapacitySpecialDayRow.day)
+      : [activeCapacitySpecialDayRow];
+    const targetDays = [...new Set(targets.map((row) => row.day))];
+    if (!requireUnlockedSettlementPeriod("Special day override", targetDays)) return;
+    const nextScheduleOverrides = { ...capacityScheduleOverrides };
+    targets.forEach((row) => {
+      const existingOverride = nextScheduleOverrides[row.key] || {};
+      const { specialDay: existingSpecialDay, ...baseOverride } = existingOverride;
+      const previousOverride = existingSpecialDay?.previousOverride || baseOverride;
+      nextScheduleOverrides[row.key] = {
+        ...baseOverride,
+        ...patch,
+        specialDay: {
+          ...specialDayPatch,
+          previousOverride,
+        },
+      };
+    });
+    persistCapacityScheduleOverrides(nextScheduleOverrides);
+    recordGovernanceEvent("Special day override", `${capacitySession.site}: ${activeCapacitySpecialDayRow.day} ${closed ? "closed" : "changed"}${applyWholeDay ? " for the whole day" : ` for ${activeCapacitySpecialDayRow.label}`}.`, {
+      category: "Special days",
+      risk: "High",
+      approvalRequired: true,
+      reason: approvalReason,
+    });
+    recordSettlementCorrection("Special day override", `${capacitySession.site}: ${specialDayPatch.reason}.`, {
+      category: "Special days",
+      impact: `${targets.length} session row${targets.length === 1 ? "" : "s"} changed for a one-off date`,
+    });
+    setCapacitySpecialDayKey("");
+    setStatus(`${activeCapacitySpecialDayRow.day} special day saved${applyWholeDay ? " for all sessions" : ""}.`);
+  }
+
+  function clearCapacitySpecialDay(rowKey) {
+    const row = capacityScheduleRows.find((item) => item.key === rowKey);
+    if (!row) return;
+    if (!requireUnlockedSettlementPeriod("Clear special day", [row.day])) return;
+    const current = capacityScheduleOverrides[rowKey] || {};
+    const previousOverride = current.specialDay?.previousOverride || {};
+    const nextScheduleOverrides = { ...capacityScheduleOverrides };
+    if (Object.keys(previousOverride).length) {
+      nextScheduleOverrides[rowKey] = previousOverride;
+    } else {
+      delete nextScheduleOverrides[rowKey];
+    }
+    persistCapacityScheduleOverrides(nextScheduleOverrides);
+    recordGovernanceEvent("Special day cleared", `${capacitySession.site}: ${row.day} ${row.label} special day removed.`, {
+      category: "Special days",
+      risk: "Medium",
+      approvalRequired: false,
+      reason: approvalReason,
+    });
+    setStatus(`${row.day} ${row.label} special day cleared.`);
+  }
+
   function seedWaitlistDemand() {
     const parents = [
       ["Hannah Lee", "hannah.lee@example.com", ["Theo"]],
@@ -16823,6 +16907,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     <th>Custom label</th>
                     <th>Places</th>
                     <th>Cost</th>
+                    <th>Special day</th>
                     <th>Edit</th>
                   </tr>
                 </thead>
@@ -16836,6 +16921,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                       <td>{row.customLabel || "Not set"}</td>
                       <td>{row.capacity}</td>
                       <td>{money(row.price)}</td>
+                      <td>
+                        <button type="button" onClick={() => setCapacitySpecialDayKey(row.key)}>
+                          {row.specialDay ? "View" : "Add"}
+                        </button>
+                      </td>
                       <td><button type="button" onClick={() => setCapacityScheduleEditKey(row.key)}>Edit</button></td>
                     </tr>
                   ))}
@@ -16866,6 +16956,49 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 </div>
               </form>
             )}
+            {activeCapacitySpecialDayRow && (
+              <form className="lab-capacity-special-day" onSubmit={saveCapacitySpecialDay}>
+                <div className="lab-capacity-session-editor-head">
+                  <div>
+                    <p className="eyebrow">Special day</p>
+                    <h4>{activeCapacitySpecialDayRow.day} · {activeCapacitySpecialDayRow.label}</h4>
+                  </div>
+                  <label><input defaultChecked={activeCapacitySpecialDayRow.specialDay?.closed || !activeCapacitySpecialDayRow.published} name="specialStatus" type="checkbox" value="closed" /> Close this session</label>
+                </div>
+                <label className="lab-capacity-similar-toggle"><input name="applyWholeDay" type="checkbox" /> Apply to every session on this day</label>
+                <div className="lab-capacity-session-editor-grid">
+                  <label>Reason<input name="reason" defaultValue={activeCapacitySpecialDayRow.specialDay?.reason || ""} placeholder="Inset day, sports fixture, early closure" /></label>
+                  <label>Custom label<input name="customLabel" defaultValue={activeCapacitySpecialDayRow.customLabel} placeholder="Shown to admin and parents" /></label>
+                  <label>Start<input name="start" type="time" defaultValue={activeCapacitySpecialDayRow.start} /></label>
+                  <label>End<input name="end" type="time" defaultValue={activeCapacitySpecialDayRow.end} /></label>
+                  <label>Cost<input min="0" name="price" step="0.01" type="number" defaultValue={activeCapacitySpecialDayRow.price} /></label>
+                  <label>Places available<input min="0" name="capacity" step="1" type="number" defaultValue={activeCapacitySpecialDayRow.capacity} /></label>
+                </div>
+                <label className="lab-capacity-special-note">Admin note<textarea name="note" defaultValue={activeCapacitySpecialDayRow.specialDay?.note || ""} placeholder="Internal reason for audit trail" /></label>
+                <div className="lab-capacity-session-editor-actions">
+                  {activeCapacitySpecialDayRow.specialDay && <button type="button" onClick={() => clearCapacitySpecialDay(activeCapacitySpecialDayRow.key)}>Clear special day</button>}
+                  <button type="button" onClick={() => setCapacitySpecialDayKey("")}>Cancel</button>
+                  <button type="submit">Save special day</button>
+                </div>
+              </form>
+            )}
+            <div className="lab-capacity-special-list">
+              <header>
+                <strong>Special days</strong>
+                <span>{capacitySpecialDayRows.length} active</span>
+              </header>
+              {capacitySpecialDayRows.slice(0, 8).map((row) => (
+                <article key={row.key}>
+                  <div>
+                    <strong>{row.day} · {row.label}</strong>
+                    <span>{row.specialDay.closed ? "Closed" : `${row.start}-${row.end} · ${row.capacity} places · ${money(row.price)}`}</span>
+                  </div>
+                  <p>{row.specialDay.reason}{row.specialDay.note ? ` · ${row.specialDay.note}` : ""}</p>
+                  <button type="button" onClick={() => setCapacitySpecialDayKey(row.key)}>Edit</button>
+                </article>
+              ))}
+              {!capacitySpecialDayRows.length && <p>No one-off date changes are active for this activity.</p>}
+            </div>
           </section>
           <section className="lab-capacity-command">
             <div>

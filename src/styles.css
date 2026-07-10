@@ -15881,6 +15881,7 @@ th {
 .lab-capacity-hero h2,
 .lab-capacity-schedule h3,
 .lab-capacity-session-editor h4,
+.lab-capacity-special-day h4,
 .lab-capacity-command h3,
 .lab-capacity-grid h3,
 .lab-capacity-offers h3 {
@@ -16031,6 +16032,7 @@ th {
 .lab-capacity-schedule-head span,
 .lab-capacity-schedule-table td,
 .lab-capacity-session-editor label,
+.lab-capacity-special-day label,
 .lab-capacity-similar-toggle {
   color: var(--muted);
 }
@@ -16096,13 +16098,19 @@ th {
   color: #fff;
 }
 
-.lab-capacity-session-editor {
+.lab-capacity-session-editor,
+.lab-capacity-special-day {
   display: grid;
   gap: 12px;
   border: 1px solid #bfd0ff;
   border-radius: 16px;
   background: #f8fbff;
   padding: 14px;
+}
+
+.lab-capacity-special-day {
+  border-color: #f6d693;
+  background: #fffaf0;
 }
 
 .lab-capacity-session-editor-head {
@@ -16149,10 +16157,75 @@ th {
   font: inherit;
 }
 
+.lab-capacity-special-note {
+  display: grid;
+  gap: 6px;
+  font-weight: 900;
+}
+
+.lab-capacity-special-note textarea {
+  width: 100%;
+  min-height: 84px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--royal-dark);
+  padding: 10px;
+  font: inherit;
+  resize: vertical;
+}
+
 .lab-capacity-session-editor-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.lab-capacity-special-list {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.lab-capacity-special-list header,
+.lab-capacity-special-list article {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.lab-capacity-special-list header span,
+.lab-capacity-special-list article span,
+.lab-capacity-special-list p {
+  color: var(--muted);
+}
+
+.lab-capacity-special-list article {
+  border: 1px solid #f6d693;
+  border-radius: 14px;
+  background: #fffdf7;
+  padding: 10px;
+}
+
+.lab-capacity-special-list article > div {
+  display: grid;
+  gap: 3px;
+}
+
+.lab-capacity-special-list article p {
+  flex: 1;
+  margin: 0;
+}
+
+.lab-capacity-special-list button {
+  border: 1px solid #e3b557;
+  border-radius: 999px;
+  background: #fff;
+  color: #81580e;
+  padding: 8px 11px;
+  font-weight: 900;
 }
 
 .lab-capacity-command {
