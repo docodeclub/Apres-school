@@ -5,6 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const enquiryFunctionName = import.meta.env.VITE_ENQUIRY_FUNCTION_NAME || "notify-public-enquiry";
 const coverMoveFunctionName = import.meta.env.VITE_COVER_MOVE_FUNCTION_NAME || "notify-cover-move";
 const staffAccountFunctionName = import.meta.env.VITE_STAFF_ACCOUNT_FUNCTION_NAME || "manage-staff-account";
+const financeInvoiceFunctionName = import.meta.env.VITE_FINANCE_INVOICE_FUNCTION_NAME || "send-finance-invoice";
 const staffPhotoBucket = "staff-profile-photos";
 const staffHrFilesBucket = "staff-hr-files";
 
@@ -1687,4 +1688,630 @@ export function getLocalEnquiries() {
 function saveLocalEnquiry(record) {
   const existing = getLocalEnquiries();
   localStorage.setItem("apres-enquiries", JSON.stringify([record, ...existing]));
+}
+
+export async function fetchSchoolFinanceData() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+
+  const [
+    customersResult,
+    invoicesResult,
+    settingsResult,
+    locationsResult,
+    permissionsResult,
+    auditResult,
+  ] = await Promise.all([
+    supabase
+      .from("finance_customers")
+      .select("id, linked_location_id, customer_name, accounts_contact, accounts_email, telephone, billing_address, payment_terms_days, default_purchase_order, notes, active, created_at, updated_at")
+      .order("customer_name", { ascending: true }),
+    supabase
+      .from("finance_invoices")
+      .select(`
+        id,
+        customer_id,
+        linked_location_id,
+        invoice_number,
+        draft_reference,
+        invoice_date,
+        due_date,
+        payment_terms_days,
+        purchase_order,
+        reference,
+        notes,
+        internal_notes,
+        service_period_start,
+        service_period_end,
+        status,
+        subtotal,
+        vat_total,
+        total,
+        amount_paid,
+        balance_due,
+        created_by,
+        approved_by,
+        sent_by,
+        created_at,
+        updated_at,
+        submitted_at,
+        approved_at,
+        sent_at,
+        finance_invoice_lines(*),
+        finance_payments(*),
+        finance_invoice_emails(*),
+        finance_credit_notes(*),
+        finance_customers(customer_name, accounts_contact, accounts_email, billing_address, payment_terms_days),
+        locations(name, area)
+      `)
+      .order("invoice_date", { ascending: false })
+      .limit(300),
+    supabase
+      .from("finance_settings")
+      .select("*")
+      .eq("id", true)
+      .maybeSingle(),
+    supabase
+      .from("locations")
+      .select("id, name, area, active")
+      .eq("active", true)
+      .order("name", { ascending: true }),
+    supabase
+      .from("finance_permissions")
+      .select("id, profile_id, permission, granted_at, profiles!finance_permissions_profile_id_fkey(full_name, email, role)")
+      .order("granted_at", { ascending: false }),
+    supabase
+      .from("finance_audit_events")
+      .select("id, invoice_id, customer_id, credit_note_id, actor_id, action, detail, metadata, created_at, profiles!finance_audit_events_actor_id_fkey(full_name, email)")
+      .order("created_at", { ascending: false })
+      .limit(200),
+  ]);
+
+  const warnings = [
+    ["Finance customers", customersResult.error],
+    ["Finance invoices", invoicesResult.error],
+    ["Finance settings", settingsResult.error],
+    ["Schools", locationsResult.error],
+    ["Finance permissions", permissionsResult.error],
+    ["Finance audit", auditResult.error],
+  ]
+    .filter(([, error]) => Boolean(error))
+    .map(([label, error]) => `${label}: ${error.message || "Unable to load"}`);
+
+  if (customersResult.error && customersResult.error.code !== "42P01") throw customersResult.error;
+  if (invoicesResult.error && invoicesResult.error.code !== "42P01") throw invoicesResult.error;
+
+  return {
+    customers: (customersResult.data || []).map(mapFinanceCustomer),
+    invoices: (invoicesResult.data || []).map(mapFinanceInvoice),
+    settings: mapFinanceSettings(settingsResult.data || {}),
+    locations: (locationsResult.data || []).map((location) => ({
+      id: location.id,
+      name: location.name,
+      area: location.area || "",
+      active: Boolean(location.active),
+    })),
+    permissions: (permissionsResult.data || []).map(mapFinancePermission),
+    audit: (auditResult.data || []).map(mapFinanceAudit),
+    warnings,
+  };
+}
+
+export async function saveFinanceCustomer(customer) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const userId = await getCurrentUserId();
+  const payload = {
+    linked_location_id: customer.linkedLocationId || null,
+    customer_name: customer.customerName || customer.name || "",
+    accounts_contact: customer.accountsContact || "",
+    accounts_email: customer.accountsEmail || "",
+    telephone: customer.telephone || "",
+    billing_address: customer.billingAddress || "",
+    payment_terms_days: Number(customer.paymentTermsDays || 14),
+    default_purchase_order: customer.defaultPurchaseOrder || "",
+    notes: customer.notes || "",
+    active: customer.active !== false,
+    updated_by: userId,
+    updated_at: new Date().toISOString(),
+  };
+  if (!payload.customer_name) throw new Error("Customer name is required.");
+  if (!customer.id) payload.created_by = userId;
+
+  const { data, error } = await supabase
+    .from("finance_customers")
+    .upsert(customer.id ? { ...payload, id: customer.id } : payload)
+    .select("*")
+    .single();
+  if (error) throw error;
+  await recordFinanceAudit({
+    action: customer.id ? "Customer updated" : "Customer created",
+    detail: payload.customer_name,
+    customerId: data.id,
+    metadata: { accountsEmail: payload.accounts_email },
+  });
+  return mapFinanceCustomer(data);
+}
+
+export async function saveFinanceInvoice(invoice) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const userId = await getCurrentUserId();
+  const lines = normaliseFinanceLines(invoice.lines || []);
+  const totals = calculateFinanceTotals(lines);
+  const payload = {
+    customer_id: invoice.customerId,
+    linked_location_id: invoice.linkedLocationId || invoice.locationId || null,
+    invoice_date: invoice.invoiceDate || new Date().toISOString().slice(0, 10),
+    due_date: invoice.dueDate || addDaysIso(invoice.invoiceDate || new Date().toISOString().slice(0, 10), Number(invoice.paymentTermsDays || 14)),
+    payment_terms_days: Number(invoice.paymentTermsDays || 14),
+    purchase_order: invoice.purchaseOrder || "",
+    reference: invoice.reference || "",
+    notes: invoice.notes || "",
+    internal_notes: invoice.internalNotes || "",
+    service_period_start: invoice.servicePeriodStart || null,
+    service_period_end: invoice.servicePeriodEnd || null,
+    status: financeStatusToDb(invoice.status || "draft"),
+    subtotal: totals.subtotal,
+    vat_total: totals.vatTotal,
+    total: totals.total,
+    balance_due: Math.max(totals.total - Number(invoice.amountPaid || 0), 0),
+    updated_at: new Date().toISOString(),
+  };
+  if (!payload.customer_id) throw new Error("Choose a customer before saving the invoice.");
+  if (!lines.length) throw new Error("Add at least one invoice line.");
+  if (!invoice.id) payload.created_by = userId;
+
+  const { data: savedInvoice, error: invoiceError } = await supabase
+    .from("finance_invoices")
+    .upsert(invoice.id ? { ...payload, id: invoice.id } : payload)
+    .select("id, invoice_number, draft_reference")
+    .single();
+  if (invoiceError) throw invoiceError;
+
+  const { error: deleteError } = await supabase
+    .from("finance_invoice_lines")
+    .delete()
+    .eq("invoice_id", savedInvoice.id);
+  if (deleteError) throw deleteError;
+
+  const { error: linesError } = await supabase
+    .from("finance_invoice_lines")
+    .insert(lines.map((line, index) => ({
+      invoice_id: savedInvoice.id,
+      line_order: index + 1,
+      description: line.description,
+      quantity: line.quantity,
+      unit: line.unit,
+      unit_price: line.unitPrice,
+      vat_rate: line.vatRate,
+      vat_percent: line.vatPercent,
+      net_total: line.netTotal,
+      vat_total: line.vatTotal,
+      gross_total: line.grossTotal,
+    })));
+  if (linesError) throw linesError;
+
+  await supabase.rpc("finance_recalculate_invoice", { p_invoice_id: savedInvoice.id });
+  await recordFinanceAudit({
+    action: invoice.id ? "Invoice edited" : "Invoice created",
+    detail: savedInvoice.invoice_number || savedInvoice.draft_reference,
+    invoiceId: savedInvoice.id,
+    metadata: { total: totals.total, lineCount: lines.length },
+  });
+  return {
+    id: savedInvoice.id,
+    invoiceNumber: savedInvoice.invoice_number || "",
+    draftReference: savedInvoice.draft_reference || "",
+  };
+}
+
+export async function approveFinanceInvoice(invoiceId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!invoiceId) throw new Error("Choose an invoice to approve.");
+  const userId = await getCurrentUserId();
+  const { data: existing, error: loadError } = await supabase
+    .from("finance_invoices")
+    .select("id, invoice_number, status")
+    .eq("id", invoiceId)
+    .single();
+  if (loadError) throw loadError;
+
+  let invoiceNumber = existing.invoice_number;
+  if (!invoiceNumber) {
+    const { data: numberData, error: numberError } = await supabase.rpc("finance_next_invoice_number");
+    if (numberError) throw numberError;
+    invoiceNumber = numberData;
+  }
+
+  const { data, error } = await supabase
+    .from("finance_invoices")
+    .update({
+      invoice_number: invoiceNumber,
+      status: "approved",
+      approved_by: userId,
+      approved_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", invoiceId)
+    .select("id, invoice_number")
+    .single();
+  if (error) throw error;
+  await recordFinanceAudit({
+    action: "Invoice approved",
+    detail: data.invoice_number,
+    invoiceId,
+    metadata: { previousStatus: existing.status },
+  });
+  return data;
+}
+
+export async function markFinanceInvoiceSent(invoiceId, email = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!invoiceId) throw new Error("Choose an invoice before sending.");
+  const userId = await getCurrentUserId();
+  const sentAt = new Date().toISOString();
+  const { data: invoice, error: invoiceError } = await supabase
+    .from("finance_invoices")
+    .update({
+      status: "sent",
+      sent_by: userId,
+      sent_at: sentAt,
+      updated_at: sentAt,
+    })
+    .eq("id", invoiceId)
+    .select("id, invoice_number")
+    .single();
+  if (invoiceError) throw invoiceError;
+
+  const { error: emailError } = await supabase
+    .from("finance_invoice_emails")
+    .insert({
+      invoice_id: invoiceId,
+      recipient: email.to || email.toEmail || "",
+      cc: email.cc || "",
+      bcc: email.bcc || "",
+      subject: email.subject || `Invoice ${invoice.invoice_number} from Après School`,
+      body: email.body || "",
+      sent_by: userId,
+      sent_at: sentAt,
+      status: "recorded",
+      metadata: { mode: "manual_email_record" },
+    });
+  if (emailError) throw emailError;
+  await recordFinanceAudit({
+    action: "Invoice emailed",
+    detail: `${invoice.invoice_number} to ${email.to || email.toEmail || "recipient not recorded"}`,
+    invoiceId,
+    metadata: { to: email.to || email.toEmail, cc: email.cc, bcc: email.bcc },
+  });
+  return invoice;
+}
+
+export async function sendFinanceInvoiceEmail(payload = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!payload.invoiceId) throw new Error("Choose an invoice before sending.");
+  if (!payload.pdfBase64) throw new Error("Invoice PDF attachment could not be generated.");
+
+  const { data, error } = await supabase.functions.invoke(financeInvoiceFunctionName, {
+    body: {
+      invoiceId: payload.invoiceId,
+      to: payload.to || payload.toEmail || "",
+      cc: payload.cc || "",
+      bcc: payload.bcc || "",
+      subject: payload.subject || "",
+      body: payload.body || "",
+      pdfBase64: payload.pdfBase64,
+      pdfFilename: payload.pdfFilename || "",
+    },
+  });
+
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+export async function recordFinancePayment(invoiceId, payment) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const userId = await getCurrentUserId();
+  const amount = Number(payment.amount || 0);
+  if (!invoiceId) throw new Error("Choose an invoice before recording payment.");
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a payment amount.");
+
+  const { data, error } = await supabase
+    .from("finance_payments")
+    .insert({
+      invoice_id: invoiceId,
+      payment_date: payment.paymentDate || payment.paidAt || new Date().toISOString().slice(0, 10),
+      amount,
+      reference: payment.reference || "",
+      notes: payment.notes || "",
+      recorded_by: userId,
+    })
+    .select("id, amount")
+    .single();
+  if (error) throw error;
+  await supabase.rpc("finance_recalculate_invoice", { p_invoice_id: invoiceId });
+  await recordFinanceAudit({
+    action: "Payment recorded",
+    detail: `£${amount.toFixed(2)}${payment.reference ? ` · ${payment.reference}` : ""}`,
+    invoiceId,
+    metadata: { paymentId: data.id, reference: payment.reference },
+  });
+  return data;
+}
+
+export async function saveFinanceSettings(settings) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const userId = await getCurrentUserId();
+  const payload = {
+    id: true,
+    company_name: settings.companyName || "APRÈS SCHOOL LIMITED",
+    registered_address: settings.registeredAddress || "",
+    company_number: settings.companyNumber || "",
+    vat_status: settings.vatStatus || "not_registered",
+    vat_number: settings.vatNumber || "",
+    default_payment_terms_days: Number(settings.defaultPaymentTermsDays || 14),
+    invoice_prefix: settings.invoicePrefix || "AS-INV-",
+    credit_note_prefix: settings.creditNotePrefix || "AS-CN-",
+    finance_email: settings.financeEmail || "hello@apres-school.co.uk",
+    finance_telephone: settings.financeTelephone || "",
+    default_invoice_footer: settings.defaultInvoiceFooter || "",
+    default_email_subject: settings.defaultEmailSubject || "Invoice {InvoiceNumber} from Après School",
+    default_email_body: settings.defaultEmailBody || "",
+    bank_account_name: settings.bankAccountName || "Après School Limited",
+    bank_sort_code: settings.bankSortCode || "04-00-03",
+    bank_account_number: settings.bankAccountNumber || "21773814",
+    updated_by: userId,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from("finance_settings")
+    .upsert(payload)
+    .select("*")
+    .single();
+  if (error) throw error;
+  await recordFinanceAudit({
+    action: "Finance settings changed",
+    detail: "Invoice settings updated",
+    metadata: { vatStatus: payload.vat_status, paymentTerms: payload.default_payment_terms_days },
+  });
+  return mapFinanceSettings(data);
+}
+
+async function recordFinanceAudit({ action, detail = "", invoiceId = null, customerId = null, creditNoteId = null, metadata = {} }) {
+  if (!supabase) return;
+  const userId = await getCurrentUserId();
+  const event = {
+    invoice_id: invoiceId,
+    customer_id: customerId,
+    credit_note_id: creditNoteId,
+    actor_id: userId,
+    action,
+    detail,
+    metadata,
+  };
+  const { error } = await supabase.from("finance_audit_events").insert(event);
+  if (error) console.warn("Finance audit event failed", error);
+  await createAuditLogEntry({
+    action,
+    detail,
+    tableName: invoiceId ? "finance_invoices" : customerId ? "finance_customers" : "finance",
+    recordId: invoiceId || customerId || creditNoteId,
+    metadata: { ...metadata, module: "School Finance" },
+  }).catch((error) => console.warn("Global finance audit event failed", error));
+}
+
+async function getCurrentUserId() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return data?.user?.id || null;
+}
+
+function mapFinanceCustomer(record = {}) {
+  return {
+    id: record.id,
+    linkedLocationId: record.linked_location_id || "",
+    locationId: record.linked_location_id || "",
+    customerName: record.customer_name || "",
+    accountsContact: record.accounts_contact || "",
+    accountsEmail: record.accounts_email || "",
+    telephone: record.telephone || "",
+    billingAddress: record.billing_address || "",
+    paymentTermsDays: Number(record.payment_terms_days || 14),
+    defaultPurchaseOrder: record.default_purchase_order || "",
+    notes: record.notes || "",
+    active: record.active !== false,
+    createdAt: record.created_at || "",
+    updatedAt: record.updated_at || "",
+  };
+}
+
+function mapFinanceInvoice(record = {}) {
+  const customer = Array.isArray(record.finance_customers) ? record.finance_customers[0] : record.finance_customers;
+  const location = Array.isArray(record.locations) ? record.locations[0] : record.locations;
+  return {
+    id: record.id,
+    customerId: record.customer_id || "",
+    customerName: customer?.customer_name || "",
+    accountsContact: customer?.accounts_contact || "",
+    accountsEmail: customer?.accounts_email || "",
+    billingAddress: customer?.billing_address || "",
+    linkedLocationId: record.linked_location_id || "",
+    linkedSchool: location?.name || "",
+    invoiceNumber: record.invoice_number || "",
+    draftReference: record.draft_reference || "",
+    invoiceDate: record.invoice_date || "",
+    dueDate: record.due_date || "",
+    paymentTermsDays: Number(record.payment_terms_days || 14),
+    purchaseOrder: record.purchase_order || "",
+    reference: record.reference || "",
+    notes: record.notes || "",
+    internalNotes: record.internal_notes || "",
+    servicePeriodStart: record.service_period_start || "",
+    servicePeriodEnd: record.service_period_end || "",
+    status: financeStatusToLabel(record.status || "draft"),
+    subtotal: Number(record.subtotal || 0),
+    vatTotal: Number(record.vat_total || 0),
+    total: Number(record.total || 0),
+    amountPaid: Number(record.amount_paid || 0),
+    balanceDue: Number(record.balance_due || 0),
+    createdAt: record.created_at || "",
+    updatedAt: record.updated_at || "",
+    submittedAt: record.submitted_at || "",
+    approvedAt: record.approved_at || "",
+    sentAt: record.sent_at || "",
+    lines: (record.finance_invoice_lines || []).sort((a, b) => Number(a.line_order || 0) - Number(b.line_order || 0)).map(mapFinanceLine),
+    payments: (record.finance_payments || []).map(mapFinancePayment),
+    emails: (record.finance_invoice_emails || []).map(mapFinanceEmail),
+    creditNotes: (record.finance_credit_notes || []).map((credit) => ({
+      id: credit.id,
+      creditNoteNumber: credit.credit_note_number || "",
+      creditDate: credit.credit_date || "",
+      reason: credit.reason || "",
+      total: Number(credit.total || 0),
+      status: credit.status || "draft",
+    })),
+  };
+}
+
+function mapFinanceLine(record = {}) {
+  return {
+    id: record.id,
+    description: record.description || "",
+    quantity: Number(record.quantity || 0),
+    unit: record.unit || "Fixed Fee",
+    unitPrice: Number(record.unit_price || 0),
+    vatRate: record.vat_rate || "No VAT",
+    vatPercent: Number(record.vat_percent || 0),
+    netTotal: Number(record.net_total || 0),
+    vatTotal: Number(record.vat_total || 0),
+    grossTotal: Number(record.gross_total || 0),
+  };
+}
+
+function mapFinancePayment(record = {}) {
+  return {
+    id: record.id,
+    paymentDate: record.payment_date || "",
+    paidAt: record.payment_date || "",
+    amount: Number(record.amount || 0),
+    reference: record.reference || "",
+    notes: record.notes || "",
+    recordedAt: record.recorded_at || "",
+    reversedAt: record.reversed_at || "",
+  };
+}
+
+function mapFinanceEmail(record = {}) {
+  return {
+    id: record.id,
+    to: record.recipient || "",
+    cc: record.cc || "",
+    bcc: record.bcc || "",
+    subject: record.subject || "",
+    body: record.body || "",
+    status: record.status || "",
+    sentAt: record.sent_at || "",
+  };
+}
+
+function mapFinanceSettings(record = {}) {
+  return {
+    companyName: record.company_name || "APRÈS SCHOOL LIMITED",
+    registeredAddress: record.registered_address || "",
+    companyNumber: record.company_number || "",
+    vatStatus: record.vat_status || "not_registered",
+    vatNumber: record.vat_number || "",
+    defaultPaymentTermsDays: Number(record.default_payment_terms_days || 14),
+    invoicePrefix: record.invoice_prefix || "AS-INV-",
+    creditNotePrefix: record.credit_note_prefix || "AS-CN-",
+    financeEmail: record.finance_email || "hello@apres-school.co.uk",
+    financeTelephone: record.finance_telephone || "",
+    defaultInvoiceFooter: record.default_invoice_footer || "",
+    defaultEmailSubject: record.default_email_subject || "Invoice {InvoiceNumber} from Après School",
+    defaultEmailBody: record.default_email_body || "",
+    bankAccountName: record.bank_account_name || "Après School Limited",
+    bankSortCode: record.bank_sort_code || "04-00-03",
+    bankAccountNumber: record.bank_account_number || "21773814",
+  };
+}
+
+function mapFinancePermission(record = {}) {
+  const profile = Array.isArray(record.profiles) ? record.profiles[0] : record.profiles;
+  return {
+    id: record.id,
+    profileId: record.profile_id || "",
+    permission: record.permission || "",
+    name: profile?.full_name || profile?.email || "User",
+    email: profile?.email || "",
+    role: normalizeRole(profile?.role),
+    grantedAt: record.granted_at || "",
+  };
+}
+
+function mapFinanceAudit(record = {}) {
+  const profile = Array.isArray(record.profiles) ? record.profiles[0] : record.profiles;
+  return {
+    id: record.id,
+    invoiceId: record.invoice_id || "",
+    customerId: record.customer_id || "",
+    creditNoteId: record.credit_note_id || "",
+    action: record.action || "",
+    detail: record.detail || "",
+    actor: profile?.full_name || profile?.email || "System",
+    createdAt: record.created_at || "",
+    metadata: record.metadata || {},
+  };
+}
+
+function normaliseFinanceLines(lines = []) {
+  return lines
+    .filter((line) => String(line.description || "").trim())
+    .map((line) => {
+      const quantity = Number(line.quantity || 0);
+      const unitPrice = Number(line.unitPrice || 0);
+      const vatPercent = vatPercentForRate(line.vatRate);
+      const netTotal = roundMoney(quantity * unitPrice);
+      const vatTotal = roundMoney(netTotal * (vatPercent / 100));
+      return {
+        description: String(line.description || "").trim(),
+        quantity,
+        unit: line.unit || "Fixed Fee",
+        unitPrice,
+        vatRate: line.vatRate || "No VAT",
+        vatPercent,
+        netTotal,
+        vatTotal,
+        grossTotal: roundMoney(netTotal + vatTotal),
+      };
+    });
+}
+
+function calculateFinanceTotals(lines = []) {
+  const subtotal = roundMoney(lines.reduce((sum, line) => sum + Number(line.netTotal || 0), 0));
+  const vatTotal = roundMoney(lines.reduce((sum, line) => sum + Number(line.vatTotal || 0), 0));
+  return { subtotal, vatTotal, total: roundMoney(subtotal + vatTotal) };
+}
+
+function vatPercentForRate(vatRate) {
+  if (vatRate === "Standard Rated") return 20;
+  return 0;
+}
+
+function financeStatusToDb(status) {
+  return String(status || "draft").trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function financeStatusToLabel(status) {
+  return String(status || "draft")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function roundMoney(value) {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+}
+
+function addDaysIso(dateString, days) {
+  const date = new Date(`${dateString}T00:00:00`);
+  date.setDate(date.getDate() + Number(days || 0));
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 }

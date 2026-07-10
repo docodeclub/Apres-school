@@ -108,20 +108,21 @@ const Users = makeIcon("US");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Bookings", "Finance", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Bookings", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
   ["People", ["Users", "SCR", "HR", "HR Files"]],
   ["Sites", ["Schools", "Bookings", "Rota", "Hours", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
-  ["Finance", ["Finance", "Pay", "Rewards"]],
+  ["Finance", ["Finance", "Booking Payments", "Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
 ];
 const platformTabHints = {
   Staff: "Personal shifts, documents, pay and rewards",
   Admin: "Key actions across staffing, compliance and bookings",
   Bookings: "Bookings, payments, capacity and admin-only setup controls",
-  Finance: "Parent balances, PonchoPay reconciliation, vouchers and refunds",
+  "Booking Payments": "Parent balances, PonchoPay reconciliation, vouchers and refunds",
+  Finance: "School invoices, customers, payments and credit notes",
   Users: "Invite staff and reset access",
   HR: "Reporting lines and manager structure",
   "HR Files": "Contracts, payslips and staff documents",
@@ -1038,7 +1039,8 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
         {tab === "Bookings" && <BookingAdmin data={enrichedData} access={access} initialFocus={bookingAdminFocus} onClearInitialFocus={() => setBookingAdminFocus("")} />}
-        {tab === "Finance" && <BookingFinance data={enrichedData} access={access} onOpenBookingFocus={openBookingAdminFocus} />}
+        {tab === "Booking Payments" && <BookingFinance data={enrichedData} access={access} onOpenBookingFocus={openBookingAdminFocus} />}
+        {tab === "Finance" && <SchoolFinance data={enrichedData} access={access} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && (
           <HRHierarchy
@@ -2227,6 +2229,720 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
       </div>
     </div>
   );
+}
+
+const financeSections = ["Dashboard", "Invoices", "Customers", "Credit Notes", "Reports", "Settings"];
+const financeVatRates = ["No VAT", "Exempt", "Zero Rated", "Standard Rated"];
+const financeServiceTypes = ["School trip", "Sports day staffing", "PPA cover", "Supply staff", "One-off event", "Consultancy", "Holiday camp", "Venue hire", "Ad-hoc service"];
+
+function bytesToBase64(bytes) {
+  if (typeof bytes === "string") return btoa(bytes);
+  const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < array.length; index += chunkSize) {
+    binary += String.fromCharCode(...array.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function SchoolFinance({ data, access }) {
+  const canViewFinance = ["Admin", "Superadmin"].includes(access?.role);
+  const canManageFinance = access?.role === "Superadmin" || access?.role === "Admin";
+  const [view, setView] = useState("Dashboard");
+  const [finance, setFinance] = useState(() => emptySchoolFinanceData(data));
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("Loading finance records...");
+  const [query, setQuery] = useState("");
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [invoiceDraft, setInvoiceDraft] = useState(() => createFinanceInvoiceDraft());
+  const [customerDraft, setCustomerDraft] = useState(() => createFinanceCustomerDraft());
+  const [paymentDraft, setPaymentDraft] = useState({ amount: "", paidAt: dateInputValue(new Date()), reference: "", notes: "" });
+  const [settingsDraft, setSettingsDraft] = useState(() => emptySchoolFinanceData(data).settings);
+  const [saving, setSaving] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    async function loadFinance() {
+      if (!canViewFinance) {
+        setLoading(false);
+        setStatus("Finance is restricted to admin users.");
+        return;
+      }
+      if (!hasSupabaseConfig) {
+        setFinance(emptySchoolFinanceData(data));
+        setSettingsDraft(emptySchoolFinanceData(data).settings);
+        setLoading(false);
+        setStatus("Supabase is not configured, so finance is using local demo data.");
+        return;
+      }
+      try {
+        const { fetchSchoolFinanceData } = await loadSupabaseModule();
+        const next = await fetchSchoolFinanceData();
+        if (!active) return;
+        const merged = {
+          ...emptySchoolFinanceData(data),
+          ...next,
+          locations: next.locations?.length ? next.locations : emptySchoolFinanceData(data).locations,
+        };
+        setFinance(merged);
+        setSettingsDraft(merged.settings);
+        setStatus(next.warnings?.length ? next.warnings.join(" ") : "Finance records loaded.");
+      } catch (error) {
+        if (!active) return;
+        setFinance(emptySchoolFinanceData(data));
+        setStatus(error?.message || "Finance records could not load yet.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    loadFinance();
+    return () => { active = false; };
+  }, [canViewFinance, data]);
+
+  const customers = finance.customers || [];
+  const invoices = finance.invoices || [];
+  const selectedInvoice = invoices.find((invoice) => invoice.id === selectedInvoiceId) || invoices[0] || null;
+  const customerForInvoice = selectedInvoice ? customers.find((customer) => customer.id === selectedInvoice.customerId) : null;
+  const invoiceMatches = filterFinanceInvoices(invoices, query, customers);
+  const kpis = calculateSchoolFinanceKpis(invoices);
+  const reports = calculateSchoolFinanceReports(invoices, customers, finance.locations || []);
+
+  useEffect(() => {
+    if (!selectedInvoiceId && invoices[0]?.id) setSelectedInvoiceId(invoices[0].id);
+  }, [invoices, selectedInvoiceId]);
+
+  useEffect(() => {
+    if (!selectedCustomerId && customers[0]?.id) setSelectedCustomerId(customers[0].id);
+  }, [customers, selectedCustomerId]);
+
+  function setInvoiceField(field, value) {
+    setInvoiceDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function setInvoiceLine(lineId, field, value) {
+    setInvoiceDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line) => (line.id === lineId ? { ...line, [field]: value } : line)),
+    }));
+  }
+
+  function addInvoiceLine() {
+    setInvoiceDraft((current) => ({ ...current, lines: [...current.lines, createFinanceLine()] }));
+  }
+
+  function removeInvoiceLine(lineId) {
+    setInvoiceDraft((current) => ({ ...current, lines: current.lines.length > 1 ? current.lines.filter((line) => line.id !== lineId) : current.lines }));
+  }
+
+  function editInvoice(invoice) {
+    setView("Invoices");
+    setSelectedInvoiceId(invoice.id);
+    setInvoiceDraft(invoiceToDraft(invoice));
+  }
+
+  async function refreshFinance(message = "Finance records refreshed.") {
+    const { fetchSchoolFinanceData } = await loadSupabaseModule();
+    const next = await fetchSchoolFinanceData();
+    const merged = { ...emptySchoolFinanceData(data), ...next, locations: next.locations?.length ? next.locations : emptySchoolFinanceData(data).locations };
+    setFinance(merged);
+    setSettingsDraft(merged.settings);
+    setStatus(message);
+    return merged;
+  }
+
+  async function saveCustomer() {
+    if (!canManageFinance) return;
+    setSaving("customer");
+    try {
+      const { saveFinanceCustomer } = await loadSupabaseModule();
+      await saveFinanceCustomer(customerDraft);
+      addAuditLog("Finance customer saved", customerDraft.customerName || "Customer");
+      await refreshFinance("Customer saved.");
+      setCustomerDraft(createFinanceCustomerDraft());
+    } catch (error) {
+      setStatus(error?.message || "Customer could not be saved.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function saveInvoice() {
+    if (!canManageFinance) return;
+    setSaving("invoice");
+    try {
+      const { saveFinanceInvoice } = await loadSupabaseModule();
+      const saved = await saveFinanceInvoice(invoiceDraft);
+      addAuditLog("Finance invoice draft saved", saved?.invoiceNumber || invoiceDraft.title || "Invoice");
+      await refreshFinance("Invoice saved.");
+      setSelectedInvoiceId(saved?.id || selectedInvoiceId);
+      setInvoiceDraft(createFinanceInvoiceDraft());
+    } catch (error) {
+      setStatus(error?.message || "Invoice could not be saved.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function approveInvoice(invoiceId) {
+    setSaving(`approve-${invoiceId}`);
+    try {
+      const { approveFinanceInvoice } = await loadSupabaseModule();
+      const saved = await approveFinanceInvoice(invoiceId);
+      addAuditLog("Finance invoice approved", saved?.invoiceNumber || invoiceId);
+      await refreshFinance("Invoice approved and numbered.");
+    } catch (error) {
+      setStatus(error?.message || "Invoice could not be approved.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function recordInvoiceEmail(invoiceId) {
+    setSaving(`email-${invoiceId}`);
+    try {
+      const { sendFinanceInvoiceEmail } = await loadSupabaseModule();
+      const invoice = invoices.find((item) => item.id === invoiceId);
+      const customer = customers.find((item) => item.id === invoice?.customerId);
+      if (!invoice?.invoiceNumber) throw new Error("Approve and number this invoice before emailing it.");
+      if (!customer?.accountsEmail) throw new Error("Add an accounts email to the customer before sending.");
+      const { exportFinanceInvoicePdf } = await import("./pdfExports.js");
+      const pdfBytes = exportFinanceInvoicePdf(invoice, customer || {}, finance.settings || {}, { returnBytes: true });
+      const subject = (finance.settings?.defaultEmailSubject || "Invoice {InvoiceNumber} from Après School").replace("{InvoiceNumber}", invoice.invoiceNumber);
+      const body = (finance.settings?.defaultEmailBody || [
+        `Dear ${customer?.accountsContact || customer?.customerName || "Accounts team"},`,
+        "",
+        `Please find attached invoice ${invoice.invoiceNumber}.`,
+        "",
+        "Payment details are included on the invoice. Please use the invoice number as the payment reference.",
+        "",
+        "Thank you,",
+        "Après School Finance",
+      ].join("\n")).replaceAll("{InvoiceNumber}", invoice.invoiceNumber).replaceAll("{CustomerName}", customer?.customerName || "");
+      const result = await sendFinanceInvoiceEmail({
+        invoiceId,
+        to: customer.accountsEmail,
+        subject,
+        body,
+        pdfBase64: bytesToBase64(pdfBytes),
+        pdfFilename: `apres-invoice-${invoice.invoiceNumber}.pdf`,
+      });
+      addAuditLog("Finance invoice emailed", invoice.invoiceNumber || invoiceId);
+      await refreshFinance(result?.emailed ? "Invoice emailed with PDF attached." : "Invoice email was queued, but the email provider did not send it.");
+    } catch (error) {
+      setStatus(error?.message || "Invoice email could not be sent.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function recordPayment() {
+    if (!selectedInvoice) return;
+    setSaving("payment");
+    try {
+      const { recordFinancePayment } = await loadSupabaseModule();
+      await recordFinancePayment(selectedInvoice.id, {
+        amount: Number(paymentDraft.amount || 0),
+        paidAt: paymentDraft.paidAt,
+        reference: paymentDraft.reference,
+        notes: paymentDraft.notes,
+      });
+      addAuditLog("BACS payment recorded", `${selectedInvoice.invoiceNumber || selectedInvoice.title}: ${formatCurrency(paymentDraft.amount)}`);
+      await refreshFinance("Payment recorded.");
+      setPaymentDraft({ amount: "", paidAt: dateInputValue(new Date()), reference: "", notes: "" });
+    } catch (error) {
+      setStatus(error?.message || "Payment could not be recorded.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function downloadInvoicePdf(invoice) {
+    const { exportFinanceInvoicePdf } = await import("./pdfExports.js");
+    const customer = customers.find((item) => item.id === invoice.customerId) || {};
+    exportFinanceInvoicePdf(invoice, customer, finance.settings || {});
+  }
+
+  async function saveSettings() {
+    setSaving("settings");
+    try {
+      const { saveFinanceSettings } = await loadSupabaseModule();
+      await saveFinanceSettings(settingsDraft);
+      addAuditLog("Finance settings saved", "Invoice defaults and payment details updated");
+      await refreshFinance("Finance settings saved.");
+    } catch (error) {
+      setStatus(error?.message || "Finance settings could not be saved.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  if (!canViewFinance) {
+    return (
+      <section className="section-card">
+        <p className="eyebrow">Finance</p>
+        <h2>Restricted Area</h2>
+        <p className="muted">School invoicing is only visible to admin and finance users.</p>
+      </section>
+    );
+  }
+
+  return (
+    <div className="school-finance">
+      <section className="section-card finance-hero">
+        <div>
+          <p className="eyebrow">Finance</p>
+          <h2>School invoicing and receivables</h2>
+          <p className="muted">Create invoices for schools and organisations, track BACS payments, issue credit notes and keep a clean audit trail.</p>
+        </div>
+        <div className="finance-status">
+          <Badge value={loading ? "Loading" : hasSupabaseConfig ? "Supabase" : "Demo"} />
+          <span>{status}</span>
+        </div>
+      </section>
+
+      <div className="finance-subnav" role="tablist" aria-label="Finance sections">
+        {financeSections.map((section) => (
+          <button key={section} type="button" className={view === section ? "active" : ""} onClick={() => setView(section)}>
+            {section}
+          </button>
+        ))}
+      </div>
+
+      {view === "Dashboard" && (
+        <>
+          <DashboardGrid>
+            <Metric icon={<PoundSterling />} label="Outstanding" value={formatCurrency(kpis.outstanding)} tone="warn" />
+            <Metric icon={<Bell />} label="Overdue" value={formatCurrency(kpis.overdue)} tone={kpis.overdue > 0 ? "bad" : "good"} />
+            <Metric icon={<CheckCircle2 />} label="Paid this month" value={formatCurrency(kpis.paidThisMonth)} tone="good" />
+            <Metric icon={<FileText />} label="Invoiced this month" value={formatCurrency(kpis.invoicedThisMonth)} />
+            <Metric icon={<Clock />} label="Due in 7 days" value={String(kpis.dueSoonCount)} tone="warn" />
+            <Metric icon={<ClipboardCheck />} label="Draft invoices" value={String(kpis.draftCount)} />
+            <Metric icon={<Clock />} label="Avg payment time" value={`${kpis.averagePaymentDays} days`} />
+            <Metric icon={<Users />} label="Customers" value={String(customers.length)} />
+          </DashboardGrid>
+          <div className="finance-two-col">
+            <Panel title="Recent Invoices">
+              <FinanceInvoiceTable invoices={invoices.slice(0, 8)} customers={customers} onSelect={setSelectedInvoiceId} onEdit={editInvoice} onPdf={downloadInvoicePdf} />
+            </Panel>
+            <Panel title="Recent Payments">
+              <TableWrap>
+                <table>
+                  <thead><tr><th>Invoice</th><th>Paid</th><th>Amount</th><th>Reference</th></tr></thead>
+                  <tbody>
+                    {flattenFinancePayments(invoices).slice(0, 8).map((payment) => (
+                      <tr key={payment.id}><td>{payment.invoiceNumber}</td><td>{formatShortDate(payment.paidAt)}</td><td>{formatCurrency(payment.amount)}</td><td>{payment.reference || "BACS"}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableWrap>
+            </Panel>
+          </div>
+        </>
+      )}
+
+      {view === "Invoices" && (
+        <div className="finance-two-col finance-two-col-wide">
+          <section className="section-card">
+            <div className="finance-toolbar">
+              <div>
+                <p className="eyebrow">Invoices</p>
+                <h2>Invoice register</h2>
+              </div>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search invoice, customer, PO or school" />
+            </div>
+            <FinanceInvoiceTable invoices={invoiceMatches} customers={customers} onSelect={setSelectedInvoiceId} onEdit={editInvoice} onPdf={downloadInvoicePdf} onApprove={approveInvoice} onEmail={recordInvoiceEmail} saving={saving} />
+          </section>
+          <section className="section-card">
+            <p className="eyebrow">{invoiceDraft.id ? "Edit invoice" : "New invoice"}</p>
+            <h2>{invoiceDraft.id ? invoiceDraft.invoiceNumber || "Draft invoice" : "Create school invoice"}</h2>
+            <div className="finance-form">
+              <label><span>Customer</span><select value={invoiceDraft.customerId} onChange={(event) => setInvoiceField("customerId", event.target.value)}><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.customerName}</option>)}</select></label>
+              <label><span>School / site</span><select value={invoiceDraft.locationId} onChange={(event) => setInvoiceField("locationId", event.target.value)}><option value="">No linked school</option>{(finance.locations || []).map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+              <label><span>Service type</span><select value={invoiceDraft.serviceType} onChange={(event) => setInvoiceField("serviceType", event.target.value)}>{financeServiceTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
+              <label><span>Invoice date</span><input type="date" value={invoiceDraft.invoiceDate} onChange={(event) => setInvoiceField("invoiceDate", event.target.value)} /></label>
+              <label><span>Due date</span><input type="date" value={invoiceDraft.dueDate} onChange={(event) => setInvoiceField("dueDate", event.target.value)} /></label>
+              <label><span>PO number</span><input value={invoiceDraft.purchaseOrder} onChange={(event) => setInvoiceField("purchaseOrder", event.target.value)} /></label>
+              <label><span>Service start</span><input type="date" value={invoiceDraft.servicePeriodStart} onChange={(event) => setInvoiceField("servicePeriodStart", event.target.value)} /></label>
+              <label><span>Service end</span><input type="date" value={invoiceDraft.servicePeriodEnd} onChange={(event) => setInvoiceField("servicePeriodEnd", event.target.value)} /></label>
+              <label className="wide"><span>Title</span><input value={invoiceDraft.title} onChange={(event) => setInvoiceField("title", event.target.value)} placeholder="Sports day staffing at..." /></label>
+              <label className="wide"><span>Notes on invoice</span><textarea value={invoiceDraft.notes} onChange={(event) => setInvoiceField("notes", event.target.value)} /></label>
+            </div>
+            <div className="finance-lines">
+              <div className="finance-lines-head"><strong>Invoice lines</strong><button type="button" className="button secondary" onClick={addInvoiceLine}>Add line</button></div>
+              {invoiceDraft.lines.map((line) => (
+                <div className="finance-line" key={line.id}>
+                  <input className="line-description" value={line.description} onChange={(event) => setInvoiceLine(line.id, "description", event.target.value)} placeholder="Description" />
+                  <input type="number" min="0" step="0.01" value={line.quantity} onChange={(event) => setInvoiceLine(line.id, "quantity", event.target.value)} aria-label="Quantity" />
+                  <input value={line.unit} onChange={(event) => setInvoiceLine(line.id, "unit", event.target.value)} aria-label="Unit" />
+                  <input type="number" min="0" step="0.01" value={line.unitPrice} onChange={(event) => setInvoiceLine(line.id, "unitPrice", event.target.value)} aria-label="Unit price" />
+                  <select value={line.vatRate} onChange={(event) => setInvoiceLine(line.id, "vatRate", event.target.value)}>{financeVatRates.map((rate) => <option key={rate}>{rate}</option>)}</select>
+                  <button type="button" className="button secondary" onClick={() => removeInvoiceLine(line.id)}>Remove</button>
+                </div>
+              ))}
+              <div className="finance-total-preview">
+                <span>Draft total</span>
+                <strong>{formatCurrency(calculateFinanceDraftTotal(invoiceDraft.lines))}</strong>
+              </div>
+            </div>
+            <button type="button" className="button book" onClick={saveInvoice} disabled={!canManageFinance || saving === "invoice" || !invoiceDraft.customerId}>{saving === "invoice" ? "Saving..." : "Save invoice draft"}</button>
+          </section>
+        </div>
+      )}
+
+      {view === "Customers" && (
+        <div className="finance-two-col finance-two-col-wide">
+          <section className="section-card">
+            <p className="eyebrow">Customers</p>
+            <h2>Schools and organisations</h2>
+            <TableWrap>
+              <table>
+                <thead><tr><th>Customer</th><th>Accounts contact</th><th>Outstanding</th><th>Invoices</th><th></th></tr></thead>
+                <tbody>
+                  {customers.map((customer) => {
+                    const customerInvoices = invoices.filter((invoice) => invoice.customerId === customer.id);
+                    const outstanding = customerInvoices.reduce((sum, invoice) => sum + Number(invoice.balanceDue || 0), 0);
+                    return (
+                      <tr key={customer.id}>
+                        <td><strong>{customer.customerName}</strong><br /><span className="muted">{customer.customerType}</span></td>
+                        <td>{customer.accountsContact || "Not set"}<br /><span className="muted">{customer.accountsEmail || "No email"}</span></td>
+                        <td>{formatCurrency(outstanding)}</td>
+                        <td>{customerInvoices.length}</td>
+                        <td><button type="button" className="button secondary" onClick={() => { setSelectedCustomerId(customer.id); setCustomerDraft(customerToDraft(customer)); }}>Edit</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </TableWrap>
+          </section>
+          <section className="section-card">
+            <p className="eyebrow">{customerDraft.id ? "Edit customer" : "New customer"}</p>
+            <h2>Customer details</h2>
+            <div className="finance-form">
+              <label><span>Name</span><input value={customerDraft.customerName} onChange={(event) => setCustomerDraft((current) => ({ ...current, customerName: event.target.value }))} /></label>
+              <label><span>Type</span><select value={customerDraft.customerType} onChange={(event) => setCustomerDraft((current) => ({ ...current, customerType: event.target.value }))}><option>School</option><option>Organisation</option><option>Local Authority</option><option>Other</option></select></label>
+              <label><span>Accounts contact</span><input value={customerDraft.accountsContact} onChange={(event) => setCustomerDraft((current) => ({ ...current, accountsContact: event.target.value }))} /></label>
+              <label><span>Accounts email</span><input type="email" value={customerDraft.accountsEmail} onChange={(event) => setCustomerDraft((current) => ({ ...current, accountsEmail: event.target.value }))} /></label>
+              <label><span>Telephone</span><input value={customerDraft.telephone || ""} onChange={(event) => setCustomerDraft((current) => ({ ...current, telephone: event.target.value }))} /></label>
+              <label><span>Payment terms</span><input type="number" min="0" value={customerDraft.paymentTermsDays} onChange={(event) => setCustomerDraft((current) => ({ ...current, paymentTermsDays: event.target.value }))} /></label>
+              <label className="wide"><span>Billing address</span><textarea value={customerDraft.billingAddress} onChange={(event) => setCustomerDraft((current) => ({ ...current, billingAddress: event.target.value }))} /></label>
+              <label className="wide"><span>Internal notes</span><textarea value={customerDraft.internalNotes} onChange={(event) => setCustomerDraft((current) => ({ ...current, internalNotes: event.target.value }))} /></label>
+            </div>
+            <button type="button" className="button book" disabled={!canManageFinance || saving === "customer" || !customerDraft.customerName} onClick={saveCustomer}>{saving === "customer" ? "Saving..." : "Save customer"}</button>
+          </section>
+        </div>
+      )}
+
+      {view === "Credit Notes" && (
+        <section className="section-card">
+          <p className="eyebrow">Credit notes</p>
+          <h2>Credit note register</h2>
+          <p className="muted">Credit-note storage, numbering and audit tables are ready. The next pass will add the create-and-email workflow once invoices are being used live.</p>
+          <TableWrap>
+            <table>
+              <thead><tr><th>Credit note</th><th>Invoice</th><th>Reason</th><th>Total</th><th>Status</th></tr></thead>
+              <tbody>
+                {invoices.flatMap((invoice) => (invoice.creditNotes || []).map((note) => (
+                  <tr key={note.id}><td>{note.creditNoteNumber || "Draft credit note"}</td><td>{invoice.invoiceNumber || "Draft"}</td><td>{note.reason || "Not recorded"}</td><td>{formatCurrency(note.total)}</td><td><Badge value={note.status || "Draft"} /></td></tr>
+                )))}
+              </tbody>
+            </table>
+          </TableWrap>
+        </section>
+      )}
+
+      {view === "Reports" && (
+        <section className="section-card">
+          <div className="finance-toolbar">
+            <div>
+              <p className="eyebrow">Reports</p>
+              <h2>School finance reports</h2>
+            </div>
+            <button type="button" className="button secondary" onClick={() => downloadCsv("apres-school-finance-report.csv", reports.csvRows)}>Export CSV</button>
+          </div>
+          <div className="finance-report-grid">
+            <FinanceReport title="Revenue by month" rows={reports.byMonth} />
+            <FinanceReport title="Revenue by customer" rows={reports.byCustomer} />
+            <FinanceReport title="Outstanding debtors" rows={reports.debtors} />
+            <FinanceReport title="Revenue by school" rows={reports.bySchool} />
+          </div>
+        </section>
+      )}
+
+      {view === "Settings" && (
+        <section className="section-card">
+          <p className="eyebrow">Finance settings</p>
+          <h2>Invoice defaults</h2>
+          <div className="finance-form">
+            <label><span>Company name</span><input value={settingsDraft.companyName || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, companyName: event.target.value }))} /></label>
+            <label><span>Finance email</span><input value={settingsDraft.financeEmail || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, financeEmail: event.target.value }))} /></label>
+            <label><span>Default terms</span><input type="number" min="0" value={settingsDraft.defaultPaymentTermsDays || 14} onChange={(event) => setSettingsDraft((current) => ({ ...current, defaultPaymentTermsDays: event.target.value }))} /></label>
+            <label><span>VAT mode</span><select value={settingsDraft.vatStatus || "not_registered"} onChange={(event) => setSettingsDraft((current) => ({ ...current, vatStatus: event.target.value }))}><option value="not_registered">Not VAT registered</option><option value="registered">VAT registered</option></select></label>
+            <label><span>Account name</span><input value={settingsDraft.bankAccountName || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, bankAccountName: event.target.value }))} /></label>
+            <label><span>Sort code</span><input value={settingsDraft.bankSortCode || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, bankSortCode: event.target.value }))} /></label>
+            <label><span>Account number</span><input value={settingsDraft.bankAccountNumber || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, bankAccountNumber: event.target.value }))} /></label>
+            <label><span>Invoice prefix</span><input value={settingsDraft.invoicePrefix || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, invoicePrefix: event.target.value }))} /></label>
+            <label className="wide"><span>Default invoice footer</span><textarea value={settingsDraft.defaultInvoiceFooter || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, defaultInvoiceFooter: event.target.value }))} /></label>
+            <label className="wide"><span>Default email body</span><textarea value={settingsDraft.defaultEmailBody || ""} onChange={(event) => setSettingsDraft((current) => ({ ...current, defaultEmailBody: event.target.value }))} /></label>
+          </div>
+          <button type="button" className="button book" disabled={!canManageFinance || saving === "settings"} onClick={saveSettings}>{saving === "settings" ? "Saving..." : "Save finance settings"}</button>
+        </section>
+      )}
+
+      {selectedInvoice && view === "Invoices" && (
+        <section className="section-card finance-payment-panel">
+          <div>
+            <p className="eyebrow">BACS payment tracking</p>
+            <h2>{selectedInvoice.invoiceNumber || "Draft invoice"} · {customerForInvoice?.customerName || "Customer"}</h2>
+            <p className="muted">Balance due: {formatCurrency(selectedInvoice.balanceDue ?? selectedInvoice.total)}. Multiple and partial payments can be recorded.</p>
+          </div>
+          <div className="finance-form compact">
+            <label><span>Amount</span><input type="number" min="0" step="0.01" value={paymentDraft.amount} onChange={(event) => setPaymentDraft((current) => ({ ...current, amount: event.target.value }))} /></label>
+            <label><span>Date paid</span><input type="date" value={paymentDraft.paidAt} onChange={(event) => setPaymentDraft((current) => ({ ...current, paidAt: event.target.value }))} /></label>
+            <label><span>Reference</span><input value={paymentDraft.reference} onChange={(event) => setPaymentDraft((current) => ({ ...current, reference: event.target.value }))} /></label>
+            <label><span>Notes</span><input value={paymentDraft.notes} onChange={(event) => setPaymentDraft((current) => ({ ...current, notes: event.target.value }))} /></label>
+          </div>
+          <button type="button" className="button book" disabled={!canManageFinance || saving === "payment" || !Number(paymentDraft.amount)} onClick={recordPayment}>{saving === "payment" ? "Recording..." : "Record BACS payment"}</button>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function FinanceInvoiceTable({ invoices, customers, onSelect, onEdit, onPdf, onApprove, onEmail, saving }) {
+  return (
+    <TableWrap>
+      <table>
+        <thead><tr><th>Invoice</th><th>Customer</th><th>Service</th><th>Due</th><th>Total</th><th>Balance</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {invoices.map((invoice) => {
+            const customer = customers.find((item) => item.id === invoice.customerId);
+            return (
+              <tr key={invoice.id || invoice.localId} onClick={() => onSelect?.(invoice.id)} className="clickable-row">
+                <td><strong>{invoice.invoiceNumber || "Draft"}</strong><br /><span className="muted">{formatShortDate(invoice.invoiceDate)}</span></td>
+                <td>{customer?.customerName || invoice.customerName || "Customer"}</td>
+                <td>{invoice.serviceType || invoice.title || "Service"}</td>
+                <td>{formatShortDate(invoice.dueDate)}</td>
+                <td>{formatCurrency(invoice.total)}</td>
+                <td>{formatCurrency(invoice.balanceDue ?? invoice.total)}</td>
+                <td><Badge value={invoice.status || "Draft"} /></td>
+                <td className="table-actions">
+                  {onEdit && <button type="button" className="button secondary" onClick={(event) => { event.stopPropagation(); onEdit(invoice); }}>Edit</button>}
+                  {onApprove && ["Draft", "Submitted"].includes(invoice.status) && <button type="button" className="button secondary" disabled={saving === `approve-${invoice.id}`} onClick={(event) => { event.stopPropagation(); onApprove(invoice.id); }}>Approve</button>}
+                  {onPdf && <button type="button" className="button secondary" onClick={(event) => { event.stopPropagation(); onPdf(invoice); }}>PDF</button>}
+                  {onEmail && invoice.invoiceNumber && <button type="button" className="button secondary" disabled={saving === `email-${invoice.id}`} onClick={(event) => { event.stopPropagation(); onEmail(invoice.id); }}>{saving === `email-${invoice.id}` ? "Sending..." : "Send invoice"}</button>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {!invoices.length && <EmptyList title="No invoices yet" text="Create the first school invoice when you are ready." />}
+    </TableWrap>
+  );
+}
+
+function FinanceReport({ title, rows }) {
+  return (
+    <div className="finance-report">
+      <h3>{title}</h3>
+      {rows.slice(0, 8).map((row) => (
+        <div key={row.label} className="finance-report-row"><span>{row.label}</span><strong>{formatCurrency(row.value)}</strong></div>
+      ))}
+      {!rows.length && <p className="muted">No data yet.</p>}
+    </div>
+  );
+}
+
+function emptySchoolFinanceData(data = {}) {
+  const locations = (data.sites || data.schools || []).map((site) => ({ id: site.id || site.name, name: site.name || site.school || "School" }));
+  return {
+    customers: [],
+    invoices: [],
+    permissions: [],
+    auditEvents: [],
+    locations,
+    settings: {
+      companyName: "Après School Limited",
+      companyAddress: "",
+      companyEmail: "hello@apres-school.co.uk",
+      financeEmail: "hello@apres-school.co.uk",
+      invoicePrefix: "AS-INV",
+      creditNotePrefix: "AS-CN",
+      defaultPaymentTermsDays: 14,
+      vatStatus: "not_registered",
+      defaultInvoiceFooter: "Thank you for working with Après School.",
+      defaultEmailSubject: "Invoice {InvoiceNumber} from Après School",
+      defaultEmailBody: "Please find your invoice attached. Payment can be made by BACS using the invoice number as the reference.",
+      bankAccountName: "Après School Limited",
+      bankSortCode: "04-00-03",
+      bankAccountNumber: "21773814",
+    },
+  };
+}
+
+function createFinanceCustomerDraft() {
+  return {
+    id: "",
+    customerName: "",
+    customerType: "School",
+    accountsContact: "",
+    accountsEmail: "",
+    telephone: "",
+    billingAddress: "",
+    paymentTermsDays: 14,
+    internalNotes: "",
+    isActive: true,
+  };
+}
+
+function createFinanceInvoiceDraft() {
+  const invoiceDate = dateInputValue(new Date());
+  const dueDate = dateInputValue(addDays(new Date(), 14));
+  return {
+    id: "",
+    customerId: "",
+    locationId: "",
+    status: "Draft",
+    title: "",
+    serviceType: financeServiceTypes[0],
+    invoiceDate,
+    dueDate,
+    servicePeriodStart: "",
+    servicePeriodEnd: "",
+    purchaseOrder: "",
+    notes: "",
+    internalNotes: "",
+    lines: [createFinanceLine()],
+  };
+}
+
+function createFinanceLine() {
+  return {
+    id: `line-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    description: "",
+    quantity: 1,
+    unit: "Fixed Fee",
+    unitPrice: "",
+    vatRate: "No VAT",
+  };
+}
+
+function customerToDraft(customer) {
+  return { ...createFinanceCustomerDraft(), ...customer };
+}
+
+function invoiceToDraft(invoice) {
+  return {
+    ...createFinanceInvoiceDraft(),
+    ...invoice,
+    invoiceDate: dateInputValue(invoice.invoiceDate),
+    dueDate: dateInputValue(invoice.dueDate),
+    servicePeriodStart: dateInputValue(invoice.servicePeriodStart),
+    servicePeriodEnd: dateInputValue(invoice.servicePeriodEnd),
+    lines: invoice.lines?.length ? invoice.lines.map((line) => ({ ...line, id: line.id || createFinanceLine().id })) : [createFinanceLine()],
+  };
+}
+
+function filterFinanceInvoices(invoices, query, customers) {
+  const needle = String(query || "").toLowerCase().trim();
+  if (!needle) return invoices;
+  return invoices.filter((invoice) => {
+    const customer = customers.find((item) => item.id === invoice.customerId);
+    return [invoice.invoiceNumber, invoice.title, invoice.serviceType, invoice.purchaseOrder, invoice.status, customer?.customerName]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(needle));
+  });
+}
+
+function calculateSchoolFinanceKpis(invoices) {
+  const today = new Date();
+  const monthKey = today.toISOString().slice(0, 7);
+  const outstandingInvoices = invoices.filter((invoice) => !["Paid", "Void", "Credited"].includes(invoice.status));
+  const paidInvoices = invoices.filter((invoice) => invoice.status === "Paid");
+  const paymentDays = paidInvoices.map((invoice) => daysBetween(invoice.invoiceDate, invoice.paidAt || invoice.updatedAt)).filter((days) => Number.isFinite(days) && days >= 0);
+  return {
+    outstanding: outstandingInvoices.reduce((sum, invoice) => sum + Number(invoice.balanceDue ?? invoice.total ?? 0), 0),
+    overdue: outstandingInvoices.filter((invoice) => isPastDue(invoice.dueDate)).reduce((sum, invoice) => sum + Number(invoice.balanceDue ?? invoice.total ?? 0), 0),
+    paidThisMonth: flattenFinancePayments(invoices).filter((payment) => String(payment.paidAt || "").startsWith(monthKey)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+    invoicedThisMonth: invoices.filter((invoice) => String(invoice.invoiceDate || "").startsWith(monthKey)).reduce((sum, invoice) => sum + Number(invoice.total || 0), 0),
+    draftCount: invoices.filter((invoice) => invoice.status === "Draft").length,
+    dueSoonCount: outstandingInvoices.filter((invoice) => daysBetween(today, invoice.dueDate) >= 0 && daysBetween(today, invoice.dueDate) <= 7).length,
+    averagePaymentDays: paymentDays.length ? Math.round(paymentDays.reduce((sum, days) => sum + days, 0) / paymentDays.length) : 0,
+  };
+}
+
+function calculateSchoolFinanceReports(invoices, customers, locations) {
+  const byMonthMap = new Map();
+  const byCustomerMap = new Map();
+  const bySchoolMap = new Map();
+  const debtors = [];
+  invoices.forEach((invoice) => {
+    const month = String(invoice.invoiceDate || "Un dated").slice(0, 7);
+    const total = Number(invoice.total || 0);
+    byMonthMap.set(month, (byMonthMap.get(month) || 0) + total);
+    const customer = customers.find((item) => item.id === invoice.customerId);
+    const customerName = customer?.customerName || "Unknown customer";
+    byCustomerMap.set(customerName, (byCustomerMap.get(customerName) || 0) + total);
+    const location = locations.find((item) => item.id === invoice.locationId);
+    const schoolName = location?.name || invoice.locationName || "No linked school";
+    bySchoolMap.set(schoolName, (bySchoolMap.get(schoolName) || 0) + total);
+    if (Number(invoice.balanceDue || 0) > 0) debtors.push({ label: `${customerName} · ${invoice.invoiceNumber || "Draft"}`, value: Number(invoice.balanceDue || 0) });
+  });
+  const byMonth = mapToReportRows(byMonthMap).sort((a, b) => b.label.localeCompare(a.label));
+  const byCustomer = mapToReportRows(byCustomerMap);
+  const bySchool = mapToReportRows(bySchoolMap);
+  const csvRows = invoices.map((invoice) => {
+    const customer = customers.find((item) => item.id === invoice.customerId);
+    return {
+      invoice: invoice.invoiceNumber || "Draft",
+      customer: customer?.customerName || "",
+      service_type: invoice.serviceType || "",
+      invoice_date: invoice.invoiceDate || "",
+      due_date: invoice.dueDate || "",
+      status: invoice.status || "",
+      total: invoice.total || 0,
+      balance_due: invoice.balanceDue || 0,
+    };
+  });
+  return { byMonth, byCustomer, bySchool, debtors: debtors.sort((a, b) => b.value - a.value), csvRows };
+}
+
+function mapToReportRows(map) {
+  return Array.from(map.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+}
+
+function flattenFinancePayments(invoices) {
+  return invoices.flatMap((invoice) => (invoice.payments || []).map((payment) => ({ ...payment, invoiceNumber: invoice.invoiceNumber || "Draft invoice" }))).sort((a, b) => String(b.paidAt || "").localeCompare(String(a.paidAt || "")));
+}
+
+function calculateFinanceDraftTotal(lines = []) {
+  return lines.reduce((sum, line) => {
+    const net = Number(line.quantity || 0) * Number(line.unitPrice || 0);
+    const vat = line.vatRate === "Standard Rated" ? net * 0.2 : 0;
+    return sum + net + vat;
+  }, 0);
+}
+
+function isPastDue(date) {
+  if (!date) return false;
+  const due = new Date(`${date}T23:59:59`);
+  return !Number.isNaN(due.getTime()) && due < new Date();
+}
+
+function daysBetween(start, end) {
+  const startDate = start instanceof Date ? start : new Date(`${start}T00:00:00`);
+  const endDate = end instanceof Date ? end : new Date(`${end}T00:00:00`);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0;
+  return Math.round((endDate - startDate) / 86400000);
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + Number(days || 0));
+  return next;
 }
 
 function BookingFinance({ data, onOpenBookingFocus }) {
@@ -12081,7 +12797,10 @@ function inferAuditMetadata(action, detail = "") {
   const text = `${action || ""} ${detail || ""}`;
   const lower = text.toLowerCase();
   const metadata = {};
-  if (lower.includes("pay") || lower.includes("payslip") || lower.includes("hours")) {
+  if (lower.includes("invoice") || lower.includes("credit note") || lower.includes("finance customer") || lower.includes("bacs payment")) {
+    metadata.module = "Finance";
+    metadata.tableName = "finance_invoices";
+  } else if (lower.includes("pay") || lower.includes("payslip") || lower.includes("hours")) {
     metadata.module = "Payroll";
     metadata.tableName = "payroll_runs";
   } else if (lower.includes("scr") || lower.includes("evidence")) {
@@ -12220,6 +12939,7 @@ function iconFor(item) {
     Documents: <FileText />,
     Pay: <PoundSterling />,
     Finance: <PoundSterling />,
+    "Booking Payments": <PoundSterling />,
     Rewards: <Award />,
     Sessions: <Clock />,
     Rota: <CalendarDays />,

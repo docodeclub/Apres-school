@@ -1043,3 +1043,110 @@ export function exportPayrollSummary(rows = [], period = "", run = {}, options =
   doc.text("Generated from Apres School internal payroll records.", PAGE.margin, 804, 8, MUTED);
   downloadPdf(`apres-payroll-summary-${slug(periodLabel)}-${fileStamp()}.pdf`, doc);
 }
+
+export function exportFinanceInvoicePdf(invoice = {}, customer = {}, settings = {}, options = {}) {
+  const invoiceNumber = invoice.invoiceNumber || invoice.draftReference || "Draft invoice";
+  const lines = Array.isArray(invoice.lines) ? invoice.lines : [];
+  const bankAccountName = settings.bankAccountName || "Apres School Limited";
+  const bankSortCode = settings.bankSortCode || "04-00-03";
+  const bankAccountNumber = settings.bankAccountNumber || "21773814";
+  const companyName = settings.companyName || "APRES SCHOOL LIMITED";
+  const doc = new PdfDoc(`Invoice ${invoiceNumber}`).addPage();
+
+  doc.text("Apres School", PAGE.margin, 42, 19, BLUE);
+  doc.text("Let's Learn and Play", PAGE.margin, 59, 8, AMBER);
+  doc.text("INVOICE", 440, 42, 22, BLUE);
+  doc.text(invoiceNumber, 440, 63, 10, INK);
+  doc.line(PAGE.margin, 84, PAGE.width - PAGE.margin, 84);
+
+  let y = 112;
+  doc.text(companyName, PAGE.margin, y, 11, INK);
+  y = doc.wrap(settings.registeredAddress || "Registered address held in finance settings", PAGE.margin, y + 16, 230, 8.4, MUTED, 11);
+  if (settings.companyNumber) {
+    doc.text(`Company number: ${settings.companyNumber}`, PAGE.margin, y + 4, 8.4, MUTED);
+    y += 16;
+  }
+  if (settings.vatNumber) {
+    doc.text(`VAT number: ${settings.vatNumber}`, PAGE.margin, y + 4, 8.4, MUTED);
+  }
+
+  doc.rect(330, 108, 223, 105, SOFT, LINE);
+  const metaRows = [
+    ["Invoice date", formatDate(invoice.invoiceDate)],
+    ["Due date", formatDate(invoice.dueDate)],
+    ["Purchase order", invoice.purchaseOrder || "Not supplied"],
+    ["Service period", servicePeriodLabel(invoice)],
+  ];
+  metaRows.forEach(([label, value], index) => {
+    doc.text(label.toUpperCase(), 346, 129 + index * 22, 7.2, MUTED);
+    doc.text(value, 446, 129 + index * 22, 8.8, INK);
+  });
+
+  y = 236;
+  doc.sectionTitle("Bill To", PAGE.margin, y);
+  y += 24;
+  doc.text(customer.customerName || invoice.customerName || "Customer", PAGE.margin, y, 12, BLUE);
+  y = doc.wrap([
+    customer.accountsContact || invoice.accountsContact || "",
+    customer.accountsEmail || invoice.accountsEmail || "",
+    customer.billingAddress || invoice.billingAddress || "",
+  ].filter(Boolean).join("\n"), PAGE.margin, y + 18, 240, 8.8, MUTED, 12);
+
+  doc.sectionTitle("Invoice Summary", 330, 236);
+  doc.kpi("Subtotal", money(invoice.subtotal), 330, 260, 100);
+  doc.kpi("VAT", money(invoice.vatTotal), 442, 260, 111);
+  doc.kpi("Total", money(invoice.total), 330, 338, 100);
+  doc.kpi("Balance", money(invoice.balanceDue ?? invoice.total), 442, 338, 111);
+
+  y = Math.max(y + 26, 435);
+  doc.sectionTitle("Invoice Lines", PAGE.margin, y);
+  const lineRows = lines.length ? lines.map((line) => [
+    line.description || "Service",
+    `${Number(line.quantity || 0).toFixed(2)} ${line.unit || ""}`.trim(),
+    money(line.unitPrice),
+    line.vatRate || "No VAT",
+    money(line.grossTotal),
+  ]) : [["No lines recorded", "", "", "", money(invoice.total)]];
+  y = doc.table(
+    ["Description", "Qty", "Unit price", "VAT", "Total"],
+    lineRows.slice(0, 8),
+    PAGE.margin,
+    y + 18,
+    [220, 70, 80, 72, 68],
+    { rowHeight: 36 },
+  );
+
+  if (lineRows.length > 8) {
+    doc.text(`+ ${lineRows.length - 8} additional line${lineRows.length - 8 === 1 ? "" : "s"} retained in the system.`, PAGE.margin, y + 16, 8.5, MUTED);
+    y += 28;
+  }
+
+  y += 18;
+  doc.rect(PAGE.margin, y, 270, 118, [0.93, 0.96, 1], LINE);
+  doc.text("How to Pay", PAGE.margin + 16, y + 24, 14, BLUE);
+  doc.text("Payment method: BACS", PAGE.margin + 16, y + 44, 9.2, INK);
+  doc.text(`Account name: ${bankAccountName}`, PAGE.margin + 16, y + 62, 9.2, INK);
+  doc.text(`Sort code: ${bankSortCode}`, PAGE.margin + 16, y + 80, 9.2, INK);
+  doc.text(`Account number: ${bankAccountNumber}`, PAGE.margin + 16, y + 98, 9.2, INK);
+
+  doc.rect(330, y, 223, 118, WHITE, LINE);
+  doc.text("Payment Reference", 346, y + 24, 12, BLUE);
+  doc.wrap("Please use your invoice number as the payment reference.", 346, y + 46, 176, 9, INK, 12);
+  doc.text(invoiceNumber, 346, y + 90, 16, AMBER);
+
+  if (invoice.notes || settings.defaultInvoiceFooter) {
+    doc.wrap(invoice.notes || settings.defaultInvoiceFooter, PAGE.margin, Math.min(y + 148, 770), 500, 8.5, MUTED, 11);
+  }
+
+  doc.line(PAGE.margin, 804, PAGE.width - PAGE.margin, 804);
+  doc.text(`Finance contact: ${settings.financeEmail || "hello@apres-school.co.uk"}${settings.financeTelephone ? ` · ${settings.financeTelephone}` : ""}`, PAGE.margin, 822, 8, MUTED);
+
+  if (options.returnBytes) return doc.output();
+  downloadPdf(`apres-invoice-${slug(invoiceNumber)}.pdf`, doc);
+}
+
+function servicePeriodLabel(invoice = {}) {
+  if (invoice.servicePeriodStart && invoice.servicePeriodEnd) return `${formatDate(invoice.servicePeriodStart)} - ${formatDate(invoice.servicePeriodEnd)}`;
+  if (invoice.servicePeriodStart) return formatDate(invoice.servicePeriodStart);
+  return "Not specified";
+}
