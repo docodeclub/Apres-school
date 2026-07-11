@@ -2384,6 +2384,7 @@ function SchoolFinance({ data, access }) {
   const invoiceMatches = filterFinanceInvoices(invoices, query, customers);
   const selectedInvoiceActivity = selectedInvoice ? buildFinanceInvoiceActivity(selectedInvoice, finance.audit || finance.auditEvents || []) : [];
   const kpis = calculateSchoolFinanceKpis(invoices);
+  const reminderPrompts = buildFinanceReminderPrompts(invoices, customers);
   const reports = calculateSchoolFinanceReports(invoices, customers, finance.locations || []);
 
   useEffect(() => {
@@ -2634,6 +2635,32 @@ function SchoolFinance({ data, access }) {
             <Metric icon={<Clock />} label="Avg payment time" value={`${kpis.averagePaymentDays} days`} />
             <Metric icon={<Users />} label="Customers" value={String(customers.length)} />
           </DashboardGrid>
+          <Panel title="Reminder prompts">
+            <TableWrap>
+              <table>
+                <thead><tr><th>Priority</th><th>Invoice</th><th>Customer</th><th>Due</th><th>Balance</th><th>Last reminder</th><th></th></tr></thead>
+                <tbody>
+                  {reminderPrompts.slice(0, 8).map((prompt) => (
+                    <tr key={prompt.invoice.id}>
+                      <td><Badge value={prompt.priorityLabel} /></td>
+                      <td><strong>{prompt.invoice.invoiceNumber || prompt.invoice.draftReference}</strong><br /><span className="muted">{prompt.invoice.serviceType || prompt.invoice.title || "School invoice"}</span></td>
+                      <td>{prompt.customer?.customerName || prompt.invoice.customerName || "Customer"}<br /><span className="muted">{prompt.customer?.accountsEmail || "No accounts email"}</span></td>
+                      <td>{formatShortDate(prompt.invoice.dueDate)}<br /><span className="muted">{prompt.daysLabel}</span></td>
+                      <td>{formatCurrency(prompt.balance)}</td>
+                      <td>{prompt.lastReminderAt ? formatShortDate(prompt.lastReminderAt) : "Not sent"}<br /><span className="muted">{prompt.reminderCount ? `${prompt.reminderCount} reminder${prompt.reminderCount === 1 ? "" : "s"}` : "Ready to chase"}</span></td>
+                      <td className="table-actions">
+                        <button type="button" className="button secondary" onClick={() => { setView("Invoices"); setSelectedInvoiceId(prompt.invoice.id); }}>Open</button>
+                        <button type="button" className="button secondary" disabled={!canManageFinance || !prompt.canRemind || saving === `email-${prompt.invoice.id}`} onClick={() => openFinanceReminderPreview(prompt.invoice.id)}>
+                          {saving === `email-${prompt.invoice.id}` ? "Sending..." : "Reminder"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!reminderPrompts.length && <EmptyList title="No reminders needed" text="There are no overdue or due-soon invoice balances to chase right now." />}
+            </TableWrap>
+          </Panel>
           <div className="finance-two-col">
             <Panel title="Recent Invoices">
               <FinanceInvoiceTable invoices={invoices.slice(0, 8)} customers={customers} onSelect={setSelectedInvoiceId} onEdit={editInvoice} onPdf={downloadInvoicePdf} />
@@ -3258,6 +3285,51 @@ function buildFinanceInvoiceActivity(invoice = {}, auditEvents = []) {
       ...event,
       when: event.whenRaw ? formatDateTime(event.whenRaw) : "Time not recorded",
     }));
+}
+
+function buildFinanceReminderPrompts(invoices = [], customers = []) {
+  const today = new Date();
+  return invoices
+    .map((invoice) => {
+      const balance = Number(invoice.balanceDue ?? invoice.total ?? 0);
+      const status = String(invoice.status || "");
+      const customer = customers.find((item) => item.id === invoice.customerId);
+      const dueInDays = invoice.dueDate ? daysBetween(today, invoice.dueDate) : 9999;
+      const daysOverdue = invoice.dueDate ? daysBetween(invoice.dueDate, today) : 0;
+      const reminderEmails = (invoice.emails || []).filter((email) => email.emailKind === "payment_reminder");
+      const lastReminderAt = reminderEmails
+        .map((email) => email.sentAt)
+        .filter(Boolean)
+        .sort()
+        .slice(-1)[0] || "";
+      const priority = daysOverdue > 0 ? "overdue" : dueInDays >= 0 && dueInDays <= 7 ? "due_soon" : "";
+      const priorityLabel = priority === "overdue" ? "Overdue" : priority === "due_soon" ? "Due soon" : "Monitor";
+      const daysLabel = priority === "overdue"
+        ? `${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue`
+        : dueInDays === 0
+          ? "Due today"
+          : `Due in ${dueInDays} day${dueInDays === 1 ? "" : "s"}`;
+      return {
+        invoice,
+        customer,
+        balance,
+        dueInDays,
+        daysOverdue,
+        priority,
+        priorityLabel,
+        daysLabel,
+        lastReminderAt,
+        reminderCount: reminderEmails.length,
+        canRemind: Boolean(invoice.invoiceNumber && customer?.accountsEmail && balance > 0),
+        hidden: ["Paid", "Void", "Credited"].includes(status) || balance <= 0 || !priority,
+      };
+    })
+    .filter((prompt) => !prompt.hidden)
+    .sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority === "overdue" ? -1 : 1;
+      if (a.priority === "overdue") return b.daysOverdue - a.daysOverdue;
+      return a.dueInDays - b.dueInDays;
+    });
 }
 
 function calculateFinanceDraftTotal(lines = []) {
@@ -13267,7 +13339,7 @@ function DashboardGrid({ children, className = "" }) {
 
 
 function Badge({ value }) {
-  const className = value.toLowerCase().includes("gap") || value.toLowerCase().includes("missing") || value.toLowerCase().includes("alert") || value.toLowerCase().includes("rejected") ? "bad" : value.toLowerCase().includes("soon") || value.toLowerCase().includes("chase") || value.toLowerCase().includes("pending") ? "warn" : "good";
+  const className = value.toLowerCase().includes("gap") || value.toLowerCase().includes("missing") || value.toLowerCase().includes("alert") || value.toLowerCase().includes("rejected") || value.toLowerCase().includes("overdue") || value.toLowerCase().includes("failed") ? "bad" : value.toLowerCase().includes("soon") || value.toLowerCase().includes("chase") || value.toLowerCase().includes("pending") ? "warn" : "good";
   return <span className={`badge ${className}`}>{value}</span>;
 }
 
