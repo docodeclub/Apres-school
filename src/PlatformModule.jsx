@@ -2336,6 +2336,7 @@ function SchoolFinance({ data, access }) {
   const [paymentDraft, setPaymentDraft] = useState({ amount: "", paidAt: dateInputValue(new Date()), reference: "", notes: "" });
   const [settingsDraft, setSettingsDraft] = useState(() => emptySchoolFinanceData(data).settings);
   const [emailPreview, setEmailPreview] = useState(null);
+  const [dashboardInvoiceFilter, setDashboardInvoiceFilter] = useState("outstanding");
   const [saving, setSaving] = useState("");
 
   useEffect(() => {
@@ -2385,6 +2386,9 @@ function SchoolFinance({ data, access }) {
   const selectedInvoiceActivity = selectedInvoice ? buildFinanceInvoiceActivity(selectedInvoice, finance.audit || finance.auditEvents || []) : [];
   const kpis = calculateSchoolFinanceKpis(invoices);
   const reminderPrompts = buildFinanceReminderPrompts(invoices, customers);
+  const dashboardFilterOptions = buildFinanceDashboardFilterOptions(invoices);
+  const dashboardInvoiceRows = filterFinanceDashboardInvoices(invoices, dashboardInvoiceFilter);
+  const activeDashboardFilter = dashboardFilterOptions.find((option) => option.id === dashboardInvoiceFilter) || dashboardFilterOptions[0];
   const reports = calculateSchoolFinanceReports(invoices, customers, finance.locations || []);
 
   useEffect(() => {
@@ -2662,8 +2666,16 @@ function SchoolFinance({ data, access }) {
             </TableWrap>
           </Panel>
           <div className="finance-two-col">
-            <Panel title="Recent Invoices">
-              <FinanceInvoiceTable invoices={invoices.slice(0, 8)} customers={customers} onSelect={setSelectedInvoiceId} onEdit={editInvoice} onPdf={downloadInvoicePdf} />
+            <Panel title="Invoice focus">
+              <div className="finance-subnav" style={{ position: "static", marginBottom: 12 }} role="tablist" aria-label="Dashboard invoice filters">
+                {dashboardFilterOptions.map((option) => (
+                  <button key={option.id} type="button" className={dashboardInvoiceFilter === option.id ? "active" : ""} onClick={() => setDashboardInvoiceFilter(option.id)}>
+                    {option.label} <span className="muted">({option.count})</span>
+                  </button>
+                ))}
+              </div>
+              <p className="muted">{activeDashboardFilter.description}</p>
+              <FinanceInvoiceTable invoices={dashboardInvoiceRows.slice(0, 8)} customers={customers} onSelect={(invoiceId) => { setSelectedInvoiceId(invoiceId); setView("Invoices"); }} onEdit={editInvoice} onPdf={downloadInvoicePdf} />
             </Panel>
             <Panel title="Recent Payments">
               <TableWrap>
@@ -3179,6 +3191,48 @@ function filterFinanceInvoices(invoices, query, customers) {
     return [invoice.invoiceNumber, invoice.title, invoice.serviceType, invoice.purchaseOrder, invoice.status, customer?.customerName]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(needle));
+  });
+}
+
+function buildFinanceDashboardFilterOptions(invoices = []) {
+  const filters = [
+    ["outstanding", "Outstanding", "Invoices with a remaining balance, excluding paid, void or credited invoices."],
+    ["overdue", "Overdue", "Outstanding invoices past their due date."],
+    ["dueSoon", "Due soon", "Outstanding invoices due within the next seven days."],
+    ["recentlyPaid", "Recently paid", "Invoices with a payment recorded in the last 30 days."],
+  ];
+  return filters.map(([id, label, description]) => ({
+    id,
+    label,
+    description,
+    count: filterFinanceDashboardInvoices(invoices, id).length,
+  }));
+}
+
+function filterFinanceDashboardInvoices(invoices = [], filter = "outstanding") {
+  const today = new Date();
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const hasBalance = (invoice) => Number(invoice.balanceDue ?? invoice.total ?? 0) > 0;
+  const isOpen = (invoice) => !["Paid", "Void", "Credited"].includes(invoice.status) && hasBalance(invoice);
+  const latestPaymentTime = (invoice) => Math.max(
+    0,
+    ...(invoice.payments || []).map((payment) => new Date(`${payment.paidAt || payment.recordedAt || ""}T00:00:00`).getTime()).filter((time) => Number.isFinite(time)),
+  );
+
+  const rows = invoices.filter((invoice) => {
+    if (filter === "overdue") return isOpen(invoice) && isPastDue(invoice.dueDate);
+    if (filter === "dueSoon") {
+      const days = invoice.dueDate ? daysBetween(today, invoice.dueDate) : 9999;
+      return isOpen(invoice) && days >= 0 && days <= 7;
+    }
+    if (filter === "recentlyPaid") return latestPaymentTime(invoice) >= thirtyDaysAgo.getTime();
+    return isOpen(invoice);
+  });
+
+  return rows.sort((a, b) => {
+    if (filter === "recentlyPaid") return latestPaymentTime(b) - latestPaymentTime(a);
+    return String(a.dueDate || "").localeCompare(String(b.dueDate || ""));
   });
 }
 
