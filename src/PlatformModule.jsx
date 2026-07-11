@@ -2234,6 +2234,7 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
 const financeSections = ["Dashboard", "Invoices", "Customers", "Credit Notes", "Reports", "Settings"];
 const financeVatRates = ["No VAT", "Exempt", "Zero Rated", "Standard Rated"];
 const financeServiceTypes = ["School trip", "Sports day staffing", "PPA cover", "Supply staff", "One-off event", "Consultancy", "Holiday camp", "Venue hire", "Ad-hoc service"];
+const financeChaseStatuses = ["Not started", "Emailed", "Awaiting response", "Query raised", "Payment promised"];
 
 function bytesToBase64(bytes) {
   if (typeof bytes === "string") return btoa(bytes);
@@ -2337,6 +2338,7 @@ function SchoolFinance({ data, access }) {
   const [settingsDraft, setSettingsDraft] = useState(() => emptySchoolFinanceData(data).settings);
   const [emailPreview, setEmailPreview] = useState(null);
   const [dashboardInvoiceFilter, setDashboardInvoiceFilter] = useState("outstanding");
+  const [debtorDrafts, setDebtorDrafts] = useState({});
   const [saving, setSaving] = useState("");
 
   useEffect(() => {
@@ -2400,6 +2402,19 @@ function SchoolFinance({ data, access }) {
     if (!selectedCustomerId && customers[0]?.id) setSelectedCustomerId(customers[0].id);
   }, [customers, selectedCustomerId]);
 
+  useEffect(() => {
+    setDebtorDrafts((current) => {
+      const next = {};
+      customers.forEach((customer) => {
+        next[customer.id] = current[customer.id] || {
+          financeChaseStatus: customer.financeChaseStatus || "Not started",
+          financeChaseNotes: customer.financeChaseNotes || "",
+        };
+      });
+      return next;
+    });
+  }, [customers]);
+
   function setInvoiceField(field, value) {
     setInvoiceDraft((current) => ({ ...current, [field]: value }));
   }
@@ -2446,6 +2461,28 @@ function SchoolFinance({ data, access }) {
       setCustomerDraft(createFinanceCustomerDraft());
     } catch (error) {
       setStatus(error?.message || "Customer could not be saved.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function saveCustomerChase(customerId) {
+    if (!canManageFinance || !customerId) return;
+    const customer = customers.find((item) => item.id === customerId);
+    if (!customer) return;
+    const draft = debtorDrafts[customerId] || {};
+    setSaving(`customer-chase-${customerId}`);
+    try {
+      const { saveFinanceCustomer } = await loadSupabaseModule();
+      await saveFinanceCustomer({
+        ...customer,
+        financeChaseStatus: draft.financeChaseStatus || customer.financeChaseStatus || "Not started",
+        financeChaseNotes: draft.financeChaseNotes ?? customer.financeChaseNotes ?? "",
+      });
+      addAuditLog("Finance debtor chase updated", customer.customerName || "Customer");
+      await refreshFinance("Customer chase status saved.");
+    } catch (error) {
+      setStatus(error?.message || "Customer chase status could not be saved.");
     } finally {
       setSaving("");
     }
@@ -2698,19 +2735,53 @@ function SchoolFinance({ data, access }) {
             </div>
             <TableWrap>
               <table>
-                <thead><tr><th>Customer</th><th>Outstanding</th><th>Current</th><th>1-30 days</th><th>31-60 days</th><th>60+ days</th><th>Invoices</th><th></th></tr></thead>
+                <thead><tr><th>Customer</th><th>Outstanding</th><th>Ageing</th><th>Chase status</th><th>Finance note</th><th>Invoices</th><th></th></tr></thead>
                 <tbody>
                   {debtorSummary.rows.map((row) => (
                     <tr key={row.customerId || row.customerName}>
                       <td><strong>{row.customerName}</strong><br /><span className="muted">{row.accountsEmail || "No accounts email"}</span></td>
                       <td><strong>{formatCurrency(row.totalOutstanding)}</strong></td>
-                      <td>{formatCurrency(row.current)}</td>
-                      <td>{formatCurrency(row.days1to30)}</td>
-                      <td>{formatCurrency(row.days31to60)}</td>
-                      <td>{formatCurrency(row.days60plus)}</td>
+                      <td>
+                        <span className="muted">Current {formatCurrency(row.current)}</span><br />
+                        <span className="muted">1-30 {formatCurrency(row.days1to30)} · 31-60 {formatCurrency(row.days31to60)} · 60+ {formatCurrency(row.days60plus)}</span>
+                      </td>
+                      <td>
+                        <select
+                          value={debtorDrafts[row.customerId]?.financeChaseStatus || row.financeChaseStatus || "Not started"}
+                          onChange={(event) => setDebtorDrafts((current) => ({
+                            ...current,
+                            [row.customerId]: {
+                              ...(current[row.customerId] || {}),
+                              financeChaseStatus: event.target.value,
+                              financeChaseNotes: current[row.customerId]?.financeChaseNotes ?? row.financeChaseNotes ?? "",
+                            },
+                          }))}
+                          disabled={!canManageFinance || !row.customerRecordId}
+                        >
+                          {financeChaseStatuses.map((statusOption) => <option key={statusOption}>{statusOption}</option>)}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          value={debtorDrafts[row.customerId]?.financeChaseNotes ?? row.financeChaseNotes ?? ""}
+                          onChange={(event) => setDebtorDrafts((current) => ({
+                            ...current,
+                            [row.customerId]: {
+                              ...(current[row.customerId] || {}),
+                              financeChaseStatus: current[row.customerId]?.financeChaseStatus || row.financeChaseStatus || "Not started",
+                              financeChaseNotes: event.target.value,
+                            },
+                          }))}
+                          placeholder="Next chase note"
+                          disabled={!canManageFinance || !row.customerRecordId}
+                        />
+                      </td>
                       <td>{row.invoiceCount}</td>
                       <td className="table-actions">
                         <button type="button" className="button secondary" onClick={() => { setView("Invoices"); setQuery(row.customerName); }}>View invoices</button>
+                        <button type="button" className="button secondary" disabled={!canManageFinance || !row.customerRecordId || saving === `customer-chase-${row.customerRecordId}`} onClick={() => saveCustomerChase(row.customerRecordId)}>
+                          {saving === `customer-chase-${row.customerRecordId}` ? "Saving..." : "Save"}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -2828,7 +2899,9 @@ function SchoolFinance({ data, access }) {
               <label><span>Accounts email</span><input type="email" value={customerDraft.accountsEmail} onChange={(event) => setCustomerDraft((current) => ({ ...current, accountsEmail: event.target.value }))} /></label>
               <label><span>Telephone</span><input value={customerDraft.telephone || ""} onChange={(event) => setCustomerDraft((current) => ({ ...current, telephone: event.target.value }))} /></label>
               <label><span>Payment terms</span><input type="number" min="0" value={customerDraft.paymentTermsDays} onChange={(event) => setCustomerDraft((current) => ({ ...current, paymentTermsDays: event.target.value }))} /></label>
+              <label><span>Chase status</span><select value={customerDraft.financeChaseStatus || "Not started"} onChange={(event) => setCustomerDraft((current) => ({ ...current, financeChaseStatus: event.target.value }))}>{financeChaseStatuses.map((statusOption) => <option key={statusOption}>{statusOption}</option>)}</select></label>
               <label className="wide"><span>Billing address</span><textarea value={customerDraft.billingAddress} onChange={(event) => setCustomerDraft((current) => ({ ...current, billingAddress: event.target.value }))} /></label>
+              <label className="wide"><span>Finance chase note</span><textarea value={customerDraft.financeChaseNotes || ""} onChange={(event) => setCustomerDraft((current) => ({ ...current, financeChaseNotes: event.target.value }))} /></label>
               <label className="wide"><span>Internal notes</span><textarea value={customerDraft.internalNotes} onChange={(event) => setCustomerDraft((current) => ({ ...current, internalNotes: event.target.value }))} /></label>
             </div>
             <button type="button" className="button book" disabled={!canManageFinance || saving === "customer" || !customerDraft.customerName} onClick={saveCustomer}>{saving === "customer" ? "Saving..." : "Save customer"}</button>
@@ -3159,6 +3232,8 @@ function createFinanceCustomerDraft() {
     telephone: "",
     billingAddress: "",
     paymentTermsDays: 14,
+    financeChaseStatus: "Not started",
+    financeChaseNotes: "",
     internalNotes: "",
     isActive: true,
   };
@@ -3277,8 +3352,11 @@ function buildFinanceDebtorSummary(invoices = [], customers = []) {
     const customerId = invoice.customerId || invoice.customerName || "unknown";
     const row = rowsByCustomer.get(customerId) || {
       customerId,
+      customerRecordId: customer?.id || "",
       customerName: customer?.customerName || invoice.customerName || "Unknown customer",
       accountsEmail: customer?.accountsEmail || invoice.accountsEmail || "",
+      financeChaseStatus: customer?.financeChaseStatus || "Not started",
+      financeChaseNotes: customer?.financeChaseNotes || "",
       totalOutstanding: 0,
       current: 0,
       days1to30: 0,

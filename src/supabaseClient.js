@@ -1808,7 +1808,7 @@ export async function saveFinanceCustomer(customer) {
     billing_address: customer.billingAddress || "",
     payment_terms_days: Number(customer.paymentTermsDays || 14),
     default_purchase_order: customer.defaultPurchaseOrder || "",
-    notes: customer.notes || "",
+    notes: serialiseFinanceCustomerNotes(customer),
     active: customer.active !== false,
     updated_by: userId,
     updated_at: new Date().toISOString(),
@@ -2107,6 +2107,7 @@ async function getCurrentUserId() {
 }
 
 function mapFinanceCustomer(record = {}) {
+  const noteData = parseFinanceCustomerNotes(record.notes);
   return {
     id: record.id,
     linkedLocationId: record.linked_location_id || "",
@@ -2118,11 +2119,40 @@ function mapFinanceCustomer(record = {}) {
     billingAddress: record.billing_address || "",
     paymentTermsDays: Number(record.payment_terms_days || 14),
     defaultPurchaseOrder: record.default_purchase_order || "",
-    notes: record.notes || "",
+    notes: noteData.internalNotes || "",
+    internalNotes: noteData.internalNotes || "",
+    financeChaseStatus: noteData.financeChaseStatus || "Not started",
+    financeChaseNotes: noteData.financeChaseNotes || "",
     active: record.active !== false,
     createdAt: record.created_at || "",
     updatedAt: record.updated_at || "",
   };
+}
+
+function parseFinanceCustomerNotes(value = "") {
+  if (!value) return { internalNotes: "", financeChaseStatus: "Not started", financeChaseNotes: "" };
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && parsed.kind === "finance_customer_notes") {
+      return {
+        internalNotes: parsed.internalNotes || "",
+        financeChaseStatus: parsed.financeChaseStatus || "Not started",
+        financeChaseNotes: parsed.financeChaseNotes || "",
+      };
+    }
+  } catch {
+    // Plain-text customer notes existed before debtor chase fields.
+  }
+  return { internalNotes: value, financeChaseStatus: "Not started", financeChaseNotes: "" };
+}
+
+function serialiseFinanceCustomerNotes(customer = {}) {
+  return JSON.stringify({
+    kind: "finance_customer_notes",
+    internalNotes: customer.internalNotes || customer.notes || "",
+    financeChaseStatus: customer.financeChaseStatus || "Not started",
+    financeChaseNotes: customer.financeChaseNotes || "",
+  });
 }
 
 function mapFinanceInvoice(record = {}) {
