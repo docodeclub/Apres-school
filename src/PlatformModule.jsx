@@ -2393,6 +2393,8 @@ function SchoolFinance({ data, access }) {
   const activeDashboardFilter = dashboardFilterOptions.find((option) => option.id === dashboardInvoiceFilter) || dashboardFilterOptions[0];
   const debtorSummary = buildFinanceDebtorSummary(invoices, customers);
   const reports = calculateSchoolFinanceReports(invoices, customers, finance.locations || []);
+  const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId) || customers[0] || null;
+  const selectedCustomerActivity = selectedCustomer ? buildFinanceCustomerActivity(selectedCustomer, invoices, finance.audit || finance.auditEvents || []) : [];
 
   useEffect(() => {
     if (!selectedInvoiceId && invoices[0]?.id) setSelectedInvoiceId(invoices[0].id);
@@ -2474,10 +2476,22 @@ function SchoolFinance({ data, access }) {
     setSaving(`customer-chase-${customerId}`);
     try {
       const { saveFinanceCustomer } = await loadSupabaseModule();
+      const nextStatus = draft.financeChaseStatus || customer.financeChaseStatus || "Not started";
+      const nextNotes = draft.financeChaseNotes ?? customer.financeChaseNotes ?? "";
+      const activityChanged = nextStatus !== (customer.financeChaseStatus || "Not started") || nextNotes !== (customer.financeChaseNotes || "");
+      const financeChaseActivity = activityChanged
+        ? [{
+          id: `chase-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          status: nextStatus,
+          note: nextNotes,
+        }, ...(customer.financeChaseActivity || [])].slice(0, 50)
+        : customer.financeChaseActivity || [];
       await saveFinanceCustomer({
         ...customer,
-        financeChaseStatus: draft.financeChaseStatus || customer.financeChaseStatus || "Not started",
-        financeChaseNotes: draft.financeChaseNotes ?? customer.financeChaseNotes ?? "",
+        financeChaseStatus: nextStatus,
+        financeChaseNotes: nextNotes,
+        financeChaseActivity,
       });
       addAuditLog("Finance debtor chase updated", customer.customerName || "Customer");
       await refreshFinance("Customer chase status saved.");
@@ -2881,7 +2895,7 @@ function SchoolFinance({ data, access }) {
                         <td>{customer.accountsContact || "Not set"}<br /><span className="muted">{customer.accountsEmail || "No email"}</span></td>
                         <td>{formatCurrency(outstanding)}</td>
                         <td>{customerInvoices.length}</td>
-                        <td><button type="button" className="button secondary" onClick={() => { setSelectedCustomerId(customer.id); setCustomerDraft(customerToDraft(customer)); }}>Edit</button></td>
+                        <td><button type="button" className="button secondary" onClick={() => { setSelectedCustomerId(customer.id); setCustomerDraft(customerToDraft(customer)); }}>Open</button></td>
                       </tr>
                     );
                   })}
@@ -2905,6 +2919,25 @@ function SchoolFinance({ data, access }) {
               <label className="wide"><span>Internal notes</span><textarea value={customerDraft.internalNotes} onChange={(event) => setCustomerDraft((current) => ({ ...current, internalNotes: event.target.value }))} /></label>
             </div>
             <button type="button" className="button book" disabled={!canManageFinance || saving === "customer" || !customerDraft.customerName} onClick={saveCustomer}>{saving === "customer" ? "Saving..." : "Save customer"}</button>
+            <section className="finance-command-block" style={{ marginTop: 16 }}>
+              <div className="finance-command-block-head">
+                <span>
+                  <small>Customer timeline</small>
+                  <strong>{selectedCustomer?.customerName || "Choose a customer"}</strong>
+                </span>
+                <Badge value={`${selectedCustomerActivity.length} events`} />
+              </div>
+              <div className="finance-activity-list">
+                {selectedCustomerActivity.slice(0, 12).map((item) => (
+                  <article key={item.id}>
+                    <span>{item.label}</span>
+                    <small>{item.detail}</small>
+                    <time>{item.when}</time>
+                  </article>
+                ))}
+                {!selectedCustomerActivity.length && <p className="muted">No finance activity has been recorded for this customer yet.</p>}
+              </div>
+            </section>
           </section>
         </div>
       )}
@@ -3234,6 +3267,7 @@ function createFinanceCustomerDraft() {
     paymentTermsDays: 14,
     financeChaseStatus: "Not started",
     financeChaseNotes: "",
+    financeChaseActivity: [],
     internalNotes: "",
     isActive: true,
   };
@@ -3377,7 +3411,7 @@ function buildFinanceDebtorSummary(invoices = [], customers = []) {
 
   const rows = Array.from(rowsByCustomer.values()).sort((a, b) => b.totalOutstanding - a.totalOutstanding);
   const csvRows = [
-    ["Customer", "Accounts email", "Outstanding", "Current", "1-30 days", "31-60 days", "60+ days", "Invoice count"],
+    ["Customer", "Accounts email", "Outstanding", "Current", "1-30 days", "31-60 days", "60+ days", "Invoice count", "Chase status", "Finance note"],
     ...rows.map((row) => [
       row.customerName,
       row.accountsEmail,
@@ -3387,6 +3421,8 @@ function buildFinanceDebtorSummary(invoices = [], customers = []) {
       row.days31to60.toFixed(2),
       row.days60plus.toFixed(2),
       row.invoiceCount,
+      row.financeChaseStatus,
+      row.financeChaseNotes,
     ]),
   ];
 
@@ -3486,6 +3522,49 @@ function buildFinanceInvoiceActivity(invoice = {}, auditEvents = []) {
       id: `audit-${event.id}`,
       whenRaw: event.createdAt || "",
       label: event.action || "Audit event",
+      detail: [event.detail, event.actor].filter(Boolean).join(" · "),
+    })),
+  ];
+  return events
+    .filter((event) => event.label)
+    .sort((a, b) => String(b.whenRaw || "").localeCompare(String(a.whenRaw || "")))
+    .map((event) => ({
+      ...event,
+      when: event.whenRaw ? formatDateTime(event.whenRaw) : "Time not recorded",
+    }));
+}
+
+function buildFinanceCustomerActivity(customer = {}, invoices = [], auditEvents = []) {
+  const customerInvoices = invoices.filter((invoice) => invoice.customerId === customer.id);
+  const events = [
+    ...(customer.financeChaseActivity || []).map((event, index) => ({
+      id: event.id || `customer-chase-${index}`,
+      whenRaw: event.createdAt || customer.updatedAt || "",
+      label: event.status ? `Chase status: ${event.status}` : "Finance chase updated",
+      detail: event.note || "No note recorded",
+    })),
+    ...customerInvoices.map((invoice) => ({
+      id: `customer-invoice-${invoice.id}`,
+      whenRaw: invoice.approvedAt || invoice.createdAt || invoice.invoiceDate || "",
+      label: invoice.invoiceNumber ? `Invoice ${invoice.invoiceNumber}` : "Draft invoice created",
+      detail: `${invoice.status || "Draft"} · ${formatCurrency(invoice.total || 0)}${Number(invoice.balanceDue || 0) > 0 ? ` · ${formatCurrency(invoice.balanceDue)} outstanding` : ""}`,
+    })),
+    ...customerInvoices.flatMap((invoice) => (invoice.emails || []).map((email) => ({
+      id: `customer-email-${email.id}`,
+      whenRaw: email.sentAt || invoice.sentAt || "",
+      label: email.emailKind === "payment_reminder" ? "Payment reminder sent" : "Invoice email sent",
+      detail: `${invoice.invoiceNumber || invoice.draftReference || "Invoice"} · ${email.to || "recipient not recorded"}`,
+    }))),
+    ...customerInvoices.flatMap((invoice) => (invoice.payments || []).map((payment) => ({
+      id: `customer-payment-${payment.id}`,
+      whenRaw: payment.recordedAt || payment.paidAt || "",
+      label: "Payment received",
+      detail: `${invoice.invoiceNumber || invoice.draftReference || "Invoice"} · ${formatCurrency(payment.amount)}${payment.reference ? ` · ${payment.reference}` : ""}`,
+    }))),
+    ...(auditEvents || []).filter((event) => event.customerId === customer.id).map((event) => ({
+      id: `customer-audit-${event.id}`,
+      whenRaw: event.createdAt || "",
+      label: event.action || "Finance audit event",
       detail: [event.detail, event.actor].filter(Boolean).join(" · "),
     })),
   ];

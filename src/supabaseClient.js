@@ -2123,6 +2123,7 @@ function mapFinanceCustomer(record = {}) {
     internalNotes: noteData.internalNotes || "",
     financeChaseStatus: noteData.financeChaseStatus || "Not started",
     financeChaseNotes: noteData.financeChaseNotes || "",
+    financeChaseActivity: noteData.financeChaseActivity || [],
     active: record.active !== false,
     createdAt: record.created_at || "",
     updatedAt: record.updated_at || "",
@@ -2130,7 +2131,7 @@ function mapFinanceCustomer(record = {}) {
 }
 
 function parseFinanceCustomerNotes(value = "") {
-  if (!value) return { internalNotes: "", financeChaseStatus: "Not started", financeChaseNotes: "" };
+  if (!value) return { internalNotes: "", financeChaseStatus: "Not started", financeChaseNotes: "", financeChaseActivity: [] };
   try {
     const parsed = JSON.parse(value);
     if (parsed && parsed.kind === "finance_customer_notes") {
@@ -2138,12 +2139,13 @@ function parseFinanceCustomerNotes(value = "") {
         internalNotes: parsed.internalNotes || "",
         financeChaseStatus: parsed.financeChaseStatus || "Not started",
         financeChaseNotes: parsed.financeChaseNotes || "",
+        financeChaseActivity: Array.isArray(parsed.financeChaseActivity) ? parsed.financeChaseActivity : [],
       };
     }
   } catch {
     // Plain-text customer notes existed before debtor chase fields.
   }
-  return { internalNotes: value, financeChaseStatus: "Not started", financeChaseNotes: "" };
+  return { internalNotes: value, financeChaseStatus: "Not started", financeChaseNotes: "", financeChaseActivity: [] };
 }
 
 function serialiseFinanceCustomerNotes(customer = {}) {
@@ -2152,6 +2154,7 @@ function serialiseFinanceCustomerNotes(customer = {}) {
     internalNotes: customer.internalNotes || customer.notes || "",
     financeChaseStatus: customer.financeChaseStatus || "Not started",
     financeChaseNotes: customer.financeChaseNotes || "",
+    financeChaseActivity: Array.isArray(customer.financeChaseActivity) ? customer.financeChaseActivity.slice(0, 50) : [],
   });
 }
 
