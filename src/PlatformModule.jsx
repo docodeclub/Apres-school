@@ -2389,6 +2389,7 @@ function SchoolFinance({ data, access }) {
   const dashboardFilterOptions = buildFinanceDashboardFilterOptions(invoices);
   const dashboardInvoiceRows = filterFinanceDashboardInvoices(invoices, dashboardInvoiceFilter);
   const activeDashboardFilter = dashboardFilterOptions.find((option) => option.id === dashboardInvoiceFilter) || dashboardFilterOptions[0];
+  const debtorSummary = buildFinanceDebtorSummary(invoices, customers);
   const reports = calculateSchoolFinanceReports(invoices, customers, finance.locations || []);
 
   useEffect(() => {
@@ -2690,6 +2691,34 @@ function SchoolFinance({ data, access }) {
               </TableWrap>
             </Panel>
           </div>
+          <Panel title="Debtor summary">
+            <div className="finance-toolbar">
+              <p className="muted">Outstanding balances grouped by school or organisation, with ageing buckets for quick chasing.</p>
+              <button type="button" className="button secondary" onClick={() => downloadCsv("apres-school-debtors.csv", debtorSummary.csvRows)}>Export CSV</button>
+            </div>
+            <TableWrap>
+              <table>
+                <thead><tr><th>Customer</th><th>Outstanding</th><th>Current</th><th>1-30 days</th><th>31-60 days</th><th>60+ days</th><th>Invoices</th><th></th></tr></thead>
+                <tbody>
+                  {debtorSummary.rows.map((row) => (
+                    <tr key={row.customerId || row.customerName}>
+                      <td><strong>{row.customerName}</strong><br /><span className="muted">{row.accountsEmail || "No accounts email"}</span></td>
+                      <td><strong>{formatCurrency(row.totalOutstanding)}</strong></td>
+                      <td>{formatCurrency(row.current)}</td>
+                      <td>{formatCurrency(row.days1to30)}</td>
+                      <td>{formatCurrency(row.days31to60)}</td>
+                      <td>{formatCurrency(row.days60plus)}</td>
+                      <td>{row.invoiceCount}</td>
+                      <td className="table-actions">
+                        <button type="button" className="button secondary" onClick={() => { setView("Invoices"); setQuery(row.customerName); }}>View invoices</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!debtorSummary.rows.length && <EmptyList title="No customer debt" text="There are no unpaid school or organisation invoices at the moment." />}
+            </TableWrap>
+          </Panel>
         </>
       )}
 
@@ -3234,6 +3263,56 @@ function filterFinanceDashboardInvoices(invoices = [], filter = "outstanding") {
     if (filter === "recentlyPaid") return latestPaymentTime(b) - latestPaymentTime(a);
     return String(a.dueDate || "").localeCompare(String(b.dueDate || ""));
   });
+}
+
+function buildFinanceDebtorSummary(invoices = [], customers = []) {
+  const today = new Date();
+  const rowsByCustomer = new Map();
+
+  invoices.forEach((invoice) => {
+    const balance = Number(invoice.balanceDue ?? invoice.total ?? 0);
+    if (balance <= 0 || ["Paid", "Void", "Credited"].includes(invoice.status)) return;
+
+    const customer = customers.find((item) => item.id === invoice.customerId);
+    const customerId = invoice.customerId || invoice.customerName || "unknown";
+    const row = rowsByCustomer.get(customerId) || {
+      customerId,
+      customerName: customer?.customerName || invoice.customerName || "Unknown customer",
+      accountsEmail: customer?.accountsEmail || invoice.accountsEmail || "",
+      totalOutstanding: 0,
+      current: 0,
+      days1to30: 0,
+      days31to60: 0,
+      days60plus: 0,
+      invoiceCount: 0,
+    };
+
+    const overdueDays = invoice.dueDate && isPastDue(invoice.dueDate) ? daysBetween(invoice.dueDate, today) : 0;
+    row.totalOutstanding += balance;
+    row.invoiceCount += 1;
+    if (!overdueDays) row.current += balance;
+    else if (overdueDays <= 30) row.days1to30 += balance;
+    else if (overdueDays <= 60) row.days31to60 += balance;
+    else row.days60plus += balance;
+    rowsByCustomer.set(customerId, row);
+  });
+
+  const rows = Array.from(rowsByCustomer.values()).sort((a, b) => b.totalOutstanding - a.totalOutstanding);
+  const csvRows = [
+    ["Customer", "Accounts email", "Outstanding", "Current", "1-30 days", "31-60 days", "60+ days", "Invoice count"],
+    ...rows.map((row) => [
+      row.customerName,
+      row.accountsEmail,
+      row.totalOutstanding.toFixed(2),
+      row.current.toFixed(2),
+      row.days1to30.toFixed(2),
+      row.days31to60.toFixed(2),
+      row.days60plus.toFixed(2),
+      row.invoiceCount,
+    ]),
+  ];
+
+  return { rows, csvRows };
 }
 
 function calculateSchoolFinanceKpis(invoices) {
