@@ -2108,13 +2108,14 @@ async function getCurrentUserId() {
 
 function mapFinanceCustomer(record = {}) {
   const noteData = parseFinanceCustomerNotes(record.notes);
+  const isWillingtonPrep = /willington\s+prep/i.test(record.customer_name || "");
   return {
     id: record.id,
     linkedLocationId: record.linked_location_id || "",
     locationId: record.linked_location_id || "",
     customerName: record.customer_name || "",
-    accountsContact: record.accounts_contact || "",
-    accountsEmail: record.accounts_email || "",
+    accountsContact: isWillingtonPrep ? "" : record.accounts_contact || "",
+    accountsEmail: isWillingtonPrep ? "accounts@willingtonschool.co.uk" : record.accounts_email || "",
     telephone: record.telephone || "",
     billingAddress: record.billing_address || "",
     paymentTermsDays: Number(record.payment_terms_days || 14),
@@ -2161,12 +2162,13 @@ function serialiseFinanceCustomerNotes(customer = {}) {
 function mapFinanceInvoice(record = {}) {
   const customer = Array.isArray(record.finance_customers) ? record.finance_customers[0] : record.finance_customers;
   const location = Array.isArray(record.locations) ? record.locations[0] : record.locations;
+  const isWillingtonPrep = /willington\s+prep/i.test(customer?.customer_name || "");
   return {
     id: record.id,
     customerId: record.customer_id || "",
     customerName: customer?.customer_name || "",
-    accountsContact: customer?.accounts_contact || "",
-    accountsEmail: customer?.accounts_email || "",
+    accountsContact: isWillingtonPrep ? "" : customer?.accounts_contact || "",
+    accountsEmail: isWillingtonPrep ? "accounts@willingtonschool.co.uk" : customer?.accounts_email || "",
     billingAddress: customer?.billing_address || "",
     linkedLocationId: record.linked_location_id || "",
     linkedSchool: location?.name || "",
