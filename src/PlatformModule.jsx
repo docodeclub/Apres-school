@@ -2247,6 +2247,21 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+function downloadBase64Pdf(base64 = "", filename = "invoice.pdf") {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function applyFinanceEmailTemplate(template = "", invoice = {}, customer = {}) {
   const replacements = {
     InvoiceNumber: invoice.invoiceNumber || invoice.draftReference || "",
@@ -2265,17 +2280,19 @@ function applyFinanceEmailTemplate(template = "", invoice = {}, customer = {}) {
 }
 
 function createFinanceInvoiceEmailDraft(invoice = {}, customer = {}, settings = {}) {
-  const subjectTemplate = settings?.defaultEmailSubject || "Invoice {InvoiceNumber} from Après School";
-  const bodyTemplate = settings?.defaultEmailBody || [
+  const subjectTemplate = "Invoice {InvoiceNumber} from Après School";
+  const bodyTemplate = [
     "Dear {Contact},",
     "",
-    "Please find attached invoice {InvoiceNumber}.",
+    "Please find attached invoice {InvoiceNumber} from Après School.",
     "",
-    "Payment is requested by {DueDate}.",
-    "",
-    "Please pay by BACS using the invoice number as the payment reference.",
+    "If you have any questions regarding this invoice, please don't hesitate to contact us.",
     "",
     "Kind regards,",
+    "",
+    "Luke Currie",
+    "",
+    "Managing Director",
     "",
     "Après School",
   ].join("\n");
@@ -2628,6 +2645,13 @@ function SchoolFinance({ data, access }) {
   }
 
   async function downloadInvoicePdf(invoice) {
+    const sentAttachment = (invoice.emails || [])
+      .filter((email) => email.status === "sent" && email.attachmentBase64)
+      .sort((a, b) => String(b.sentAt || "").localeCompare(String(a.sentAt || "")))[0];
+    if (sentAttachment?.attachmentBase64) {
+      downloadBase64Pdf(sentAttachment.attachmentBase64, sentAttachment.attachmentFilename || `apres-invoice-${invoice.invoiceNumber || invoice.draftReference || "invoice"}.pdf`);
+      return;
+    }
     const { exportFinanceInvoicePdf } = await import("./pdfExports.js");
     const customer = customers.find((item) => item.id === invoice.customerId) || {};
     exportFinanceInvoicePdf(invoice, customer, finance.settings || {});

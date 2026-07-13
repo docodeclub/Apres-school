@@ -96,6 +96,7 @@ serve(async (request) => {
         provider: "resend",
         emailKind: payload.emailKind,
         attachmentFilename: payload.pdfFilename || `apres-invoice-${invoice.invoice_number}.pdf`,
+        attachmentBase64: payload.pdfBase64,
         error: emailError,
       },
     });
@@ -291,15 +292,21 @@ function relatedCustomer(invoice: Record<string, unknown>) {
 
 function buildDefaultBody(invoice: Record<string, unknown>) {
   const customer = relatedCustomer(invoice);
+  const contact = customer?.accounts_contact || customer?.customer_name || "Accounts team";
   return [
-    `Dear ${customer?.customer_name || "Accounts team"},`,
+    `Dear ${contact},`,
     "",
-    `Please find attached invoice ${invoice.invoice_number}.`,
+    `Please find attached invoice ${invoice.invoice_number} from Après School.`,
     "",
-    "Payment details are included on the invoice. Please use the invoice number as the payment reference.",
+    "If you have any questions regarding this invoice, please don't hesitate to contact us.",
     "",
-    "Thank you,",
-    "Après School Finance",
+    "Kind regards,",
+    "",
+    "Luke Currie",
+    "",
+    "Managing Director",
+    "",
+    "Après School",
   ].join("\n");
 }
 

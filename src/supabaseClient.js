@@ -2248,6 +2248,7 @@ function mapFinanceEmail(record = {}) {
     sentAt: record.sent_at || "",
     providerMessageId: record.provider_message_id || "",
     attachmentFilename: metadata.attachmentFilename || "",
+    attachmentBase64: metadata.attachmentBase64 || "",
     errorMessage: metadata.error || "",
     provider: metadata.provider || "resend",
   };

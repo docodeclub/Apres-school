@@ -9,6 +9,7 @@ const MUTED = [0.36, 0.39, 0.46];
 const LINE = [0.86, 0.89, 0.98];
 const SOFT = [0.96, 0.97, 1];
 const WHITE = [1, 1, 1];
+const PALE_GREEN = [0.92, 0.98, 0.95];
 
 function clean(value) {
   return String(value ?? "")
@@ -17,12 +18,11 @@ function clean(value) {
     .replace(/[’‘]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/[–—]/g, "-")
-    .replace(/£/g, "GBP ")
-    .replace(/[^\x20-\x7E]/g, "");
+    .replace(/[^\x20-\x7E£]/g, "");
 }
 
 function escapePdf(value) {
-  return clean(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  return clean(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)").replace(/£/g, "\\243");
 }
 
 function dateStamp() {
@@ -38,7 +38,7 @@ function slug(value) {
 }
 
 function money(value) {
-  return `GBP ${Number(value || 0).toFixed(2)}`;
+  return `£${Number(value || 0).toFixed(2)}`;
 }
 
 function formatPeriod(period) {
@@ -92,8 +92,12 @@ class PdfDoc {
     return color.map((part) => Number(part).toFixed(3)).join(" ");
   }
 
-  text(value, x, y, size = 10, color = INK) {
-    this.current.push(`BT /F1 ${size} Tf ${this.rgb(color)} rg ${x.toFixed(2)} ${(PAGE.height - y).toFixed(2)} Td (${escapePdf(value)}) Tj ET`);
+  text(value, x, y, size = 10, color = INK, font = "F1") {
+    this.current.push(`BT /${font} ${size} Tf ${this.rgb(color)} rg ${x.toFixed(2)} ${(PAGE.height - y).toFixed(2)} Td (${escapePdf(value)}) Tj ET`);
+  }
+
+  textBold(value, x, y, size = 10, color = INK) {
+    this.text(value, x, y, size, color, "F2");
   }
 
   line(x1, y1, x2, y2, color = LINE, width = 1) {
@@ -109,12 +113,22 @@ class PdfDoc {
     this.current.push(commands.join(" "));
   }
 
-  wrap(value, x, y, width, size = 10, color = INK, lineHeight = size * 1.35) {
-    const maxChars = Math.max(18, Math.floor(width / (size * 0.52)));
+  measureLines(value, width, size = 10) {
+    const maxChars = Math.max(10, Math.floor(width / (size * 0.5)));
     const words = clean(value).split(/\s+/).filter(Boolean);
     const lines = [];
     let line = "";
     words.forEach((word) => {
+      if (word.length > maxChars) {
+        if (line) {
+          lines.push(line);
+          line = "";
+        }
+        for (let index = 0; index < word.length; index += maxChars) {
+          lines.push(word.slice(index, index + maxChars));
+        }
+        return;
+      }
       const next = line ? `${line} ${word}` : word;
       if (next.length > maxChars && line) {
         lines.push(line);
@@ -124,7 +138,12 @@ class PdfDoc {
       }
     });
     if (line) lines.push(line);
-    lines.forEach((lineText, index) => this.text(lineText, x, y + index * lineHeight, size, color));
+    return lines.length ? lines : [""];
+  }
+
+  wrap(value, x, y, width, size = 10, color = INK, lineHeight = size * 1.35, font = "F1") {
+    const lines = this.measureLines(value, width, size);
+    lines.forEach((lineText, index) => this.text(lineText, x, y + index * lineHeight, size, color, font));
     return y + Math.max(lines.length, 1) * lineHeight;
   }
 
@@ -145,7 +164,7 @@ class PdfDoc {
   kpi(label, value, x, y, width) {
     this.rect(x, y, width, 64, SOFT, LINE);
     this.text(label.toUpperCase(), x + 12, y + 20, 7.5, MUTED);
-    this.text(value, x + 12, y + 45, 17, BLUE);
+    this.textBold(value, x + 12, y + 45, 17, BLUE);
   }
 
   sectionTitle(title, x, y) {
@@ -182,11 +201,12 @@ class PdfDoc {
       return objects.length;
     };
     const fontId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+    const boldFontId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
     const pageIds = [];
     this.pages.forEach((page) => {
       const stream = page.join("\n");
       const contentId = addObject(`<< /Length ${encoder.encode(stream).length} >>\nstream\n${stream}\nendstream`);
-      const pageId = addObject(`<< /Type /Page /Parent 0 0 R /MediaBox [0 0 ${PAGE.width} ${PAGE.height}] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`);
+      const pageId = addObject(`<< /Type /Page /Parent 0 0 R /MediaBox [0 0 ${PAGE.width} ${PAGE.height}] /Resources << /Font << /F1 ${fontId} 0 R /F2 ${boldFontId} 0 R >> >> /Contents ${contentId} 0 R >>`);
       pageIds.push(pageId);
     });
     const pagesId = addObject(`<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>`);
@@ -1050,56 +1070,16 @@ export function exportFinanceInvoicePdf(invoice = {}, customer = {}, settings = 
   const bankAccountName = settings.bankAccountName || "Apres School Limited";
   const bankSortCode = settings.bankSortCode || "04-00-03";
   const bankAccountNumber = settings.bankAccountNumber || "21773814";
-  const companyName = settings.companyName || "APRES SCHOOL LIMITED";
-  const doc = new PdfDoc(`Invoice ${invoiceNumber}`).addPage();
-
-  doc.text("Apres School", PAGE.margin, 42, 19, BLUE);
-  doc.text("Let's Learn and Play", PAGE.margin, 59, 8, AMBER);
-  doc.text("INVOICE", 440, 42, 22, BLUE);
-  doc.text(invoiceNumber, 440, 63, 10, INK);
-  doc.line(PAGE.margin, 84, PAGE.width - PAGE.margin, 84);
-
-  let y = 112;
-  doc.text(companyName, PAGE.margin, y, 11, INK);
-  y = doc.wrap(settings.registeredAddress || "Registered address held in finance settings", PAGE.margin, y + 16, 230, 8.4, MUTED, 11);
-  if (settings.companyNumber) {
-    doc.text(`Company number: ${settings.companyNumber}`, PAGE.margin, y + 4, 8.4, MUTED);
-    y += 16;
-  }
-  if (settings.vatNumber) {
-    doc.text(`VAT number: ${settings.vatNumber}`, PAGE.margin, y + 4, 8.4, MUTED);
-  }
-
-  doc.rect(330, 108, 223, 105, SOFT, LINE);
-  const metaRows = [
-    ["Invoice date", formatDate(invoice.invoiceDate)],
-    ["Due date", formatDate(invoice.dueDate)],
-    ["Purchase order", invoice.purchaseOrder || "Not supplied"],
-    ["Service period", servicePeriodLabel(invoice)],
-  ];
-  metaRows.forEach(([label, value], index) => {
-    doc.text(label.toUpperCase(), 346, 129 + index * 22, 7.2, MUTED);
-    doc.text(value, 446, 129 + index * 22, 8.8, INK);
-  });
-
-  y = 236;
-  doc.sectionTitle("Bill To", PAGE.margin, y);
-  y += 24;
-  doc.text(customer.customerName || invoice.customerName || "Customer", PAGE.margin, y, 12, BLUE);
-  y = doc.wrap([
-    customer.accountsContact || invoice.accountsContact || "",
-    customer.accountsEmail || invoice.accountsEmail || "",
-    customer.billingAddress || invoice.billingAddress || "",
-  ].filter(Boolean).join("\n"), PAGE.margin, y + 18, 240, 8.8, MUTED, 12);
-
-  doc.sectionTitle("Invoice Summary", 330, 236);
-  doc.kpi("Subtotal", money(invoice.subtotal), 330, 260, 100);
-  doc.kpi("VAT", money(invoice.vatTotal), 442, 260, 111);
-  doc.kpi("Total", money(invoice.total), 330, 338, 100);
-  doc.kpi("Balance", money(invoice.balanceDue ?? invoice.total), 442, 338, 111);
-
-  y = Math.max(y + 26, 435);
-  doc.sectionTitle("Invoice Lines", PAGE.margin, y);
+  const companyName = settings.companyName || "Apres School Limited";
+  const financeEmail = settings.financeEmail || "hello@apres-school.co.uk";
+  const website = settings.website || "www.apres-school.co.uk";
+  const doc = new PdfDoc(`Invoice ${invoiceNumber}`);
+  const tableX = PAGE.margin;
+  const tableWidth = PAGE.width - PAGE.margin * 2;
+  const tableWidths = [246, 55, 72, 61, 77];
+  const tableBottom = 744;
+  const lineSize = 8.2;
+  const lineHeight = 10.8;
   const lineRows = lines.length ? lines.map((line) => [
     line.description || "Service",
     `${Number(line.quantity || 0).toFixed(2)} ${line.unit || ""}`.trim(),
@@ -1107,39 +1087,177 @@ export function exportFinanceInvoicePdf(invoice = {}, customer = {}, settings = 
     line.vatRate || "No VAT",
     money(line.grossTotal),
   ]) : [["No lines recorded", "", "", "", money(invoice.total)]];
-  y = doc.table(
-    ["Description", "Qty", "Unit price", "VAT", "Total"],
-    lineRows.slice(0, 8),
-    PAGE.margin,
-    y + 18,
-    [220, 70, 80, 72, 68],
-    { rowHeight: 36 },
-  );
 
-  if (lineRows.length > 8) {
-    doc.text(`+ ${lineRows.length - 8} additional line${lineRows.length - 8 === 1 ? "" : "s"} retained in the system.`, PAGE.margin, y + 16, 8.5, MUTED);
-    y += 28;
+  const addInvoiceHeader = (continued = false) => {
+    doc.addPage();
+    doc.textBold("Apres School", PAGE.margin, 40, 17, BLUE);
+    doc.text("Let's Learn and Play", PAGE.margin, 58, 8, AMBER);
+    doc.textBold("INVOICE", 430, 40, 20, BLUE);
+    doc.text(invoiceNumber, 430, 62, 9.5, INK);
+    if (continued) doc.text("Continued", 430, 77, 8, MUTED);
+    doc.line(PAGE.margin, 92, PAGE.width - PAGE.margin, 92);
+  };
+
+  const renderMetaPanel = () => {
+    doc.rect(344, 116, 209, 102, WHITE, LINE);
+    const metaRows = [
+      ["Invoice date", formatDate(invoice.invoiceDate)],
+      ["Due date", formatDate(invoice.dueDate)],
+      ["Purchase order", invoice.purchaseOrder || "Not supplied"],
+      ["Service period", servicePeriodLabel(invoice)],
+    ];
+    metaRows.forEach(([label, value], index) => {
+      const rowY = 138 + index * 22;
+      doc.text(label.toUpperCase(), 360, rowY, 7.2, MUTED);
+      doc.text(value, 456, rowY, 8.5, INK);
+    });
+  };
+
+  const renderCompanyInfo = () => {
+    let companyY = 122;
+    doc.textBold(companyName, PAGE.margin, companyY, 10.5, INK);
+    if (settings.registeredAddress) {
+      companyY = doc.wrap(settings.registeredAddress, PAGE.margin, companyY + 15, 250, 8.2, MUTED, 10.5);
+    }
+    const companyLines = [
+      settings.companyNumber ? `Company Number: ${settings.companyNumber}` : "",
+      settings.vatStatus === "registered" && settings.vatNumber ? `VAT Number: ${settings.vatNumber}` : "",
+      `Finance Email: ${financeEmail}`,
+      `Website: ${website}`,
+    ].filter(Boolean);
+    companyLines.forEach((line) => {
+      doc.text(line, PAGE.margin, companyY + 10, 8.2, MUTED);
+      companyY += 13;
+    });
+  };
+
+  const renderBillTo = () => {
+    doc.textBold("Bill To", PAGE.margin, 252, 12, BLUE);
+    doc.line(PAGE.margin, 262, 286, 262);
+    let billY = 284;
+    const addressLines = String(customer.billingAddress || invoice.billingAddress || "")
+      .split(/\n|,/)
+      .map((line) => clean(line).trim())
+      .filter(Boolean);
+    const billingLines = [
+      customer.customerName || invoice.customerName || "Customer",
+      customer.accountsContact || invoice.accountsContact || "",
+      customer.accountsEmail || invoice.accountsEmail || "",
+      ...addressLines,
+    ].filter(Boolean);
+    billingLines.forEach((line, index) => {
+      billY = doc.wrap(line, PAGE.margin, billY, 238, index === 0 ? 10 : 8.6, index === 0 ? BLUE : MUTED, index === 0 ? 13 : 11, index === 0 ? "F2" : "F1");
+      billY += index === 0 ? 4 : 1;
+    });
+  };
+
+  const renderSummary = () => {
+    doc.textBold("Summary", 344, 252, 12, BLUE);
+    doc.line(344, 262, PAGE.width - PAGE.margin, 262);
+    const summaryRows = [
+      ["Subtotal", money(invoice.subtotal)],
+      ["VAT", money(invoice.vatTotal)],
+      ["Total Due", money(invoice.total)],
+      ["Balance Outstanding", money(invoice.balanceDue ?? invoice.total)],
+    ];
+    summaryRows.forEach(([label, value], index) => {
+      const rowY = 288 + index * 24;
+      const isTotal = label === "Total Due";
+      if (isTotal) doc.rect(344, rowY - 16, 209, 28, PALE_GREEN, LINE);
+      doc.text(label, 360, rowY, isTotal ? 9 : 8.5, isTotal ? INK : MUTED);
+      doc.textBold(value, 470, rowY, isTotal ? 12 : 9.5, isTotal ? GREEN : INK);
+    });
+  };
+
+  const renderTableHeader = (y) => {
+    doc.rect(tableX, y, tableWidth, 28, SOFT, LINE);
+    let cursorX = tableX;
+    ["Description", "Qty", "Unit Price", "VAT", "Total"].forEach((header, index) => {
+      doc.textBold(header.toUpperCase(), cursorX + 8, y + 17, 7.1, MUTED);
+      cursorX += tableWidths[index];
+    });
+    return y + 28;
+  };
+
+  const rowHeightFor = (row) => {
+    const lineCounts = row.map((cell, index) => doc.measureLines(cell, tableWidths[index] - 16, lineSize).length);
+    return Math.max(38, Math.max(...lineCounts) * lineHeight + 18);
+  };
+
+  const renderTableRow = (row, y) => {
+    const rowHeight = rowHeightFor(row);
+    doc.rect(tableX, y, tableWidth, rowHeight, WHITE, LINE);
+    let cursorX = tableX;
+    row.forEach((cell, index) => {
+      doc.wrap(cell, cursorX + 8, y + 15, tableWidths[index] - 16, lineSize, index === 0 ? INK : MUTED, lineHeight);
+      cursorX += tableWidths[index];
+    });
+    return y + rowHeight;
+  };
+
+  addInvoiceHeader(false);
+  renderCompanyInfo();
+  renderMetaPanel();
+  renderBillTo();
+  renderSummary();
+
+  let y = 390;
+  doc.textBold("Invoice Lines", PAGE.margin, y, 12.5, BLUE);
+  y = renderTableHeader(y + 18);
+  lineRows.forEach((row) => {
+    const rowHeight = rowHeightFor(row);
+    if (y + rowHeight > tableBottom) {
+      addInvoiceHeader(true);
+      y = renderTableHeader(116);
+    }
+    y = renderTableRow(row, y);
+  });
+
+  const paymentPanelHeight = 182;
+  const footerText = invoice.notes || settings.defaultInvoiceFooter || "Please use the invoice number as your payment reference.";
+  if (y + paymentPanelHeight + 44 > tableBottom) {
+    addInvoiceHeader(true);
+    y = 118;
+  } else {
+    y += 24;
   }
 
-  y += 18;
-  doc.rect(PAGE.margin, y, 270, 118, [0.93, 0.96, 1], LINE);
-  doc.text("How to Pay", PAGE.margin + 16, y + 24, 14, BLUE);
-  doc.text("Payment method: BACS", PAGE.margin + 16, y + 44, 9.2, INK);
-  doc.text(`Account name: ${bankAccountName}`, PAGE.margin + 16, y + 62, 9.2, INK);
-  doc.text(`Sort code: ${bankSortCode}`, PAGE.margin + 16, y + 80, 9.2, INK);
-  doc.text(`Account number: ${bankAccountNumber}`, PAGE.margin + 16, y + 98, 9.2, INK);
+  doc.rect(PAGE.margin, y, tableWidth, paymentPanelHeight, [0.94, 0.96, 1], LINE);
+  doc.textBold("How to Pay", PAGE.margin + 18, y + 28, 14, BLUE);
+  const paymentRows = [
+    ["Payment Method", "BACS"],
+    ["Account Name", bankAccountName],
+    ["Sort Code", bankSortCode],
+    ["Account Number", bankAccountNumber],
+    ["Reference", invoiceNumber],
+  ];
+  paymentRows.forEach(([label, value], index) => {
+    const rowY = y + 56 + index * 23;
+    doc.text(label, PAGE.margin + 18, rowY, 8, MUTED);
+    doc.textBold(value, PAGE.margin + 150, rowY, index === 4 ? 11 : 9.2, index === 4 ? AMBER : INK);
+  });
+  doc.wrap("Please use the invoice number as your payment reference.", PAGE.margin + 18, y + 168, 330, 8.5, MUTED, 10.5);
+  doc.rect(PAGE.width - PAGE.margin - 170, y + 38, 150, 94, WHITE, LINE);
+  doc.text("Total Due", PAGE.width - PAGE.margin - 150, y + 66, 8.4, MUTED);
+  doc.textBold(money(invoice.total), PAGE.width - PAGE.margin - 150, y + 96, 19, BLUE);
 
-  doc.rect(330, y, 223, 118, WHITE, LINE);
-  doc.text("Payment Reference", 346, y + 24, 12, BLUE);
-  doc.wrap("Please use your invoice number as the payment reference.", 346, y + 46, 176, 9, INK, 12);
-  doc.text(invoiceNumber, 346, y + 90, 16, AMBER);
-
-  if (invoice.notes || settings.defaultInvoiceFooter) {
-    doc.wrap(invoice.notes || settings.defaultInvoiceFooter, PAGE.margin, Math.min(y + 148, 770), 500, 8.5, MUTED, 11);
+  let footerY = y + paymentPanelHeight + 28;
+  const footerLines = doc.measureLines(footerText, tableWidth, 8.4);
+  const footerHeight = footerLines.length * 11 + 28;
+  if (footerY + footerHeight > 794) {
+    addInvoiceHeader(true);
+    footerY = 118;
   }
+  doc.line(PAGE.margin, footerY, PAGE.width - PAGE.margin, footerY);
+  doc.wrap(footerText, PAGE.margin, footerY + 18, tableWidth, 8.4, MUTED, 11);
+  doc.text(`Finance contact: ${financeEmail}${settings.financeTelephone ? ` | ${settings.financeTelephone}` : ""}`, PAGE.margin, 816, 8, MUTED);
 
-  doc.line(PAGE.margin, 804, PAGE.width - PAGE.margin, 804);
-  doc.text(`Finance contact: ${settings.financeEmail || "hello@apres-school.co.uk"}${settings.financeTelephone ? ` · ${settings.financeTelephone}` : ""}`, PAGE.margin, 822, 8, MUTED);
+  doc.pages.forEach((page, index) => {
+    const previous = doc.current;
+    doc.current = page;
+    doc.text(`Page ${index + 1} of ${doc.pages.length}`, PAGE.width - PAGE.margin - 70, 816, 8, MUTED);
+    doc.current = previous;
+  });
 
   if (options.returnBytes) return doc.output();
   downloadPdf(`apres-invoice-${slug(invoiceNumber)}.pdf`, doc);
