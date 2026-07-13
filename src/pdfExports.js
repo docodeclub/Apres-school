@@ -1099,7 +1099,7 @@ export function exportFinanceInvoicePdf(invoice = {}, customer = {}, settings = 
   };
 
   const renderMetaPanel = () => {
-    doc.rect(344, 116, 209, 102, WHITE, LINE);
+    doc.rect(344, 116, 209, 124, WHITE, LINE);
     const metaRows = [
       ["Invoice date", formatDate(invoice.invoiceDate)],
       ["Due date", formatDate(invoice.dueDate)],
@@ -1107,9 +1107,9 @@ export function exportFinanceInvoicePdf(invoice = {}, customer = {}, settings = 
       ["Service period", servicePeriodLabel(invoice)],
     ];
     metaRows.forEach(([label, value], index) => {
-      const rowY = 138 + index * 22;
+      const rowY = 134 + index * 27;
       doc.text(label.toUpperCase(), 360, rowY, 7.2, MUTED);
-      doc.text(value, 456, rowY, 8.5, INK);
+      doc.wrap(value, 360, rowY + 12, 170, 8.5, INK, 10.5);
     });
   };
 
@@ -1242,14 +1242,17 @@ export function exportFinanceInvoicePdf(invoice = {}, customer = {}, settings = 
   doc.textBold(money(invoice.total), PAGE.width - PAGE.margin - 150, y + 96, 19, BLUE);
 
   let footerY = y + paymentPanelHeight + 28;
-  const footerLines = doc.measureLines(footerText, tableWidth, 8.4);
-  const footerHeight = footerLines.length * 11 + 28;
-  if (footerY + footerHeight > 794) {
-    addInvoiceHeader(true);
-    footerY = 118;
+  const standardPaymentNote = "Please use the invoice number as your payment reference.";
+  if (clean(footerText).toLowerCase() !== standardPaymentNote.toLowerCase()) {
+    const footerLines = doc.measureLines(footerText, tableWidth, 8.4);
+    const footerHeight = footerLines.length * 11 + 28;
+    if (footerY + footerHeight > 794) {
+      addInvoiceHeader(true);
+      footerY = 118;
+    }
+    doc.line(PAGE.margin, footerY, PAGE.width - PAGE.margin, footerY);
+    doc.wrap(footerText, PAGE.margin, footerY + 18, tableWidth, 8.4, MUTED, 11);
   }
-  doc.line(PAGE.margin, footerY, PAGE.width - PAGE.margin, footerY);
-  doc.wrap(footerText, PAGE.margin, footerY + 18, tableWidth, 8.4, MUTED, 11);
   doc.text(`Finance contact: ${financeEmail}${settings.financeTelephone ? ` | ${settings.financeTelephone}` : ""}`, PAGE.margin, 816, 8, MUTED);
 
   doc.pages.forEach((page, index) => {
