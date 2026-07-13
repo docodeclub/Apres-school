@@ -2248,9 +2248,11 @@ function mapFinanceEmail(record = {}) {
     emailKind: metadata.emailKind || metadata.type || "invoice",
     status: record.status || "",
     sentAt: record.sent_at || "",
+    sentBy: record.sent_by || "",
     providerMessageId: record.provider_message_id || "",
     attachmentFilename: metadata.attachmentFilename || "",
     attachmentBase64: metadata.attachmentBase64 || "",
+    attachmentBytes: metadata.attachmentBase64 ? Math.ceil((metadata.attachmentBase64.length * 3) / 4) : 0,
     errorMessage: metadata.error || "",
     provider: metadata.provider || "resend",
   };

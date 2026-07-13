@@ -3156,12 +3156,16 @@ function FinanceSelectedInvoicePanel({ invoice, customer, activity, paymentDraft
 
 function FinanceInvoiceEmailHistory({ emails = [] }) {
   const sortedEmails = [...emails].sort((a, b) => String(b.sentAt || "").localeCompare(String(a.sentAt || "")));
+  const downloadAttachment = (email) => {
+    if (!email.attachmentBase64) return;
+    downloadBase64Pdf(email.attachmentBase64, email.attachmentFilename || "invoice.pdf");
+  };
   return (
     <section className="finance-command-block">
       <div className="finance-command-block-head">
         <span>
-          <small>Email history</small>
-          <strong>What was sent</strong>
+          <small>Email activity</small>
+          <strong>Invoice send trail</strong>
         </span>
         <Badge value={`${sortedEmails.length} records`} />
       </div>
@@ -3169,7 +3173,8 @@ function FinanceInvoiceEmailHistory({ emails = [] }) {
         {sortedEmails.map((email) => {
           const isReminder = email.emailKind === "payment_reminder";
           const kindLabel = isReminder ? "Reminder" : "Invoice";
-          const providerAccepted = String(email.status || "").toLowerCase() === "sent" && Boolean(email.providerMessageId);
+          const status = String(email.status || "").toLowerCase();
+          const providerAccepted = status === "sent" && Boolean(email.providerMessageId);
           const statusText = providerAccepted
             ? "Resend accepted"
             : email.status === "failed"
@@ -3177,22 +3182,36 @@ function FinanceInvoiceEmailHistory({ emails = [] }) {
               : email.status === "queued_without_provider"
                 ? "Queued, provider missing"
                 : email.status || "Recorded";
+          const hasAttachment = Boolean(email.attachmentBase64);
+          const attachmentDetail = hasAttachment
+            ? `${email.attachmentFilename || "Invoice PDF"}${email.attachmentBytes ? ` · ${formatBytes(email.attachmentBytes)}` : ""}`
+            : email.attachmentFilename || "No stored attachment";
           return (
-            <article key={email.id}>
+            <article key={email.id} className={`finance-email-history-card ${status || "recorded"}`}>
               <div className="finance-email-history-head">
                 <span>
                   <strong>{email.subject || "No subject recorded"}</strong>
-                  <small>{kindLabel} · {formatDateTime(email.sentAt)} · {statusText}</small>
+                  <small>{kindLabel} · {email.sentAt ? formatDateTime(email.sentAt) : "Time not recorded"}</small>
                 </span>
-                <Badge value={kindLabel} />
+                <span className={`finance-email-status ${providerAccepted ? "sent" : status || "recorded"}`}>{statusText}</span>
+              </div>
+              <div className="finance-email-recipient-strip">
+                <span><strong>To</strong>{email.to || "Not recorded"}</span>
+                <span><strong>CC</strong>{email.cc || "None"}</span>
+                <span><strong>BCC</strong>{email.bcc || "None"}</span>
               </div>
               <dl>
-                <div><dt>To</dt><dd>{email.to || "Not recorded"}</dd></div>
-                {email.cc && <div><dt>CC</dt><dd>{email.cc}</dd></div>}
-                {email.bcc && <div><dt>BCC</dt><dd>{email.bcc}</dd></div>}
-                <div><dt>Attachment</dt><dd>{email.attachmentFilename || "Invoice PDF"}</dd></div>
+                <div><dt>Attachment</dt><dd>{attachmentDetail}</dd></div>
+                <div><dt>Provider</dt><dd>{email.provider || "Not recorded"}</dd></div>
                 <div><dt>Provider ID</dt><dd>{email.providerMessageId || "Not returned"}</dd></div>
+                <div><dt>Sent by</dt><dd>{email.sentBy || "Not recorded"}</dd></div>
               </dl>
+              <div className="finance-email-history-actions">
+                <button type="button" className="button secondary" disabled={!hasAttachment} onClick={() => downloadAttachment(email)}>
+                  Download attached PDF
+                </button>
+                {!hasAttachment && <small>Older/manual records may not have a stored PDF attachment.</small>}
+              </div>
               <details>
                 <summary>View message body</summary>
                 <pre>{email.body || "No message body recorded."}</pre>
@@ -13268,6 +13287,14 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatBytes(value = 0) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function generateTemporaryPassword() {
