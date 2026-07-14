@@ -22386,9 +22386,53 @@ th {
   text-align: left;
 }
 
+.lab-child-checkbox {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: min(240px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--royal-dark);
+  padding: 12px 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.lab-child-checkbox input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: #2f7d4b;
+}
+
+.lab-child-checkbox span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lab-child-checkbox strong,
+.lab-child-checkbox small {
+  overflow-wrap: anywhere;
+}
+
 .lab-child-chips small {
   color: inherit;
   opacity: 0.82;
+}
+
+.lab-empty-child-state {
+  width: 100%;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: #fbfcff;
+  color: var(--muted);
+  padding: 12px 14px;
+  font-weight: 900;
 }
 
 .lab-guest-child {
@@ -31695,20 +31739,24 @@ th {
 }
 
 .booking-launch-page .lab-child-chips button,
+.booking-launch-page .lab-child-checkbox,
 .booking-launch-page .lab-addons button {
   min-width: 0;
   border-radius: 10px;
   padding: 9px 10px;
 }
 
-.booking-launch-page .lab-child-chips button.active {
+.booking-launch-page .lab-child-chips button.active,
+.booking-launch-page .lab-child-checkbox.active {
   border-color: rgba(47, 125, 75, 0.42);
   background: #f1fbf6;
   color: #163d26;
 }
 
 .booking-launch-page .lab-child-chips button.active strong,
-.booking-launch-page .lab-child-chips button.active small {
+.booking-launch-page .lab-child-chips button.active small,
+.booking-launch-page .lab-child-checkbox.active strong,
+.booking-launch-page .lab-child-checkbox.active small {
   color: #163d26;
   opacity: 1;
 }
@@ -34075,11 +34123,17 @@ th {
     padding: 8px 76px 8px 9px;
   }
 
+  .booking-launch-page .lab-child-checkbox {
+    min-height: 48px;
+    padding: 8px 9px;
+  }
+
   .booking-launch-page .lab-child-chips button strong {
     font-size: 0.92rem;
   }
 
-  .booking-launch-page .lab-child-chips button small {
+  .booking-launch-page .lab-child-chips button small,
+  .booking-launch-page .lab-child-checkbox small {
     font-size: 0.72rem;
   }
 
@@ -34911,7 +34965,14 @@ th {
   padding-right: 12px;
 }
 
-.booking-launch-page.launch-step-checkout .lab-child-chips button.active {
+.booking-launch-page.launch-step-checkout .lab-child-checkbox {
+  min-height: 58px;
+  border-color: rgba(37, 48, 79, 0.1);
+  background: #fbfcff;
+}
+
+.booking-launch-page.launch-step-checkout .lab-child-chips button.active,
+.booking-launch-page.launch-step-checkout .lab-child-checkbox.active {
   border-color: rgba(47, 125, 75, 0.38);
   background: #f1fbf6 !important;
   color: #163d26 !important;
@@ -34922,7 +34983,9 @@ th {
 .booking-launch-page.launch-step-checkout .lab-child-chips button.active small,
 .booking-launch-page.launch-step-checkout .lab-child-chips button.active span,
 .booking-launch-page.launch-step-checkout .lab-child-chips button.active em,
-.booking-launch-page.launch-step-checkout .lab-child-chips button.active * {
+.booking-launch-page.launch-step-checkout .lab-child-chips button.active *,
+.booking-launch-page.launch-step-checkout .lab-child-checkbox.active strong,
+.booking-launch-page.launch-step-checkout .lab-child-checkbox.active small {
   color: #163d26 !important;
   opacity: 1;
 }

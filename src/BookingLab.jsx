@@ -1353,11 +1353,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ];
   const [registerDay, setRegisterDay] = useState(activeSessionDays[0]);
   const matchedSelectedChildren = allChildProfiles.filter((child) => selectedChildIds.includes(child.id));
-  const selectedChildren = [
-    ...(matchedSelectedChildren.length ? matchedSelectedChildren : allChildProfiles.slice(0, 1)),
-    ...guestChildren,
-  ];
-  const childCount = Math.max(1, selectedChildren.length);
+  const selectableChildProfiles = isLaunchMode ? launchRegisteredChildren : allChildProfiles;
+  const selectedChildren = [...matchedSelectedChildren, ...guestChildren];
+  const childCount = selectedChildren.length;
   const launchSelectedSessionChips = pickedDayRows.slice(0, 4).map((row) => ({
     day: row.day,
     label: row.day.split(",")[0],
@@ -6365,8 +6363,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
 
   function toggleChild(childId) {
     setSelectedChildIds((current) => {
-      const next = current.includes(childId) ? current.filter((id) => id !== childId) : [...current, childId];
-      return next.length ? next : current;
+      return current.includes(childId) ? current.filter((id) => id !== childId) : [...current, childId];
     });
   }
 
@@ -6989,6 +6986,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }
 
   function moveCheckoutStep(direction) {
+    if (direction > 0 && checkoutStep === "Children" && !selectedChildren.length) {
+      setStatus(isLaunchMode ? "Choose at least one registered child before continuing." : "Choose or add at least one child before continuing.");
+      return;
+    }
     const nextIndex = Math.max(0, Math.min(checkoutSteps.length - 1, checkoutStepIndex + direction));
     setCheckoutStep(checkoutSteps[nextIndex]);
   }
@@ -13249,6 +13250,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     }
     if (!pickedDays.length) {
       setStatus("Choose at least one session before checkout.");
+      return;
+    }
+    if (!selectedChildren.length) {
+      setStatus(isLaunchMode ? "Choose at least one registered child before continuing." : "Choose or add at least one child before continuing.");
+      setCheckoutStep("Children");
+      window.setTimeout(() => scrollToFlowSection(".lab-checkout", "start"), 60);
       return;
     }
     if (rulesBlocked) {
@@ -20556,20 +20563,28 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               <div className="lab-child-picker">
               <div>
                 <span>Children</span>
-                <strong>{childCount} selected</strong>
+                <strong>{childCount ? `${childCount} selected` : "Choose child"}</strong>
               </div>
               <div className="lab-child-chips">
-                {allChildProfiles.map((child) => (
-                  <button className={selectedChildIds.includes(child.id) ? "active" : ""} key={child.id} type="button" onClick={() => toggleChild(child.id)}>
-                    <strong>{child.name}</strong>
-                    <small>{child.year} · {child.school}</small>
-                  </button>
+                {selectableChildProfiles.map((child) => (
+                  <label className={`lab-child-checkbox ${selectedChildIds.includes(child.id) ? "active" : ""}`} key={child.id}>
+                    <input
+                      checked={selectedChildIds.includes(child.id)}
+                      onChange={() => toggleChild(child.id)}
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>{child.name}</strong>
+                      <small>{child.year} · {child.school}</small>
+                    </span>
+                  </label>
                 ))}
+                {!selectableChildProfiles.length && <div className="lab-empty-child-state">Add a child profile before booking.</div>}
               </div>
-              <div className="lab-guest-child">
+              {!isLaunchMode && <div className="lab-guest-child">
                 <input value={guestName} onChange={(event) => setGuestName(event.target.value)} placeholder="Add another child" />
                 <button className="button light" type="button" onClick={addGuestChild}>Add</button>
-              </div>
+              </div>}
               <div className="lab-child-flags">
                 {selectedChildren.flatMap((child) => child.flags.map((flag) => `${child.name}: ${flag}`)).map((flag) => <span key={flag}>{flag}</span>)}
                 {!selectedChildren.some((child) => child.flags.length) && <span>No child flags selected</span>}
