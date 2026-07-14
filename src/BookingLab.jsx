@@ -58,9 +58,11 @@ import {
   getParentAuthSession,
   inviteParentAccountHolder,
   manageParentAccountAccess,
+  confirmParentPasswordReset as confirmParentPasswordResetCode,
   registerParentAccount,
   removeParentAccountHolder,
   removeParentBookingItems,
+  requestParentPasswordReset as requestParentPasswordResetCode,
   signInParentAccount as signInRealParentAccount,
   signOutParentAccount as signOutRealParentAccount,
   updateLivePaymentAdminAction,
@@ -351,6 +353,19 @@ function isValidEmailAddress(value) {
 
 function normaliseEmailAddress(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function parentPasswordPolicyError(password) {
+  if (
+    String(password || "").length < 6 ||
+    !/[a-z]/.test(password) ||
+    !/[A-Z]/.test(password) ||
+    !/[0-9]/.test(password) ||
+    !/[^a-zA-Z0-9]/.test(password)
+  ) {
+    return "Password must include upper case, lower case, a number and a special character.";
+  }
+  return "";
 }
 
 function compactPhoneNumber(value) {
@@ -958,6 +973,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [linkedAccountInviteName, setLinkedAccountInviteName] = useState("");
   const [linkedAccountInviteBusy, setLinkedAccountInviteBusy] = useState(false);
   const [parentLogin, setParentLogin] = useState({ username: "", password: "" });
+  const [parentPasswordReset, setParentPasswordReset] = useState({
+    open: false,
+    step: "request",
+    email: "",
+    code: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [parentPasswordResetBusy, setParentPasswordResetBusy] = useState(false);
   const [parentAccessMode, setParentAccessMode] = useState("signin");
   const [parentRegistration, setParentRegistration] = useState(() => readJson("apres-parent-registration-draft", defaultParentRegistration));
   const [childRegistration, setChildRegistration] = useState(() => (isLaunchMode ? defaultChildRegistration : readJson("apres-child-registration-draft", defaultChildRegistration)));
@@ -7286,6 +7310,124 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setStatus(isLaunchMode ? "Sign in with the parent email and password, or create a new account first." : "Use the parent email and password to manage bookings.");
   }
 
+  function openParentPasswordReset() {
+    const email = normaliseEmailAddress(parentLogin.username || parentRegistration.email || activeFamily.email || "");
+    setParentAccessMode("signin");
+    setParentPasswordReset({
+      open: true,
+      step: "request",
+      email,
+      code: "",
+      password: "",
+      confirmPassword: "",
+    });
+    setStatus("");
+  }
+
+  function closeParentPasswordReset() {
+    setParentPasswordReset((current) => ({
+      ...current,
+      open: false,
+      code: "",
+      password: "",
+      confirmPassword: "",
+    }));
+  }
+
+  function updateParentPasswordReset(field, value) {
+    setParentPasswordReset((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function requestParentPasswordReset(event) {
+    event.preventDefault();
+    if (parentPasswordResetBusy) return;
+    const email = normaliseEmailAddress(parentPasswordReset.email || parentLogin.username);
+    if (!isValidEmailAddress(email)) {
+      setStatus("Enter the email address used for the parent account.");
+      return;
+    }
+    setParentPasswordResetBusy(true);
+    try {
+      await requestParentPasswordResetCode({
+        email,
+        loginUrl: `${window.location.origin}/launch-booking`,
+      });
+      setParentPasswordReset((current) => ({
+        ...current,
+        email,
+        step: "confirm",
+        code: "",
+        password: "",
+        confirmPassword: "",
+      }));
+      setStatus("If a parent account exists for that email, a reset code has been sent.");
+    } catch (error) {
+      setStatus(`Password reset failed: ${error instanceof Error ? error.message : "Please try again."}`);
+    } finally {
+      setParentPasswordResetBusy(false);
+    }
+  }
+
+  async function confirmParentPasswordReset(event) {
+    event.preventDefault();
+    if (parentPasswordResetBusy) return;
+    const email = normaliseEmailAddress(parentPasswordReset.email || parentLogin.username);
+    const code = String(parentPasswordReset.code || "").replace(/\s/g, "");
+    const password = parentPasswordReset.password;
+    const confirmPassword = parentPasswordReset.confirmPassword;
+    if (!isValidEmailAddress(email)) {
+      setStatus("Enter the email address used for the parent account.");
+      return;
+    }
+    if (!/^\d{6}$/.test(code)) {
+      setStatus("Enter the 6 digit passcode from the email.");
+      return;
+    }
+    const passwordError = parentPasswordPolicyError(password);
+    if (passwordError || password !== confirmPassword) {
+      setStatus(passwordError || "New passwords must match.");
+      return;
+    }
+    setParentPasswordResetBusy(true);
+    try {
+      await confirmParentPasswordResetCode({ email, code, password });
+      setParentLogin({ username: email, password });
+      setParentPasswordReset((current) => ({
+        ...current,
+        open: false,
+        code: "",
+        password: "",
+        confirmPassword: "",
+      }));
+      if (realBookingServiceReady) {
+        try {
+          await signInRealParentAccount({ email, password });
+          const parentAccount = await fetchParentAccount();
+          if (parentAccount) {
+            setParentAccountSignedIn(true);
+            setParentAccountMode("live");
+            localStorage.setItem("apres-parent-account-signed-in", "true");
+            localStorage.setItem("apres-parent-account-mode", JSON.stringify("live"));
+            setStatus("Password updated. You are signed in to the parent portal.");
+            await refreshLiveParentLedger({ quiet: true });
+            window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 80);
+            return;
+          }
+        } catch (signInError) {
+          console.error(signInError);
+        }
+      }
+      setStatus("Password updated. Sign in with your new password.");
+    } catch (error) {
+      setStatus(`Password reset failed: ${error instanceof Error ? error.message : "Please try again."}`);
+    } finally {
+      setParentPasswordResetBusy(false);
+    }
+  }
+
   function openDemoParentAccount() {
     if (isLaunchMode || parentAccountLoading) return;
     setParentLogin({ username: parentDemoUsername, password: parentDemoPassword });
@@ -13343,6 +13485,74 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     emergencyLastName: childRequiredError("emergencyLastName"),
   };
 
+  function renderParentPasswordResetPanel() {
+    if (!parentPasswordReset.open) return null;
+    const isConfirmStep = parentPasswordReset.step === "confirm";
+    return (
+      <section className="lab-parent-reset-panel" aria-label="Reset parent password">
+        <div>
+          <p className="eyebrow">Password help</p>
+          <h3>{isConfirmStep ? "Enter your passcode." : "Reset your password."}</h3>
+          <p>{isConfirmStep ? "Use the six digit code from your email, then choose a new password." : "We will send a six digit passcode to the parent account email."}</p>
+        </div>
+        <form onSubmit={isConfirmStep ? confirmParentPasswordReset : requestParentPasswordReset}>
+          <label>
+            Parent email
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              value={parentPasswordReset.email}
+              onChange={(event) => updateParentPasswordReset("email", event.target.value)}
+              placeholder="parent@example.com"
+            />
+          </label>
+          {isConfirmStep && (
+            <>
+              <label>
+                Passcode
+                <input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={parentPasswordReset.code}
+                  onChange={(event) => updateParentPasswordReset("code", event.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="123456"
+                />
+              </label>
+              <label>
+                New password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={parentPasswordReset.password}
+                  onChange={(event) => updateParentPasswordReset("password", event.target.value)}
+                  placeholder="New password"
+                />
+              </label>
+              <label>
+                Confirm new password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={parentPasswordReset.confirmPassword}
+                  onChange={(event) => updateParentPasswordReset("confirmPassword", event.target.value)}
+                  placeholder="Confirm password"
+                />
+              </label>
+              <small className="lab-field-hint full">Use upper and lower case letters, a number and a special character.</small>
+            </>
+          )}
+          <div className="lab-parent-reset-actions">
+            <button type="submit" disabled={parentPasswordResetBusy}>{parentPasswordResetBusy ? "Please wait..." : isConfirmStep ? "Set new password" : "Send passcode"}</button>
+            {isConfirmStep && <button type="button" disabled={parentPasswordResetBusy} onClick={requestParentPasswordReset}>Send another code</button>}
+            <button type="button" disabled={parentPasswordResetBusy} onClick={closeParentPasswordReset}>Cancel</button>
+          </div>
+        </form>
+      </section>
+    );
+  }
+
   return (
     <section className={`page-shell booking-lab-page lab-view-${labView.toLowerCase().replace(/[^a-z0-9]+/g, "-")} ${isLaunchMode ? `booking-launch-page launch-step-${launchFlowStep.toLowerCase()}` : ""} ${isLaunchMode && !launchGateReady ? "launch-gated" : ""} ${isLaunchMode && confirmation ? "launch-confirmed" : ""} ${isLaunchMode && confirmation && launchParentPortalOpen ? "launch-parent-portal-open" : ""}`}>
       <div className="section-heading narrow">
@@ -18607,14 +18817,18 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     <button className={parentAccessMode === "create" ? "active" : ""} type="button" onClick={() => setParentAccessMode("create")}>Create account</button>
                   </div>
                   {parentAccessMode === "signin" ? (
-                    <form className="lab-launch-signin-form" onSubmit={signInParentAccount}>
-                      <label>Email<input type="email" inputMode="email" autoComplete="email" value={parentLogin.username} onChange={(event) => setParentLogin((current) => ({ ...current, username: event.target.value }))} placeholder="parent@example.com" /></label>
-                      <label>Password<input type="password" value={parentLogin.password} onChange={(event) => setParentLogin((current) => ({ ...current, password: event.target.value }))} placeholder="Password" /></label>
-                      <div className="lab-launch-form-actions">
-                        <button type="submit" disabled={parentAccountLoading}>{parentAccountLoading ? "Signing in..." : "Continue"}</button>
-                        <button type="button" onClick={() => setParentAccessMode("create")}>New parent?</button>
-                      </div>
-                    </form>
+                    <>
+                      <form className="lab-launch-signin-form" onSubmit={signInParentAccount}>
+                        <label>Email<input type="email" inputMode="email" autoComplete="email" value={parentLogin.username} onChange={(event) => setParentLogin((current) => ({ ...current, username: event.target.value }))} placeholder="parent@example.com" /></label>
+                        <label>Password<input type="password" autoComplete="current-password" value={parentLogin.password} onChange={(event) => setParentLogin((current) => ({ ...current, password: event.target.value }))} placeholder="Password" /></label>
+                        <div className="lab-launch-form-actions">
+                          <button type="submit" disabled={parentAccountLoading}>{parentAccountLoading ? "Signing in..." : "Continue"}</button>
+                          <button type="button" onClick={() => setParentAccessMode("create")}>New parent?</button>
+                          <button type="button" className="lab-link-button" onClick={openParentPasswordReset}>Forgot password?</button>
+                        </div>
+                      </form>
+                      {renderParentPasswordResetPanel()}
+                    </>
                   ) : (
                     <form className="lab-launch-registration-form" onSubmit={registerLaunchParent}>
                       {parentMissingFields.length > 0 && (
@@ -19035,42 +19249,46 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </div>
             </div>
             {!parentAccountSignedIn && (
-              <form className="lab-parent-login-panel" onSubmit={signInParentAccount}>
-                <div>
-                  <p className="eyebrow">Secure sign in</p>
-                  <h3>{realBookingServiceReady ? "Manage your family account" : "Preview the parent account"}</h3>
-                  <p>{realBookingServiceReady ? "Use the parent's account to view live bookings, cancel future sessions and use account credit." : "Parents use their own username and password before they can view bookings, cancel future sessions or use account credit."}</p>
-                  <div className="lab-parent-login-preview" aria-label="Parent account preview">
-                    <article>
-                      <span>Bookings</span>
-                      <strong>Booked days</strong>
-                      <small>Dates, sessions and cancellation options.</small>
-                    </article>
-                    <article>
-                      <span>Invoices</span>
-                      <strong>Payments</strong>
-                      <small>Paid, unpaid, card, voucher and TFC status.</small>
-                    </article>
-                    <article>
-                      <span>Credit</span>
-                      <strong>Balance</strong>
-                      <small>Credit from cancelled future sessions.</small>
-                    </article>
+              <>
+                <form className="lab-parent-login-panel" onSubmit={signInParentAccount}>
+                  <div>
+                    <p className="eyebrow">Secure sign in</p>
+                    <h3>{realBookingServiceReady ? "Manage your family account" : "Preview the parent account"}</h3>
+                    <p>{realBookingServiceReady ? "Use the parent's account to view live bookings, cancel future sessions and use account credit." : "Parents use their own username and password before they can view bookings, cancel future sessions or use account credit."}</p>
+                    <div className="lab-parent-login-preview" aria-label="Parent account preview">
+                      <article>
+                        <span>Bookings</span>
+                        <strong>Booked days</strong>
+                        <small>Dates, sessions and cancellation options.</small>
+                      </article>
+                      <article>
+                        <span>Invoices</span>
+                        <strong>Payments</strong>
+                        <small>Paid, unpaid, card, voucher and TFC status.</small>
+                      </article>
+                      <article>
+                        <span>Credit</span>
+                        <strong>Balance</strong>
+                        <small>Credit from cancelled future sessions.</small>
+                      </article>
+                    </div>
                   </div>
-                </div>
-                <label>
-                  Username or email
-                  <input value={parentLogin.username} onChange={(event) => setParentLogin((current) => ({ ...current, username: event.target.value }))} placeholder={parentDemoUsername} />
-                </label>
-                <label>
-                  Password
-                  <input type="password" value={parentLogin.password} onChange={(event) => setParentLogin((current) => ({ ...current, password: event.target.value }))} placeholder="Password" />
-                </label>
-	                <div>
-	                  <button type="submit" disabled={parentAccountLoading}>{parentAccountLoading ? "Signing in..." : "Sign in"}</button>
-	                  {!isLaunchMode && <button type="button" disabled={parentAccountLoading} onClick={openDemoParentAccount}>Preview account</button>}
-	                </div>
-              </form>
+                  <label>
+                    Username or email
+                    <input value={parentLogin.username} onChange={(event) => setParentLogin((current) => ({ ...current, username: event.target.value }))} placeholder={parentDemoUsername} />
+                  </label>
+                  <label>
+                    Password
+                    <input type="password" autoComplete="current-password" value={parentLogin.password} onChange={(event) => setParentLogin((current) => ({ ...current, password: event.target.value }))} placeholder="Password" />
+                  </label>
+                  <div>
+                    <button type="submit" disabled={parentAccountLoading}>{parentAccountLoading ? "Signing in..." : "Sign in"}</button>
+                    {!isLaunchMode && <button type="button" disabled={parentAccountLoading} onClick={openDemoParentAccount}>Preview account</button>}
+                    <button type="button" className="lab-link-button" disabled={parentAccountLoading} onClick={openParentPasswordReset}>Forgot password?</button>
+                  </div>
+                </form>
+                {renderParentPasswordResetPanel()}
+              </>
             )}
             {parentAccountSignedIn && <>
             <div className="lab-parent-portal-cards">

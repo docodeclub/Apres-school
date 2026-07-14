@@ -71,6 +71,38 @@ export async function registerParentAccount(payload = {}) {
   return data;
 }
 
+export async function requestParentPasswordReset(payload = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.functions.invoke("parent-password-reset", {
+    body: {
+      ...payload,
+      action: "request-code",
+    },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Password reset request failed.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+export async function confirmParentPasswordReset(payload = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.functions.invoke("parent-password-reset", {
+    body: {
+      ...payload,
+      action: "confirm-code",
+    },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Password reset failed.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
 export async function inviteParentAccountHolder({ parentAccountId, email, fullName } = {}) {
   assertSupabase();
   const normalizedEmail = String(email || "").trim().toLowerCase();

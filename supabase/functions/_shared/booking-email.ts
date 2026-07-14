@@ -201,6 +201,10 @@ function lineToEmailHtml(line: string, index: number, actionUrl: string) {
   if (index === 0 && /^Hi\b/i.test(line)) {
     return `<p style="margin:0 0 18px;font-size:18px;line-height:1.45;color:${brandNavy};font-weight:800;">${escaped}</p>`;
   }
+  if (/^Passcode:/i.test(line)) {
+    const code = line.split(":").slice(1).join(":").trim();
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 18px;background:#f7f9ff;border:1px solid #dbe5ff;border-radius:18px;"><tr><td align="center" style="padding:18px 14px;"><p style="margin:0 0 8px;font-size:12px;line-height:1.35;letter-spacing:1px;text-transform:uppercase;color:${brandBlue};font-weight:900;">Passcode</p><p style="margin:0;font-size:34px;line-height:1.1;letter-spacing:6px;color:${brandNavy};font-weight:900;">${escapeHtml(code)}</p></td></tr></table>`;
+  }
   if (/^Reference:|^Total:|^Due today:|^Sessions:|^Invoice:|^Receipt:|^Amount paid:|^Amount protected:|^Additional amount:|^Removed value:|^Outstanding balance:|^Reason:/i.test(line)) {
     const [label, ...rest] = line.split(":");
     return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 8px;background:#f7f9ff;border:1px solid #e3ebff;border-radius:14px;"><tr><td style="padding:12px 14px;"><p style="margin:0;font-size:15px;line-height:1.45;color:${brandNavy};"><strong style="color:${brandBlue};">${escapeHtml(label)}:</strong>${escapeHtml(rest.join(":"))}</p></td></tr></table>`;
