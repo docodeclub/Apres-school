@@ -71,6 +71,49 @@ export async function registerParentAccount(payload = {}) {
   return data;
 }
 
+export async function inviteParentAccountHolder({ parentAccountId, email, fullName } = {}) {
+  assertSupabase();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!parentAccountId) throw new Error("Parent account is required.");
+  if (!normalizedEmail) throw new Error("Second account holder email is required.");
+
+  const loginUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/launch-booking`
+    : undefined;
+  const { data, error } = await supabase.functions.invoke("manage-parent-account", {
+    body: {
+      action: "invite-holder",
+      parentAccountId,
+      email: normalizedEmail,
+      fullName: fullName || "",
+      loginUrl,
+    },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Second account holder invite failed.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data?.holder || data;
+}
+
+export async function removeParentAccountHolder(holderId) {
+  assertSupabase();
+  if (!holderId) throw new Error("Second account holder is required.");
+  const { data, error } = await supabase.functions.invoke("manage-parent-account", {
+    body: {
+      action: "remove-holder",
+      holderId,
+    },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Second account holder removal failed.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data?.holder || data;
+}
+
 export async function fetchBookableSessions({ from = new Date(), limit = 120 } = {}) {
   assertSupabase();
   const fromIso = from instanceof Date ? from.toISOString() : new Date(from).toISOString();
@@ -119,37 +162,88 @@ export async function fetchBookableSessions({ from = new Date(), limit = 120 } =
 export async function fetchParentAccount() {
   assertSupabase();
   const user = await currentUser();
-  const { data, error } = await supabase
-    .from("parent_accounts")
-    .select(`
+  const missingLinkedHolderTableCodes = ["42P01", "42703", "PGRST200", "PGRST205"];
+  const parentAccountBaseSelect = `
+    id,
+    profile_id,
+    full_name,
+    email,
+    phone,
+    billing_address,
+    emergency_contact,
+    child_profiles(
       id,
-      profile_id,
       full_name,
+      preferred_name,
+      date_of_birth,
+      school_name,
+      year_group,
+      medical_notes,
+      allergy_notes,
+      dietary_notes,
+      authorised_collectors,
+      consents,
+      flags,
+      active
+    )
+  `;
+  const parentAccountSelect = `
+    ${parentAccountBaseSelect},
+    parent_account_holders(
+      id,
       email,
-      phone,
-      billing_address,
-      emergency_contact,
-      child_profiles(
-        id,
-        full_name,
-        preferred_name,
-        date_of_birth,
-        school_name,
-        year_group,
-        medical_notes,
-        allergy_notes,
-        dietary_notes,
-        authorised_collectors,
-        consents,
-        flags,
-        active
-      )
-    `)
+      full_name,
+      role,
+      status,
+      invited_at,
+      accepted_at,
+      permissions
+    )
+  `;
+  let { data, error } = await supabase
+    .from("parent_accounts")
+    .select(parentAccountSelect)
     .or(`profile_id.eq.${user.id},email.eq.${user.email}`)
     .maybeSingle();
 
+  if (error && missingLinkedHolderTableCodes.includes(error.code)) {
+    const fallback = await supabase
+      .from("parent_accounts")
+      .select(parentAccountBaseSelect)
+      .or(`profile_id.eq.${user.id},email.eq.${user.email}`)
+      .maybeSingle();
+    data = fallback.data;
+    error = fallback.error;
+  }
+
   if (error) throw error;
-  return data ? mapParentAccount(data) : null;
+  if (data) return mapParentAccount({ ...data, account_holder_role: "primary" });
+
+  const { data: holder, error: holderError } = await supabase
+    .from("parent_account_holders")
+    .select(`
+      id,
+      role,
+      status,
+      parent_accounts(${parentAccountBaseSelect})
+    `)
+    .or(`profile_id.eq.${user.id},email.eq.${user.email}`)
+    .neq("status", "removed")
+    .limit(1)
+    .maybeSingle();
+
+  if (holderError) {
+    if (missingLinkedHolderTableCodes.includes(holderError.code)) return null;
+    throw holderError;
+  }
+
+  return holder?.parent_accounts
+    ? mapParentAccount({
+      ...holder.parent_accounts,
+      account_holder_role: holder.role || "secondary",
+      account_holder_status: holder.status || "active",
+    })
+    : null;
 }
 
 export async function fetchParentBookingLedger({ limit = 80 } = {}) {
@@ -569,11 +663,23 @@ function mapParentAccount(row) {
   return {
     id: row.id,
     profileId: row.profile_id,
+    accountHolderRole: row.account_holder_role || "primary",
+    accountHolderStatus: row.account_holder_status || "active",
     fullName: row.full_name,
     email: row.email,
     phone: row.phone,
     billingAddress: row.billing_address || {},
     emergencyContact: row.emergency_contact || {},
+    linkedAccountHolders: (row.parent_account_holders || []).map((holder) => ({
+      id: holder.id,
+      email: holder.email,
+      fullName: holder.full_name,
+      role: holder.role || "secondary",
+      status: holder.status || "invited",
+      invitedAt: holder.invited_at,
+      acceptedAt: holder.accepted_at,
+      permissions: holder.permissions || {},
+    })),
     children: (row.child_profiles || []).map(mapChildProfile),
   };
 }

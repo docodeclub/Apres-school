@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { paragraphsToHtml, sendBookingEmail } from "../_shared/booking-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,14 +14,6 @@ const serviceRoleKey =
   Deno.env.get("APRES_SERVICE_ROLE_KEY") ??
   "";
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
-const resendFrom =
-  Deno.env.get("APRES_PARENT_EMAIL_FROM") ??
-  Deno.env.get("RESEND_FROM") ??
-  "Après School <hello@apres-school.co.uk>";
-const resendReplyTo =
-  Deno.env.get("APRES_REPLY_TO") ??
-  Deno.env.get("RESEND_REPLY_TO") ??
-  "hello@apres-school.co.uk";
 const defaultLoginUrl = Deno.env.get("PARENT_PORTAL_URL") ?? "https://www.apres-school.co.uk/launch-booking";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
@@ -40,6 +33,7 @@ serve(async (request) => {
     const validationError = validatePayload(payload);
     if (validationError) return json({ error: validationError }, 400);
 
+    const linkedInvite = await findLinkedAccountInvite(payload.email);
     const existing = await findAuthUserByEmail(payload.email);
     if (existing) {
       return json({ error: "A parent account already exists for this email. Please sign in." }, 409);
@@ -47,45 +41,37 @@ serve(async (request) => {
 
     const user = await createUser(payload);
     await upsertParentProfile(user.id, payload);
-    const parentAccount = await upsertParentAccount(user.id, payload);
+    if (linkedInvite) {
+      const holder = await activateLinkedAccountInvite(linkedInvite, user.id, payload);
+      const emailResult = await sendLinkedAccountWelcomeEmail(payload, linkedInvite, holder);
 
-    let emailed = false;
-    let emailError = "";
-    if (resendApiKey) {
-      try {
-        const providerMessageId = await sendWelcomeEmail(payload);
-        emailed = true;
-        await logEmail({
-          recipientEmail: payload.email,
-          recipientName: payload.fullName,
-          emailType: "parent_registration",
-          subject: "Your Après School parent account",
-          status: "sent",
-          providerMessageId,
-          metadata: { loginUrl: payload.loginUrl, parentAccountId: parentAccount.id },
-        });
-      } catch (error) {
-        emailError = error instanceof Error ? error.message : "Email provider failed";
-        await logEmail({
-          recipientEmail: payload.email,
-          recipientName: payload.fullName,
-          emailType: "parent_registration",
-          subject: "Your Après School parent account",
-          status: "failed",
-          errorMessage: emailError,
-          metadata: { loginUrl: payload.loginUrl, parentAccountId: parentAccount.id },
-        });
-      }
-    } else {
-      await logEmail({
-        recipientEmail: payload.email,
-        recipientName: payload.fullName,
-        emailType: "parent_registration",
-        subject: "Your Après School parent account",
-        status: "queued_without_provider",
-        metadata: { loginUrl: payload.loginUrl, parentAccountId: parentAccount.id },
+      await supabase.from("audit_log").insert({
+        actor_id: user.id,
+        action: "parent_account_holder_registered",
+        table_name: "parent_account_holders",
+        record_id: holder.id,
+        metadata: {
+          email: payload.email,
+          parentAccountId: linkedInvite.parent_account_id,
+          emailProviderConfigured: Boolean(resendApiKey),
+          emailSent: emailResult.emailed,
+          emailError: emailResult.emailError,
+        },
+      });
+
+      return json({
+        userId: user.id,
+        parentAccountId: linkedInvite.parent_account_id,
+        linkedAccountHolder: true,
+        email: payload.email,
+        emailed: emailResult.emailed,
+        emailError: emailResult.emailError,
       });
     }
+
+    const parentAccount = await upsertParentAccount(user.id, payload);
+
+    const emailResult = await sendWelcomeEmail(payload, parentAccount.id);
 
     await supabase.from("audit_log").insert({
       actor_id: user.id,
@@ -96,8 +82,8 @@ serve(async (request) => {
         email: payload.email,
         centre: payload.centre,
         emailProviderConfigured: Boolean(resendApiKey),
-        emailSent: emailed,
-        emailError,
+        emailSent: emailResult.emailed,
+        emailError: emailResult.emailError,
       },
     });
 
@@ -106,12 +92,12 @@ serve(async (request) => {
       parentAccountId: parentAccount.id,
       email: payload.email,
       parentAccount,
-      emailed,
-      emailError,
+      emailed: emailResult.emailed,
+      emailError: emailResult.emailError,
     });
   } catch (error) {
     console.error(error);
-    return json({ error: error instanceof Error ? error.message : "Unable to register parent account" }, 500);
+    return json({ error: readableError(error) }, 500);
   }
 });
 
@@ -191,65 +177,107 @@ async function upsertParentAccount(userId: string, payload: ParentRegistrationPa
   return data;
 }
 
-async function sendWelcomeEmail(payload: ParentRegistrationPayload) {
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: resendFrom,
-      to: [payload.email],
-      reply_to: resendReplyTo,
-      subject: "Your Après School parent account",
-      text: [
-        `Hi ${payload.firstName},`,
-        "",
-        "Your Après School parent account has been created.",
-        "",
-        `Sign in here: ${payload.loginUrl}`,
-        "",
-        "Before booking, please add your child profile, emergency contacts, medical information and consents.",
-        "",
-        "Best wishes,",
-        "Après School",
-      ].join("\n"),
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await safeResponseText(response);
-    throw new Error(`Resend email failed with ${response.status}${detail ? `: ${detail}` : ""}`);
+async function findLinkedAccountInvite(email: string) {
+  const { data, error } = await supabase
+    .from("parent_account_holders")
+    .select("id, parent_account_id, email, full_name, status, parent_accounts(id, full_name, email)")
+    .eq("email", email.toLowerCase())
+    .neq("status", "removed")
+    .order("invited_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (["42P01", "42703", "PGRST200", "PGRST205"].includes(error.code || "")) return null;
+    throw error;
   }
-
-  const result = await response.json().catch(() => null);
-  return typeof result?.id === "string" ? result.id : "";
+  return data as LinkedAccountInvite | null;
 }
 
-async function logEmail(entry: {
-  recipientEmail: string;
-  recipientName?: string;
-  emailType: string;
-  subject: string;
-  status: string;
-  providerMessageId?: string;
-  errorMessage?: string;
-  metadata?: Record<string, unknown>;
-}) {
-  const { error } = await supabase.from("email_logs").insert({
-    recipient_email: entry.recipientEmail,
-    recipient_name: entry.recipientName || null,
-    email_type: entry.emailType,
-    subject: entry.subject,
-    status: entry.status,
-    provider: "resend",
-    provider_message_id: entry.providerMessageId || null,
-    error_message: entry.errorMessage || null,
-    metadata: entry.metadata || {},
-    sent_at: entry.status === "sent" ? new Date().toISOString() : null,
+async function activateLinkedAccountInvite(invite: LinkedAccountInvite, userId: string, payload: ParentRegistrationPayload) {
+  const { data, error } = await supabase
+    .from("parent_account_holders")
+    .update({
+      profile_id: userId,
+      full_name: payload.fullName,
+      status: "active",
+      accepted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", invite.id)
+    .select("id, email, full_name, role, status, invited_at, accepted_at, permissions")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function sendWelcomeEmail(payload: ParentRegistrationPayload, parentAccountId: string) {
+  const lines = [
+    `Hi ${payload.firstName},`,
+    "",
+    "Your Après School parent account has been created.",
+    "",
+    `Sign in here: ${payload.loginUrl}`,
+    "",
+    "Before booking, please add your child profile, emergency contacts, medical information and consents.",
+    "",
+    "Best wishes,",
+    "Après School",
+  ];
+  const emailLog = await sendBookingEmail(supabase, {
+    recipientEmail: payload.email,
+    recipientName: payload.fullName,
+    emailType: "parent_registration",
+    subject: "Your Après School parent account",
+    text: lines.join("\n"),
+    html: paragraphsToHtml(lines, {
+      title: "Your parent account is ready",
+      preheader: "Sign in to add children and book care.",
+    }),
+    metadata: { loginUrl: payload.loginUrl, parentAccountId },
   });
-  if (error) console.error(`Email log failed: ${error.message}`);
+  return {
+    emailed: emailLog?.status === "sent",
+    emailError: typeof emailLog?.error_message === "string" ? emailLog.error_message : "",
+  };
+}
+
+async function sendLinkedAccountWelcomeEmail(
+  payload: ParentRegistrationPayload,
+  invite: LinkedAccountInvite,
+  holder: Record<string, unknown>,
+) {
+  const parentAccount = Array.isArray(invite.parent_accounts) ? invite.parent_accounts[0] : invite.parent_accounts;
+  const primaryName = cleanString(parentAccount?.full_name) || "the main account holder";
+  const lines = [
+    `Hi ${payload.firstName},`,
+    "",
+    `Your linked Après School account is ready. You are now connected to ${primaryName}'s family account.`,
+    "",
+    `Sign in here: ${payload.loginUrl}`,
+    "",
+    "You can view booked days, book care, manage payments and see invoices for the linked family.",
+    "",
+    "Only the main account holder can remove linked adults from the family account.",
+    "",
+    "Best wishes,",
+    "Après School",
+  ];
+  const emailLog = await sendBookingEmail(supabase, {
+    recipientEmail: payload.email,
+    recipientName: payload.fullName,
+    emailType: "parent_account_holder_registration",
+    subject: "Your linked Après School account is ready",
+    text: lines.join("\n"),
+    html: paragraphsToHtml(lines, {
+      title: "Your linked account is ready",
+      preheader: "You can now share the family booking account.",
+    }),
+    metadata: { loginUrl: payload.loginUrl, parentAccountId: invite.parent_account_id, holderId: holder.id },
+  });
+  return {
+    emailed: emailLog?.status === "sent",
+    emailError: typeof emailLog?.error_message === "string" ? emailLog.error_message : "",
+  };
 }
 
 function normalizePayload(input: Record<string, unknown>): ParentRegistrationPayload {
@@ -264,7 +292,6 @@ function normalizePayload(input: Record<string, unknown>): ParentRegistrationPay
     password: String(input.password || ""),
     centre: cleanString(input.centre),
     title: cleanString(input.title),
-    ethnicity: cleanString(input.ethnicity),
     gender: cleanString(input.gender),
     primaryPhone: cleanString(input.primaryPhone),
     secondaryPhone: cleanString(input.secondaryPhone),
@@ -297,7 +324,6 @@ function validatePayload(payload: ParentRegistrationPayload) {
     ["password", payload.password],
     ["centre", payload.centre],
     ["title", payload.title],
-    ["ethnicity", payload.ethnicity],
     ["gender", payload.gender],
     ["address line 1", payload.billingAddress.line1],
     ["town", payload.billingAddress.town],
@@ -307,6 +333,8 @@ function validatePayload(payload: ParentRegistrationPayload) {
   const missing = required.find(([, value]) => !String(value || "").trim());
   if (missing) return `Parent ${missing[0]} is required.`;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return "Enter a valid parent email.";
+  if (!isValidPhoneNumber(payload.primaryPhone, { required: true })) return "Enter a valid primary phone number.";
+  if (payload.secondaryPhone && !isValidPhoneNumber(payload.secondaryPhone)) return "Enter a valid secondary phone number.";
   if (
     payload.password.length < 6 ||
     !/[a-z]/.test(payload.password) ||
@@ -320,16 +348,32 @@ function validatePayload(payload: ParentRegistrationPayload) {
   return "";
 }
 
+function compactPhoneNumber(value: string) {
+  return String(value || "").replace(/[\s().-]/g, "");
+}
+
+function isValidPhoneNumber(value: string, options: { required?: boolean } = {}) {
+  const compact = compactPhoneNumber(value);
+  if (!compact) return !options.required;
+  return /^(\+44|0)\d{9,10}$/.test(compact) || /^\+[1-9]\d{7,14}$/.test(compact);
+}
+
 function cleanString(value: unknown) {
   return String(value || "").trim();
 }
 
-async function safeResponseText(response: Response) {
-  try {
-    return await response.text();
-  } catch {
-    return "";
+function readableError(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    const message = cleanString(record.message);
+    const details = cleanString(record.details);
+    const hint = cleanString(record.hint);
+    const code = cleanString(record.code);
+    const parts = [message, details, hint, code ? `Code ${code}` : ""].filter(Boolean);
+    if (parts.length) return parts.join(" ");
   }
+  return "Unable to register parent account";
 }
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -350,7 +394,6 @@ type ParentRegistrationPayload = {
   password: string;
   centre: string;
   title: string;
-  ethnicity: string;
   gender: string;
   primaryPhone: string;
   secondaryPhone: string;
@@ -367,4 +410,21 @@ type ParentRegistrationPayload = {
     postcode: string;
   };
   marketingPreferences: Record<string, unknown>;
+};
+
+type LinkedAccountInvite = {
+  id: string;
+  parent_account_id: string;
+  email: string;
+  full_name?: string | null;
+  status?: string | null;
+  parent_accounts?: {
+    id?: string;
+    full_name?: string | null;
+    email?: string | null;
+  } | Array<{
+    id?: string;
+    full_name?: string | null;
+    email?: string | null;
+  }> | null;
 };

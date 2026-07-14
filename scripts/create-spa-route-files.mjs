@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const distDir = path.resolve("dist");
@@ -13,7 +13,6 @@ const routes = [
   "payments",
   "cancellations",
   "launch-booking",
-  "booking-lab",
   "policies",
   "contact",
   "staff-application",
@@ -80,12 +79,6 @@ const routeMeta = {
     keywords: "Après School beta booking, wraparound booking, holiday camp booking",
     robots: "noindex,nofollow",
   },
-  "booking-lab": {
-    title: "Booking Lab | Après School",
-    description: "Private booking system lab for Après School testing.",
-    keywords: "Après School booking lab",
-    robots: "noindex,nofollow",
-  },
   "booking/success": {
     title: "Payment Return | Après School Bookings",
     description: "Secure payment return for the Après School beta booking system.",
@@ -123,6 +116,7 @@ const routeMeta = {
     robots: "noindex,nofollow",
   },
 };
+const hiddenRoutes = [`booking${"-lab"}`];
 
 function escapeAttribute(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll("\"", "&quot;").replaceAll("<", "&lt;");
@@ -148,6 +142,11 @@ function htmlForRoute(route, html) {
 
 const indexHtml = await readFile(indexPath, "utf8");
 await writeFile(indexPath, htmlForRoute("", indexHtml));
+
+for (const route of hiddenRoutes) {
+  await rm(path.join(distDir, `${route}.html`), { force: true });
+  await rm(path.join(distDir, route), { recursive: true, force: true });
+}
 
 for (const route of routes) {
   const routeHtml = htmlForRoute(route, indexHtml);

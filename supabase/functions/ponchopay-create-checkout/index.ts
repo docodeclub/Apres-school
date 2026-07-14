@@ -184,6 +184,38 @@ function checkoutTotal(items: CheckoutItem[]) {
   return roundMoney(items.reduce((sum, item) => sum + moneyValue(item.unitAmount) * Math.max(1, Number(item.quantity || 1)), 0));
 }
 
+function uniqueStrings(values: unknown[]) {
+  return Array.from(new Set(values.map((value) => stringValue(value)).filter(Boolean)));
+}
+
+function buildPonchoAdditionalInfo(childNames: string[], providerReference: string) {
+  const childName = childNames.join(", ");
+  const fields = [
+    {
+      label: "Child's name",
+      name: "child_name",
+      value: childName,
+      required: true,
+    },
+    {
+      label: "Booking reference",
+      name: "booking_reference",
+      value: providerReference,
+      required: false,
+    },
+  ].filter((field) => field.value);
+
+  return {
+    fields,
+    values: {
+      child_name: childName,
+      childName,
+      "Child's name": childName,
+      booking_reference: providerReference,
+    },
+  };
+}
+
 function buildPonchoPayPayload(body: CheckoutRequest, payment: {
   invoiceId: string;
   amount: number;
@@ -211,6 +243,9 @@ function buildPonchoPayPayload(body: CheckoutRequest, payment: {
   const locationStatus = stringValue(body.metadata?.ponchoLocationStatus);
   const locationUrn = metadataLocationUrn || itemLocationUrn || (locationStatus === "pending" ? "" : ponchoPayLocationUrnDefault);
   const parentEmail = stringValue(body.parentEmail);
+  const childNames = uniqueStrings((body.items || []).map((item) => item.childName));
+  const childName = childNames[0] || "";
+  const additionalInfo = buildPonchoAdditionalInfo(childNames, payment.providerReference);
   const amountInPence = Math.round(payment.amount * 100);
   const metadata = JSON.stringify({
     source: "apres_school_booking",
@@ -219,6 +254,8 @@ function buildPonchoPayPayload(body: CheckoutRequest, payment: {
     bookingReference: payment.providerReference,
     parentEmail: parentEmail || null,
     parentName: stringValue(body.parentName) || null,
+    childName: childName || null,
+    childNames,
     providerId: ponchoPayProviderId || null,
     locationUrn: locationUrn || null,
     paymentMethod: payment.paymentMethod,
@@ -246,6 +283,15 @@ function buildPonchoPayPayload(body: CheckoutRequest, payment: {
     email: parentEmail,
     amount: amountInPence,
     note: `Après School booking ${payment.providerReference}`,
+    childName,
+    childNames,
+    child_name: childName,
+    additionalInfo: additionalInfo.values,
+    additional_info: additionalInfo.values,
+    additionalInformation: additionalInfo.values,
+    additional_information: additionalInfo.values,
+    additionalFields: additionalInfo.fields,
+    additional_fields: additionalInfo.fields,
     metadata,
     line_items: (body.items || []).map((item) => ({
       description: `${stringValue(item.sessionName)} - ${stringValue(item.childName) || "Child"}`,
@@ -274,6 +320,10 @@ function buildPonchoPayPayload(body: CheckoutRequest, payment: {
       email: parentEmail || null,
       name: stringValue(body.parentName) || null,
     },
+    order_note: childName ? `Child's name: ${childName}` : `Booking reference: ${payment.providerReference}`,
+    orderNote: childName ? `Child's name: ${childName}` : `Booking reference: ${payment.providerReference}`,
+    child: childName ? { name: childName } : null,
+    children: childNames.map((name) => ({ name })),
     lineItems: (body.items || []).map((item) => ({
       id: stringValue(item.id) || crypto.randomUUID(),
       childId: stringValue(item.childId) || null,
@@ -359,12 +409,31 @@ async function createPonchoPayPayment(payload: Record<string, unknown>) {
     source: "apres_school_booking",
     providerReference: stringValue(payload.providerReference),
   });
+  const childName = stringValue(payload.childName);
+  const childNames = Array.isArray(payload.childNames)
+    ? uniqueStrings(payload.childNames)
+    : childName
+      ? [childName]
+      : [];
+  const additionalInfo = buildPonchoAdditionalInfo(childNames, stringValue(payload.providerReference));
+  const note = stringValue(payload.note) || `Après School booking ${stringValue(payload.providerReference)}`;
   const requestBody = {
     metadata,
     urn: stringValue(payload.urn),
     amount: Math.round(Number(payload.amount || 0)),
     email: stringValue(payload.email),
-    note: stringValue(payload.note) || `Après School booking ${stringValue(payload.providerReference)}`,
+    childName,
+    child_name: childName,
+    children: childNames,
+    note,
+    orderNote: childName ? `${note} - ${childName}` : note,
+    order_note: childName ? `${note} - ${childName}` : note,
+    additionalInfo: additionalInfo.values,
+    additional_info: additionalInfo.values,
+    additionalInformation: additionalInfo.values,
+    additional_information: additionalInfo.values,
+    additionalFields: additionalInfo.fields,
+    additional_fields: additionalInfo.fields,
     line_items: Array.isArray(payload.line_items) ? payload.line_items : [],
     token: await sha256Base64(`${metadata}.${ponchoPayIntegrationKey}`),
   };

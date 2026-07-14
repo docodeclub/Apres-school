@@ -66,17 +66,22 @@ serve(async (request) => {
   try {
     const actor = await getActor(request.headers.get("Authorization") || "");
     if (!actor) return json({ error: "Sign in before booking." }, 401);
+    const bookingActor = await resolveBookingActor(actor);
 
     const body = await request.json().catch(() => null) as BookingRequest | null;
     const validationError = validateRequest(body);
     if (validationError || !body) return json({ error: validationError || "Booking payload is required" }, 400);
 
     const parentName = stringValue(body.parent?.fullName) || stringValue(body.parent?.full_name) || actor.full_name || actor.email;
-    const bookingPayload = normaliseBookingPayload(body);
+    const bookingPayload = normaliseBookingPayload(body, {
+      bookedByProfileId: actor.id,
+      bookedByEmail: actor.email,
+      accountHolderRole: bookingActor.accountHolderRole,
+    });
 
     const { data: reservation, error: reservationError } = await supabase.rpc("create_parent_booking_reservation", {
-      p_parent_id: actor.id,
-      p_parent_email: actor.email,
+      p_parent_id: bookingActor.id,
+      p_parent_email: bookingActor.email,
       p_parent_name: parentName,
       p_parent_phone: stringValue(body.parent?.phone),
       p_booking: bookingPayload,
@@ -148,6 +153,9 @@ serve(async (request) => {
         checkoutStatus: checkout?.status || "not_required",
         itemCount: savedItems.length,
         existing: Boolean(reservationResult.existing),
+        bookedByProfileId: actor.id,
+        bookedByEmail: actor.email,
+        accountHolderRole: bookingActor.accountHolderRole,
       },
     });
 
@@ -182,6 +190,10 @@ type Actor = {
   role: string;
 };
 
+type BookingActor = Actor & {
+  accountHolderRole: string;
+};
+
 type ReservationResult = {
   existing?: boolean;
   booking: Record<string, unknown>;
@@ -204,6 +216,54 @@ async function getActor(authHeader: string): Promise<Actor | null> {
   if (profileError) throw profileError;
   if (!profile?.active) return null;
   return profile as Actor;
+}
+
+async function resolveBookingActor(actor: Actor): Promise<BookingActor> {
+  try {
+    const { data: holder, error } = await supabase
+      .from("parent_account_holders")
+      .select(`
+        role,
+        status,
+        parent_accounts(
+          profile_id,
+          email,
+          full_name,
+          phone
+        )
+      `)
+      .or(`profile_id.eq.${actor.id},email.eq.${actor.email}`)
+      .neq("status", "removed")
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      if (["42P01", "42703", "PGRST200", "PGRST205"].includes(error.code || "")) {
+        return { ...actor, accountHolderRole: "primary" };
+      }
+      throw error;
+    }
+
+    const parentAccount = Array.isArray(holder?.parent_accounts)
+      ? holder?.parent_accounts[0]
+      : holder?.parent_accounts;
+    const parentProfileId = stringValue(parentAccount?.profile_id);
+    const parentEmail = stringValue(parentAccount?.email);
+
+    if (parentProfileId && parentEmail) {
+      return {
+        id: parentProfileId,
+        email: parentEmail,
+        full_name: stringValue(parentAccount?.full_name) || actor.full_name,
+        role: actor.role,
+        accountHolderRole: stringValue(holder?.role) || "secondary",
+      };
+    }
+  } catch (error) {
+    console.error("Unable to resolve linked parent account holder", error);
+  }
+
+  return { ...actor, accountHolderRole: "primary" };
 }
 
 async function sendBookingRequestEmail({
@@ -229,12 +289,12 @@ async function sendBookingRequestEmail({
   const checkoutUrl = stringValue(checkout?.checkoutUrl) || stringValue(checkout?.providerCheckoutUrl);
   const bookingReference = stringValue(booking.bookingReference) || stringValue(booking.id);
   const subject = dueToday > 0
-    ? `Finish secure checkout for ${bookingReference}`
+    ? `Complete secure checkout for ${bookingReference}`
     : `Booking received ${bookingReference}`;
   const itemSummary = summariseItems(items);
   const firstName = firstNameFrom(parentName || actor.full_name || actor.email);
   const statusLine = dueToday > 0
-    ? "Your selected place is available and being held while you complete secure checkout through PonchoPay."
+    ? "Your selected place is available. Complete secure checkout through PonchoPay and we will confirm the booking automatically."
     : "Your booking has been received and no payment is due today.";
   const paymentLine = checkoutUrl
     ? `Secure payment link: ${checkoutUrl}`
@@ -254,7 +314,7 @@ async function sendBookingRequestEmail({
     paymentLine,
     "",
     dueToday > 0
-      ? "As soon as PonchoPay completes the card payment or card guarantee, your booking confirmation and receipt will be sent automatically."
+      ? "Once secure checkout is complete, your confirmation and receipt will be sent automatically."
       : "Your booking confirmation is being prepared.",
     "",
     "Thank you,",
@@ -267,7 +327,12 @@ async function sendBookingRequestEmail({
     emailType: dueToday > 0 ? "booking_payment_pending" : "booking_request_received",
     subject,
     text: lines.join("\n"),
-    html: paragraphsToHtml(lines, { title: subject }),
+    html: paragraphsToHtml(lines, {
+      title: dueToday > 0 ? "Complete secure checkout" : "Booking received",
+      preheader: dueToday > 0
+        ? "Your selected place is available. Complete checkout through PonchoPay and we will confirm automatically."
+        : "Your Après School booking has been received.",
+    }),
     sentBy: actor.id,
     metadata: {
       bookingId: stringValue(booking.id),
@@ -285,7 +350,17 @@ async function sendBookingRequestEmail({
 
 function validateRequest(body: BookingRequest | null) {
   if (!body || typeof body !== "object") return "Booking payload is required";
+  const parentEmail = stringValue(body.parent?.email);
+  const parentPhone = stringValue(body.parent?.phone);
+  if (parentEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail)) return "Enter a valid parent email.";
+  if (parentPhone && !isValidPhoneNumber(parentPhone)) return "Enter a valid parent phone number.";
   if (!Array.isArray(body.items) || body.items.length === 0) return "Choose at least one session before booking.";
+  const invalidQuantity = body.items.find((item) => {
+    if (item.quantity == null) return false;
+    const quantity = Number(item.quantity);
+    return !Number.isFinite(quantity) || quantity < 1;
+  });
+  if (invalidQuantity) return "Each booking item quantity must be at least 1.";
   const missingSession = body.items.find((item) => {
     const metadata = isObject(item.metadata) ? item.metadata : {};
     const hasBlockId = Boolean(stringValue(item.sessionBlockId) || stringValue(item.session_block_id));
@@ -300,7 +375,17 @@ function validateRequest(body: BookingRequest | null) {
   return null;
 }
 
-function normaliseBookingPayload(body: BookingRequest) {
+function compactPhoneNumber(value: string) {
+  return String(value || "").replace(/[\s().-]/g, "");
+}
+
+function isValidPhoneNumber(value: string, options: { required?: boolean } = {}) {
+  const compact = compactPhoneNumber(value);
+  if (!compact) return !options.required;
+  return /^(\+44|0)\d{9,10}$/.test(compact) || /^\+[1-9]\d{7,14}$/.test(compact);
+}
+
+function normaliseBookingPayload(body: BookingRequest, actorMetadata: Record<string, unknown> = {}) {
   const clientRequestId =
     stringValue(body.clientRequestId) ||
     stringValue(body.client_request_id) ||
@@ -323,6 +408,7 @@ function normaliseBookingPayload(body: BookingRequest) {
     metadata: {
       ...(isObject(body.booking?.metadata) ? body.booking?.metadata : {}),
       ...(isObject(body.metadata) ? body.metadata : {}),
+      ...actorMetadata,
       clientRequestId,
     },
   };

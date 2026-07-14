@@ -18071,6 +18071,18 @@ th {
   font-weight: 850;
 }
 
+.lab-form-grid label > span {
+  width: fit-content;
+  border: 1px solid rgba(77, 94, 219, 0.16);
+  border-radius: 999px;
+  background: #f8fbff;
+  color: var(--royal);
+  padding: 2px 7px;
+  font-size: 0.66rem;
+  font-weight: 950;
+  line-height: 1.15;
+}
+
 .lab-controls select,
 .lab-controls input,
 .lab-form-grid input,
@@ -18085,6 +18097,50 @@ th {
   border-radius: 12px;
   background: #fff;
   padding: 9px 10px;
+}
+
+.lab-form-grid input[aria-invalid="true"],
+.lab-form-grid select[aria-invalid="true"],
+.lab-form-grid textarea[aria-invalid="true"],
+.lab-launch-signin-form input[aria-invalid="true"] {
+  border-color: #dc2626;
+  background: #fff7f7;
+}
+
+.field-error {
+  color: #b91c1c;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.lab-error-summary {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(220, 38, 38, 0.24);
+  border-radius: 14px;
+  background: #fff7f7;
+  color: #7f1d1d;
+  padding: 11px 12px;
+  font-weight: 850;
+}
+
+.lab-error-summary strong {
+  color: #991b1b;
+  font-size: 0.9rem;
+}
+
+.lab-error-summary span,
+.lab-field-hint,
+.lab-section-copy {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.lab-section-copy {
+  margin: 0;
 }
 
 .lab-search-input {
@@ -18759,7 +18815,8 @@ th {
 
 .lab-parent-login-panel,
 .lab-parent-session-manager,
-.lab-parent-account-admin {
+.lab-parent-account-admin,
+.lab-parent-linked-access {
   display: grid;
   gap: 12px;
   border: 1px solid var(--line);
@@ -18830,9 +18887,148 @@ th {
   background: #fff;
 }
 
+.lab-parent-linked-access {
+  background: #fff;
+  box-shadow: 0 12px 26px rgba(49, 75, 184, 0.06);
+}
+
 .lab-parent-account-admin h3 {
   margin: 0;
   color: var(--royal-dark);
+}
+
+.lab-parent-linked-head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.lab-parent-linked-head h3 {
+  margin: 0;
+  color: var(--royal-dark);
+}
+
+.lab-parent-linked-head p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--muted);
+}
+
+.lab-parent-linked-role {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: var(--royal-dark);
+  padding: 8px 11px;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.lab-parent-linked-role.role-secondary {
+  background: #f1fbf6;
+  color: #18492d;
+}
+
+.lab-parent-linked-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.75fr) auto;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid rgba(89, 105, 150, 0.14);
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 10px;
+}
+
+.lab-parent-linked-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.lab-parent-linked-form input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(89, 105, 150, 0.22);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  padding: 9px 11px;
+  font: inherit;
+  font-weight: 850;
+}
+
+.lab-parent-linked-form input[aria-invalid="true"] {
+  border-color: #e14545;
+  box-shadow: 0 0 0 3px rgba(225, 69, 69, 0.12);
+}
+
+.lab-parent-linked-form button {
+  min-height: 42px;
+  border: 1px solid var(--royal);
+  border-radius: 999px;
+  background: var(--royal);
+  color: #fff;
+  padding: 9px 16px;
+  font-weight: 950;
+}
+
+.lab-parent-linked-list {
+  display: grid;
+  gap: 8px;
+}
+
+.lab-parent-linked-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(89, 105, 150, 0.14);
+  border-radius: 14px;
+  background: #fff;
+  padding: 10px;
+}
+
+.lab-parent-linked-list article.empty {
+  grid-template-columns: minmax(0, 1fr);
+  background: #f8fbff;
+}
+
+.lab-parent-linked-list div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lab-parent-linked-list span,
+.lab-parent-linked-list small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  font-weight: 850;
+}
+
+.lab-parent-linked-list span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lab-parent-linked-list strong {
+  color: var(--royal-dark);
+  overflow-wrap: anywhere;
+}
+
+.lab-parent-linked-list button {
+  min-height: 38px;
+  border: 1px solid rgba(225, 69, 69, 0.22);
+  border-radius: 999px;
+  background: #fff5f5;
+  color: #a22929;
+  padding: 8px 12px;
+  font-weight: 950;
 }
 
 .lab-parent-account-admin-grid {
@@ -29488,6 +29684,81 @@ th {
   color: #fff;
 }
 
+.lab-launch-child-summary {
+  display: grid;
+  gap: 16px;
+  border: 1px solid rgba(47, 125, 75, 0.22);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f4fbf7 0%, #ffffff 100%);
+  padding: 16px;
+}
+
+.lab-launch-child-summary h3 {
+  margin: 0;
+  color: #25304f;
+  letter-spacing: 0;
+}
+
+.lab-launch-child-summary p:not(.eyebrow) {
+  max-width: 680px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.42;
+}
+
+.lab-launch-registered-children {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.lab-launch-registered-children article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid rgba(37, 48, 79, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px;
+}
+
+.lab-launch-registered-children strong {
+  color: var(--royal);
+  font-weight: 950;
+}
+
+.lab-launch-registered-children span,
+.lab-launch-registered-children small {
+  color: var(--muted);
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.lab-launch-child-summary .lab-launch-form-actions button:first-child {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--royal);
+}
+
+.lab-launch-child-summary .lab-launch-form-actions button:last-child {
+  border-color: #2f7d4b;
+  background: #2f7d4b;
+  color: #fff;
+}
+
+.lab-inline-help {
+  display: inline;
+  border: 0;
+  background: transparent;
+  color: var(--royal);
+  padding: 0;
+  font: inherit;
+  font-weight: 950;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: help;
+}
+
 .lab-launch-signin-form,
 .lab-launch-registration-form,
 .lab-launch-child-section {
@@ -29718,6 +29989,66 @@ th {
 .booking-launch-page .lab-booking-journey article > span {
   width: 28px;
   height: 28px;
+}
+
+.booking-launch-page .lab-launch-account-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(47, 125, 75, 0.18);
+  border-radius: 16px;
+  background: #f4fbf7;
+  padding: 10px 12px;
+}
+
+.booking-launch-page .lab-launch-account-strip > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.booking-launch-page .lab-launch-account-strip span,
+.booking-launch-page .lab-launch-account-strip small {
+  overflow: hidden;
+  color: #557161;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booking-launch-page .lab-launch-account-strip strong {
+  overflow: hidden;
+  color: #163d26;
+  font-size: 0.98rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booking-launch-page .lab-launch-account-strip > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.booking-launch-page .lab-launch-account-strip button {
+  min-height: 38px;
+  border: 1px solid rgba(47, 125, 75, 0.28);
+  border-radius: 999px;
+  background: #fff;
+  color: #25304f;
+  padding: 8px 14px;
+  font-weight: 950;
+}
+
+.booking-launch-page .lab-launch-account-strip button:first-child {
+  border-color: #2f7d4b;
+  background: #2f7d4b;
+  color: #fff;
 }
 
 .booking-launch-page .lab-current-booking {
@@ -31289,6 +31620,18 @@ th {
   padding: 9px 10px;
 }
 
+.booking-launch-page .lab-child-chips button.active {
+  border-color: rgba(47, 125, 75, 0.42);
+  background: #f1fbf6;
+  color: #163d26;
+}
+
+.booking-launch-page .lab-child-chips button.active strong,
+.booking-launch-page .lab-child-chips button.active small {
+  color: #163d26;
+  opacity: 1;
+}
+
 .booking-launch-page .lab-child-flags {
   gap: 5px;
 }
@@ -31928,6 +32271,17 @@ th {
   line-height: 1.25;
 }
 
+.booking-launch-page .lab-consents.has-error label {
+  border-color: rgba(203, 70, 70, 0.55);
+  background: #fff8f8;
+  box-shadow: 0 0 0 3px rgba(203, 70, 70, 0.08);
+}
+
+.booking-launch-page .lab-consents .field-error {
+  color: #9f2f2f;
+  font-weight: 800;
+}
+
 .booking-launch-page .lab-deadline-strip {
   gap: 6px;
 }
@@ -32264,6 +32618,9 @@ th {
   .lab-parent-portal-head,
   .lab-parent-login-panel,
   .lab-parent-portal-cards,
+  .lab-parent-linked-head,
+  .lab-parent-linked-form,
+  .lab-parent-linked-list article,
   .lab-parent-session-head,
   .lab-parent-account-admin-grid,
   .lab-parent-booking-detail,
@@ -32993,6 +33350,7 @@ th {
   .booking-launch-page .booking-lab-flow,
   .booking-launch-page .lab-booking-journey-head,
   .booking-launch-page .lab-booking-journey,
+  .booking-launch-page .lab-launch-account-strip,
   .booking-launch-page .lab-current-booking,
   .booking-launch-page .lab-booking-range-row,
   .booking-launch-page .lab-review-edit-context,
@@ -33049,6 +33407,21 @@ th {
   .booking-launch-page .lab-booking-journey {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
+  }
+
+  .booking-launch-page .lab-launch-account-strip {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .booking-launch-page .lab-launch-account-strip > div:last-child {
+    justify-content: stretch;
+  }
+
+  .booking-launch-page .lab-launch-account-strip button {
+    flex: 1 1 120px;
+    min-height: 34px;
+    padding: 6px 10px;
   }
 
   .booking-launch-page .lab-booking-range-row {
@@ -34438,7 +34811,7 @@ th {
   min-height: 58px;
   border-color: rgba(37, 48, 79, 0.1);
   background: #fbfcff;
-  padding-right: 82px;
+  padding-right: 12px;
 }
 
 .booking-launch-page.launch-step-checkout .lab-child-chips button.active {
@@ -34449,15 +34822,16 @@ th {
 }
 
 .booking-launch-page.launch-step-checkout .lab-child-chips button.active strong,
-.booking-launch-page.launch-step-checkout .lab-child-chips button.active small {
+.booking-launch-page.launch-step-checkout .lab-child-chips button.active small,
+.booking-launch-page.launch-step-checkout .lab-child-chips button.active span,
+.booking-launch-page.launch-step-checkout .lab-child-chips button.active em,
+.booking-launch-page.launch-step-checkout .lab-child-chips button.active * {
   color: #163d26 !important;
   opacity: 1;
 }
 
 .booking-launch-page.launch-step-checkout .lab-child-chips button.active::after {
-  background: #ffffff;
-  color: #2f7d4b;
-  box-shadow: 0 2px 8px rgba(37, 48, 79, 0.1);
+  display: none;
 }
 
 .booking-launch-page.launch-step-checkout .lab-payment-options label {
@@ -34586,6 +34960,9 @@ th {
   .lab-view-parent .lab-parent-portal-head,
   .lab-view-parent .lab-parent-login-panel,
   .lab-view-parent .lab-parent-login-preview,
+  .lab-view-parent .lab-parent-linked-head,
+  .lab-view-parent .lab-parent-linked-form,
+  .lab-view-parent .lab-parent-linked-list article,
   .lab-view-parent .lab-parent-session-head,
   .lab-view-parent .lab-parent-account-admin-grid,
   .lab-view-parent .lab-parent-booking-detail,
@@ -34601,6 +34978,8 @@ th {
 
   .lab-view-parent .lab-parent-portal-actions > *,
   .lab-view-parent .lab-parent-account-admin-actions button,
+  .lab-view-parent .lab-parent-linked-form button,
+  .lab-view-parent .lab-parent-linked-list button,
   .lab-view-parent .lab-parent-session-tabs button,
   .lab-view-parent .lab-parent-login-panel button,
   .lab-view-parent .lab-parent-session-list button {

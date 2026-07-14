@@ -123,11 +123,14 @@ export function paragraphsToHtml(lines: string[], options: BookingEmailHtmlOptio
   const cleanedLines = lines
     .map((line) => line.trim())
     .filter(Boolean);
-  const paymentUrl = firstUrl(cleanedLines.find((line) => /^Secure payment link:/i.test(line)) || "");
+  const actionLine = cleanedLines.find((line) =>
+    /^(Secure payment link:|Sign in here:|Create or sign in here:|Parent portal:)/i.test(line)
+  ) || "";
+  const actionUrl = firstUrl(actionLine);
   const title = stringValue(options.title) || emailTitleFromLines(cleanedLines);
   const preheader = stringValue(options.preheader) || emailPreheaderFromLines(cleanedLines);
   const content = cleanedLines
-    .map((line, index) => lineToEmailHtml(line, index, paymentUrl))
+    .map((line, index) => lineToEmailHtml(line, index, actionUrl))
     .join("");
 
   return `<!doctype html>
@@ -163,7 +166,7 @@ export function paragraphsToHtml(lines: string[], options: BookingEmailHtmlOptio
             <tr>
               <td style="padding:28px 24px 8px;">
                 <p style="margin:0 0 8px;font-size:12px;line-height:1.35;letter-spacing:1px;text-transform:uppercase;color:${brandOrange};font-weight:900;">Après School Bookings</p>
-                <h1 style="margin:0 0 18px;font-size:28px;line-height:1.16;color:${brandNavy};font-weight:900;">${escapeHtml(title)}</h1>
+                <h1 style="margin:0 0 18px;font-size:24px;line-height:1.2;color:${brandNavy};font-weight:900;">${escapeHtml(title)}</h1>
                 ${content}
               </td>
             </tr>
@@ -193,7 +196,7 @@ export function paragraphsToHtml(lines: string[], options: BookingEmailHtmlOptio
 </html>`;
 }
 
-function lineToEmailHtml(line: string, index: number, paymentUrl: string) {
+function lineToEmailHtml(line: string, index: number, actionUrl: string) {
   const escaped = escapeHtml(line);
   if (index === 0 && /^Hi\b/i.test(line)) {
     return `<p style="margin:0 0 18px;font-size:18px;line-height:1.45;color:${brandNavy};font-weight:800;">${escaped}</p>`;
@@ -202,8 +205,11 @@ function lineToEmailHtml(line: string, index: number, paymentUrl: string) {
     const [label, ...rest] = line.split(":");
     return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 8px;background:#f7f9ff;border:1px solid #e3ebff;border-radius:14px;"><tr><td style="padding:12px 14px;"><p style="margin:0;font-size:15px;line-height:1.45;color:${brandNavy};"><strong style="color:${brandBlue};">${escapeHtml(label)}:</strong>${escapeHtml(rest.join(":"))}</p></td></tr></table>`;
   }
-  if (/^Secure payment link:/i.test(line) && paymentUrl) {
-    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 20px;"><tr><td align="center" style="border-radius:999px;background:${brandGreen};"><a href="${escapeHtml(paymentUrl)}" style="display:block;padding:15px 22px;color:#ffffff;text-decoration:none;font-size:17px;font-weight:900;border-radius:999px;">Complete secure payment</a></td></tr></table><p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#66708a;word-break:break-word;">Secure payment link: <a href="${escapeHtml(paymentUrl)}" style="color:${brandBlue};font-weight:800;">${escapeHtml(paymentUrl)}</a></p>`;
+  if (/^(Secure payment link:|Sign in here:|Create or sign in here:|Parent portal:)/i.test(line) && actionUrl) {
+    const isPayment = /^Secure payment link:/i.test(line);
+    const label = isPayment ? "Complete secure payment" : "Open parent portal";
+    const prefix = line.split(":")[0] || (isPayment ? "Secure payment link" : "Parent portal");
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 20px;"><tr><td align="center" style="border-radius:999px;background:${brandGreen};"><a href="${escapeHtml(actionUrl)}" style="display:block;padding:15px 22px;color:#ffffff;text-decoration:none;font-size:17px;font-weight:900;border-radius:999px;">${escapeHtml(label)}</a></td></tr></table><p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#66708a;word-break:break-word;">${escapeHtml(prefix)}: <a href="${escapeHtml(actionUrl)}" style="color:${brandBlue};font-weight:800;">${escapeHtml(actionUrl)}</a></p>`;
   }
   if (/^Important:/i.test(line)) {
     return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:20px 0 16px;background:#fff7ed;border:1px solid #f7d7a2;border-radius:16px;"><tr><td style="padding:14px 16px;"><p style="margin:0;font-size:14px;line-height:1.55;color:${brandNavy};"><strong>Important:</strong>${escaped.replace(/^Important:/i, "")}</p></td></tr></table>`;
@@ -219,9 +225,8 @@ function firstUrl(value: string) {
 }
 
 function emailTitleFromLines(lines: string[]) {
-  const reference = lines.find((line) => /^Reference:/i.test(line))?.split(":").slice(1).join(":").trim();
   const invoice = lines.find((line) => /^Invoice:/i.test(line))?.split(":").slice(1).join(":").trim();
-  if (lines.some((line) => /^Secure payment link:/i.test(line))) return reference ? `Complete payment for ${reference}` : "Complete your payment";
+  if (lines.some((line) => /^Secure payment link:/i.test(line))) return "Complete your secure checkout";
   if (lines.some((line) => /booking is confirmed/i.test(line))) return "Your booking is confirmed";
   if (lines.some((line) => /guarantee has been saved/i.test(line))) return "Card guarantee saved";
   if (lines.some((line) => /cancelled/i.test(line))) return "Booking cancellation recorded";

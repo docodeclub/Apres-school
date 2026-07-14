@@ -56,6 +56,7 @@ const checks = [
   [files.checkout, "voucher and TFC require card guarantee", /cardGuaranteeRequired[\s\S]*chargeCardOnFailure[\s\S]*automaticReconciliation/],
   [files.checkout, "card guarantee payment flow", /card_guarantee_with_childcare_reconciliation/],
   [files.checkout, "apres merchant context", /merchantContext: "apres_school"[\s\S]*PONCHOPAY_PROVIDER_ID|providerId: ponchoPayProviderId/],
+  [files.checkout, "child name is sent to Poncho additional info", /buildPonchoAdditionalInfo[\s\S]*Child's name[\s\S]*additional_info[\s\S]*child_name/],
   [files.checkout, "pending location urn does not use default", /ponchoLocationStatus[\s\S]*locationStatus === "pending" \? "" : ponchoPayLocationUrnDefault/],
   [files.checkout, "single PonchoPay webhook callback URL", /\/api\/ponchopay\/webhook[\s\S]*callbacks/],
   [files.checkout, "separate PonchoPay callback fields", /paymentCapturedCallbackUrl[\s\S]*paymentCompletedCallbackUrl[\s\S]*recurringPaymentCancelledCallbackUrl/],

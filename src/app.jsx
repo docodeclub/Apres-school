@@ -222,6 +222,7 @@ function hasLaunchPaymentReturnParams() {
 }
 
 function isBookingPaymentReturnPath(pathname = window.location.pathname) {
+  const normalisedPathname = String(pathname || "").replace(/\/+$/, "") || "/";
   return [
     "/booking/success",
     "/booking/cancel",
@@ -230,7 +231,7 @@ function isBookingPaymentReturnPath(pathname = window.location.pathname) {
     "/booking/return",
     "/ponchopay/return",
     "/api/ponchopay_redirect",
-  ].includes(pathname);
+  ].includes(normalisedPathname);
 }
 
 function getLaunchPaymentReturnDetails() {
@@ -255,27 +256,32 @@ function getLaunchPaymentReturnDetails() {
     || params.get("booking_reference")
     || params.get("invoice")
     || params.get("invoiceId")
+    || params.get("id")
+    || params.get("payment_id")
+    || params.get("paymentId")
+    || params.get("ponchoPaymentId")
     || "";
+  const safeReference = reference && !/[{}]/.test(reference) ? reference : "";
 
   if (state === "complete") {
     return {
       state,
-      reference,
-      title: "Payment received.",
-      detail: "Thanks. We are opening your booking portal and matching PonchoPay's callback to your invoice.",
+      reference: safeReference,
+      title: "Thank you, your payment is complete.",
+      detail: "Your booking is confirmed. We will email the confirmation and receipt as soon as PonchoPay has sent the payment update to Après School.",
     };
   }
   if (state === "cancelled") {
     return {
       state,
-      reference,
+      reference: safeReference,
       title: "Payment was not completed.",
       detail: "No confirmed booking is created from this return alone. You can sign in, review the booking and try again if needed.",
     };
   }
   return {
     state,
-    reference,
+    reference: safeReference,
     title: "Checking your payment.",
     detail: "Thanks for completing the secure payment step. We are matching the PonchoPay update to your booking.",
   };
@@ -303,7 +309,9 @@ function LaunchBookingLoading() {
           </dl>
         )}
         <div className="launch-return-loading__actions">
-          <a className="button book" href="/launch-booking">Open booking portal</a>
+          <a className="button book" href="/launch-booking">View booking</a>
+          <a className="button light" href="/launch-booking">Book another child</a>
+          <a className="button light" href="/">Return home</a>
           <a className="button light" href="/contact">Contact us</a>
         </div>
       </div>
