@@ -47,6 +47,7 @@ serve(async (request) => {
     const validationError = validatePayload(payload);
     if (validationError) return json({ error: validationError }, 400);
     const isReminder = payload.emailKind === "payment_reminder";
+    const isResend = payload.emailKind === "invoice_resend";
 
     const invoice = await loadInvoice(payload.invoiceId);
     if (!invoice.invoice_number) return json({ error: "Approve and number this invoice before emailing it." }, 400);
@@ -104,7 +105,7 @@ serve(async (request) => {
     await logEmail({
       recipientEmail: recipient,
       recipientName: customer?.accounts_contact || customer?.customer_name || "",
-      emailType: isReminder ? "finance_invoice_reminder" : "finance_invoice",
+      emailType: isReminder ? "finance_invoice_reminder" : isResend ? "finance_invoice_resend" : "finance_invoice",
       subject,
       status: emailStatus,
       providerMessageId,
@@ -138,6 +139,8 @@ serve(async (request) => {
       actor_id: actor.id,
       action: isReminder
         ? emailed ? "Payment reminder emailed" : "Payment reminder queued"
+        : isResend
+          ? emailed ? "Corrected invoice resent" : "Corrected invoice resend queued"
         : emailed ? "Invoice emailed" : "Invoice email queued",
       detail: `${invoice.invoice_number} to ${recipient}`,
       metadata: { cc: payload.cc, bcc: payload.bcc, emailStatus, emailError, emailKind: payload.emailKind },
@@ -147,6 +150,8 @@ serve(async (request) => {
       actor_id: actor.id,
       action: isReminder
         ? emailed ? "finance_invoice_reminder_emailed" : "finance_invoice_reminder_not_sent"
+        : isResend
+          ? emailed ? "finance_invoice_resend_emailed" : "finance_invoice_resend_not_sent"
         : emailed ? "finance_invoice_emailed" : "finance_invoice_email_not_sent",
       table_name: "finance_invoices",
       record_id: invoice.id,
@@ -325,7 +330,10 @@ function normalizePayload(payload: Record<string, unknown>) {
 }
 
 function normalizeEmailKind(value: unknown) {
-  return stringValue(value) === "payment_reminder" ? "payment_reminder" : "invoice";
+  const kind = stringValue(value);
+  if (kind === "payment_reminder") return "payment_reminder";
+  if (kind === "invoice_resend") return "invoice_resend";
+  return "invoice";
 }
 
 function validatePayload(payload: ReturnType<typeof normalizePayload>) {

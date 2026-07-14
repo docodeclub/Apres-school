@@ -6280,6 +6280,16 @@ label {
   font-weight: 850;
 }
 
+.finance-email-latest-pdf {
+  border-radius: 999px;
+  background: #e9f8ef;
+  color: #15925c;
+  padding: 7px 10px;
+  font-size: 0.72rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
 .finance-email-history-list details {
   border-top: 1px solid rgba(72, 103, 216, 0.1);
   padding-top: 8px;
