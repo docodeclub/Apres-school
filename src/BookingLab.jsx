@@ -409,6 +409,74 @@ function familyMatchesAccountEmail(family, email) {
   return Boolean(normalizedEmail && familyAccountHolderEmails(family).includes(normalizedEmail));
 }
 
+function normaliseLiveChildFlags(child) {
+  const flags = Array.isArray(child?.flags) ? child.flags.filter(Boolean) : [];
+  const dietary = child?.dietaryNotes || child?.dietary_notes || "";
+  const allergy = child?.allergyNotes || child?.allergy_notes || "";
+  const medical = child?.medicalNotes || child?.medical_notes || "";
+  return [
+    ...flags,
+    dietary && !flags.some((flag) => /dietary/i.test(flag)) ? `Dietary: ${dietary}` : "",
+    allergy && !flags.some((flag) => /allerg/i.test(flag)) ? `Allergy: ${allergy}` : "",
+    medical && !flags.some((flag) => /medical/i.test(flag)) ? `Medical: ${medical}` : "",
+  ].filter(Boolean);
+}
+
+function liveChildProfileToFamilyChild(child = {}) {
+  const name = child.name || child.fullName || child.full_name || [child.firstName || child.first_name, child.lastName || child.last_name].filter(Boolean).join(" ");
+  const school = child.school || child.schoolName || child.school_name || "School pending";
+  const year = child.year || child.yearGroup || child.year_group || child.classroom || "Year group pending";
+  const dob = child.dob || child.dateOfBirth || child.date_of_birth || "";
+  const flags = normaliseLiveChildFlags(child);
+  return {
+    ...child,
+    id: child.id || `child-${normaliseEmailAddress(name).replace(/[^a-z0-9]+/g, "-") || Date.now()}`,
+    name: name || "Child",
+    fullName: name || child.fullName || child.full_name || "Child",
+    school,
+    schoolName: school,
+    year,
+    yearGroup: year,
+    dob,
+    dateOfBirth: dob,
+    flags,
+    medicalPlan: child.medicalPlan || child.medical_plan || flags.join(" · "),
+    consent: child.consent || "Child registration consents recorded",
+    guest: false,
+  };
+}
+
+function parentAccountToFamilyRecord(parentAccount = {}, fallback = {}) {
+  const email = normaliseEmailAddress(parentAccount.email || fallback.email);
+  const children = Array.isArray(parentAccount.children) ? parentAccount.children.map(liveChildProfileToFamilyChild) : [];
+  const firstChildSchool = children.find((child) => child.school)?.school;
+  return {
+    id: parentAccount.id || fallback.id || `family-${email || Date.now()}`,
+    parentName: parentAccount.fullName || parentAccount.full_name || fallback.parentName || "Parent",
+    primaryEmail: email,
+    email,
+    phone: parentAccount.phone || fallback.phone || "",
+    secondaryPhone: fallback.secondaryPhone || "",
+    emergencyContact: parentAccount.phone || fallback.emergencyContact || "",
+    billingAddress: parentAccount.billingAddress || parentAccount.billing_address || fallback.billingAddress || null,
+    collectors: fallback.collectors || [],
+    registeredCentre: parentAccount.registeredCentre || parentAccount.registered_centre || firstChildSchool || fallback.registeredCentre || "",
+    profile: {
+      ...(fallback.profile || {}),
+      accountHolderRole: parentAccount.accountHolderRole || parentAccount.account_holder_role || fallback.profile?.accountHolderRole || "",
+      billingAddress: parentAccount.billingAddress || parentAccount.billing_address || fallback.profile?.billingAddress || null,
+    },
+    notificationPreferences: fallback.notificationPreferences || { ...defaultNotificationPreferences },
+    linkedAccountHolders: Array.isArray(parentAccount.linkedAccountHolders)
+      ? parentAccount.linkedAccountHolders
+      : Array.isArray(parentAccount.linked_account_holders)
+        ? parentAccount.linked_account_holders
+        : fallback.linkedAccountHolders || [],
+    children,
+    consentHistory: fallback.consentHistory || [],
+  };
+}
+
 function familyAccountRoleForEmail(family, email) {
   const normalizedEmail = normaliseEmailAddress(email);
   if (!normalizedEmail) return "primary";
@@ -821,8 +889,10 @@ function isoDate(date) {
 function normaliseChildDob(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const ukMatch = raw.match(/^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{4})$/);
+  const compactRaw = raw.replace(/\s+/g, "");
+  const isoMatch = compactRaw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const ukMatch = compactRaw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  const compactUkMatch = compactRaw.match(/^(\d{2})(\d{2})(\d{4})$/);
   let year = "";
   let month = "";
   let day = "";
@@ -832,19 +902,61 @@ function normaliseChildDob(value) {
     [, day, month, year] = ukMatch;
     day = day.padStart(2, "0");
     month = month.padStart(2, "0");
+  } else if (compactUkMatch) {
+    [, day, month, year] = compactUkMatch;
   } else {
     return "";
   }
   const parsed = new Date(`${year}-${month}-${day}T12:00:00`);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
   if (
     Number.isNaN(parsed.getTime())
     || parsed.getFullYear() !== Number(year)
     || parsed.getMonth() + 1 !== Number(month)
     || parsed.getDate() !== Number(day)
+    || parsed > today
   ) {
     return "";
   }
   return `${year}-${month}-${day}`;
+}
+
+function childDobParts(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return { day: "", month: "", year: "" };
+  const compactRaw = raw.replace(/\s+/g, "");
+  const isoMatch = compactRaw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const ukMatch = compactRaw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  const compactUkMatch = compactRaw.match(/^(\d{2})(\d{2})(\d{4})$/);
+  const partialUkMatch = compactRaw.match(/^(\d{0,2})\/(\d{0,2})\/(\d{0,4})$/);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    return { day, month, year };
+  }
+  if (ukMatch) {
+    const [, day, month, year] = ukMatch;
+    return { day: day.padStart(2, "0"), month: month.padStart(2, "0"), year };
+  }
+  if (compactUkMatch) {
+    const [, day, month, year] = compactUkMatch;
+    return { day, month, year };
+  }
+  if (partialUkMatch) {
+    const [, day, month, year] = partialUkMatch;
+    return { day, month, year };
+  }
+  return { day: "", month: "", year: "" };
+}
+
+function childDobFromParts(parts) {
+  const day = parts.day ? String(parts.day).padStart(2, "0") : "";
+  const month = parts.month ? String(parts.month).padStart(2, "0") : "";
+  const year = String(parts.year || "");
+  if (!parts.day && !parts.month && !parts.year) return "";
+  if (!parts.day || !parts.month || !parts.year) return `${day}/${month}/${year}`;
+  const normalised = normaliseChildDob(`${day}/${month}/${year}`);
+  return normalised || `${day}/${month}/${year}`;
 }
 
 function rangeFromPreset(mode, customStart, customEnd) {
@@ -988,6 +1100,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [childRegistrationStep, setChildRegistrationStep] = useState("Basics");
   const [launchChildRegistrationOpen, setLaunchChildRegistrationOpen] = useState(false);
   const [launchChildSavedNotice, setLaunchChildSavedNotice] = useState("");
+  const [launchAccountSessionEmail, setLaunchAccountSessionEmail] = useState(() => (isLaunchMode ? normaliseEmailAddress(readJson("apres-launch-account-session-email", "")) : ""));
+  const [launchChildSavedProfile, setLaunchChildSavedProfile] = useState(null);
+  const [launchChildConfirmedForBooking, setLaunchChildConfirmedForBooking] = useState(false);
   const [parentRegistrationSubmitAttempted, setParentRegistrationSubmitAttempted] = useState(false);
   const [childRegistrationSubmitAttempted, setChildRegistrationSubmitAttempted] = useState(false);
   const [selectedParentBookingId, setSelectedParentBookingId] = useState("");
@@ -1118,7 +1233,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     return () => window.clearTimeout(resetTimer);
   }, [isLaunchMode]);
   const sessions = [...labSessions, ...customSessions];
-  const launchParentEmail = normaliseEmailAddress(parentLogin.username || parentRegistration.email);
+  const launchParentEmail = normaliseEmailAddress(parentLogin.username || launchAccountSessionEmail || parentRegistration.email);
+  const launchSignedInEmail = parentAccountSignedIn ? launchParentEmail : "";
   const launchAccountFamily = isLaunchMode && launchParentEmail
     ? families.find((family) => familyMatchesAccountEmail(family, launchParentEmail))
     : null;
@@ -1145,7 +1261,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     return preference === "Off" ? fallback : preference;
   };
   const activeFamilyMatchesLaunchAccount = !isLaunchMode
-    || familyMatchesAccountEmail(activeFamily, launchParentEmail);
+    || (Boolean(launchParentEmail) && familyMatchesAccountEmail(activeFamily, launchParentEmail));
   const familyChildProfiles = activeFamilyMatchesLaunchAccount
     ? activeFamily.children?.map((child) => ({ ...child, school: child.school || "Guest" })) || []
     : [];
@@ -1157,13 +1273,26 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ];
   const activeSession = sessions.find((session) => session.id === activeId) || sessions[0] || labSessions[0];
   const schoolOptions = [...new Set(sessions.map((session) => session.site))].sort();
-  const launchRegisteredChildren = familyChildProfiles.filter((child) => child.name && !child.guest);
-  const launchAccountAuthenticated = !isLaunchMode || (parentAccountSignedIn && parentAccountMode === "live" && Boolean(launchParentEmail));
-  const launchNeedsAccount = isLaunchMode && !launchAccountAuthenticated;
-  const launchNeedsChild = isLaunchMode && launchAccountAuthenticated && !launchRegisteredChildren.length;
-  const launchChildFormOpen = launchNeedsChild || launchChildRegistrationOpen;
-  const launchChildReviewOpen = isLaunchMode && launchAccountAuthenticated && Boolean(launchChildSavedNotice) && launchRegisteredChildren.length > 0 && !launchChildFormOpen;
-  const launchGateReady = !isLaunchMode || (launchAccountAuthenticated && launchRegisteredChildren.length > 0 && !launchChildRegistrationOpen && !launchChildReviewOpen);
+  const launchRegisteredChildrenBase = familyChildProfiles.filter((child) => child.name && !child.guest);
+  const launchRegisteredChildren = launchChildSavedProfile?.name && !launchRegisteredChildrenBase.some((child) => (child.id && child.id === launchChildSavedProfile.id) || child.name === launchChildSavedProfile.name)
+    ? [...launchRegisteredChildrenBase, launchChildSavedProfile]
+    : launchRegisteredChildrenBase;
+  const launchBookingChildren = launchRegisteredChildren.length
+    ? launchRegisteredChildren
+    : launchChildSavedProfile?.name
+      ? [launchChildSavedProfile]
+      : [];
+  const launchAccountAuthenticated = !isLaunchMode || (parentAccountSignedIn && parentAccountMode === "live" && Boolean(launchSignedInEmail));
+  const launchAccountCanBook = !isLaunchMode || (parentAccountSignedIn && Boolean(launchSignedInEmail));
+  const launchNeedsAccount = isLaunchMode && !launchAccountCanBook;
+  const launchChildReviewRequested = isLaunchMode && Boolean(launchChildSavedNotice);
+  const launchHasBookingChild = launchBookingChildren.length > 0 || (launchChildConfirmedForBooking && Boolean(launchChildSavedProfile?.name));
+  const launchNeedsChild = isLaunchMode && launchAccountCanBook && !launchHasBookingChild;
+  const launchChildFormOpen = launchChildRegistrationOpen;
+  const launchChildReviewOpen = launchChildReviewRequested && !launchChildFormOpen;
+  const launchGateReady = !isLaunchMode || (launchAccountCanBook && launchHasBookingChild && !launchChildRegistrationOpen && !launchChildReviewOpen);
+  const launchBookingShellOpen = !isLaunchMode || launchAccountCanBook;
+  const launchShowRegistrationGate = isLaunchMode && (launchNeedsAccount || launchChildFormOpen || launchChildReviewOpen);
   const parentRegistrationSchools = schoolOptions.length ? schoolOptions : ["King's House School", "Ripley Court", "Shrewsbury House School", "The Rowans School", "Willington Prep"].sort();
   const careOptionsForSchool = [...new Set(sessions.filter((session) => session.site === selectedSchool).map((session) => session.type))];
   const activityOptionsForCare = sessions
@@ -1352,8 +1481,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         ["Sessions", String(regularSelectedBlockKeys.length), "Per selected day"],
       ];
   const [registerDay, setRegisterDay] = useState(activeSessionDays[0]);
-  const matchedSelectedChildren = allChildProfiles.filter((child) => selectedChildIds.includes(child.id));
-  const selectableChildProfiles = isLaunchMode ? launchRegisteredChildren : allChildProfiles;
+  const selectableChildProfiles = isLaunchMode ? launchBookingChildren : allChildProfiles;
+  const matchedSelectedChildren = selectableChildProfiles.filter((child) => selectedChildIds.includes(child.id));
   const selectedChildren = [...matchedSelectedChildren, ...guestChildren];
   const childCount = selectedChildren.length;
   const launchSelectedSessionChips = pickedDayRows.slice(0, 4).map((row) => ({
@@ -2253,7 +2382,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))[0] || null;
   const liveInvoiceIsSettled = (invoice) => {
     const status = String(invoice?.paymentStatus || "").toLowerCase();
-    return Boolean(invoice && (Number(invoice.balance || 0) <= 0 || ["paid", "bank_confirmed", "confirmed", "matched"].includes(status) || invoice.receiptStatus === "issued" || (invoice.receipts || []).length > 0));
+    return Boolean(invoice && (Number(invoice.balance || 0) <= 0 || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(status) || invoice.receiptStatus === "issued" || (invoice.receipts || []).length > 0));
   };
   const liveInvoiceNeedsAttention = (invoice) => {
     const status = String(invoice?.paymentStatus || "").toLowerCase();
@@ -3431,7 +3560,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const latestCheckout = latestLiveCheckout(liveInvoice);
     const livePaymentStatus = String(liveInvoice?.paymentStatus || "").toLowerCase();
     const liveReceiptIssued = liveInvoice?.receiptStatus === "issued" || (liveInvoice?.receipts || []).length > 0;
-    const liveInvoiceSettled = Boolean(liveInvoice && (Number(liveInvoice.balance || 0) <= 0 || ["paid", "bank_confirmed", "confirmed", "matched"].includes(livePaymentStatus) || liveReceiptIssued));
+    const liveInvoiceSettled = Boolean(liveInvoice && (Number(liveInvoice.balance || 0) <= 0 || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(livePaymentStatus) || liveReceiptIssued));
     const liveInvoicePending = Boolean(liveInvoice && ["pending", "reserved", "reported_complete", "checkout_created", "payment_pending"].includes(livePaymentStatus));
     const totalDue = Math.max(0, Number(liveInvoice?.totalAmount ?? liveBooking?.totalAmount ?? draft.total ?? 0));
     const isCancelled = draft.status === "Cancelled";
@@ -3582,7 +3711,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       const booking = liveBookingById.get(String(invoice.bookingId || "")) || {};
       const checkout = latestLiveCheckout(invoice);
       const statusValue = String(invoice.paymentStatus || "").toLowerCase();
-      const settled = Number(invoice.balance || 0) <= 0 || invoice.receiptStatus === "issued" || ["paid", "bank_confirmed", "confirmed", "matched"].includes(statusValue);
+      const settled = Number(invoice.balance || 0) <= 0 || invoice.receiptStatus === "issued" || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(statusValue);
       const failed = ["failed", "cancelled", "mismatch", "payment_failed"].includes(statusValue);
       const totalDue = Number(invoice.totalAmount || booking.totalAmount || checkout?.amount || 0);
       const balance = settled ? 0 : Math.max(0, Number(invoice.balance || totalDue || 0));
@@ -3715,28 +3844,28 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     source: paymentReturnHasLiveAnswer ? "Live Supabase ledger" : "Return URL",
     invoiceId: paymentReturnLiveInvoice?.id || paymentReturnLiveRow?.invoiceNumber || paymentReturnNotice.invoiceId,
     state: paymentReturnHasLiveAnswer
-      ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
+      ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
         ? "complete"
         : ["failed", "cancelled", "mismatch", "payment_failed"].includes(paymentReturnLiveStatus)
           ? "failed"
           : "pending"
       : paymentReturnNotice.state,
     title: paymentReturnHasLiveAnswer
-      ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
+      ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
         ? "Payment confirmed"
         : ["failed", "cancelled", "mismatch", "payment_failed"].includes(paymentReturnLiveStatus)
           ? "Payment needs attention"
           : "Payment is still processing"
       : paymentReturnNotice.title,
     detail: paymentReturnHasLiveAnswer
-      ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
+      ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
         ? "The live ledger shows this invoice as settled. Your receipt is available in the invoice history below."
         : ["failed", "cancelled", "mismatch", "payment_failed"].includes(paymentReturnLiveStatus)
           ? "The live ledger shows the payment has not cleared. You can retry payment from the invoice below."
           : `The live ledger still shows ${money(paymentReturnLiveBalance || 0)} outstanding while PonchoPay finishes the secure payment or voucher match.`
       : paymentReturnNotice.detail,
     action: paymentReturnHasLiveAnswer
-      ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
+      ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
         ? "Receipt ready"
         : ["failed", "cancelled", "mismatch", "payment_failed"].includes(paymentReturnLiveStatus)
           ? "Retry payment"
@@ -4320,10 +4449,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentAccountSignedIn(false);
     setParentAccountMode(isLaunchMode ? "live" : "demo");
     setParentLogin({ username: "", password: "" });
+    setLaunchAccountSessionEmail("");
     setSelectedChildIds([]);
     setLiveParentLedger({ invoices: [], bookings: [], fetchedAt: "", loading: false, error: "" });
     localStorage.setItem("apres-parent-account-signed-in", "false");
     localStorage.setItem("apres-parent-account-mode", JSON.stringify(isLaunchMode ? "live" : "demo"));
+    localStorage.removeItem("apres-launch-account-session-email");
     if (isLaunchMode) {
       setLaunchParentPortalOpen(false);
       setConfirmation(null);
@@ -4346,11 +4477,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       })
       .then((account) => {
         if (cancelled || !account) return;
+        hydrateLiveParentAccount(account, account.email || "");
         setParentAccountSignedIn(true);
         setParentAccountMode("live");
         setParentLogin((current) => ({ ...current, username: account.email || current.username }));
+        setLaunchAccountSessionEmail(normaliseEmailAddress(account.email || ""));
+        if (isLaunchMode) setLaunchParentPortalOpen(true);
         localStorage.setItem("apres-parent-account-signed-in", "true");
         localStorage.setItem("apres-parent-account-mode", JSON.stringify("live"));
+        localStorage.setItem("apres-launch-account-session-email", JSON.stringify(normaliseEmailAddress(account.email || "")));
       })
       .catch(() => {
         if (cancelled) return;
@@ -4808,10 +4943,20 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     [confirmation?.paymentMethod === "card" ? "Receipt email" : "Invoice email", confirmationInvoiceStatus, isLaunchMode ? "Also saved in your portal" : confirmation.paymentRoute || "PonchoPay route"],
     ["Parent portal", confirmationOutstanding > 0 ? `${money(confirmationOutstanding)} outstanding` : "No outstanding balance", "Invoice and payment history updated"],
   ] : [];
+  const confirmationRegisterState = confirmationHasCheckoutUrl
+    ? "Ready after checkout"
+    : confirmationOutstanding > 0
+      ? "Awaiting balance"
+      : "Session added";
+  const confirmationRegisterDetail = confirmationHasCheckoutUrl
+    ? `${confirmationChildren} appears automatically once PonchoPay authorises payment or the card guarantee.`
+    : confirmationOutstanding > 0
+      ? `${confirmationChildren} appears once the remaining balance clears.`
+      : `${confirmationChildren} appears on the daily register.`;
   const confirmationNextRows = confirmation ? [
     [confirmationDocumentLabel, confirmationInvoiceStatus, `Emailed to ${confirmationParentEmail}`],
-    ["Portal", "Pending payment", confirmationOutstanding > 0 ? `${money(confirmationOutstanding)} still to clear` : "Balance clear"],
-    ["Register", confirmationOutstanding > 0 || confirmationHasCheckoutUrl ? "Held pending payment" : "Session added", `${confirmationChildren} appears once payment/guarantee is accepted`],
+    ["Portal", confirmationHasCheckoutUrl ? "Secure checkout ready" : "Updated", confirmationOutstanding > 0 ? `${money(confirmationOutstanding)} still to clear` : "Balance clear"],
+    ["Register", confirmationRegisterState, confirmationRegisterDetail],
     ["Parent portal", "Updated", confirmationOutstanding > 0 ? `${money(confirmationOutstanding)} outstanding` : "Balance clear"],
   ] : [];
   const confirmationParentReceiptRows = confirmation ? [
@@ -6372,6 +6517,39 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     localStorage.setItem("apres-booking-lab-families", JSON.stringify(nextFamilies));
   }
 
+  function hydrateLiveParentAccount(parentAccount, fallbackEmail = "") {
+    if (!parentAccount) return null;
+    const accountEmail = normaliseEmailAddress(parentAccount.email || fallbackEmail);
+    const existingFamily = families.find((family) => family.id === parentAccount.id || familyMatchesAccountEmail(family, accountEmail));
+    const hydratedFamily = parentAccountToFamilyRecord(parentAccount, {
+      ...existingFamily,
+      email: accountEmail,
+      parentName: existingFamily?.parentName || parentAccount.fullName || parentAccount.full_name || parentRegistration.firstName || "Parent",
+      registeredCentre: existingFamily?.registeredCentre || selectedSchool,
+    });
+    const nextFamilies = [
+      hydratedFamily,
+      ...families.filter((family) => family.id !== hydratedFamily.id && !familyMatchesAccountEmail(family, accountEmail)),
+    ].slice(0, 16);
+    persistFamilies(nextFamilies);
+    setActiveFamilyId(hydratedFamily.id);
+    if (hydratedFamily.registeredCentre) setSelectedSchool(hydratedFamily.registeredCentre);
+    setLaunchChildSavedProfile(null);
+    setLaunchChildConfirmedForBooking(false);
+    if (hydratedFamily.children.length) {
+      const childIds = new Set(hydratedFamily.children.map((child) => child.id));
+      setSelectedChildIds((current) => {
+        const kept = current.filter((id) => childIds.has(id));
+        return kept.length ? kept : hydratedFamily.children.slice(0, 1).map((child) => child.id).filter(Boolean);
+      });
+      setLaunchChildRegistrationOpen(false);
+      setLaunchChildSavedNotice("");
+    } else {
+      setSelectedChildIds([]);
+    }
+    return hydratedFamily;
+  }
+
   function updateParentRegistration(field, value) {
     setParentRegistration((current) => {
       const next = { ...current, [field]: value };
@@ -6383,6 +6561,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   function updateChildRegistration(field, value) {
     setChildRegistration((current) => {
       const next = { ...current, [field]: value };
+      localStorage.setItem("apres-child-registration-draft", JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function updateChildDobPart(part, value) {
+    setChildRegistration((current) => {
+      const nextDob = childDobFromParts({ ...childDobParts(current.dob), [part]: value });
+      const next = { ...current, dob: nextDob };
       localStorage.setItem("apres-child-registration-draft", JSON.stringify(next));
       return next;
     });
@@ -6517,21 +6704,28 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     persistFamilies([nextFamily, ...families.filter((family) => family.email !== email)].slice(0, 16));
     setActiveFamilyId(familyId);
     setSelectedChildIds([]);
+    setLaunchChildSavedProfile(null);
+    setLaunchChildSavedNotice("");
+    setLaunchChildConfirmedForBooking(false);
     setParentAccountSignedIn(true);
     const accountMode = realBookingServiceReady ? "live" : "demo";
     setParentAccountMode(accountMode);
     setParentLogin({ username: email, password: "" });
+    setLaunchAccountSessionEmail(email);
+    setLaunchParentPortalOpen(true);
+    setLaunchChildRegistrationOpen(false);
     setSelectedSchool(centre);
     const freshChildRegistration = { ...defaultChildRegistration, school: centre, languages: ["English"] };
     localStorage.setItem("apres-child-registration-draft", JSON.stringify(freshChildRegistration));
     setChildRegistration(freshChildRegistration);
     localStorage.setItem("apres-parent-account-signed-in", "true");
     localStorage.setItem("apres-parent-account-mode", JSON.stringify(accountMode));
+    localStorage.setItem("apres-launch-account-session-email", JSON.stringify(email));
     localStorage.removeItem("apres-parent-registration-draft");
     setParentAccountLoading(false);
     setParentRegistrationSubmitAttempted(false);
-    setStatus(realBookingServiceReady ? "Parent account created. Add your child before booking." : "Account created for beta testing. Add your child before booking.");
-    window.setTimeout(() => scrollToFlowSection(".lab-launch-registration-gate", "start"), 120);
+    setStatus(realBookingServiceReady ? "Parent account created. Add a child from your family account before checkout." : "Account created for beta testing. Add a child from your family account before checkout.");
+    window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 120);
   }
 
   function childMissingBasics() {
@@ -6870,6 +7064,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     persistFamilies(fallbackFamilies);
     setSelectedChildIds([childId]);
     setSelectedSchool(childProfile.school);
+    setLaunchChildSavedProfile(childProfile);
+    setLaunchChildConfirmedForBooking(false);
     localStorage.removeItem("apres-child-registration-draft");
     setChildRegistration({ ...defaultChildRegistration, school: childProfile.school, languages: ["English"] });
     setChildRegistrationStep("Basics");
@@ -7277,11 +7473,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           await signOutRealParentAccount();
           throw new Error("No parent account is attached to this login yet.");
         }
+        const hydratedFamily = hydrateLiveParentAccount(parentAccount, username);
         setParentAccountSignedIn(true);
         setParentAccountMode("live");
+        setLaunchAccountSessionEmail(username);
+        setLaunchParentPortalOpen(true);
         localStorage.setItem("apres-parent-account-signed-in", "true");
         localStorage.setItem("apres-parent-account-mode", JSON.stringify("live"));
-        setStatus(`Parent account signed in${parentAccount.email || auth?.user?.email ? ` as ${parentAccount.email || auth.user.email}` : ""}. Live bookings, invoices and credits are now visible.`);
+        localStorage.setItem("apres-launch-account-session-email", JSON.stringify(username));
+        setStatus(`Parent account signed in${parentAccount.email || auth?.user?.email ? ` as ${parentAccount.email || auth.user.email}` : ""}. ${hydratedFamily?.children?.length ? `${hydratedFamily.children.length} saved child${hydratedFamily.children.length === 1 ? "" : "ren"} ready to select.` : "Add a child before booking."}`);
         await refreshLiveParentLedger({ quiet: true });
         window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 80);
         return;
@@ -7300,8 +7500,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     if (!isLaunchMode && (loginMatchesFamily || username === parentDemoUsername.toLowerCase()) && password.length >= 6) {
       setParentAccountSignedIn(true);
       setParentAccountMode("demo");
+      setLaunchAccountSessionEmail(username);
       localStorage.setItem("apres-parent-account-signed-in", "true");
       localStorage.setItem("apres-parent-account-mode", JSON.stringify("demo"));
+      localStorage.setItem("apres-launch-account-session-email", JSON.stringify(username));
       setStatus("Parent account signed in. Bookings, invoices and credit are now visible.");
       window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 80);
       setParentAccountLoading(false);
@@ -7408,11 +7610,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           await signInRealParentAccount({ email, password });
           const parentAccount = await fetchParentAccount();
           if (parentAccount) {
+            const hydratedFamily = hydrateLiveParentAccount(parentAccount, email);
             setParentAccountSignedIn(true);
             setParentAccountMode("live");
+            setLaunchAccountSessionEmail(email);
+            setLaunchParentPortalOpen(true);
             localStorage.setItem("apres-parent-account-signed-in", "true");
             localStorage.setItem("apres-parent-account-mode", JSON.stringify("live"));
-            setStatus("Password updated. You are signed in to the parent portal.");
+            localStorage.setItem("apres-launch-account-session-email", JSON.stringify(email));
+            setStatus(`Password updated. ${hydratedFamily?.children?.length ? `${hydratedFamily.children.length} saved child${hydratedFamily.children.length === 1 ? "" : "ren"} ready to select.` : "Add a child before booking."}`);
             await refreshLiveParentLedger({ quiet: true });
             window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 80);
             return;
@@ -7434,8 +7640,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentLogin({ username: parentDemoUsername, password: parentDemoPassword });
     setParentAccountSignedIn(true);
     setParentAccountMode("demo");
+    setLaunchAccountSessionEmail(parentDemoUsername.toLowerCase());
+    setLaunchParentPortalOpen(true);
     localStorage.setItem("apres-parent-account-signed-in", "true");
     localStorage.setItem("apres-parent-account-mode", JSON.stringify("demo"));
+    localStorage.setItem("apres-launch-account-session-email", JSON.stringify(parentDemoUsername.toLowerCase()));
     setStatus("Parent account signed in. Bookings, invoices and credit are now visible.");
     window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 80);
   }
@@ -7456,7 +7665,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentAccountMode(isLaunchMode ? "live" : "demo");
     localStorage.setItem("apres-parent-account-signed-in", "false");
     localStorage.setItem("apres-parent-account-mode", JSON.stringify(isLaunchMode ? "live" : "demo"));
+    localStorage.removeItem("apres-launch-account-session-email");
     setParentLogin({ username: "", password: "" });
+    setLaunchAccountSessionEmail("");
+    setSelectedChildIds([]);
+    setLaunchChildSavedProfile(null);
+    setLaunchChildSavedNotice("");
+    setLaunchChildConfirmedForBooking(false);
+    setLaunchChildRegistrationOpen(false);
     setLiveParentLedger({ invoices: [], bookings: [], fetchedAt: "", loading: false, error: "" });
     setParentAccountLoading(false);
     setStatus("Parent account signed out.");
@@ -8947,7 +9163,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         receivedAmount: mismatch ? payload.amount : draft.receivedAmount,
         reconciledAt: draft.reconciledAt || "",
         paymentStatus: eventType === "payment_captured" ? "Payment captured" : eventType === "payment_reported_complete" ? "Awaiting PonchoPay match" : failed ? "Payment failed" : draft.paymentStatus,
-        invoiceStatus: eventType === "payment_captured" ? "Payment captured; confirming booking" : eventType === "payment_reported_complete" ? "Payment reported; awaiting match" : failed ? "Payment failed; action needed" : draft.invoiceStatus,
+        invoiceStatus: eventType === "payment_captured" ? "Booking confirmed; payment captured" : eventType === "payment_reported_complete" ? "Payment reported; awaiting match" : failed ? "Payment failed; action needed" : draft.invoiceStatus,
         mismatchReason: mismatch ? `PonchoPay sandbox mismatch: received ${money(payload.amount)} against ${money(payload.expectedAmount)}.` : draft.mismatchReason || "",
         paymentTimeline: [
           ...(draft.paymentTimeline || []),
@@ -12859,7 +13075,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       paymentMethod: booking.paymentMethod,
       paymentPlan: booking.paymentPlan === "Monthly" ? "monthly" : "pay_now",
       currency: "GBP",
-      successUrl: `${window.location.origin}/launch-booking?payment=pending&invoice=${encodeURIComponent(adapterPayload.invoiceId)}`,
+      successUrl: `${window.location.origin}/booking/success?reference=${encodeURIComponent(adapterPayload.invoiceId)}`,
       cancelUrl: `${window.location.origin}/launch-booking?payment=cancelled&invoice=${encodeURIComponent(adapterPayload.invoiceId)}`,
       amount: adapterPayload.amount,
       reason: options.reason || "booking_checkout",
@@ -12976,7 +13192,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       cancellationHours: rules.cancellationHours,
       amendmentHours: rules.amendmentHours,
       source: isLaunchMode ? "launch_parent_flow" : "booking_lab",
-      successUrl: `${window.location.origin}/launch-booking?payment=pending`,
+      successUrl: `${window.location.origin}/booking/success?reference=${encodeURIComponent(booking.id)}`,
       cancelUrl: `${window.location.origin}/launch-booking?payment=cancelled`,
       metadata: {
         clientRequestId: booking.id,
@@ -13243,8 +13459,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
 
   async function submitBooking(event) {
     event.preventDefault();
-    if (isLaunchMode && !launchGateReady) {
-      setStatus(launchNeedsAccount ? "Sign in or create an account before booking." : "Register at least one child before booking.");
+    if (isLaunchMode && launchNeedsAccount) {
+      setStatus("Sign in or create an account before booking.");
+      scrollToFlowSection(".lab-launch-registration-gate", "start");
+      return;
+    }
+    if (isLaunchMode && (launchChildFormOpen || launchChildReviewOpen)) {
+      setStatus("Finish the child profile step before checkout.");
       scrollToFlowSection(".lab-launch-registration-gate", "start");
       return;
     }
@@ -13253,7 +13474,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       return;
     }
     if (!selectedChildren.length) {
-      setStatus(isLaunchMode ? "Choose at least one registered child before continuing." : "Choose or add at least one child before continuing.");
+      setStatus(isLaunchMode ? "Choose a saved child, or add a child from your family account before checkout." : "Choose or add at least one child before continuing.");
       setCheckoutStep("Children");
       window.setTimeout(() => scrollToFlowSection(".lab-checkout", "start"), 60);
       return;
@@ -13478,8 +13699,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const childBasicErrors = {
     firstName: childRequiredError("firstName"),
     lastName: childRequiredError("lastName"),
-    dob: childRequiredError("dob")
-      || (childRegistration.dob && !normaliseChildDob(childRegistration.dob) ? "Enter date of birth as DD/MM/YYYY." : ""),
+    dob: childRegistration.dob && !normaliseChildDob(childRegistration.dob)
+      ? "Choose a valid date of birth."
+      : childRequiredError("dob"),
     gender: childRequiredError("gender"),
     relationship: childRequiredError("relationship"),
     livesWith: childRequiredError("livesWith"),
@@ -13491,6 +13713,24 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     emergencyFirstName: childRequiredError("emergencyFirstName"),
     emergencyLastName: childRequiredError("emergencyLastName"),
   };
+  const childDobSelectParts = childDobParts(childRegistration.dob);
+  const currentDobYear = new Date().getFullYear();
+  const childDobDayOptions = Array.from({ length: 31 }, (_, index) => String(index + 1).padStart(2, "0"));
+  const childDobMonthOptions = [
+    ["01", "Jan"],
+    ["02", "Feb"],
+    ["03", "Mar"],
+    ["04", "Apr"],
+    ["05", "May"],
+    ["06", "Jun"],
+    ["07", "Jul"],
+    ["08", "Aug"],
+    ["09", "Sep"],
+    ["10", "Oct"],
+    ["11", "Nov"],
+    ["12", "Dec"],
+  ];
+  const childDobYearOptions = Array.from({ length: 22 }, (_, index) => String(currentDobYear - index));
 
   function renderParentPasswordResetPanel() {
     if (!parentPasswordReset.open) return null;
@@ -13561,7 +13801,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }
 
   return (
-    <section className={`page-shell booking-lab-page lab-view-${labView.toLowerCase().replace(/[^a-z0-9]+/g, "-")} ${isLaunchMode ? `booking-launch-page launch-step-${launchFlowStep.toLowerCase()}` : ""} ${isLaunchMode && !launchGateReady ? "launch-gated" : ""} ${isLaunchMode && confirmation ? "launch-confirmed" : ""} ${isLaunchMode && confirmation && launchParentPortalOpen ? "launch-parent-portal-open" : ""}`}>
+    <section className={`page-shell booking-lab-page lab-view-${labView.toLowerCase().replace(/[^a-z0-9]+/g, "-")} ${isLaunchMode ? `booking-launch-page launch-step-${launchFlowStep.toLowerCase()}` : ""} ${isLaunchMode && launchShowRegistrationGate ? "launch-gated" : ""} ${isLaunchMode && confirmation ? "launch-confirmed" : ""} ${isLaunchMode && (launchParentPortalOpen || parentAccountSignedIn) ? "launch-parent-portal-open" : ""}`}>
       <div className="section-heading narrow">
         <p className="eyebrow">{isLaunchMode ? "Book care" : "Booking Lab"}</p>
         <h1>{isLaunchMode ? "Book wraparound care or holiday camp." : "A local prototype for an Après booking system."}</h1>
@@ -18700,7 +18940,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       {labView === "Readiness" && <ReadinessLab onExport={exportReadinessPlan} />}
 
       {labView === "Parent" && <section className={`booking-lab-flow parent-flow-simple ${parentCheckoutOpen ? "parent-checkout-open" : ""} ${!isLaunchMode && parentAccountSignedIn ? "parent-account-open" : ""}`} id="booking-lab-flow">
-        {(!isLaunchMode || launchGateReady) && <div className="lab-booking-journey-shell">
+        {launchBookingShellOpen && <div className="lab-booking-journey-shell">
           <div className="lab-booking-journey-head">
             <div>
               <p className="eyebrow">{isLaunchMode ? "Book care" : "Guided booking"}</p>
@@ -18729,8 +18969,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             <div className="lab-launch-account-strip" aria-label="Signed in parent account">
               <div>
                 <span>Parent account</span>
-                <strong>{launchParentEmail || activeFamily.email || "Signed in"}</strong>
-                <small>{launchRegisteredChildren.length} child{launchRegisteredChildren.length === 1 ? "" : "ren"} registered</small>
+                <strong>{launchSignedInEmail || activeFamily.email || "Signed in"}</strong>
+                <small>{launchBookingChildren.length} child{launchBookingChildren.length === 1 ? "" : "ren"} registered</small>
               </div>
               <div>
                 <button
@@ -18742,6 +18982,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 >
                   My account
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLaunchChildRegistrationOpen(true);
+                    setLaunchChildSavedNotice("");
+                    window.setTimeout(() => scrollToFlowSection(".lab-launch-registration-gate", "start"), 80);
+                  }}
+                >
+                  Add child
+                </button>
                 <button type="button" onClick={signOutParentAccount} disabled={parentAccountLoading}>
                   {parentAccountLoading ? "Signing out..." : "Sign out"}
                 </button>
@@ -18749,7 +18999,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             </div>
           )}
         </div>}
-        {isLaunchMode && launchGateReady && (
+        {isLaunchMode && launchBookingShellOpen && (
           <aside className="lab-current-booking" aria-label="Current booking summary">
             <div className="lab-current-booking-head">
               <span>Your booking</span>
@@ -18782,7 +19032,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             </div>
           </aside>
         )}
-        {isLaunchMode && !launchGateReady && (
+        {launchShowRegistrationGate && (
           <section className="lab-launch-registration-gate" aria-label="Parent registration gate">
             <div className="lab-launch-gate-head">
               <div>
@@ -18792,7 +19042,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </div>
               <div className="lab-launch-gate-steps">
                 <span className={parentAccountSignedIn ? "complete" : "active"}>1. Account</span>
-                <span className={launchRegisteredChildren.length ? "complete" : parentAccountSignedIn ? "active" : ""}>2. Child</span>
+                <span className={launchBookingChildren.length ? "complete" : parentAccountSignedIn ? "active" : ""}>2. Child</span>
                 <span>3. Book</span>
               </div>
             </div>
@@ -18884,7 +19134,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <p>All children below are linked to this parent account and can be selected during checkout.</p>
                 </div>
                 <div className="lab-launch-registered-children">
-                  {launchRegisteredChildren.map((child) => (
+                  {launchBookingChildren.map((child) => (
                     <article key={child.id || child.name}>
                       <strong>{child.name}</strong>
                       <span>{child.classroom || child.year || "Year group not set"} · {child.school || selectedSchool}</span>
@@ -18897,6 +19147,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     type="button"
                     onClick={() => {
                       setLaunchChildSavedNotice("");
+                      setLaunchChildConfirmedForBooking(false);
                       setLaunchChildRegistrationOpen(true);
                       setChildRegistration({ ...defaultChildRegistration, school: selectedSchool, languages: ["English"] });
                       setChildRegistrationStep("Basics");
@@ -18909,6 +19160,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <button
                     type="button"
                     onClick={() => {
+                      setLaunchChildConfirmedForBooking(true);
                       setLaunchChildSavedNotice("");
                       setStatus("");
                       window.setTimeout(() => scrollToFlowSection(".lab-search-panel", "start"), 120);
@@ -18951,7 +19203,22 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <div className="lab-form-grid">
                   <label>First name <span>Required</span><input aria-invalid={fieldInvalid(childBasicErrors.firstName)} value={childRegistration.firstName} onChange={(event) => updateChildRegistration("firstName", event.target.value)} />{fieldError(childBasicErrors.firstName)}</label>
                   <label>Last name <span>Required</span><input aria-invalid={fieldInvalid(childBasicErrors.lastName)} value={childRegistration.lastName} onChange={(event) => updateChildRegistration("lastName", event.target.value)} />{fieldError(childBasicErrors.lastName)}</label>
-                  <label>Date of birth <span>Required</span><input inputMode="numeric" placeholder="DD/MM/YYYY" aria-invalid={fieldInvalid(childBasicErrors.dob)} value={childRegistration.dob} onChange={(event) => updateChildRegistration("dob", event.target.value)} />{fieldError(childBasicErrors.dob)}<small className="lab-field-hint">Use DD/MM/YYYY.</small></label>
+                  <label className="lab-dob-field">Date of birth <span>Required</span>
+                    <div className="lab-dob-selects" aria-invalid={fieldInvalid(childBasicErrors.dob)}>
+                      <select aria-label="Day of birth" autoComplete="bday-day" value={childDobSelectParts.day} onChange={(event) => updateChildDobPart("day", event.target.value)}>
+                        <option value="">DD</option>
+                        {childDobDayOptions.map((day) => <option key={day} value={day}>{day}</option>)}
+                      </select>
+                      <select aria-label="Month of birth" autoComplete="bday-month" value={childDobSelectParts.month} onChange={(event) => updateChildDobPart("month", event.target.value)}>
+                        <option value="">MM</option>
+                        {childDobMonthOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                      <select aria-label="Year of birth" autoComplete="bday-year" value={childDobSelectParts.year} onChange={(event) => updateChildDobPart("year", event.target.value)}>
+                        <option value="">YYYY</option>
+                        {childDobYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
+                      </select>
+                    </div>
+                    {fieldError(childBasicErrors.dob)}<small className="lab-field-hint">Choose day, month and year.</small></label>
                   <label>Gender <span>Required</span><select aria-invalid={fieldInvalid(childBasicErrors.gender)} value={childRegistration.gender} onChange={(event) => updateChildRegistration("gender", event.target.value)}><option value="">Select</option><option>Female</option><option>Male</option><option>Other</option><option>Prefer not to say</option></select>{fieldError(childBasicErrors.gender)}</label>
                   <label>Ethnicity (optional)<select value={childRegistration.ethnicity} onChange={(event) => updateChildRegistration("ethnicity", event.target.value)}><option value="">Prefer not to say / Not provided</option>{childEthnicityOptions.map((option) => <option key={option}>{option}</option>)}</select><small className="lab-field-hint">This information helps us promote equality and inclusion.</small></label>
                   <label>Language <span>Optional</span><select value={childRegistration.languages?.[0] || "English"} onChange={(event) => updateChildRegistration("languages", [event.target.value])}>{childLanguageOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
@@ -19231,7 +19498,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         </div>
 
         <div className="lab-booking-panel">
-          {(!isLaunchMode || launchParentPortalOpen) && <section className="lab-parent-portal">
+          {(!isLaunchMode || launchParentPortalOpen || parentAccountSignedIn) && <section className="lab-parent-portal">
             <div className="lab-parent-portal-head">
               <div className="lab-parent-portal-title">
                 <p className="eyebrow">Family account</p>
@@ -19252,6 +19519,19 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 {parentAccountSignedIn ? (
                   <button className="button light" type="button" onClick={signOutParentAccount} disabled={parentAccountLoading}>{parentAccountLoading ? "Signing out..." : "Sign out"}</button>
                 ) : null}
+                {isLaunchMode && parentAccountSignedIn && (
+                  <button
+                    className="button light"
+                    type="button"
+                    onClick={() => {
+                      setLaunchChildRegistrationOpen(true);
+                      setLaunchChildSavedNotice("");
+                      window.setTimeout(() => scrollToFlowSection(".lab-launch-registration-gate", "start"), 80);
+                    }}
+                  >
+                    Add child
+                  </button>
+                )}
                 <button className="button light" type="button" onClick={() => setLabView("Family")}>Family details</button>
               </div>
             </div>
@@ -20437,7 +20717,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 {isLaunchMode && (
                   <div className="lab-confirmation-parent-receipt">
                   <div>
-                    <p className="eyebrow">{confirmationHasCheckoutUrl ? "Payment pending" : "Booking complete"}</p>
+                    <p className="eyebrow">{confirmationHasCheckoutUrl ? "Secure checkout" : "Booking complete"}</p>
                     <h4>{confirmationTitle}</h4>
                     <p>{confirmationHeroText}</p>
                     </div>
@@ -20556,30 +20836,72 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               <div className="lab-stage-heading">
                 <span>1</span>
                 <div>
-                  <h3>{isLaunchMode ? "Choose child" : "Choose children"}</h3>
-                  <p>{isLaunchMode ? "Who is this for?" : "Use saved profiles or add a guest child before continuing."}</p>
+                  <h3>{isLaunchMode ? "Select child" : "Choose children"}</h3>
+                  <p>{isLaunchMode ? "Choose from saved children or add another child." : "Use saved profiles or add a guest child before continuing."}</p>
                 </div>
               </div>
               <div className="lab-child-picker">
-              <div>
-                <span>Children</span>
-                <strong>{childCount ? `${childCount} selected` : "Choose child"}</strong>
+              <div className="lab-child-picker-title">
+                <div>
+                  <span>Saved children</span>
+                  <strong>{childCount ? `${childCount} selected` : "Select child"}</strong>
+                </div>
+                {isLaunchMode && (
+                  <button
+                    className="button light"
+                    type="button"
+                    onClick={() => {
+                      setLaunchChildSavedNotice("");
+                      setLaunchChildRegistrationOpen(true);
+                      window.setTimeout(() => scrollToFlowSection(".lab-launch-registration-gate", "start"), 80);
+                    }}
+                  >
+                    Add child
+                  </button>
+                )}
               </div>
-              <div className="lab-child-chips">
-                {selectableChildProfiles.map((child) => (
-                  <label className={`lab-child-checkbox ${selectedChildIds.includes(child.id) ? "active" : ""}`} key={child.id}>
-                    <input
-                      checked={selectedChildIds.includes(child.id)}
-                      onChange={() => toggleChild(child.id)}
-                      type="checkbox"
-                    />
-                    <span>
-                      <strong>{child.name}</strong>
-                      <small>{child.year} · {child.school}</small>
-                    </span>
-                  </label>
-                ))}
-                {!selectableChildProfiles.length && <div className="lab-empty-child-state">Add a child profile before booking.</div>}
+              <div className="lab-saved-child-table" role="table" aria-label="Saved children">
+                {!!selectableChildProfiles.length && (
+                  <div className="lab-saved-child-header" role="row">
+                    <span>Child</span>
+                    <span>School</span>
+                    <span>Care notes</span>
+                    <span>Select</span>
+                  </div>
+                )}
+                {selectableChildProfiles.map((child) => {
+                  const selected = selectedChildIds.includes(child.id);
+                  const flags = Array.isArray(child.flags) ? child.flags.filter(Boolean) : [];
+                  return (
+                    <label className={`lab-saved-child-row ${selected ? "active" : ""}`} key={child.id} role="row">
+                      <span className="lab-saved-child-name">
+                        <strong>{child.name}</strong>
+                        <small>{child.dob ? `DOB ${child.dob}` : "DOB saved on profile"}</small>
+                      </span>
+                      <span>
+                        <strong>{child.school || "School pending"}</strong>
+                        <small>{child.year || "Year group pending"}</small>
+                      </span>
+                      <span>
+                        <strong>{flags.length ? `${flags.length} note${flags.length === 1 ? "" : "s"}` : "No flags"}</strong>
+                        <small>{flags.slice(0, 2).join(" · ") || "Nothing urgent recorded"}</small>
+                      </span>
+                      <span className="lab-saved-child-select">
+                        <input
+                          checked={selected}
+                          onChange={() => toggleChild(child.id)}
+                          type="checkbox"
+                        />
+                        <em>{selected ? "Selected" : "Select"}</em>
+                      </span>
+                    </label>
+                  );
+                })}
+                {!selectableChildProfiles.length && (
+                  <div className="lab-empty-child-state">
+                    No saved children yet. Add a child once, then future bookings will use the saved profile.
+                  </div>
+                )}
               </div>
               {!isLaunchMode && <div className="lab-guest-child">
                 <input value={guestName} onChange={(event) => setGuestName(event.target.value)} placeholder="Add another child" />

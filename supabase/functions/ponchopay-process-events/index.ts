@@ -211,10 +211,12 @@ function buildInvoiceState(event: WebhookEvent, currentInvoice: Record<string, u
     case "payment_captured":
       return {
         ...base,
-        payment_status: "reserved",
-        parent_portal_status: "Payment captured; completing confirmation",
+        paid_amount: Math.max(currentPaid, eventAmount || totalAmount),
+        balance: Math.max(0, totalAmount - Math.max(currentPaid, eventAmount || totalAmount) + currentRefunded),
+        payment_status: "captured",
+        parent_portal_status: "Booking confirmed; payment captured",
         finance_status: "captured_pending_completion",
-        processingOutcome: "Payment captured by PonchoPay; booking confirmation can continue automatically",
+        processingOutcome: "Payment captured by PonchoPay; booking confirmed while completion finalises",
       };
     case "payment_reported_complete":
       return {
@@ -523,6 +525,7 @@ function bookingStatusForInvoice(paymentStatus: string) {
     case "paid_by_fallback_card":
     case "payment_guaranteed":
     case "payment_plan_active":
+    case "captured":
       return "confirmed";
     case "part_paid":
     case "failed":
