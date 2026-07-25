@@ -1393,7 +1393,7 @@ function ChildActivityCard({ activity, compact = false }) {
   );
 }
 
-function RegisterChildProfile({ child, profile, activity, loading, error, section, setSection, canManagePhoto, photoStatus, onPhotoUpload, onClose }) {
+function RegisterChildProfile({ child, profile, activity, careDetails, sendCareDetails, collectorDetails, loading, error, section, setSection, canManagePhoto, photoStatus, onPhotoUpload, onClose }) {
   const profileName = profile?.preferredName || profile?.fullName || child.childName;
   const initials = profileName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "AS";
   const dateOfBirth = profile?.dateOfBirth || child.childDateOfBirth;
@@ -1462,9 +1462,9 @@ function RegisterChildProfile({ child, profile, activity, loading, error, sectio
                 <article><span>Rewards</span><strong>{counts.Rewards}</strong></article>
               </div>
               <div className="register-child-profile-care">
-                <article><span>Medical and allergies</span><strong>{careDetailLines(child).join(" · ") || "Nothing recorded"}</strong></article>
-                <article><span>SEND</span><strong>{sendDetails(child).map(printableValue).join(" · ") || "Nothing recorded"}</strong></article>
-                <article><span>Authorised collectors</span><strong>{(child.authorisedCollectors || []).map(printableValue).join(" · ") || "None recorded"}</strong></article>
+                <article><span>Medical and allergies</span><strong>{careDetails.join(" · ") || "Nothing recorded"}</strong></article>
+                <article><span>SEND</span><strong>{sendCareDetails.join(" · ") || "Nothing recorded"}</strong></article>
+                <article><span>Authorised collectors</span><strong>{collectorDetails.join(" · ") || "None recorded"}</strong></article>
               </div>
             </>
           )}
@@ -3078,6 +3078,9 @@ function Registers({ access }) {
           child={selectedChild}
           profile={childProfile}
           activity={childActivity}
+          careDetails={careDetailLines(selectedChild)}
+          sendCareDetails={sendDetails(selectedChild).map(printableValue)}
+          collectorDetails={(selectedChild.authorisedCollectors || []).map(printableValue)}
           loading={childProfileLoading || childActivityLoading}
           error={childProfileError || childActivityError}
           section={childProfileSection}
