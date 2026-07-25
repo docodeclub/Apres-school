@@ -14,6 +14,7 @@ import {
   fetchRegisterPupilReports,
   fetchSafeguardingCase,
   fetchSafeguardingCases,
+  fetchMySafeguardingSubmissions,
   fetchStaffAdHocBookingOptions,
   fetchStaffChildActivityTimeline,
   fetchStaffRegister,
@@ -970,10 +971,8 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const visibleTabs = effectiveRole === "Staff"
     ? ["Staff", "Registers", "Documents", "Pay", "Rewards", "Sessions"]
     : effectiveRole === "Manager"
-      ? ["Staff", "Registers", "Rota", "SCR", "Ofsted", "Documents", "Sessions"]
-      : effectiveRole === "Superadmin"
-        ? platformTabs
-        : platformTabs.filter((item) => item !== "Safeguarding");
+      ? ["Staff", "Registers", "Safeguarding", "Rota", "SCR", "Ofsted", "Documents", "Sessions"]
+      : platformTabs;
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item))])
     .filter(([, items]) => items.length);
@@ -1171,7 +1170,9 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Rewards" && <Rewards data={scopedData} />}
         {tab === "Sessions" && <Sessions data={scopedData} />}
         {tab === "Incidents" && <Incidents />}
-        {tab === "Safeguarding" && effectiveRole === "Superadmin" && <SafeguardingCases />}
+        {tab === "Safeguarding" && ["Manager", "Admin", "Superadmin"].includes(effectiveRole) && (
+          <SafeguardingCases canManageAll={effectiveRole === "Superadmin"} />
+        )}
         {tab === "CRM" && <CRM data={enrichedData} />}
         {tab === "Audit" && <AuditLog data={scopedData} />}
         {tab === "Settings" && <Settings />}
@@ -13483,7 +13484,7 @@ function reportLocalIsoDate(value) {
 const SAFEGUARDING_STATUSES = ["New", "DSL Reviewing", "Monitoring", "External Referral", "Closed", "Archived"];
 const SAFEGUARDING_PRIORITIES = ["Low", "Standard", "High", "Urgent"];
 
-function SafeguardingCases() {
+function SafeguardingCases({ canManageAll = false }) {
   const [cases, setCases] = useState([]);
   const [selectedId, setSelectedId] = useState("");
   const [selectedCase, setSelectedCase] = useState(null);
@@ -13505,7 +13506,9 @@ function SafeguardingCases() {
     setLoading(true);
     setError("");
     try {
-      const next = await fetchSafeguardingCases({ limit: 500 });
+      const next = canManageAll
+        ? await fetchSafeguardingCases({ limit: 500 })
+        : await fetchMySafeguardingSubmissions({ limit: 100 });
       setCases(next);
       setSelectedId((current) => keepSelection && next.some((item) => item.id === current) ? current : (next[0]?.id || ""));
     } catch (loadError) {
@@ -13517,7 +13520,7 @@ function SafeguardingCases() {
 
   useEffect(() => {
     loadCases({ keepSelection: false });
-  }, []);
+  }, [canManageAll]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -13643,9 +13646,11 @@ function SafeguardingCases() {
     <div className="safeguarding-page">
       <section className="safeguarding-heading">
         <div>
-          <span className="eyebrow">Restricted · DSL access</span>
+          <span className="eyebrow">{canManageAll ? "Restricted · DSL access" : "Confidential · your submissions"}</span>
           <h2>Safeguarding cases</h2>
-          <p>Protected case management built around permanent chronology, factual recording and professional oversight.</p>
+          <p>{canManageAll
+            ? "Protected case management built around permanent chronology, factual recording and professional oversight."
+            : "Review the safeguarding concerns you personally submitted. DSL case management remains restricted."}</p>
         </div>
         <button className="button secondary" type="button" onClick={() => loadCases()} disabled={loading}>{loading ? "Refreshing…" : "Refresh cases"}</button>
       </section>
@@ -13699,12 +13704,19 @@ function SafeguardingCases() {
                 </dl>
               </section>
 
-              <section className="safeguarding-case-controls">
-                <h4>Case oversight</h4>
-                <label>Status<select value={draftStatus} onChange={(event) => setDraftStatus(event.target.value)}>{SAFEGUARDING_STATUSES.map((value) => <option key={value}>{value}</option>)}</select></label>
-                <label>Priority<select value={draftPriority} onChange={(event) => setDraftPriority(event.target.value)}>{SAFEGUARDING_PRIORITIES.map((value) => <option key={value}>{value}</option>)}</select></label>
-                <button className="button primary" type="button" onClick={saveCaseSettings} disabled={saving}>Save case update</button>
-              </section>
+              {canManageAll ? (
+                <section className="safeguarding-case-controls">
+                  <h4>Case oversight</h4>
+                  <label>Status<select value={draftStatus} onChange={(event) => setDraftStatus(event.target.value)}>{SAFEGUARDING_STATUSES.map((value) => <option key={value}>{value}</option>)}</select></label>
+                  <label>Priority<select value={draftPriority} onChange={(event) => setDraftPriority(event.target.value)}>{SAFEGUARDING_PRIORITIES.map((value) => <option key={value}>{value}</option>)}</select></label>
+                  <button className="button primary" type="button" onClick={saveCaseSettings} disabled={saving}>Save case update</button>
+                </section>
+              ) : (
+                <div className="register-report-guidance safeguarding">
+                  <strong>View only</strong>
+                  <span>The DSL manages status, priority, chronology and follow-up actions.</span>
+                </div>
+              )}
 
               <section className="safeguarding-chronology">
                 <header><div><h4>Chronology</h4><p>Permanent safeguarding history. Entries cannot be edited or deleted.</p></div><span>{selectedCase.chronology?.length || 0} entries</span></header>
@@ -13716,11 +13728,11 @@ function SafeguardingCases() {
                     </article>
                   ))}
                 </div>
-                <form onSubmit={addChronologyEntry}>
+                {canManageAll && <form onSubmit={addChronologyEntry}>
                   <label>Entry type<select value={chronologyType} onChange={(event) => setChronologyType(event.target.value)}><option>Case note</option><option>Parent contact</option><option>Child meeting</option><option>External referral</option><option>Monitoring update</option></select></label>
                   <label>Factual chronology entry<textarea rows="4" value={chronologyNote} onChange={(event) => setChronologyNote(event.target.value)} placeholder="Record the factual action, contact or update." required /></label>
                   <button className="button primary" disabled={saving}>Add chronology entry</button>
-                </form>
+                </form>}
               </section>
 
               <section className="safeguarding-tasks">
@@ -13728,14 +13740,14 @@ function SafeguardingCases() {
                 {(selectedCase.tasks || []).map((task) => (
                   <article key={task.id} className={task.status === "Completed" ? "complete" : ""}>
                     <div><strong>{task.title}</strong><small>{task.dueAt ? `Due ${registerReportDateTime(task.dueAt)}` : "No due date"} · {task.status}</small></div>
-                    {task.status === "Open" && <button type="button" onClick={() => completeTask(task.id)} disabled={saving}>Mark complete</button>}
+                    {canManageAll && task.status === "Open" && <button type="button" onClick={() => completeTask(task.id)} disabled={saving}>Mark complete</button>}
                   </article>
                 ))}
-                <form onSubmit={addTask}>
+                {canManageAll && <form onSubmit={addTask}>
                   <label>Action<input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="For example: speak to parent" required /></label>
                   <label>Due date<input type="date" value={taskDue} onChange={(event) => setTaskDue(event.target.value)} /></label>
                   <button className="button secondary" disabled={saving}>Add task</button>
-                </form>
+                </form>}
               </section>
               {message && <div className="register-report-message success" role="status">{message}</div>}
             </>
@@ -17197,6 +17209,7 @@ function iconFor(item) {
     Bookings: <BookOpen />,
     Registers: <ClipboardCheck />,
     Incidents: <Bell />,
+    Safeguarding: <ShieldCheck />,
     CRM: <Mail />,
     "Customer Profiles": <Users />,
     Users: <Users />,

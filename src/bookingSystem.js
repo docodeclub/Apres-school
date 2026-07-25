@@ -304,6 +304,22 @@ export async function fetchSafeguardingCases({ limit = 200 } = {}) {
   return Array.isArray(data) ? data : [];
 }
 
+export async function fetchMySafeguardingSubmissions({ limit = 100 } = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("list_my_safeguarding_submissions", {
+    p_limit: limit,
+  });
+  if (error) throw error;
+  return (Array.isArray(data) ? data : []).map((item) => ({
+    ...item,
+    priority: item.priority || "Restricted",
+    categories: Array.isArray(item.categories) ? item.categories : [],
+    siteName: item.siteName || "",
+    createdAt: item.createdAt || item.submittedAt,
+    updatedAt: item.updatedAt || item.submittedAt,
+  }));
+}
+
 export async function fetchSafeguardingCase({ caseId } = {}) {
   assertSupabase();
   const { data, error } = await supabase.rpc("get_safeguarding_case", { p_case_id: caseId });
