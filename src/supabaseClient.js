@@ -9,6 +9,7 @@ const payslipNotificationFunctionName = import.meta.env.VITE_PAYSLIP_NOTIFICATIO
 const staffPayPinFunctionName = import.meta.env.VITE_STAFF_PAY_PIN_FUNCTION_NAME || "manage-staff-pay-pin";
 const financeInvoiceFunctionName = import.meta.env.VITE_FINANCE_INVOICE_FUNCTION_NAME || "send-finance-invoice";
 const adminParentCreditFunctionName = import.meta.env.VITE_ADMIN_PARENT_CREDIT_FUNCTION_NAME || "admin-adjust-parent-credit";
+const staffingNotificationFunctionName = import.meta.env.VITE_STAFFING_NOTIFICATION_FUNCTION_NAME || "notify-staffing-publication";
 const staffPhotoBucket = "staff-profile-photos";
 const staffHrFilesBucket = "staff-hr-files";
 
@@ -146,11 +147,37 @@ export async function publishStaffingRota({ dateFrom, dateTo, warnings = [], ove
   return data;
 }
 
+export async function notifyStaffingPublication(publicationId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.functions.invoke(staffingNotificationFunctionName, {
+    body: { publicationId },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Rota published, but staff notifications could not be sent.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data || {};
+}
+
 export async function acknowledgeStaffingAssignment(assignmentId, status = "acknowledged") {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.rpc("staffing_acknowledge_assignment", {
     p_assignment_id: assignmentId,
     p_status: status,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function saveOwnStaffingAvailability({ weekday, status, availableFrom = "", availableUntil = "", note = "" }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("staffing_save_own_availability", {
+    p_weekday: Number(weekday),
+    p_status: status,
+    p_available_from: availableFrom || null,
+    p_available_until: availableUntil || null,
+    p_note: note || null,
   });
   if (error) throw error;
   return data;

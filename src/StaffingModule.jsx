@@ -314,9 +314,16 @@ export function Staffing({ access, legacyHours = null }) {
     }
     setPublishing(true);
     try {
-      const { publishStaffingRota } = await staffingApi();
+      const { publishStaffingRota, notifyStaffingPublication } = await staffingApi();
       const publication = await publishStaffingRota({ dateFrom: plannerStart, dateTo: plannerEnd, warnings, overrideReason });
-      setMessage({ tone: "good", text: `Rota version ${publication.version} published. Assigned staff can now view and acknowledge their shifts.` });
+      try {
+        const notification = await notifyStaffingPublication(publication.id);
+        const delivered = Number(notification.notified || 0);
+        const queued = Number(notification.queued || 0);
+        setMessage({ tone: "good", text: `Rota version ${publication.version} published. ${delivered ? `${delivered} staff email${delivered === 1 ? "" : "s"} sent.` : queued ? `${queued} staff notification${queued === 1 ? "" : "s"} queued.` : "Assigned staff can now view and acknowledge their shifts."}` });
+      } catch (notificationError) {
+        setMessage({ tone: "warn", text: `Rota version ${publication.version} is published and visible to staff, but email delivery needs attention: ${notificationError.message}` });
+      }
       await loadStaffing(false);
     } catch (error) {
       setMessage({ tone: "bad", text: String(error.message || "Rota could not be published.").split("|").pop() });
@@ -581,8 +588,8 @@ function HoursView({ sessions, staff, legacyHours, canSeeCosts }) {
   return <div className="staffing-hours-view"><div className="staffing-section-heading"><div><p className="eyebrow">Scheduled from published shifts</p><h3>Hours</h3><p>Setup and closing time are included once. Payroll approval remains a separate control.</p></div><label>Group by<select value={group} onChange={(event) => setGroup(event.target.value)}><option>Staff member</option><option>School</option><option>Date</option><option>Service type</option></select></label></div><div className="staffing-metrics"><article><span>Assignments</span><strong>{rows.length}</strong></article><article><span>Scheduled hours</span><strong>{(totalMinutes / 60).toFixed(2)}</strong></article><article><span>Actual hours entered</span><strong>{(rows.reduce((sum, row) => sum + Number(row.actualMinutes || 0), 0) / 60).toFixed(2)}</strong></article>{canSeeCosts && <article><span>Estimated cost</span><strong>£{totalCost.toFixed(2)}</strong></article>}</div><div className="table-wrap staffing-hours-table"><table><thead><tr><th>Staff member</th><th>Date</th><th>School / service</th><th>Paid window</th><th>Scheduled</th><th>Actual</th><th>Variance</th><th>Status</th>{canSeeCosts && <th>Estimated cost</th>}</tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><strong>{row.person.name}</strong><small>{row.person.employmentType || row.person.jobRole || "Staff"}</small></td><td>{formatDay(localIsoDate(new Date(row.session.startsAt)))}</td><td><strong>{row.session.siteName}</strong><small>{row.session.programmeName}</small></td><td>{formatTime(row.window.start)}–{formatTime(row.window.end)}</td><td>{(row.scheduledMinutes / 60).toFixed(2)}h</td><td>{row.actualMinutes == null ? "—" : `${(row.actualMinutes / 60).toFixed(2)}h`}</td><td>{row.varianceMinutes == null ? "—" : `${row.varianceMinutes > 0 ? "+" : ""}${row.varianceMinutes}m`}</td><td><StatusPill value={row.approvalStatus} tone={String(row.approvalStatus).toLowerCase() === "approved" ? "good" : "neutral"} /></td>{canSeeCosts && <td>£{((row.scheduledMinutes / 60) * Number(row.person.payRate || 0)).toFixed(2)}</td>}</tr>)}</tbody></table></div>{!rows.length && <div className="staffing-empty"><strong>No scheduled hours</strong><span>Hours appear automatically when staff are assigned to operating sessions.</span></div>}{legacyHours && <details className="staffing-payroll-reconciliation"><summary>Monthly payroll reconciliation</summary>{legacyHours}</details>}</div>;
 }
 
-export function MyShifts({ access }) {
-  const [payload, setPayload] = useState({ sessions: [], currentStaffId: "" });
+export function MyShifts() {
+  const [payload, setPayload] = useState({ sessions: [], availability: [], currentStaffId: "" });
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(true);
   const start = localIsoDate(new Date());
@@ -613,5 +620,66 @@ export function MyShifts({ access }) {
     }
   }
 
-  return <section className="my-shifts-panel"><div className="staffing-section-heading"><div><p className="eyebrow">Published rota</p><h2>My Shifts</h2><p>Arrival and finish times include paid setup, handover and closing duties.</p></div><StatusPill value={`${shifts.length} upcoming`} tone={shifts.length ? "good" : "neutral"} /></div><InlineNotice message={message} />{loading ? <div className="staffing-loading"><span />Loading shifts…</div> : <div className="my-shifts-list">{shifts.map(({ session, assignment }) => { const window = shiftWindow(session); const manager = (session.assignments || []).find((item) => roleLabels(session, item).includes("Manager")); return <article key={assignment.id}><header><div><span>{formatDay(localIsoDate(new Date(session.startsAt)), true)}</span><h3>{session.siteName}</h3><p>{session.programmeName}</p></div><StatusPill value={String(assignment.acknowledgementStatus || "draft").replaceAll("_", " ")} tone={assignment.acknowledgementStatus === "acknowledged" ? "good" : assignment.acknowledgementStatus === "unable_to_attend" ? "bad" : "warn"} /></header><div className="my-shift-times"><span><b>Arrive</b>{formatTime(window.start)}</span><span><b>Children attend</b>{formatTime(session.startsAt)}–{formatTime(session.endsAt)}</span><span><b>Finish</b>{formatTime(window.end)}</span><span><b>Paid hours</b>{(minutesBetween(window.start, window.end) / 60).toFixed(2)}</span></div><p><b>Role:</b> {roleLabels(session, assignment).join(" · ")} · <b>Manager:</b> {manager?.staffName || "To be confirmed"}</p>{assignment.operationalNotes && <p>{assignment.operationalNotes}</p>}{assignment.publicationVersion && assignment.acknowledgementStatus !== "acknowledged" && <div className="my-shift-actions"><button type="button" onClick={() => acknowledge(assignment, "unable_to_attend")}>Unable to attend</button><button type="button" onClick={() => acknowledge(assignment, "acknowledged")}>Acknowledge shift</button></div>}</article>; })}</div>}{!loading && !shifts.length && <div className="staffing-empty"><strong>No published shifts yet</strong><span>Your next confirmed shifts will appear here after the rota is published.</span></div>}</section>;
+  async function saveAvailability(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      const { saveOwnStaffingAvailability } = await staffingApi();
+      await saveOwnStaffingAvailability({
+        weekday: form.get("weekday"),
+        status: form.get("status"),
+        availableFrom: form.get("availableFrom"),
+        availableUntil: form.get("availableUntil"),
+        note: form.get("note"),
+      });
+      setMessage({ tone: "good", text: "Availability saved and sent for manager review." });
+      await load();
+    } catch (error) {
+      setMessage({ tone: "bad", text: error.message || "Availability could not be saved." });
+    }
+  }
+
+  const weekdayNames = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const recurringAvailability = (payload.availability || [])
+    .filter((entry) => !entry.specificDate)
+    .sort((a, b) => Number(a.weekday) - Number(b.weekday));
+
+  return (
+    <section className="my-shifts-panel">
+      <div className="staffing-section-heading">
+        <div><p className="eyebrow">Published rota</p><h2>My Shifts</h2><p>Arrival and finish times include paid setup, handover and closing duties.</p></div>
+        <StatusPill value={`${shifts.length} upcoming`} tone={shifts.length ? "good" : "neutral"} />
+      </div>
+      <InlineNotice message={message} />
+      {loading ? <div className="staffing-loading"><span />Loading shifts…</div> : (
+        <div className="my-shifts-list">{shifts.map(({ session, assignment }) => {
+          const window = shiftWindow(session);
+          const manager = (session.assignments || []).find((item) => roleLabels(session, item).includes("Manager"));
+          const colleagues = (session.assignments || []).filter((item) => item.id !== assignment.id && assignmentIsActive(item)).map((item) => item.staffName).filter(Boolean);
+          return <article key={assignment.id}>
+            <header><div><span>{formatDay(localIsoDate(new Date(session.startsAt)), true)}</span><h3>{session.siteName}</h3><p>{session.programmeName}</p></div><StatusPill value={String(assignment.acknowledgementStatus || "draft").replaceAll("_", " ")} tone={assignment.acknowledgementStatus === "acknowledged" ? "good" : assignment.acknowledgementStatus === "unable_to_attend" ? "bad" : "warn"} /></header>
+            <div className="my-shift-times"><span><b>Arrive</b>{formatTime(window.start)}</span><span><b>Children attend</b>{formatTime(session.startsAt)}–{formatTime(session.endsAt)}</span><span><b>Finish</b>{formatTime(window.end)}</span><span><b>Paid hours</b>{(minutesBetween(window.start, window.end) / 60).toFixed(2)}</span></div>
+            <p><b>Role:</b> {roleLabels(session, assignment).join(" · ")} · <b>Manager:</b> {manager?.staffName || "To be confirmed"}</p>
+            <p><b>Working with:</b> {colleagues.length ? colleagues.join(", ") : "Team to be confirmed"}</p>
+            {assignment.operationalNotes && <p>{assignment.operationalNotes}</p>}
+            {assignment.publicationVersion && assignment.acknowledgementStatus !== "acknowledged" && <div className="my-shift-actions"><button type="button" onClick={() => acknowledge(assignment, "unable_to_attend")}>Unable to attend</button><button type="button" onClick={() => acknowledge(assignment, "acknowledged")}>Acknowledge shift</button></div>}
+          </article>;
+        })}</div>
+      )}
+      {!loading && !shifts.length && <div className="staffing-empty"><strong>No published shifts yet</strong><span>Your next confirmed shifts will appear here after the rota is published.</span></div>}
+      <details className="staffing-availability-panel">
+        <summary>My weekly availability</summary>
+        <div className="staffing-availability-current">{recurringAvailability.map((entry) => <span key={entry.id}><b>{weekdayNames[Number(entry.weekday)]}</b>{entry.status.replaceAll("_", " ")}{entry.availableFrom ? ` · ${String(entry.availableFrom).slice(0, 5)}–${String(entry.availableUntil || "").slice(0, 5)}` : ""}{!entry.approvedAt && <small>Pending review</small>}</span>)}</div>
+        <form onSubmit={saveAvailability}>
+          <label>Day<select name="weekday" defaultValue="1"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="7">Sunday</option></select></label>
+          <label>Status<select name="status" defaultValue="available"><option value="available">Available</option><option value="preferred">Preferred</option><option value="unavailable">Unavailable</option></select></label>
+          <label>From<input name="availableFrom" type="time" /></label>
+          <label>Until<input name="availableUntil" type="time" /></label>
+          <label className="note">Note<input name="note" placeholder="Optional note for your manager" /></label>
+          <button type="submit">Save availability</button>
+        </form>
+        <p>Availability guides planning and does not change a published shift. Use “Unable to attend” on the shift if your circumstances change.</p>
+      </details>
+    </section>
+  );
 }

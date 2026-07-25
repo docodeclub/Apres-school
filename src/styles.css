@@ -6784,6 +6784,17 @@ label {
 .my-shift-times span { display: grid; gap: 3px; border-radius: 9px; background: #f3f6fd; padding: 8px; color: #314880; font-size: .7rem; font-weight: 850; }
 .my-shift-times b { color: #7a849a; font-size: .6rem; }
 .my-shift-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 12px; }
+.staffing-availability-panel { margin-top: 2px; border: 1px solid #d9e2f4; border-radius: 18px; background: #fff; padding: 0 18px 16px; }
+.staffing-availability-panel summary { cursor: pointer; color: #17388f; font-weight: 900; padding: 16px 0; }
+.staffing-availability-current { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.staffing-availability-current > span { display: grid; gap: 2px; min-width: 94px; border-radius: 12px; background: #f4f7ff; padding: 9px 11px; color: #526079; font-size: .79rem; text-transform: capitalize; }
+.staffing-availability-current b { color: #17388f; }
+.staffing-availability-current small { color: #a36100; }
+.staffing-availability-panel form { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 2fr auto; gap: 10px; align-items: end; }
+.staffing-availability-panel label { display: grid; gap: 5px; color: #30436c; font-size: .75rem; font-weight: 800; }
+.staffing-availability-panel input, .staffing-availability-panel select { min-height: 40px; border: 1px solid #ccd8ee; border-radius: 10px; background: #fff; padding: 7px 9px; }
+.staffing-availability-panel button { min-height: 40px; }
+.staffing-availability-panel > p { margin: 12px 0 0; color: #68738a; font-size: .8rem; }
 
 @media (max-width: 1180px) {
   .staffing-filters { grid-template-columns: repeat(3,minmax(0,1fr)); }
@@ -6802,6 +6813,8 @@ label {
   .staffing-day-column { overflow: hidden; border: 1px solid var(--staffing-line); border-radius: 16px; background: #eef2f8; }
   .staffing-day-column > header { position: sticky; }
   .staffing-today-list, .staffing-cover-grid, .my-shifts-list { grid-template-columns: 1fr; }
+  .staffing-availability-panel form { grid-template-columns: 1fr 1fr; }
+  .staffing-availability-panel .note { grid-column: 1 / -1; }
 }
 
 @media (max-width: 620px) {
