@@ -1,5 +1,7 @@
 import { hasSupabaseConfig, supabase } from "./supabaseClient.js";
 
+const childProfilePhotoBucket = "child-profile-photos";
+
 export function bookingSystemConfigured() {
   return Boolean(hasSupabaseConfig && supabase);
 }
@@ -128,6 +130,57 @@ export async function fetchStaffChildActivityTimeline({ childId, limit = 50 } = 
   });
   if (error) throw error;
   return Array.isArray(data) ? data : [];
+}
+
+export async function fetchStaffChildProfileOverview({ childId } = {}) {
+  assertSupabase();
+  if (!childId) throw new Error("Choose a child profile.");
+  const { data, error } = await supabase.rpc("staff_child_profile_overview", {
+    p_child_id: childId,
+  });
+  if (error) throw error;
+  const profile = data && typeof data === "object" ? data : {};
+  let photoUrl = "";
+  if (profile.photoStoragePath) {
+    const { data: signedData, error: signedError } = await supabase
+      .storage
+      .from(childProfilePhotoBucket)
+      .createSignedUrl(profile.photoStoragePath, 60 * 60);
+    if (!signedError) photoUrl = signedData?.signedUrl || "";
+  }
+  return { ...profile, photoUrl };
+}
+
+export async function uploadChildProfilePhoto({ childId, file } = {}) {
+  assertSupabase();
+  if (!childId || !file) throw new Error("Choose a child and image file.");
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    throw new Error("Use a JPG, PNG or WebP image.");
+  }
+  if (file.size > 5 * 1024 * 1024) throw new Error("Child photos must be 5MB or smaller.");
+  const extension = file.name?.split(".").pop()?.toLowerCase() || "jpg";
+  const safeExtension = ["jpg", "jpeg", "png", "webp"].includes(extension) ? extension : "jpg";
+  const storagePath = `${childId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${safeExtension}`;
+  const { error: uploadError } = await supabase
+    .storage
+    .from(childProfilePhotoBucket)
+    .upload(storagePath, file, {
+      cacheControl: "3600",
+      contentType: file.type,
+      upsert: false,
+    });
+  if (uploadError) throw uploadError;
+  const { error: updateError } = await supabase.rpc("set_child_profile_photo", {
+    p_child_id: childId,
+    p_storage_path: storagePath,
+  });
+  if (updateError) throw updateError;
+  const { data: signedData, error: signedError } = await supabase
+    .storage
+    .from(childProfilePhotoBucket)
+    .createSignedUrl(storagePath, 60 * 60);
+  if (signedError) throw signedError;
+  return { childId, photoStoragePath: storagePath, photoUrl: signedData?.signedUrl || "" };
 }
 
 export async function fetchStaffRegisterTimetable({ from = new Date(), limit = 500 } = {}) {

@@ -32,6 +32,11 @@ const identities = [
     email: `codex-safeguarding-dsl-${stamp}@example.invalid`,
     name: "Codex Safeguarding DSL Test",
   },
+  {
+    role: "manager",
+    email: `codex-child-profile-manager-${stamp}@example.invalid`,
+    name: "Codex Child Profile Manager Test",
+  },
 ];
 const createdUserIds = [];
 const report = { temporaryUsersRemoved: false, checks: {} };
@@ -64,6 +69,9 @@ try {
   const dslClient = createClient(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  const managerClient = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   const staffSignIn = await staffClient.auth.signInWithPassword({
     email: identities[0].email,
     password,
@@ -72,8 +80,13 @@ try {
     email: identities[1].email,
     password,
   });
+  const managerSignIn = await managerClient.auth.signInWithPassword({
+    email: identities[2].email,
+    password,
+  });
   if (staffSignIn.error) throw staffSignIn.error;
   if (dslSignIn.error) throw dslSignIn.error;
+  if (managerSignIn.error) throw managerSignIn.error;
 
   const staffDsl = await staffClient.rpc("is_safeguarding_dsl");
   const dslDsl = await dslClient.rpc("is_safeguarding_dsl");
@@ -98,6 +111,24 @@ try {
     p_case_id: "00000000-0000-0000-0000-000000000001",
     p_entry_type: "Case note",
     p_content: "Permission probe only",
+  });
+  const { data: profileProbe } = await service
+    .from("child_profiles")
+    .select("id")
+    .is("archived_at", null)
+    .limit(1)
+    .maybeSingle();
+  const staffChildOverview = profileProbe?.id
+    ? await staffClient.rpc("staff_child_profile_overview", { p_child_id: profileProbe.id })
+    : { data: null, error: null };
+  const invalidChildId = "00000000-0000-0000-0000-000000000001";
+  const staffPhotoWrite = await staffClient.rpc("set_child_profile_photo", {
+    p_child_id: invalidChildId,
+    p_storage_path: `${invalidChildId}/permission-probe.jpg`,
+  });
+  const managerPhotoWrite = await managerClient.rpc("set_child_profile_photo", {
+    p_child_id: invalidChildId,
+    p_storage_path: `${invalidChildId}/permission-probe.jpg`,
   });
 
   const visibleCaseId = Array.isArray(dslRestrictedList.data)
@@ -127,6 +158,14 @@ try {
       && Array.isArray(dslRestrictedList.data),
     staffSubmissionRouteAllowed: staffSubmissionProbe.error?.code === "22023",
     staffChronologyWriteDenied: staffAppend.error?.code === "42501",
+    staffChildProfileOverviewAllowed: !profileProbe?.id
+      || (staffChildOverview.error == null && staffChildOverview.data?.id === profileProbe.id),
+    staffChildProfileSafeguardingIsBoolean: !profileProbe?.id
+      || typeof staffChildOverview.data?.safeguardingConcernRaised === "boolean",
+    staffChildProfileHasNoSafeguardingContent: !profileProbe?.id
+      || !/(factual|chronology|immediateAction|categories|reporterName)/i.test(JSON.stringify(staffChildOverview.data || {})),
+    staffChildPhotoWriteDenied: staffPhotoWrite.error?.code === "42501",
+    managerChildPhotoRouteAllowed: managerPhotoWrite.error?.code === "P0002",
     crossCaseDenied,
     dslDetailReadable,
     existingCaseAvailableForDetailProbe: Boolean(visibleCaseId),
@@ -137,6 +176,7 @@ try {
 
   await staffClient.auth.signOut();
   await dslClient.auth.signOut();
+  await managerClient.auth.signOut();
 } finally {
   for (const userId of createdUserIds.reverse()) {
     const { error } = await service.auth.admin.deleteUser(userId);
@@ -180,7 +220,7 @@ function readProjectKeys(projectRef) {
     },
   );
   if (result.status !== 0) {
-    throw new Error("The staging project API keys could not be read through the authenticated Supabase CLI.");
+    throw new Error(`The staging project API keys could not be read through the authenticated Supabase CLI. ${result.stderr || `Exit ${result.status}`}`);
   }
   return JSON.parse(result.stdout || "[]");
 }

@@ -17,6 +17,7 @@ import {
   fetchMySafeguardingSubmissions,
   fetchStaffAdHocBookingOptions,
   fetchStaffChildActivityTimeline,
+  fetchStaffChildProfileOverview,
   fetchStaffRegister,
   fetchStaffRegisterTimetable,
   readSafeguardingDraft,
@@ -26,6 +27,7 @@ import {
   updateRegisterPupilReport,
   updateLivePaymentAdminAction,
   updateStaffRegisterEntry,
+  uploadChildProfilePhoto,
   upsertLiveBookingSessionOverride,
   upsertLiveBookingSessionSetup,
 } from "./bookingSystem.js";
@@ -1141,7 +1143,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
         {tab === "Customer Profiles" && <FamilyImportReview access={access} />}
         {tab === "Bookings" && <BookingAdmin data={enrichedData} access={access} initialFocus={bookingAdminFocus} onClearInitialFocus={() => setBookingAdminFocus("")} />}
-        {tab === "Registers" && <Registers />}
+        {tab === "Registers" && <Registers access={access} />}
         {tab === "Booking Payments" && <BookingFinance data={enrichedData} access={access} onOpenBookingFocus={openBookingAdminFocus} />}
         {tab === "Finance" && <SchoolFinance data={enrichedData} access={access} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
@@ -1366,7 +1368,114 @@ function RegisterBodyMap({ side, selectedParts = [], onToggle }) {
   );
 }
 
-function Registers() {
+function ChildActivityCard({ activity, compact = false }) {
+  const badge = activity.kind === "reward" ? rewardBadge(activity.title) : null;
+  const icon = badge?.icon || (activity.kind === "incident" ? "⚠️" : activity.kind === "first_aid" ? "🩹" : "🛡️");
+  const title = badge?.title || activity.title;
+  return (
+    <article className={`register-child-timeline-item ${activity.kind} ${compact ? "compact" : ""}`}>
+      <span className="register-child-timeline-icon" aria-hidden="true">{icon}</span>
+      <div>
+        <strong>{title}</strong>
+        <span>{new Date(activity.occurredAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>
+        <small>{[activity.staffName, activity.siteName, activity.sessionLabel].filter(Boolean).join(" · ")}</small>
+        {(activity.reason || activity.summary) && (
+          <details>
+            <summary>View details</summary>
+            <p>{activity.reason || activity.summary}</p>
+            {activity.actionTaken && <p><b>Action:</b> {activity.actionTaken}</p>}
+            {activity.outcome && <p><b>Outcome:</b> {activity.outcome}</p>}
+            {activity.followUpNotes && <p><b>Follow-up:</b> {activity.followUpNotes}</p>}
+          </details>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function RegisterChildProfile({ child, profile, activity, loading, error, section, setSection, canManagePhoto, photoStatus, onPhotoUpload, onClose }) {
+  const profileName = profile?.preferredName || profile?.fullName || child.childName;
+  const initials = profileName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "AS";
+  const profileSections = ["Overview", "Incidents", "First aid", "Rewards"];
+  const sectionKind = { Incidents: "incident", "First aid": "first_aid", Rewards: "reward" }[section];
+  const visibleActivity = sectionKind ? activity.filter((item) => item.kind === sectionKind) : [];
+  const counts = {
+    Incidents: Number(profile?.incidentCount || activity.filter((item) => item.kind === "incident").length),
+    "First aid": Number(profile?.firstAidCount || activity.filter((item) => item.kind === "first_aid").length),
+    Rewards: Number(profile?.rewardCount || activity.filter((item) => item.kind === "reward").length),
+  };
+  return (
+    <div className="register-child-profile-layer" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <article className="register-child-profile" role="dialog" aria-modal="true" aria-labelledby="register-child-profile-title">
+        <header className="register-child-profile-head">
+          <div className="register-child-profile-photo">
+            {profile?.photoUrl ? <img src={profile.photoUrl} alt={`${profileName} profile`} /> : <span aria-hidden="true">{initials}</span>}
+            {canManagePhoto && (
+              <label>
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={onPhotoUpload} />
+                {profile?.photoUrl ? "Change photo" : "Add photo"}
+              </label>
+            )}
+          </div>
+          <div>
+            <p className="eyebrow">Child profile</p>
+            <h2 id="register-child-profile-title">{profileName}</h2>
+            <p>{profile?.yearGroup || child.childYearGroup || "Year not recorded"}{childAge(child) ? ` · Age ${childAge(child)}` : ""} · {profile?.schoolName || child.childSchoolName || child.siteName}</p>
+            {photoStatus && <small className="register-child-photo-status" role="status">{photoStatus}</small>}
+          </div>
+          <button className="register-drawer-close" type="button" onClick={onClose} aria-label="Close child profile"><X size={20} /></button>
+        </header>
+
+        <section className={`register-child-safeguarding-status ${profile?.safeguardingConcernRaised ? "raised" : "clear"}`} aria-label="Safeguarding concern status">
+          <ShieldCheck />
+          <div>
+            <span>Safeguarding status</span>
+            <strong>{profile?.safeguardingConcernRaised ? "Concern raised" : "No concern raised"}</strong>
+            <small>Status only. Safeguarding records remain restricted to authorised managers.</small>
+          </div>
+        </section>
+
+        <nav className="register-child-profile-tabs" aria-label="Child profile sections">
+          {profileSections.map((item) => (
+            <button type="button" key={item} className={section === item ? "active" : ""} aria-current={section === item ? "page" : undefined} onClick={() => setSection(item)}>
+              <span>{item}</span>{item !== "Overview" && <small>{counts[item]}</small>}
+            </button>
+          ))}
+        </nav>
+
+        <section className="register-child-profile-panel">
+          {loading && <p className="register-drawer-empty">Loading child profile…</p>}
+          {error && <p className="register-form-error" role="alert">{error}</p>}
+          {!loading && section === "Overview" && (
+            <>
+              <div className="register-child-profile-summary">
+                <article><span>Incidents</span><strong>{counts.Incidents}</strong></article>
+                <article><span>First aid</span><strong>{counts["First aid"]}</strong></article>
+                <article><span>Rewards</span><strong>{counts.Rewards}</strong></article>
+              </div>
+              <div className="register-child-profile-care">
+                <article><span>Medical and allergies</span><strong>{careDetailLines(child).join(" · ") || "Nothing recorded"}</strong></article>
+                <article><span>SEND</span><strong>{sendDetails(child).map(printableValue).join(" · ") || "Nothing recorded"}</strong></article>
+                <article><span>Authorised collectors</span><strong>{(child.authorisedCollectors || []).map(printableValue).join(" · ") || "None recorded"}</strong></article>
+              </div>
+            </>
+          )}
+          {!loading && section !== "Overview" && (
+            visibleActivity.length ? (
+              <div className="register-child-profile-activity">
+                {visibleActivity.map((item) => <ChildActivityCard activity={item} key={`${item.kind}-${item.id}`} />)}
+              </div>
+            ) : <p className="register-drawer-empty">No {section.toLowerCase()} records have been added.</p>
+          )}
+        </section>
+      </article>
+    </div>
+  );
+}
+
+function Registers({ access }) {
   const today = new Date();
   const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const requestedRegisterDate = new URLSearchParams(window.location.search).get("registerDate");
@@ -1413,6 +1522,13 @@ function Registers() {
   const [childActivity, setChildActivity] = useState([]);
   const [childActivityLoading, setChildActivityLoading] = useState(false);
   const [childActivityError, setChildActivityError] = useState("");
+  const [childProfile, setChildProfile] = useState(null);
+  const [childProfileLoading, setChildProfileLoading] = useState(false);
+  const [childProfileError, setChildProfileError] = useState("");
+  const [childProfileOpen, setChildProfileOpen] = useState(false);
+  const [childProfileSection, setChildProfileSection] = useState("Overview");
+  const [childPhotoStatus, setChildPhotoStatus] = useState("");
+  const canManageChildPhoto = ["Manager", "Admin", "Superadmin"].includes(access?.role);
 
   const statusLabels = {
     booked: "Expected",
@@ -1898,6 +2014,9 @@ function Registers() {
     setRegisterRewardOpen(false);
     setRegisterRewardError("");
     setRegisterRewardSuccess("");
+    setChildProfileOpen(false);
+    setChildProfileSection("Overview");
+    setChildPhotoStatus("");
   }, [selectedChildId]);
 
   useEffect(() => {
@@ -1910,7 +2029,7 @@ function Registers() {
     let active = true;
     setChildActivityLoading(true);
     setChildActivityError("");
-    fetchStaffChildActivityTimeline({ childId })
+    fetchStaffChildActivityTimeline({ childId, limit: 200 })
       .then((items) => {
         if (active) setChildActivity(Array.isArray(items) ? items : []);
       })
@@ -1924,6 +2043,46 @@ function Registers() {
       active = false;
     };
   }, [selectedChild?.childId, registerReportSuccess, registerRewardSuccess]);
+
+  useEffect(() => {
+    const childId = selectedChild?.childId;
+    if (!childId) {
+      setChildProfile(null);
+      setChildProfileError("");
+      return undefined;
+    }
+    let active = true;
+    setChildProfileLoading(true);
+    setChildProfileError("");
+    fetchStaffChildProfileOverview({ childId })
+      .then((profile) => {
+        if (active) setChildProfile(profile);
+      })
+      .catch((error) => {
+        if (active) setChildProfileError(error?.message || "The child profile could not be loaded.");
+      })
+      .finally(() => {
+        if (active) setChildProfileLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedChild?.childId, registerReportSuccess, registerRewardSuccess]);
+
+  async function uploadRegisterChildPhoto(event) {
+    const file = event.target.files?.[0];
+    if (!file || !selectedChild?.childId || !canManageChildPhoto) return;
+    setChildPhotoStatus("Uploading photo…");
+    try {
+      const result = await uploadChildProfilePhoto({ childId: selectedChild.childId, file });
+      setChildProfile((current) => ({ ...(current || {}), ...result }));
+      setChildPhotoStatus("Photo saved.");
+    } catch (error) {
+      setChildPhotoStatus(error?.message || "The child photo could not be uploaded.");
+    } finally {
+      event.target.value = "";
+    }
+  }
 
   useEffect(() => {
     if (!adHocOpen) return undefined;
@@ -2331,44 +2490,6 @@ function Registers() {
               {selectedChild.authorisedCollectors?.length
                 ? <ul className="register-drawer-collectors">{selectedChild.authorisedCollectors.map((collector, index) => <li key={`${index}-${printableValue(collector)}`}>{printableValue(collector)}</li>)}</ul>
                 : <p className="register-drawer-empty">No additional authorised collectors recorded.</p>}
-            </section>
-
-            <section className="register-child-timeline">
-              <h3>Activity history</h3>
-              <p className="register-child-timeline-intro">Rewards and care records for this child, latest first.</p>
-              {childActivityLoading && <p className="register-drawer-empty">Loading activity history…</p>}
-              {childActivityError && <p className="register-form-error" role="alert">{childActivityError}</p>}
-              {!childActivityLoading && !childActivityError && !childActivity.length && (
-                <p className="register-drawer-empty">No rewards or reports have been recorded yet.</p>
-              )}
-              {!!childActivity.length && (
-                <div className="register-child-timeline-list">
-                  {childActivity.map((activity) => {
-                    const badge = activity.kind === "reward" ? rewardBadge(activity.title) : null;
-                    const icon = badge?.icon || (activity.kind === "incident" ? "⚠️" : activity.kind === "first_aid" ? "🩹" : "🛡️");
-                    const title = badge?.title || activity.title;
-                    return (
-                      <article className={`register-child-timeline-item ${activity.kind}`} key={`${activity.kind}-${activity.id}`}>
-                        <span className="register-child-timeline-icon" aria-hidden="true">{icon}</span>
-                        <div>
-                          <strong>{title}</strong>
-                          <span>{new Date(activity.occurredAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>
-                          <small>{[activity.staffName, activity.siteName, activity.sessionLabel].filter(Boolean).join(" · ")}</small>
-                          {(activity.reason || activity.summary) && (
-                            <details>
-                              <summary>View details</summary>
-                              <p>{activity.reason || activity.summary}</p>
-                              {activity.actionTaken && <p><b>Action:</b> {activity.actionTaken}</p>}
-                              {activity.outcome && <p><b>Outcome:</b> {activity.outcome}</p>}
-                              {activity.followUpNotes && <p><b>Follow-up:</b> {activity.followUpNotes}</p>}
-                            </details>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
             </section>
 
             <section className="register-drawer-reports">
@@ -2918,8 +3039,48 @@ function Registers() {
                 </form>
               )}
             </section>
+
+            <details className="register-child-timeline">
+              <summary>
+                <div><strong>Activity history</strong><span>Latest rewards, incidents and first aid</span></div>
+                <small>{childActivityLoading ? "Loading…" : `${Math.min(childActivity.length, 10)} recent`}</small>
+                <ChevronRight aria-hidden="true" />
+              </summary>
+              <div className="register-child-timeline-content">
+                {childActivityLoading && <p className="register-drawer-empty">Loading activity history…</p>}
+                {childActivityError && <p className="register-form-error" role="alert">{childActivityError}</p>}
+                {!childActivityLoading && !childActivityError && !childActivity.length && (
+                  <p className="register-drawer-empty">No rewards or reports have been recorded yet.</p>
+                )}
+                {!!childActivity.length && (
+                  <div className="register-child-timeline-list">
+                    {childActivity.slice(0, 10).map((activity) => <ChildActivityCard activity={activity} compact key={`${activity.kind}-${activity.id}`} />)}
+                  </div>
+                )}
+                <div className="register-child-timeline-footer">
+                  <p>Only the 10 most recent items appear here. Use the child profile for the full operational history.</p>
+                  <button type="button" onClick={() => { setChildProfileSection("Overview"); setChildProfileOpen(true); }}>View child profile</button>
+                </div>
+              </div>
+            </details>
           </aside>
         </div>
+      )}
+
+      {selectedChild && childProfileOpen && (
+        <RegisterChildProfile
+          child={selectedChild}
+          profile={childProfile}
+          activity={childActivity}
+          loading={childProfileLoading || childActivityLoading}
+          error={childProfileError || childActivityError}
+          section={childProfileSection}
+          setSection={setChildProfileSection}
+          canManagePhoto={canManageChildPhoto}
+          photoStatus={childPhotoStatus}
+          onPhotoUpload={uploadRegisterChildPhoto}
+          onClose={() => setChildProfileOpen(false)}
+        />
       )}
 
       {adHocOpen && (
