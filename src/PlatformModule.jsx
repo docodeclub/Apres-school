@@ -2285,10 +2285,10 @@ function Registers() {
       </div>
 
       {selectedChild && (
-        <div className="register-drawer-layer" role="presentation" onMouseDown={(event) => {
+        <div className={`register-drawer-layer ${registerReportType === "safeguarding" ? "is-safeguarding" : ""}`} role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setSelectedChildId("");
         }}>
-          <aside className="register-child-drawer" role="dialog" aria-modal="true" aria-labelledby="register-child-drawer-title">
+          <aside className={`register-child-drawer ${registerReportType === "safeguarding" ? "is-safeguarding" : ""}`} role="dialog" aria-modal="true" aria-labelledby="register-child-drawer-title">
             <header>
               <div>
                 <p className="eyebrow">Pupil details</p>

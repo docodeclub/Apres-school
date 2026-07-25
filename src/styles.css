@@ -4875,6 +4875,11 @@ label {
   backdrop-filter: blur(2px);
 }
 
+.register-drawer-layer.is-safeguarding {
+  background: rgba(18, 22, 48, 0.5);
+  backdrop-filter: blur(4px);
+}
+
 .register-child-drawer {
   box-sizing: border-box;
   width: min(470px, 94vw);
@@ -4885,6 +4890,14 @@ label {
   box-shadow: -18px 0 52px rgba(18, 35, 82, 0.2);
   padding: 24px;
   animation: register-drawer-in 180ms ease-out;
+  transition: width 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.register-child-drawer.is-safeguarding {
+  width: min(680px, 96vw);
+  border-left: 4px solid #6c3b8a;
+  background: #fdfbfe;
+  box-shadow: -24px 0 64px rgba(27, 18, 48, 0.3);
 }
 
 @keyframes register-drawer-in {
@@ -5058,9 +5071,11 @@ label {
 }
 
 .register-report-form.report-safeguarding {
+  gap: 18px;
   border-top: 5px solid #773f9e;
   border-color: #d9c4e8;
   background: linear-gradient(180deg, #fbf8fd, #fff 38%);
+  padding: 20px;
 }
 
 .register-report-form.report-reward {
@@ -5620,10 +5635,16 @@ label {
   justify-items: center;
   gap: 5px;
   min-height: 78px;
+  min-width: 0;
+  text-align: center;
 }
 
 .safeguarding-source-grid button > span {
   font-size: 1.25rem;
+}
+
+.safeguarding-source-grid button strong {
+  overflow-wrap: anywhere;
 }
 
 .safeguarding-category-grid {
@@ -5642,6 +5663,7 @@ label {
   background: #fff;
   padding: 9px;
   font-size: 0.78rem;
+  line-height: 1.2;
 }
 
 .safeguarding-category-grid label.is-selected {
@@ -5650,7 +5672,17 @@ label {
 }
 
 .safeguarding-category-grid input {
+  flex: 0 0 auto;
   width: auto;
+}
+
+.safeguarding-category-grid label span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.report-safeguarding .register-report-form-grid {
+  grid-template-columns: minmax(230px, 0.9fr) minmax(260px, 1.1fr);
 }
 
 .safeguarding-facts small,
@@ -5695,6 +5727,19 @@ label {
 }
 
 @media (max-width: 620px) {
+  .register-child-drawer.is-safeguarding {
+    width: 100vw;
+    padding: 18px;
+  }
+
+  .register-report-form.report-safeguarding {
+    padding: 15px;
+  }
+
+  .report-safeguarding .register-report-form-grid {
+    grid-template-columns: 1fr;
+  }
+
   .safeguarding-source-grid,
   .safeguarding-category-grid {
     grid-template-columns: 1fr 1fr;
