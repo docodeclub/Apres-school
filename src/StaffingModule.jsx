@@ -78,6 +78,14 @@ function roleLabels(session, assignment) {
   return [...labels];
 }
 
+function defaultSiteRoles(session, assignment) {
+  return {
+    manager: session.settings?.defaultManagerStaffId === assignment.staffRecordId,
+    dsl: session.settings?.defaultDslStaffId === assignment.staffRecordId,
+    sendco: session.settings?.defaultSendcoStaffId === assignment.staffRecordId,
+  };
+}
+
 function requiredStaff(session) {
   return requiredStaffCount(session.bookingCount, session.settings);
 }
@@ -273,12 +281,18 @@ export function Staffing({ access, legacyHours = null }) {
     }
   }
 
-  async function updateAssignmentRole(session, assignment, role) {
+  async function updateAssignmentRole(session, assignment, role, enabled) {
+    const flags = {
+      manager: Boolean(assignment.actingManager),
+      dsl: Boolean(assignment.actingDsl),
+      sendco: Boolean(assignment.actingSendco),
+    };
+    flags[role] = enabled;
     await assignStaff(session, assignment.staffRecordId, {
-      sessionRole: role,
-      actingManager: role === "manager",
-      actingDsl: role === "dsl",
-      actingSendco: role === "sendco",
+      sessionRole: flags.manager ? "manager" : flags.dsl ? "dsl" : flags.sendco ? "sendco" : "assistant",
+      actingManager: flags.manager,
+      actingDsl: flags.dsl,
+      actingSendco: flags.sendco,
     });
   }
 
@@ -447,11 +461,12 @@ export function Staffing({ access, legacyHours = null }) {
           {activeAssignments.map((assignment) => {
             const person = staffForAssignment(assignment, staff);
             const labels = roleLabels(session, assignment);
+            const permanentRoles = defaultSiteRoles(session, assignment);
             return (
               <div className={`staffing-assignment ${assignment.status !== "assigned" ? "attention" : ""}`} key={assignment.id} draggable={canEdit} onDragStart={(event) => beginAssignmentDrag(event, session, assignment)}>
                 <StaffAvatar person={person} />
                 <div><strong>{person.name}</strong><span>{labels.join(" · ")}</span><small>{assignment.acknowledgementStatus === "draft" ? "Draft" : String(assignment.acknowledgementStatus || "draft").replaceAll("_", " ")}</small></div>
-                {canEdit && <select aria-label={`Shift role for ${person.name}`} value={assignment.sessionRole || "assistant"} onChange={(event) => updateAssignmentRole(session, assignment, event.target.value)}><option value="assistant">Assistant</option><option value="manager">Acting Manager</option><option value="dsl">Acting DSL</option><option value="sendco">Acting SENDCO</option></select>}
+                {canEdit && <details className="staffing-role-editor"><summary aria-label={`Edit shift roles for ${person.name}`}>Roles</summary><div>{["manager", "dsl", "sendco"].map((role) => { const permanent = permanentRoles[role]; const flagName = role === "manager" ? "actingManager" : role === "dsl" ? "actingDsl" : "actingSendco"; const acting = Boolean(assignment[flagName]); return <label key={role}><input type="checkbox" checked={permanent || acting} disabled={permanent} onChange={(event) => updateAssignmentRole(session, assignment, role, event.target.checked)} /><span>{ROLE_LABELS[role]}<small>{permanent ? "Site role" : "Temporary cover"}</small></span></label>; })}</div></details>}
                 {canEdit && <button type="button" className="staffing-remove" onClick={() => removeAssignment(assignment)} aria-label={`Remove ${person.name}`}>×</button>}
               </div>
             );

@@ -42,12 +42,20 @@ const availabilityMigration = fs.readFileSync(new URL("../supabase/migrations/00
 assert.match(availabilityMigration, /staffing_save_own_availability/);
 assert.match(availabilityMigration, /staffing_availability_submitted/);
 
+const shrewsburyRoles = fs.readFileSync(new URL("../supabase/migrations/0097_shrewsbury_staffing_roles.sql", import.meta.url), "utf8");
+assert.match(shrewsburyRoles, /default_manager_staff_id = abi\.id/);
+assert.match(shrewsburyRoles, /default_dsl_staff_id = abi\.id/);
+assert.match(shrewsburyRoles, /default_sendco_staff_id = abi\.id/);
+
+const reliableShrewsburyRoles = fs.readFileSync(new URL("../supabase/migrations/0098_shrewsbury_staffing_roles_reliable_match.sql", import.meta.url), "utf8");
+assert.match(reliableShrewsburyRoles, /location\.name ilike 'Shrewsbury House%'/);
+
 const notificationFunction = fs.readFileSync(new URL("../supabase/functions/notify-staffing-publication/index.ts", import.meta.url), "utf8");
 assert.match(notificationFunction, /staffing_rota_publication/);
 assert.match(notificationFunction, /Rota version/);
 assert.match(notificationFunction, /acknowledge each shift/);
 
 const moduleSource = fs.readFileSync(new URL("../src/StaffingModule.jsx", import.meta.url), "utf8");
-for (const label of ["Today", "Planner", "Cover", "Hours", "Publish rota", "Copy previous week", "+ Add staff", "My weekly availability", "Working with:"]) assert.ok(moduleSource.includes(label), `Missing Staffing control: ${label}`);
+for (const label of ["Today", "Planner", "Cover", "Hours", "Publish rota", "Copy previous week", "+ Add staff", "My weekly availability", "Working with:", "Site role", "Temporary cover"]) assert.ok(moduleSource.includes(label), `Missing Staffing control: ${label}`);
 
 console.log("Staffing contract checks passed.");

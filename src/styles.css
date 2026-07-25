@@ -6719,6 +6719,15 @@ label {
 .staffing-assignment span { color: #5d6d96; font-size: .62rem; font-weight: 850; }
 .staffing-assignment small { color: #8a92a4; font-size: .58rem; text-transform: capitalize; }
 .staffing-assignment select { min-height: 32px; max-width: 112px; padding: 4px 6px; font-size: .63rem; }
+.staffing-role-editor { position: relative; }
+.staffing-role-editor > summary { min-width: 68px; cursor: pointer; list-style: none; border: 1px solid #d9e1ef; border-radius: 9px; background: #fff; padding: 8px 10px; color: #294aa6; font-size: .7rem; font-weight: 900; text-align: center; }
+.staffing-role-editor > summary::-webkit-details-marker { display: none; }
+.staffing-role-editor[open] > summary { border-color: #ef9b32; box-shadow: 0 0 0 2px rgba(239,155,50,.16); }
+.staffing-role-editor > div { position: absolute; z-index: 12; top: calc(100% + 5px); right: 0; display: grid; gap: 3px; min-width: 190px; border: 1px solid #d9e1ef; border-radius: 12px; background: #fff; padding: 8px; box-shadow: 0 12px 30px rgba(28,43,83,.2); }
+.staffing-role-editor label { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center; border-radius: 8px; padding: 7px; color: #263b78; font-size: .75rem; font-weight: 900; }
+.staffing-role-editor label:hover { background: #f4f7ff; }
+.staffing-role-editor label span { display: grid; }
+.staffing-role-editor label small { color: #78839a; font-size: .62rem; font-weight: 700; }
 .staffing-remove { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 8px; background: #f3f4f7; color: #8b4250; font-size: 1rem; cursor: pointer; }
 .staffing-drop-empty { border: 1px dashed #aebcda; border-radius: 10px; background: #f8faff; padding: 12px; color: #75809a; font-size: .68rem; font-weight: 800; text-align: center; }
 .staffing-card-actions { display: flex; gap: 5px; border-top: 1px solid #e4e9f1; padding: 8px 10px 10px; }
@@ -6832,6 +6841,7 @@ label {
   .staffing-session-card.compact .staffing-assignment-list { grid-template-columns: 1fr; }
   .staffing-assignment { grid-template-columns: 34px minmax(0,1fr) 28px; }
   .staffing-assignment select { grid-column: 2 / 3; max-width: none; }
+  .staffing-role-editor { grid-column: 2 / 3; }
   .staffing-remove { grid-column: 3; grid-row: 1; }
   .staffing-settings-grid { grid-template-columns: 1fr; }
   .my-shift-times { grid-template-columns: repeat(2,minmax(0,1fr)); }
