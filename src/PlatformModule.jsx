@@ -1396,6 +1396,12 @@ function ChildActivityCard({ activity, compact = false }) {
 function RegisterChildProfile({ child, profile, activity, loading, error, section, setSection, canManagePhoto, photoStatus, onPhotoUpload, onClose }) {
   const profileName = profile?.preferredName || profile?.fullName || child.childName;
   const initials = profileName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "AS";
+  const dateOfBirth = profile?.dateOfBirth || child.childDateOfBirth;
+  const birthDate = dateOfBirth ? new Date(`${dateOfBirth}T12:00:00`) : null;
+  const now = new Date();
+  const age = birthDate && !Number.isNaN(birthDate.getTime())
+    ? now.getFullYear() - birthDate.getFullYear() - (now < new Date(now.getFullYear(), birthDate.getMonth(), birthDate.getDate()) ? 1 : 0)
+    : null;
   const profileSections = ["Overview", "Incidents", "First aid", "Rewards"];
   const sectionKind = { Incidents: "incident", "First aid": "first_aid", Rewards: "reward" }[section];
   const visibleActivity = sectionKind ? activity.filter((item) => item.kind === sectionKind) : [];
@@ -1422,7 +1428,7 @@ function RegisterChildProfile({ child, profile, activity, loading, error, sectio
           <div>
             <p className="eyebrow">Child profile</p>
             <h2 id="register-child-profile-title">{profileName}</h2>
-            <p>{profile?.yearGroup || child.childYearGroup || "Year not recorded"}{childAge(child) ? ` · Age ${childAge(child)}` : ""} · {profile?.schoolName || child.childSchoolName || child.siteName}</p>
+            <p>{profile?.yearGroup || child.childYearGroup || "Year not recorded"}{age !== null ? ` · Age ${age}` : ""} · {profile?.schoolName || child.childSchoolName || child.siteName}</p>
             {photoStatus && <small className="register-child-photo-status" role="status">{photoStatus}</small>}
           </div>
           <button className="register-drawer-close" type="button" onClick={onClose} aria-label="Close child profile"><X size={20} /></button>
