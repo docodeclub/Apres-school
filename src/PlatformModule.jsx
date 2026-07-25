@@ -1,11 +1,89 @@
 import { useEffect, useRef, useState } from "react";
 import {
   bookingSystemConfigured,
-  fetchParentBookingLedger,
+  cancelStaffAdHocBooking,
+  appendSafeguardingCaseEntry,
+  completeSafeguardingCaseTask,
+  createSafeguardingCaseTask,
+  createSafeguardingConcern,
+  createStaffAdHocBooking,
+  createStaffRegisterReport,
+  createStaffRegisterReward,
+  fetchAdminBookingLedger,
+  fetchAdminRewardsDashboard,
+  fetchRegisterPupilReports,
+  fetchSafeguardingCase,
+  fetchSafeguardingCases,
+  fetchStaffAdHocBookingOptions,
+  fetchStaffChildActivityTimeline,
+  fetchStaffRegister,
+  fetchStaffRegisterTimetable,
+  readSafeguardingDraft,
+  saveSafeguardingDraft,
+  updateSafeguardingCase,
+  uploadSafeguardingAttachments,
+  updateRegisterPupilReport,
   updateLivePaymentAdminAction,
+  updateStaffRegisterEntry,
   upsertLiveBookingSessionOverride,
   upsertLiveBookingSessionSetup,
 } from "./bookingSystem.js";
+import { REWARD_BADGES, rewardBadge } from "./rewardBadges.js";
+import {
+  blockingPeriods,
+  bookingGroups,
+  schoolCalendarKeyForSite,
+  teachingWindows,
+} from "./bookingLab/schoolCalendars2026.js";
+
+const willingtonAutumnTerm = bookingGroups("willington").terms.find((term) => term.term === "autumn")
+  || bookingGroups("willington").terms[0];
+const defaultBookingAdminDateFrom = willingtonAutumnTerm?.start || "";
+const defaultBookingAdminDateTo = willingtonAutumnTerm?.end || "";
+
+function canonicalTeachingSegments(school, dateFrom, dateTo) {
+  const calendarKey = schoolCalendarKeyForSite(school);
+  if (!calendarKey || !dateFrom || !dateTo || dateTo < dateFrom) return [];
+  const shiftIsoDate = (date, days) => {
+    const value = new Date(`${date}T12:00:00Z`);
+    value.setUTCDate(value.getUTCDate() + days);
+    return value.toISOString().slice(0, 10);
+  };
+  const containsWeekday = ({ dateFrom: start, dateTo: end }) => {
+    for (let date = start; date <= end; date = shiftIsoDate(date, 1)) {
+      const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+      if (day >= 1 && day <= 5) return true;
+    }
+    return false;
+  };
+  let segments = teachingWindows(calendarKey)
+    .map((window) => ({
+      dateFrom: window.start > dateFrom ? window.start : dateFrom,
+      dateTo: window.end < dateTo ? window.end : dateTo,
+    }))
+    .filter((window) => window.dateFrom <= window.dateTo);
+  for (const blocked of blockingPeriods(calendarKey).filter((period) => period.end)) {
+    segments = segments.flatMap((segment) => {
+      if (blocked.end < segment.dateFrom || blocked.start > segment.dateTo) return [segment];
+      const before = blocked.start > segment.dateFrom
+        ? [{ ...segment, dateTo: shiftIsoDate(blocked.start, -1) }]
+        : [];
+      const after = blocked.end < segment.dateTo
+        ? [{ ...segment, dateFrom: shiftIsoDate(blocked.end, 1) }]
+        : [];
+      return [...before, ...after];
+    });
+  }
+  return segments.filter(containsWeekday);
+}
+
+function isCanonicalTeachingDate(school, date) {
+  const calendarKey = schoolCalendarKeyForSite(school);
+  if (!calendarKey || !date) return false;
+  const insideTeaching = teachingWindows(calendarKey).some((window) => date >= window.start && date <= window.end);
+  const blocked = blockingPeriods(calendarKey).some((period) => period.end && date >= period.start && date <= period.end);
+  return insideTeaching && !blocked;
+}
 
 const hasSupabaseConfig = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 let supabaseModulePromise;
@@ -73,6 +151,8 @@ function makeIcon(label) {
       ST: <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z" />,
       UP: <><path d="M12 20V9" /><path d="m7 14 5-5 5 5" /><path d="M5 4h14" /></>,
       US: <><path d="M16 20v-2a4 4 0 0 0-8 0v2" /><circle cx="12" cy="8" r="4" /><path d="M20 20v-2a3 3 0 0 0-3-3" /><path d="M4 20v-2a3 3 0 0 1 3-3" /></>,
+      MD: <><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6V3Z" /></>,
+      SN: <><circle cx="7" cy="7" r="3" /><circle cx="17" cy="7" r="3" /><circle cx="12" cy="17" r="3" /><path d="m9 9 2 5" /><path d="m15 9-2 5" /></>,
       X: <><path d="M6 6l12 12" /><path d="M18 6 6 18" /></>,
       default: <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.6 2.6L16.5 9" /></>,
     };
@@ -105,14 +185,16 @@ const Sparkles = makeIcon("*");
 const Star = makeIcon("ST");
 const Upload = makeIcon("UP");
 const Users = makeIcon("US");
+const MedicalCross = makeIcon("MD");
+const SendNeeds = makeIcon("SN");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Bookings", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
-  ["People", ["Users", "SCR", "HR", "HR Files"]],
-  ["Sites", ["Schools", "Bookings", "Rota", "Hours", "Sessions", "Ofsted"]],
+  ["People", ["Customer Profiles", "Users", "SCR", "HR", "HR Files"]],
+  ["Sites", ["Schools", "Bookings", "Registers", "Incidents", "Safeguarding", "Rota", "Hours", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
   ["Finance", ["Finance", "Booking Payments", "Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
@@ -120,7 +202,11 @@ const platformGroups = [
 const platformTabHints = {
   Staff: "Personal shifts, documents, pay and rewards",
   Admin: "Key actions across staffing, compliance and bookings",
+  "Customer Profiles": "Review family records and manage parent account credit",
   Bookings: "Bookings, payments, capacity and admin-only setup controls",
+  Registers: "Live attendance, collection, care alerts and emergency details",
+  Incidents: "Review incidents, first aid and restricted safeguarding reports",
+  Safeguarding: "Restricted DSL case management and chronology",
   "Booking Payments": "Parent balances, PonchoPay reconciliation, vouchers and refunds",
   Finance: "School invoices, customers, payments and credit notes",
   Users: "Invite staff and reset access",
@@ -161,6 +247,10 @@ function formatPayrollPeriod(period) {
   const [year, month] = String(period).split("-");
   if (!year || !month) return period;
   return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+
+function validPayrollPeriod(period) {
+  return /^(20\d{2})-(0[1-9]|1[0-2])$/.test(String(period || ""));
 }
 
 function formatCurrency(value) {
@@ -878,10 +968,12 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const targetedScopedData = includeTargetStaff(scopedData);
   const targetedEnrichedData = includeTargetStaff(enrichedData);
   const visibleTabs = effectiveRole === "Staff"
-    ? ["Staff", "Documents", "Pay", "Rewards", "Sessions"]
+    ? ["Staff", "Registers", "Documents", "Pay", "Rewards", "Sessions"]
     : effectiveRole === "Manager"
-      ? ["Staff", "Rota", "SCR", "Ofsted", "Documents", "Sessions"]
-      : platformTabs;
+      ? ["Staff", "Registers", "Rota", "SCR", "Ofsted", "Documents", "Sessions"]
+      : effectiveRole === "Superadmin"
+        ? platformTabs
+        : platformTabs.filter((item) => item !== "Safeguarding");
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item))])
     .filter(([, items]) => items.length);
@@ -890,6 +982,16 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
     setViewRole(role);
     setPreviewUserId("");
   }, [role]);
+
+  useEffect(() => {
+    if (!canPreviewRoles || !["Staff", "Manager"].includes(viewRole)) {
+      if (previewUserId) setPreviewUserId("");
+      return;
+    }
+    if (!previewUsers.some((user) => user.id === previewUserId)) {
+      setPreviewUserId(previewUsers[0]?.id || "");
+    }
+  }, [canPreviewRoles, previewUserId, previewUsers, viewRole]);
 
   useEffect(() => {
     if (!visibleTabs.includes(tab)) setTab(visibleTabs[0] || "Staff");
@@ -1038,7 +1140,9 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         />
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
+        {tab === "Customer Profiles" && <FamilyImportReview access={access} />}
         {tab === "Bookings" && <BookingAdmin data={enrichedData} access={access} initialFocus={bookingAdminFocus} onClearInitialFocus={() => setBookingAdminFocus("")} />}
+        {tab === "Registers" && <Registers />}
         {tab === "Booking Payments" && <BookingFinance data={enrichedData} access={access} onOpenBookingFocus={openBookingAdminFocus} />}
         {tab === "Finance" && <SchoolFinance data={enrichedData} access={access} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
@@ -1067,11 +1171,1912 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Rewards" && <Rewards data={scopedData} />}
         {tab === "Sessions" && <Sessions data={scopedData} />}
         {tab === "Incidents" && <Incidents />}
+        {tab === "Safeguarding" && effectiveRole === "Superadmin" && <SafeguardingCases />}
         {tab === "CRM" && <CRM data={enrichedData} />}
         {tab === "Audit" && <AuditLog data={scopedData} />}
         {tab === "Settings" && <Settings />}
       </section>
     </main>
+  );
+}
+
+const registerReportLabels = {
+  incident: "Incident",
+  first_aid: "First aid",
+  safeguarding: "Safeguarding concern",
+};
+
+const REGISTER_INCIDENT_CATEGORIES = [
+  { value: "Behaviour", icon: "⚠️", description: "Challenging behaviour, conflict or repeated failure to follow expectations." },
+  { value: "Collection Issue", icon: "👤", description: "Late collection, unauthorised collector or another collection concern." },
+  { value: "Parent Concern", icon: "💬", description: "A concern, complaint or significant conversation involving a parent or carer." },
+  { value: "Site or Property Issue", icon: "🏫", description: "Damage, unsafe behaviour involving equipment, or another site-related event." },
+  { value: "Near Miss", icon: "🚧", description: "Something that could have caused harm or disruption but did not." },
+  { value: "Other Significant Event", icon: "📝", description: "An important event that does not fit another category." },
+];
+
+const REGISTER_INCIDENT_SEVERITIES = [
+  { value: "Information", tone: "information", description: "Useful context or a noteworthy event." },
+  { value: "Minor", tone: "minor", description: "Resolved promptly with limited impact." },
+  { value: "Moderate", tone: "moderate", description: "Needs monitoring or follow-up." },
+  { value: "Serious", tone: "serious", description: "Requires immediate escalation." },
+];
+
+const REGISTER_INCIDENT_OUTCOMES = [
+  "Resolved",
+  "Child returned to normal activities",
+  "Monitoring required",
+  "Manager follow-up required",
+  "Parent follow-up required",
+  "Escalated",
+];
+
+const REGISTER_INCIDENT_PEOPLE = [
+  "Parent or carer",
+  "Site manager",
+  "Après School manager",
+  "School",
+  "Other",
+];
+
+const SAFEGUARDING_SOURCES = [
+  ["Observed", "👁️"],
+  ["Child Disclosure", "🗣️"],
+  ["Parent Disclosure", "👨"],
+  ["Staff Concern", "👩"],
+  ["Third Party", "📞"],
+  ["External Agency", "📄"],
+];
+
+const SAFEGUARDING_CATEGORIES = [
+  "Physical Abuse",
+  "Emotional Abuse",
+  "Neglect",
+  "Sexual Abuse",
+  "Online Safety",
+  "Child-on-child",
+  "Domestic Abuse",
+  "Mental Health",
+  "Self Harm",
+  "Radicalisation",
+  "Attendance",
+  "Substance Misuse",
+  "Other",
+];
+
+function incidentNeedsFollowUp(outcome) {
+  return ["Monitoring required", "Manager follow-up required", "Parent follow-up required", "Escalated"].includes(outcome);
+}
+
+function registerReportInitialDraft(reportType, registerDate = "") {
+  const now = new Date();
+  const localTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(11, 16);
+  const localNow = `${registerDate || new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)}T${localTime}`;
+  return {
+    occurredAt: localNow,
+    summary: "",
+    category: "",
+    severity: "",
+    actionTaken: "",
+    parentNotified: "not_yet",
+    peopleInformed: [],
+    peopleInformedOther: "",
+    outcome: "",
+    followUpNotes: "",
+    bodySide: "front",
+    bodyPart: "",
+    bodyAreas: [],
+    injuryTypes: [],
+    firstAidActions: [],
+    firstAidProvider: "",
+    treatment: "",
+    childSafeNow: null,
+    concernRoute: "",
+    concernCategories: [],
+    witnessStaff: "",
+    witnessChildren: "",
+    witnessAdults: "",
+    dslNotified: "no",
+    dslInformedWho: "",
+    dslInformedAt: "",
+    emailPrimaryContact: false,
+  };
+}
+
+function registerBodyAreaKey(side, part) {
+  return `${side}:${part}`;
+}
+
+function registerBodyAreas(details = {}) {
+  if (Array.isArray(details.bodyAreas)) {
+    return details.bodyAreas
+      .map((area) => {
+        if (typeof area === "string") {
+          const [side, ...part] = area.split(":");
+          return side && part.length ? { side, part: part.join(":") } : null;
+        }
+        return area?.side && area?.part ? { side: area.side, part: area.part } : null;
+      })
+      .filter(Boolean);
+  }
+  return details.bodyPart
+    ? [{ side: details.bodySide || "front", part: details.bodyPart }]
+    : [];
+}
+
+function registerBodyAreasLabel(details = {}) {
+  const areas = registerBodyAreas(details);
+  return areas.length
+    ? areas.map((area) => `${area.part} (${area.side})`).join(" · ")
+    : "Not recorded";
+}
+
+function registerRewardInitialDraft() {
+  return {
+    badgeType: "",
+    reason: "",
+    emailPrimaryContact: false,
+  };
+}
+
+function RegisterBodyMap({ side, selectedParts = [], onToggle }) {
+  const torsoPart = side === "front" ? "Chest" : "Upper back";
+  const lowerTorsoPart = side === "front" ? "Abdomen" : "Lower back";
+  const bodyZones = [
+    { part: "Head", element: <path className="bodymap-zone" d="M100 9c-15 0-25 11-25 27 0 15 10 28 25 28s25-13 25-28c0-16-10-27-25-27Z" /> },
+    { part: "Neck", element: <path className="bodymap-zone" d="M89 58h22l4 16H85l4-16Z" /> },
+    { part: torsoPart, element: <path className="bodymap-zone" d="M82 70c-10 3-17 10-19 21l7 53c9 7 19 10 30 10s21-3 30-10l7-53c-2-11-9-18-19-21-11 6-25 6-36 0Z" /> },
+    { part: lowerTorsoPart, element: <path className="bodymap-zone" d="M70 139c8 8 18 12 30 12s22-4 30-12l-4 37c-8 7-17 10-26 10s-18-3-26-10l-4-37Z" /> },
+    { part: "Left arm", element: <path className="bodymap-zone" d="M66 80c-8 3-13 9-17 19l-18 59c-2 7 2 13 8 15 6 1 11-3 13-9l20-56 6-26-12-2Z" /> },
+    { part: "Right arm", element: <path className="bodymap-zone" d="M134 80c8 3 13 9 17 19l18 59c2 7-2 13-8 15-6 1-11-3-13-9l-20-56-6-26 12-2Z" /> },
+    { part: "Left hand", element: <path className="bodymap-zone" d="M39 166c-8-2-15 3-16 11-1 6 3 13 9 15 8 2 16-3 17-11 1-7-3-13-10-15Z" /> },
+    { part: "Right hand", element: <path className="bodymap-zone" d="M161 166c8-2 15 3 16 11 1 6-3 13-9 15-8 2-16-3-17-11-1-7 3-13 10-15Z" /> },
+    { part: "Left leg", element: <path className="bodymap-zone" d="M75 176c6 6 14 9 23 10l-5 82c-1 10-7 16-15 15-8-1-12-8-11-18l8-89Z" /> },
+    { part: "Right leg", element: <path className="bodymap-zone" d="M125 176c-6 6-14 9-23 10l5 82c1 10 7 16 15 15 8-1 12-8 11-18l-8-89Z" /> },
+    { part: "Left foot", element: <path className="bodymap-zone" d="M78 272c-7-1-12 4-16 10l-7 8c-3 4 0 8 5 8h27c6 0 9-4 8-9l-2-12-15-5Z" /> },
+    { part: "Right foot", element: <path className="bodymap-zone" d="M122 272c7-1 12 4 16 10l7 8c3 4 0 8-5 8h-27c-6 0-9-4-8-9l2-12 15-5Z" /> },
+  ];
+  return (
+    <div className="register-body-map">
+      <svg viewBox="0 0 200 300" role="group" aria-label={`${side === "front" ? "Front" : "Back"} body map`}>
+        {bodyZones.map(({ part, element }) => (
+          <g
+            key={part}
+            className={selectedParts.includes(part) ? "selected" : ""}
+            role="button"
+            tabIndex="0"
+            aria-label={`${selectedParts.includes(part) ? "Remove" : "Select"} ${part}`}
+            aria-pressed={selectedParts.includes(part)}
+            onClick={() => onToggle(part)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onToggle(part);
+              }
+            }}
+          >
+            <title>{part}</title>
+            {element}
+          </g>
+        ))}
+      </svg>
+      <strong>{selectedParts.length ? `${selectedParts.length} area${selectedParts.length === 1 ? "" : "s"} selected on this side` : "Select every affected area"}</strong>
+    </div>
+  );
+}
+
+function Registers() {
+  const today = new Date();
+  const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const requestedRegisterDate = new URLSearchParams(window.location.search).get("registerDate");
+  const initialRegisterDate = /^\d{4}-\d{2}-\d{2}$/.test(requestedRegisterDate || "")
+    ? requestedRegisterDate
+    : localToday;
+  const [registerDate, setRegisterDate] = useState(initialRegisterDate);
+  const [rows, setRows] = useState([]);
+  const [timetable, setTimetable] = useState([]);
+  const [school, setSchool] = useState("All schools");
+  const [programme, setProgramme] = useState("All activities");
+  const [session, setSession] = useState("All sessions");
+  const [search, setSearch] = useState("");
+  const [fireDrill, setFireDrill] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [savingIds, setSavingIds] = useState([]);
+  const [selectedChildId, setSelectedChildId] = useState("");
+  const [message, setMessage] = useState({ tone: "info", text: "Loading the live register…" });
+  const [adHocOpen, setAdHocOpen] = useState(false);
+  const [adHocSearch, setAdHocSearch] = useState("");
+  const [adHocOptions, setAdHocOptions] = useState({ children: [], sessions: [] });
+  const [adHocChildId, setAdHocChildId] = useState("");
+  const [adHocSessionIds, setAdHocSessionIds] = useState([]);
+  const [adHocApplyFee, setAdHocApplyFee] = useState(false);
+  const [adHocLoading, setAdHocLoading] = useState(false);
+  const [adHocSaving, setAdHocSaving] = useState(false);
+  const [adHocError, setAdHocError] = useState("");
+  const [adHocCancellationRow, setAdHocCancellationRow] = useState(null);
+  const [adHocCancellationSaving, setAdHocCancellationSaving] = useState(false);
+  const [adHocCancellationError, setAdHocCancellationError] = useState("");
+  const [registerReportType, setRegisterReportType] = useState("");
+  const [registerReportDraft, setRegisterReportDraft] = useState(() => registerReportInitialDraft("incident"));
+  const [registerReportSaving, setRegisterReportSaving] = useState(false);
+  const [registerReportError, setRegisterReportError] = useState("");
+  const [registerReportSuccess, setRegisterReportSuccess] = useState("");
+  const [safeguardingDraftStatus, setSafeguardingDraftStatus] = useState("");
+  const [safeguardingFiles, setSafeguardingFiles] = useState([]);
+  const [registerRewardOpen, setRegisterRewardOpen] = useState(false);
+  const [registerRewardDraft, setRegisterRewardDraft] = useState(registerRewardInitialDraft);
+  const [registerRewardSaving, setRegisterRewardSaving] = useState(false);
+  const [registerRewardError, setRegisterRewardError] = useState("");
+  const [registerRewardSuccess, setRegisterRewardSuccess] = useState("");
+  const [registerRewardCelebration, setRegisterRewardCelebration] = useState(null);
+  const [childActivity, setChildActivity] = useState([]);
+  const [childActivityLoading, setChildActivityLoading] = useState(false);
+  const [childActivityError, setChildActivityError] = useState("");
+
+  const statusLabels = {
+    booked: "Expected",
+    checked_in: "Checked in",
+    checked_out: "Checked out",
+    absent: "Absent",
+    late_collection: "Late collection",
+    incident: "Incident",
+  };
+
+  async function refreshRegister() {
+    setLoading(true);
+    setMessage({ tone: "info", text: "Loading the timetable and confirmed bookings…" });
+    try {
+      const timetableStart = new Date(`${registerDate}T00:00:00`);
+      timetableStart.setMonth(Math.max(0, timetableStart.getMonth() - 1));
+      const [registerResult, timetableResult] = await Promise.allSettled([
+        fetchStaffRegister({ registerDate }),
+        fetchStaffRegisterTimetable({ from: timetableStart }),
+      ]);
+      if (registerResult.status === "rejected") throw registerResult.reason;
+      const nextRows = registerResult.value;
+      const nextTimetable = timetableResult.status === "fulfilled" ? timetableResult.value : [];
+      setRows(nextRows);
+      setTimetable(nextTimetable);
+      setMessage({
+        tone: timetableResult.status === "fulfilled" ? "good" : "info",
+        text: timetableResult.status === "rejected"
+          ? `${nextRows.length} confirmed child ${nextRows.length === 1 ? "booking" : "bookings"} loaded. Timetable filters could not be refreshed.`
+          : nextRows.length
+          ? `${nextRows.length} confirmed child ${nextRows.length === 1 ? "booking" : "bookings"} loaded.`
+          : "No confirmed children are booked for this date.",
+      });
+    } catch (error) {
+      setRows([]);
+      setTimetable([]);
+      setMessage({ tone: "bad", text: error?.message || "The live register could not be loaded." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!bookingSystemConfigured()) {
+      setLoading(false);
+      setMessage({ tone: "bad", text: "The live register is not configured. No local examples are shown." });
+      return;
+    }
+    refreshRegister();
+  }, [registerDate]);
+
+  const registerOptions = [...timetable, ...rows];
+  const schools = ["All schools", ...new Set(registerOptions.map((row) => row.siteName).filter(Boolean))];
+  const programmes = ["All activities", ...new Set(registerOptions
+    .filter((row) => school === "All schools" || row.siteName === school)
+    .map((row) => row.programmeName)
+    .filter(Boolean))];
+  const sessions = ["All sessions", ...new Set(registerOptions
+    .filter((row) => school === "All schools" || row.siteName === school)
+    .filter((row) => programme === "All activities" || row.programmeName === programme)
+    .map((row) => row.sessionLabel)
+    .filter(Boolean))];
+  const normalizedSearch = search.trim().toLowerCase();
+  const sessionScopeRows = rows.filter((row) => {
+    if (school !== "All schools" && row.siteName !== school) return false;
+    if (programme !== "All activities" && row.programmeName !== programme) return false;
+    if (fireDrill && !["checked_in", "late_collection", "incident"].includes(row.attendanceStatus)) return false;
+    if (!normalizedSearch) return true;
+    return [
+      row.childName,
+      row.childYearGroup,
+      row.childSchoolName,
+      row.parentName,
+      row.parentPhone,
+      row.medicalNotes,
+      row.allergyNotes,
+      row.dietaryNotes,
+      ...(row.flags || []),
+    ].filter(Boolean).join(" ").toLowerCase().includes(normalizedSearch);
+  });
+  const visibleRows = session === "All sessions"
+    ? sessionScopeRows
+    : sessionScopeRows.filter((row) => row.sessionLabel === session);
+  const visibleSessionLabels = session === "All sessions" ? sessions.slice(1) : [session];
+  const sessionSections = visibleSessionLabels.map((sessionLabel) => {
+    const optionRows = registerOptions
+      .filter((row) => school === "All schools" || row.siteName === school)
+      .filter((row) => programme === "All activities" || row.programmeName === programme)
+      .filter((row) => row.sessionLabel === sessionLabel);
+    return {
+      label: sessionLabel,
+      activityNames: [...new Set(optionRows.map((row) => row.programmeName).filter(Boolean))],
+      rows: visibleRows.filter((row) => row.sessionLabel === sessionLabel),
+    };
+  });
+  const expectedCount = visibleRows.filter((row) => row.attendanceStatus === "booked").length;
+  const presentCount = visibleRows.filter((row) => ["checked_in", "late_collection", "incident"].includes(row.attendanceStatus)).length;
+  const completedCount = visibleRows.filter((row) => ["checked_out", "absent"].includes(row.attendanceStatus)).length;
+  const selectedChild = rows.find((row) => row.bookingItemId === selectedChildId) || null;
+
+  useEffect(() => {
+    if (registerReportType !== "safeguarding" || !selectedChild?.bookingItemId) return undefined;
+    const timeout = window.setTimeout(async () => {
+      try {
+        await saveSafeguardingDraft({
+          bookingItemId: selectedChild.bookingItemId,
+          content: registerReportDraft,
+        });
+        setSafeguardingDraftStatus(`Draft saved ${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`);
+      } catch {
+        setSafeguardingDraftStatus("Secure autosave is unavailable. Keep this form open and try again before leaving.");
+      }
+    }, 800);
+    return () => window.clearTimeout(timeout);
+  }, [registerReportDraft, registerReportType, selectedChild?.bookingItemId]);
+  const selectedAdHocChild = adHocOptions.children.find((child) => child.id === adHocChildId) || null;
+  const selectedAdHocSessions = adHocOptions.sessions.filter((option) => adHocSessionIds.includes(option.id));
+  const adHocSessionSubtotal = selectedAdHocSessions.reduce((total, option) => total + option.price, 0);
+  const adHocTotal = adHocSessionSubtotal + (adHocApplyFee ? 2.5 : 0);
+  const adHocCancellationRows = adHocCancellationRow
+    ? rows.filter((row) => row.bookingId === adHocCancellationRow.bookingId)
+    : [];
+
+  function childAlreadyBookedInSession(childId, sessionBlockId) {
+    return rows.some((row) => row.childId === childId && row.sessionBlockId === sessionBlockId);
+  }
+
+  function emergencyPhone(row) {
+    const contact = row.emergencyContact || {};
+    return contact.phone || contact.mobile || contact.telephone || contact.number || row.parentPhone || "";
+  }
+
+  function childAge(row) {
+    if (!row.childDateOfBirth) return "";
+    const birth = new Date(`${row.childDateOfBirth}T12:00:00`);
+    if (Number.isNaN(birth.getTime())) return "";
+    const onDate = new Date(`${registerDate}T12:00:00`);
+    let age = onDate.getFullYear() - birth.getFullYear();
+    if (onDate < new Date(onDate.getFullYear(), birth.getMonth(), birth.getDate())) age -= 1;
+    return age >= 0 ? String(age) : "";
+  }
+
+  function meaningfulCareValue(value) {
+    if (Array.isArray(value)) return value.some(meaningfulCareValue);
+    if (value && typeof value === "object") return Object.values(value).some(meaningfulCareValue);
+    const normalized = String(value || "").trim().toLowerCase();
+    return Boolean(normalized && !["no", "none", "n/a", "not applicable", "false"].includes(normalized));
+  }
+
+  function sendDetails(row) {
+    const consents = row.consents || {};
+    const registration = consents.registration || {};
+    const structured = [
+      consents.send,
+      consents.SEND,
+      registration.send,
+      registration.SEND,
+      registration.sendNeed,
+      registration.sendDetails,
+      registration.ehcp,
+    ].filter(meaningfulCareValue);
+    const flagText = (row.flags || []).filter((flag) => /\b(send|sen|ehcp|special educational|additional need)/i.test(String(flag)));
+    return [...structured, ...flagText];
+  }
+
+  function hasMedicalCare(row) {
+    const consents = row.consents || {};
+    const registration = consents.registration || {};
+    return meaningfulCareValue([
+      row.medicalNotes,
+      row.allergyNotes,
+      registration.allergies,
+      registration.medications,
+      registration.autoInjectors,
+      registration.medicalConditions,
+      (row.flags || []).filter((flag) => /\b(medical|medication|allerg|asthma|auto-injector|epipen|emerade)/i.test(String(flag))),
+    ]);
+  }
+
+  function careDetailLines(row) {
+    return [
+      row.allergyNotes && `Allergy: ${row.allergyNotes}`,
+      row.medicalNotes && `Medical: ${row.medicalNotes}`,
+      row.dietaryNotes && `Dietary: ${row.dietaryNotes}`,
+      ...(row.flags || []),
+    ].filter(Boolean);
+  }
+
+  function printableValue(value) {
+    if (Array.isArray(value)) return value.map(printableValue).filter(Boolean).join(" · ");
+    if (value && typeof value === "object") {
+      return Object.entries(value)
+        .filter(([, detail]) => meaningfulCareValue(detail))
+        .map(([label, detail]) => `${label.replace(/([A-Z])/g, " $1")}: ${printableValue(detail)}`)
+        .join(" · ");
+    }
+    return String(value || "").trim();
+  }
+
+  async function openRegisterReport(reportType) {
+    setRegisterRewardOpen(false);
+    setRegisterReportType(reportType);
+    let nextDraft = registerReportInitialDraft(reportType, registerDate);
+    if (reportType === "safeguarding" && selectedChild?.bookingItemId) {
+      try {
+        const saved = await readSafeguardingDraft({ bookingItemId: selectedChild.bookingItemId });
+        if (saved?.content && Object.keys(saved.content).length) {
+          nextDraft = { ...nextDraft, ...saved.content };
+          setSafeguardingDraftStatus("Secure draft restored.");
+        }
+      } catch {
+        setSafeguardingDraftStatus("Secure draft storage is currently unavailable.");
+      }
+    }
+    setRegisterReportDraft(nextDraft);
+    setRegisterReportError("");
+    setRegisterReportSuccess("");
+  }
+
+  function openRegisterReward() {
+    setRegisterReportType("");
+    setRegisterRewardOpen(true);
+    setRegisterRewardDraft(registerRewardInitialDraft());
+    setRegisterRewardError("");
+    setRegisterRewardSuccess("");
+  }
+
+  function updateRegisterReportDraft(field, value) {
+    setRegisterReportDraft((current) => ({ ...current, [field]: value }));
+    setRegisterReportError("");
+  }
+
+  function toggleRegisterReportChoice(field, value) {
+    setRegisterReportDraft((current) => {
+      const choices = Array.isArray(current[field]) ? current[field] : [];
+      return {
+        ...current,
+        [field]: choices.includes(value)
+          ? choices.filter((choice) => choice !== value)
+          : [...choices, value],
+      };
+    });
+    setRegisterReportError("");
+  }
+
+  function toggleRegisterBodyArea(side, part) {
+    const key = registerBodyAreaKey(side, part);
+    setRegisterReportDraft((current) => {
+      const bodyAreas = Array.isArray(current.bodyAreas) ? current.bodyAreas : [];
+      return {
+        ...current,
+        bodyAreas: bodyAreas.includes(key)
+          ? bodyAreas.filter((area) => area !== key)
+          : [...bodyAreas, key],
+      };
+    });
+    setRegisterReportError("");
+  }
+
+  async function submitRegisterReport(event) {
+    event.preventDefault();
+    if (!selectedChild || !registerReportType) return;
+    if (!registerReportDraft.summary.trim()) {
+      setRegisterReportError("Add a clear factual account of what happened.");
+      return;
+    }
+    if (registerReportType === "incident") {
+      if (!registerReportDraft.category) {
+        setRegisterReportError("Choose the incident category.");
+        return;
+      }
+      if (!registerReportDraft.severity) {
+        setRegisterReportError("Choose the incident severity.");
+        return;
+      }
+      if (!registerReportDraft.actionTaken.trim()) {
+        setRegisterReportError("Record what action staff took.");
+        return;
+      }
+      if (!registerReportDraft.peopleInformed.length) {
+        setRegisterReportError("Select who was informed.");
+        return;
+      }
+      if (registerReportDraft.peopleInformed.includes("Other") && !registerReportDraft.peopleInformedOther.trim()) {
+        setRegisterReportError("Add the name or role of the other person informed.");
+        return;
+      }
+      if (!registerReportDraft.outcome) {
+        setRegisterReportError("Choose the outcome.");
+        return;
+      }
+      if (incidentNeedsFollowUp(registerReportDraft.outcome) && !registerReportDraft.followUpNotes.trim()) {
+        setRegisterReportError("Add the required follow-up notes.");
+        return;
+      }
+    }
+    if (registerReportType === "first_aid" && !registerReportDraft.bodyAreas.length) {
+      setRegisterReportError("Select at least one affected area on the body map.");
+      return;
+    }
+    if (registerReportType === "first_aid" && !registerReportDraft.firstAidProvider.trim()) {
+      setRegisterReportError("Add who performed first aid.");
+      return;
+    }
+    if (registerReportType === "safeguarding") {
+      if (registerReportDraft.childSafeNow === null) {
+        setRegisterReportError("Confirm whether the child is currently safe.");
+        return;
+      }
+      if (!registerReportDraft.concernRoute) {
+        setRegisterReportError("Choose how the concern arose.");
+        return;
+      }
+      if (!registerReportDraft.concernCategories.length) {
+        setRegisterReportError("Choose at least one concern category.");
+        return;
+      }
+      if (!registerReportDraft.actionTaken.trim()) {
+        setRegisterReportError("Record what you did immediately.");
+        return;
+      }
+      if (registerReportDraft.dslNotified === "yes"
+        && (!registerReportDraft.dslInformedWho.trim() || !registerReportDraft.dslInformedAt)) {
+        setRegisterReportError("Record who was informed and when.");
+        return;
+      }
+    }
+
+    setRegisterReportSaving(true);
+    setRegisterReportError("");
+    setRegisterReportSuccess("");
+    try {
+      const occurredAt = registerReportDraft.occurredAt
+        ? new Date(registerReportDraft.occurredAt).toISOString()
+        : new Date().toISOString();
+      const standardDetails = {
+          occurredAt,
+          category: registerReportDraft.category,
+          severity: registerReportDraft.severity,
+          actionTaken: registerReportDraft.actionTaken.trim(),
+          parentNotified: registerReportDraft.parentNotified,
+          peopleInformed: registerReportDraft.peopleInformed,
+          peopleInformedOther: registerReportDraft.peopleInformedOther.trim(),
+          outcome: registerReportDraft.outcome,
+          followUpNotes: registerReportDraft.followUpNotes.trim(),
+          emailPrimaryContactRequested: registerReportDraft.emailPrimaryContact,
+          bodySide: registerReportDraft.bodyAreas[0]?.split(":")[0] || registerReportDraft.bodySide,
+          bodyPart: registerReportDraft.bodyAreas[0]?.split(":").slice(1).join(":") || "",
+          bodyAreas: registerReportDraft.bodyAreas.map((area) => {
+            const [side, ...part] = area.split(":");
+            return { side, part: part.join(":") };
+          }),
+          injuryTypes: registerReportDraft.injuryTypes,
+          firstAidActions: registerReportDraft.firstAidActions,
+          firstAidProvider: registerReportDraft.firstAidProvider.trim(),
+          treatment: registerReportDraft.treatment.trim(),
+          concernRoute: registerReportDraft.concernRoute,
+          dslNotified: registerReportDraft.dslNotified,
+          registerDate,
+        };
+      const result = registerReportType === "safeguarding"
+        ? await createSafeguardingConcern({
+          bookingItemId: selectedChild.bookingItemId,
+          childSafeNow: registerReportDraft.childSafeNow,
+          concernSource: registerReportDraft.concernRoute,
+          categories: registerReportDraft.concernCategories,
+          factualAccount: registerReportDraft.summary,
+          immediateAction: registerReportDraft.actionTaken,
+          witnesses: {
+            staff: registerReportDraft.witnessStaff.split(",").map((value) => value.trim()).filter(Boolean),
+            children: registerReportDraft.witnessChildren.split(",").map((value) => value.trim()).filter(Boolean),
+            otherAdults: registerReportDraft.witnessAdults.split(",").map((value) => value.trim()).filter(Boolean),
+          },
+          dslInformed: registerReportDraft.dslNotified === "yes",
+          dslInformedWho: registerReportDraft.dslInformedWho,
+          dslInformedAt: registerReportDraft.dslInformedAt
+            ? new Date(registerReportDraft.dslInformedAt).toISOString()
+            : null,
+          occurredAt,
+        })
+        : await createStaffRegisterReport({
+          bookingItemId: selectedChild.bookingItemId,
+          reportType: registerReportType,
+          summary: registerReportDraft.summary,
+          details: standardDetails,
+          emailPrimaryContact: registerReportDraft.emailPrimaryContact,
+        });
+      const label = registerReportLabels[registerReportType];
+      let attachmentsUploaded = false;
+      if (registerReportType === "safeguarding") {
+        if (safeguardingFiles.length) {
+          try {
+            await uploadSafeguardingAttachments({ caseId: result.caseId, files: safeguardingFiles });
+            attachmentsUploaded = true;
+            setSafeguardingFiles([]);
+          } catch (attachmentError) {
+            setRegisterReportError(`Concern #${result?.concernNumber || ""} was saved, but one or more attachments could not be uploaded. ${attachmentError?.message || "Ask the DSL to add them from the case."}`);
+          }
+        }
+        setSafeguardingDraftStatus(`Concern #${result?.concernNumber || ""} submitted. The original record is locked.`);
+      }
+      const successText = registerReportType === "safeguarding"
+        ? `Safeguarding concern saved securely${attachmentsUploaded ? " with its attachments" : ""} and referred to the DSL.`
+        : `${label} report saved securely${result?.emailSent ? " and emailed to the primary contact" : ""}.`;
+      setRegisterReportSuccess(successText);
+      if (registerReportDraft.emailPrimaryContact && !result?.emailSent) {
+        setRegisterReportError(`The report was saved, but the email could not be sent. ${result?.emailError || "Check the primary contact email and try again."}`);
+      }
+      setRegisterReportDraft(registerReportInitialDraft(registerReportType, registerDate));
+      await refreshRegister();
+      setMessage({ tone: "good", text: `${selectedChild.childName}: ${successText}` });
+    } catch (error) {
+      setRegisterReportError(error?.message || "The report could not be saved.");
+    } finally {
+      setRegisterReportSaving(false);
+    }
+  }
+
+  async function submitRegisterReward(event) {
+    event.preventDefault();
+    if (!selectedChild) return;
+    if (!registerRewardDraft.badgeType) {
+      setRegisterRewardError("Choose one badge before awarding it.");
+      return;
+    }
+    if (!registerRewardDraft.reason.trim()) {
+      setRegisterRewardError("Add a short reason for the badge.");
+      return;
+    }
+    setRegisterRewardSaving(true);
+    setRegisterRewardError("");
+    setRegisterRewardSuccess("");
+    try {
+      const result = await createStaffRegisterReward({
+        bookingItemId: selectedChild.bookingItemId,
+        badgeType: registerRewardDraft.badgeType,
+        reason: registerRewardDraft.reason,
+        emailPrimaryContact: registerRewardDraft.emailPrimaryContact,
+      });
+      const badge = rewardBadge(registerRewardDraft.badgeType);
+      const successText = `${badge.title} badge saved${result?.emailSent ? " and emailed to the primary contact" : ""}.`;
+      setRegisterRewardSuccess(successText);
+      if (registerRewardDraft.emailPrimaryContact && !result?.emailSent) {
+        setRegisterRewardError(`The badge was saved, but the email could not be sent. ${result?.emailError || "Check the primary contact email and try again."}`);
+      }
+      setRegisterRewardCelebration({
+        badge,
+        childName: selectedChild.childName,
+      });
+      await refreshRegister();
+      setMessage({ tone: "good", text: `${selectedChild.childName}: ${successText}` });
+    } catch (error) {
+      setRegisterRewardError(error?.message || "The reward could not be saved.");
+    } finally {
+      setRegisterRewardSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!registerRewardCelebration) return undefined;
+    const closeTimer = window.setTimeout(() => {
+      setRegisterRewardCelebration(null);
+      setRegisterRewardOpen(false);
+      setRegisterRewardDraft(registerRewardInitialDraft());
+      setSelectedChildId("");
+    }, 2800);
+    return () => window.clearTimeout(closeTimer);
+  }, [registerRewardCelebration]);
+
+  useEffect(() => {
+    if (!selectedChildId) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setSelectedChildId("");
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [selectedChildId]);
+
+  useEffect(() => {
+    setRegisterReportType("");
+    setRegisterReportError("");
+    setRegisterReportSuccess("");
+    setRegisterRewardOpen(false);
+    setRegisterRewardError("");
+    setRegisterRewardSuccess("");
+  }, [selectedChildId]);
+
+  useEffect(() => {
+    const childId = selectedChild?.childId;
+    if (!childId) {
+      setChildActivity([]);
+      setChildActivityError("");
+      return undefined;
+    }
+    let active = true;
+    setChildActivityLoading(true);
+    setChildActivityError("");
+    fetchStaffChildActivityTimeline({ childId })
+      .then((items) => {
+        if (active) setChildActivity(Array.isArray(items) ? items : []);
+      })
+      .catch((error) => {
+        if (active) setChildActivityError(error?.message || "Activity history could not be loaded.");
+      })
+      .finally(() => {
+        if (active) setChildActivityLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedChild?.childId, registerReportSuccess, registerRewardSuccess]);
+
+  useEffect(() => {
+    if (!adHocOpen) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape" && !adHocSaving) setAdHocOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [adHocOpen, adHocSaving]);
+
+  useEffect(() => {
+    if (!adHocCancellationRow) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape" && !adHocCancellationSaving) setAdHocCancellationRow(null);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [adHocCancellationRow, adHocCancellationSaving]);
+
+  useEffect(() => {
+    if (!adHocOpen) return undefined;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setAdHocLoading(true);
+      setAdHocError("");
+      try {
+        const options = await fetchStaffAdHocBookingOptions({
+          registerDate,
+          siteName: school === "All schools" ? null : school,
+          programmeName: programme === "All activities" ? null : programme,
+          childQuery: adHocSearch,
+        });
+        if (!active) return;
+        setAdHocOptions(options);
+        setAdHocSessionIds((current) => current.filter((id) => options.sessions.some((option) => option.id === id)));
+      } catch (error) {
+        if (!active) return;
+        setAdHocOptions({ children: [], sessions: [] });
+        setAdHocError(error?.message || "Pupils and sessions could not be loaded.");
+      } finally {
+        if (active) setAdHocLoading(false);
+      }
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [adHocOpen, adHocSearch, registerDate, school, programme]);
+
+  function openAdHocBooking() {
+    setAdHocSearch("");
+    setAdHocOptions({ children: [], sessions: [] });
+    setAdHocChildId("");
+    setAdHocSessionIds([]);
+    setAdHocApplyFee(false);
+    setAdHocError("");
+    setAdHocOpen(true);
+  }
+
+  function toggleAdHocSession(option) {
+    if (!adHocChildId) {
+      setAdHocError("Choose a pupil before selecting sessions.");
+      return;
+    }
+    if (childAlreadyBookedInSession(adHocChildId, option.id)) return;
+    if (option.placesLeft <= 0) return;
+    setAdHocError("");
+    setAdHocSessionIds((current) => current.includes(option.id)
+      ? current.filter((id) => id !== option.id)
+      : [...current, option.id]);
+  }
+
+  async function submitAdHocBooking() {
+    if (!adHocChildId) {
+      setAdHocError("Choose a pupil.");
+      return;
+    }
+    if (!adHocSessionIds.length) {
+      setAdHocError("Choose at least one available session.");
+      return;
+    }
+    setAdHocSaving(true);
+    setAdHocError("");
+    try {
+      const result = await createStaffAdHocBooking({
+        childId: adHocChildId,
+        registerDate,
+        sessionBlockIds: adHocSessionIds,
+        applyNonBookingFee: adHocApplyFee,
+      });
+      setAdHocOpen(false);
+      await refreshRegister();
+      setMessage({
+        tone: "good",
+        text: `${result.childName} added to ${result.sessionCount} ${result.sessionCount === 1 ? "session" : "sessions"}. £${Number(result.total || 0).toFixed(2)} charged to the family account${result.nonBookingFee ? ", including the £2.50 non-booking fee" : ""}.${Number(result.outstanding || 0) > 0 ? ` £${Number(result.outstanding).toFixed(2)} is now due and the parent has been notified.` : " Covered by account credit."}`,
+      });
+    } catch (error) {
+      setAdHocError(error?.message || "The ad-hoc booking could not be created.");
+    } finally {
+      setAdHocSaving(false);
+    }
+  }
+
+  function openAdHocCancellation(row) {
+    setAdHocCancellationError("");
+    setAdHocCancellationRow(row);
+  }
+
+  async function confirmAdHocCancellation() {
+    if (!adHocCancellationRow?.bookingId) return;
+    const childName = adHocCancellationRow.childName;
+    setAdHocCancellationSaving(true);
+    setAdHocCancellationError("");
+    try {
+      const result = await cancelStaffAdHocBooking({
+        bookingId: adHocCancellationRow.bookingId,
+        reason: "Cancelled by staff from the register",
+      });
+      setAdHocCancellationRow(null);
+      await refreshRegister();
+      setMessage({
+        tone: "good",
+        text: `${childName}'s ad-hoc care was cancelled. The family charge was reversed${Number(result.creditRestored || 0) > 0 ? ` and £${Number(result.creditRestored).toFixed(2)} credit was returned` : ""}.${result.emailSent ? " The parent has been emailed." : result.emailError ? ` Parent email warning: ${result.emailError}` : ""}`,
+      });
+    } catch (error) {
+      setAdHocCancellationError(error?.message || "The ad-hoc booking could not be cancelled.");
+    } finally {
+      setAdHocCancellationSaving(false);
+    }
+  }
+
+  async function updateRow(row, status) {
+    setSavingIds((current) => [...new Set([...current, row.bookingItemId])]);
+    try {
+      await updateStaffRegisterEntry({
+        bookingItemId: row.bookingItemId,
+        status,
+        note: row.attendanceNote || "",
+      });
+      await refreshRegister();
+      setMessage({ tone: "good", text: `${row.childName} marked ${statusLabels[status].toLowerCase()}.` });
+    } catch (error) {
+      setMessage({ tone: "bad", text: error?.message || `${row.childName} could not be updated.` });
+    } finally {
+      setSavingIds((current) => current.filter((id) => id !== row.bookingItemId));
+    }
+  }
+
+  async function bulkUpdate(status) {
+    const actionable = visibleRows.filter((row) => !savingIds.includes(row.bookingItemId));
+    if (!actionable.length) return;
+    setSavingIds(actionable.map((row) => row.bookingItemId));
+    const results = await Promise.allSettled(actionable.map((row) => updateStaffRegisterEntry({
+      bookingItemId: row.bookingItemId,
+      status,
+      note: row.attendanceNote || "",
+    })));
+    const failed = results.filter((result) => result.status === "rejected").length;
+    await refreshRegister();
+    setSavingIds([]);
+    setMessage({
+      tone: failed ? "bad" : "good",
+      text: failed
+        ? `${actionable.length - failed} children updated; ${failed} could not be saved.`
+        : `${actionable.length} visible ${actionable.length === 1 ? "child" : "children"} marked ${statusLabels[status].toLowerCase()}.`,
+    });
+  }
+
+  function downloadRegister() {
+    const header = ["Child", "School", "Year group", "Age", "Session", "Time", "Status", "Care alerts", "Parent", "Emergency phone"];
+    const values = visibleRows.map((row) => [
+      row.childName,
+      row.childSchoolName || row.siteName,
+      row.childYearGroup,
+      childAge(row),
+      row.sessionLabel,
+      `${new Date(row.startsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}-${new Date(row.endsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`,
+      statusLabels[row.attendanceStatus] || row.attendanceStatus,
+      [row.allergyNotes, row.medicalNotes, row.dietaryNotes, ...(row.flags || [])].filter(Boolean).join(" · "),
+      row.parentName,
+      emergencyPhone(row),
+    ]);
+    const csv = [header, ...values]
+      .map((line) => line.map((value) => `"${String(value || "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    link.download = `apres-register-${registerDate}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  return (
+    <section className="workspace-section register-workspace">
+      <div className="workspace-title-row">
+        <div>
+          <p className="eyebrow">Live attendance</p>
+          <h1>Registers</h1>
+          <p>Every confirmed child appears in the correct session. Record arrival, collection and care exceptions here.</p>
+        </div>
+        <div className="register-header-actions">
+          <button className="button book register-adhoc-launch" type="button" onClick={openAdHocBooking}>Ad-hoc booking</button>
+          <button className="button light" type="button" onClick={refreshRegister} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button>
+          <button className="button light" type="button" onClick={downloadRegister} disabled={!visibleRows.length}>Download CSV</button>
+        </div>
+      </div>
+
+      <div className="register-selector-panel">
+        <label>Date<input type="date" value={registerDate} onChange={(event) => {
+          setRegisterDate(event.target.value);
+          setSchool("All schools");
+          setProgramme("All activities");
+          setSession("All sessions");
+        }} /></label>
+        <label>School<select value={school} onChange={(event) => { setSchool(event.target.value); setProgramme("All activities"); setSession("All sessions"); }}>
+          {schools.map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+        <label>Activity<select value={programme} onChange={(event) => { setProgramme(event.target.value); setSession("All sessions"); }}>
+          {programmes.map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+        <label>Session<select value={session} onChange={(event) => setSession(event.target.value)}>
+          {sessions.map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+      </div>
+
+      <nav className="register-session-filters" aria-label="Quick session filters">
+        <span>Quick session view</span>
+        <div>
+          {sessions.map((item) => {
+            const bookingCount = item === "All sessions"
+              ? sessionScopeRows.length
+              : sessionScopeRows.filter((row) => row.sessionLabel === item).length;
+            return (
+              <button
+                className={session === item ? "active" : ""}
+                type="button"
+                key={item}
+                onClick={() => setSession(item)}
+                aria-pressed={session === item}
+              >
+                <strong>{item}</strong>
+                <small>{bookingCount ? `${bookingCount} booked` : "No bookings"}</small>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      <div className={`register-live-message ${message.tone}`} role={message.tone === "bad" ? "alert" : "status"}>
+        <strong>{message.tone === "bad" ? "Register unavailable" : "Live register"}</strong>
+        <span>{message.text}</span>
+      </div>
+
+      <div className="register-command-row">
+        <label><span>Find a child or care need</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, year, allergy or contact" /></label>
+        <button className={fireDrill ? "button book" : "button light"} type="button" onClick={() => setFireDrill((current) => !current)}>{fireDrill ? "Exit fire-drill view" : "Fire-drill register"}</button>
+      </div>
+
+      <div className="register-summary-grid" aria-label="Register totals">
+        <article><span>Visible</span><strong>{visibleRows.length}</strong></article>
+        <article><span>Expected</span><strong>{expectedCount}</strong></article>
+        <article><span>Present</span><strong>{presentCount}</strong></article>
+        <article><span>Complete</span><strong>{completedCount}</strong></article>
+      </div>
+
+      <div className="register-bulk-actions">
+        <span>Apply to the visible children:</span>
+        <button type="button" onClick={() => bulkUpdate("checked_in")} disabled={!visibleRows.length || savingIds.length}>Check in all</button>
+        <button type="button" onClick={() => bulkUpdate("checked_out")} disabled={!visibleRows.length || savingIds.length}>Check out all</button>
+        <button type="button" onClick={() => bulkUpdate("absent")} disabled={!visibleRows.length || savingIds.length}>Mark all absent</button>
+      </div>
+
+      <div className="register-session-sections">
+        {sessionSections.map((section) => (
+          <section className="register-session-section" key={section.label}>
+            <header>
+              <div>
+                <p>Session</p>
+                <h2>{section.label}</h2>
+                {!!section.activityNames.length && <span>{section.activityNames.join(" · ")}</span>}
+              </div>
+              <strong className={section.rows.length ? "has-bookings" : "no-bookings"}>
+                {section.rows.length ? `${section.rows.length} ${section.rows.length === 1 ? "booking" : "bookings"}` : "No bookings"}
+              </strong>
+            </header>
+            <div className="register-table-wrap">
+              <table className="register-table">
+                <thead><tr><th>Child</th><th>Session</th><th>Needs</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody>
+                  {section.rows.map((row) => {
+                    const busy = savingIds.includes(row.bookingItemId);
+                    const hasSend = sendDetails(row).length > 0;
+                    const hasMedical = hasMedicalCare(row);
+                    return (
+                      <tr key={row.bookingItemId} className={`status-${row.attendanceStatus}`}>
+                        <td>
+                          <button className="register-child-button" type="button" onClick={() => setSelectedChildId(row.bookingItemId)} aria-label={`Open details for ${row.childName}`}>
+                            <strong>
+                              {row.childName}
+                              {!!row.rewardsToday?.length && (
+                                <span className="register-earned-badges" aria-label={`${row.rewardsToday.length} badge${row.rewardsToday.length === 1 ? "" : "s"} earned today`}>
+                                  {row.rewardsToday.slice(0, 3).map((reward) => {
+                                    const badge = rewardBadge(reward.badgeType);
+                                    return <span key={reward.id} className="register-earned-badge" title={`Earned: ${badge.title}`}>{badge.icon}</span>;
+                                  })}
+                                </span>
+                              )}
+                              {!!row.reportsToday?.length && (
+                                <span className="register-report-markers" aria-label={`${row.reportsToday.length} report${row.reportsToday.length === 1 ? "" : "s"} recorded today`}>
+                                  {row.reportsToday.slice(0, 3).map((report) => (
+                                    <span
+                                      className={`register-report-marker ${report.reportType}`}
+                                      key={report.id}
+                                      title={report.reportType === "incident"
+                                        ? `Incident recorded: ${report.category || "Incident"}`
+                                        : "First aid recorded"}
+                                    >
+                                      {report.reportType === "incident" ? "⚠️" : "🩹"}
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
+                            </strong>
+                            <span>{row.childYearGroup || "Year not recorded"}{childAge(row) ? ` · Age ${childAge(row)}` : ""}</span>
+                          </button>
+                        </td>
+                        <td><strong>{row.sessionLabel}</strong><span>{new Date(row.startsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}-{new Date(row.endsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span><small>{row.programmeName}</small></td>
+                        <td><div className="register-need-icons">
+                          {hasSend && <span className="register-need-icon send" title="SEND information recorded" aria-label="SEND information recorded"><SendNeeds size={17} /><b>SEND</b></span>}
+                          {hasMedical && <span className="register-need-icon medical" title="Medical information recorded" aria-label="Medical information recorded"><MedicalCross size={17} /><b>Medical</b></span>}
+                          {!hasSend && !hasMedical && <span className="register-no-needs" aria-label="No SEND or medical information recorded">—</span>}
+                        </div></td>
+                        <td><span className={`register-status status-${row.attendanceStatus}`}>{statusLabels[row.attendanceStatus] || row.attendanceStatus}</span></td>
+                        <td><div className="register-row-actions">
+                          <button type="button" onClick={() => updateRow(row, "checked_in")} disabled={busy || row.attendanceStatus === "checked_in"}>Check in</button>
+                          <button type="button" onClick={() => updateRow(row, "checked_out")} disabled={busy || row.attendanceStatus === "checked_out"}>Check out</button>
+                          <button type="button" onClick={() => updateRow(row, "absent")} disabled={busy || row.attendanceStatus === "absent"}>Absent</button>
+                          {row.staffAdHoc && (
+                            <button className="register-cancel-adhoc" type="button" onClick={() => openAdHocCancellation(row)} disabled={busy}>
+                              Cancel ad-hoc
+                            </button>
+                          )}
+                        </div></td>
+                      </tr>
+                    );
+                  })}
+                  {!section.rows.length && !loading && <tr><td className="register-empty" colSpan="5">No bookings for {section.label} on this date.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ))}
+        {!sessionSections.length && !loading && (
+          <div className="register-no-sessions">
+            <strong>No sessions available</strong>
+            <span>There are no bookable sessions configured for this selection.</span>
+          </div>
+        )}
+      </div>
+
+      {selectedChild && (
+        <div className="register-drawer-layer" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setSelectedChildId("");
+        }}>
+          <aside className="register-child-drawer" role="dialog" aria-modal="true" aria-labelledby="register-child-drawer-title">
+            <header>
+              <div>
+                <p className="eyebrow">Pupil details</p>
+                <h2 id="register-child-drawer-title">{selectedChild.childName}</h2>
+                <p>{selectedChild.childYearGroup || "Year not recorded"}{childAge(selectedChild) ? ` · Age ${childAge(selectedChild)}` : ""} · {selectedChild.childSchoolName || selectedChild.siteName}</p>
+              </div>
+              <button className="register-drawer-close" type="button" onClick={() => setSelectedChildId("")} aria-label="Close pupil details"><X size={20} /></button>
+            </header>
+
+            <section className="register-drawer-session">
+              <span>Today’s booking</span>
+              <strong>{selectedChild.sessionLabel} · {new Date(selectedChild.startsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}-{new Date(selectedChild.endsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</strong>
+              <small>{selectedChild.programmeName}</small>
+            </section>
+
+            <section>
+              <h3>Medical and care information</h3>
+              {careDetailLines(selectedChild).length
+                ? <ul className="register-drawer-alerts">{careDetailLines(selectedChild).map((detail) => <li key={detail}>{detail}</li>)}</ul>
+                : <p className="register-drawer-empty">No medical, allergy or dietary information recorded.</p>}
+            </section>
+
+            <section>
+              <h3>SEND</h3>
+              {sendDetails(selectedChild).length
+                ? <ul className="register-drawer-alerts send">{sendDetails(selectedChild).map((detail, index) => <li key={`${index}-${printableValue(detail)}`}>{printableValue(detail)}</li>)}</ul>
+                : <p className="register-drawer-empty">No SEND information recorded.</p>}
+            </section>
+
+            <section>
+              <h3>Emergency contact</h3>
+              <div className="register-drawer-contact">
+                <strong>{selectedChild.parentName || "Parent not recorded"}</strong>
+                <a href={emergencyPhone(selectedChild) ? `tel:${emergencyPhone(selectedChild).replace(/\s/g, "")}` : undefined}>{emergencyPhone(selectedChild) || "Emergency phone not recorded"}</a>
+              </div>
+            </section>
+
+            <section>
+              <h3>Authorised collectors</h3>
+              {selectedChild.authorisedCollectors?.length
+                ? <ul className="register-drawer-collectors">{selectedChild.authorisedCollectors.map((collector, index) => <li key={`${index}-${printableValue(collector)}`}>{printableValue(collector)}</li>)}</ul>
+                : <p className="register-drawer-empty">No additional authorised collectors recorded.</p>}
+            </section>
+
+            <section className="register-child-timeline">
+              <h3>Activity history</h3>
+              <p className="register-child-timeline-intro">Rewards and care records for this child, latest first.</p>
+              {childActivityLoading && <p className="register-drawer-empty">Loading activity history…</p>}
+              {childActivityError && <p className="register-form-error" role="alert">{childActivityError}</p>}
+              {!childActivityLoading && !childActivityError && !childActivity.length && (
+                <p className="register-drawer-empty">No rewards or reports have been recorded yet.</p>
+              )}
+              {!!childActivity.length && (
+                <div className="register-child-timeline-list">
+                  {childActivity.map((activity) => {
+                    const badge = activity.kind === "reward" ? rewardBadge(activity.title) : null;
+                    const icon = badge?.icon || (activity.kind === "incident" ? "⚠️" : activity.kind === "first_aid" ? "🩹" : "🛡️");
+                    const title = badge?.title || activity.title;
+                    return (
+                      <article className={`register-child-timeline-item ${activity.kind}`} key={`${activity.kind}-${activity.id}`}>
+                        <span className="register-child-timeline-icon" aria-hidden="true">{icon}</span>
+                        <div>
+                          <strong>{title}</strong>
+                          <span>{new Date(activity.occurredAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>
+                          <small>{[activity.staffName, activity.siteName, activity.sessionLabel].filter(Boolean).join(" · ")}</small>
+                          {(activity.reason || activity.summary) && (
+                            <details>
+                              <summary>View details</summary>
+                              <p>{activity.reason || activity.summary}</p>
+                              {activity.actionTaken && <p><b>Action:</b> {activity.actionTaken}</p>}
+                              {activity.outcome && <p><b>Outcome:</b> {activity.outcome}</p>}
+                              {activity.followUpNotes && <p><b>Follow-up:</b> {activity.followUpNotes}</p>}
+                            </details>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="register-drawer-reports">
+              <div className="register-report-heading">
+                <div>
+                  <h3>Record, report and reward</h3>
+                  <p>Choose an action. Each record is saved securely with your name and time.</p>
+                </div>
+              </div>
+              <div className="register-report-actions" aria-label="Choose report type">
+                <button
+                  className={`incident ${registerReportType === "incident" ? "active" : ""}`}
+                  type="button"
+                  onClick={() => openRegisterReport("incident")}
+                >
+                  <span>Incident</span>
+                  <small>Record behaviour, collection issues or other significant events.</small>
+                </button>
+                <button
+                  className={`first-aid ${registerReportType === "first_aid" ? "active" : ""}`}
+                  type="button"
+                  onClick={() => openRegisterReport("first_aid")}
+                >
+                  <span>First aid</span>
+                  <small>Injury, treatment and body map</small>
+                </button>
+                <button
+                  className={`safeguarding ${registerReportType === "safeguarding" ? "active" : ""}`}
+                  type="button"
+                  onClick={() => openRegisterReport("safeguarding")}
+                >
+                  <span>Safeguarding</span>
+                  <small>Restricted concern for the DSL</small>
+                </button>
+                <button
+                  className={`reward ${registerRewardOpen ? "active" : ""}`}
+                  type="button"
+                  onClick={openRegisterReward}
+                >
+                  <span>Reward</span>
+                  <small>Recognise something brilliant</small>
+                </button>
+              </div>
+
+              {registerReportType && (
+                <form className={`register-report-form report-${registerReportType}`} onSubmit={submitRegisterReport}>
+                  <div className="register-report-form-title">
+                    <div>
+                      <span>{registerReportLabels[registerReportType]}</span>
+                      <strong>{selectedChild.childName}</strong>
+                    </div>
+                    <button type="button" onClick={() => setRegisterReportType("")} disabled={registerReportSaving}>Close form</button>
+                  </div>
+
+                  {registerReportType === "safeguarding" && (
+                    <div className="register-report-guidance safeguarding">
+                      <strong>Safeguarding Concern · Confidential</strong>
+                      <span>Record factual information only. This record will only be visible to authorised safeguarding staff.</span>
+                    </div>
+                  )}
+
+                  {registerReportType === "safeguarding" && (
+                    <>
+                      <fieldset className="safeguarding-step safety">
+                        <legend><span>1</span> Immediate safety</legend>
+                        <strong>Is the child currently safe?</strong>
+                        <div className="safeguarding-binary">
+                          <button type="button" className={registerReportDraft.childSafeNow === true ? "is-selected" : ""} onClick={() => updateRegisterReportDraft("childSafeNow", true)}>Yes</button>
+                          <button type="button" className={registerReportDraft.childSafeNow === false ? "is-selected urgent" : ""} onClick={() => updateRegisterReportDraft("childSafeNow", false)}>No</button>
+                        </div>
+                        {registerReportDraft.childSafeNow === false && (
+                          <div className="safeguarding-urgent" role="alert">
+                            Contact the Designated Safeguarding Lead immediately before continuing.
+                          </div>
+                        )}
+                      </fieldset>
+
+                      <fieldset className="safeguarding-step">
+                        <legend><span>2</span> How did this concern arise?</legend>
+                        <div className="safeguarding-source-grid">
+                          {SAFEGUARDING_SOURCES.map(([source, icon]) => (
+                            <button
+                              type="button"
+                              key={source}
+                              className={registerReportDraft.concernRoute === source ? "is-selected" : ""}
+                              onClick={() => updateRegisterReportDraft("concernRoute", source)}
+                            >
+                              <span aria-hidden="true">{icon}</span><strong>{source}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      </fieldset>
+
+                      <fieldset className="safeguarding-step">
+                        <legend><span>3</span> Concern category</legend>
+                        <p>Select every category that applies. These support DSL review and reporting.</p>
+                        <div className="safeguarding-category-grid">
+                          {SAFEGUARDING_CATEGORIES.map((category) => (
+                            <label key={category} className={registerReportDraft.concernCategories.includes(category) ? "is-selected" : ""}>
+                              <input
+                                type="checkbox"
+                                checked={registerReportDraft.concernCategories.includes(category)}
+                                onChange={() => toggleRegisterReportChoice("concernCategories", category)}
+                              />
+                              <span>{category}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                    </>
+                  )}
+
+                  <div className="register-report-form-grid">
+                    <label>
+                      <span>Date and time</span>
+                      <input
+                        type="datetime-local"
+                        value={registerReportDraft.occurredAt}
+                        onChange={(event) => updateRegisterReportDraft("occurredAt", event.target.value)}
+                        required
+                      />
+                    </label>
+
+                    {registerReportType === "safeguarding" && <div className="safeguarding-auto-context"><strong>Automatically recorded</strong><span>Current user · site · club · session · submission time</span></div>}
+                  </div>
+
+                  {registerReportType === "incident" && (
+                    <>
+                      <fieldset className="register-incident-fieldset">
+                        <legend>Choose an incident type</legend>
+                        <div className="register-incident-card-grid">
+                          {REGISTER_INCIDENT_CATEGORIES.map((category) => (
+                            <button
+                              type="button"
+                              key={category.value}
+                              className={registerReportDraft.category === category.value ? "is-selected" : ""}
+                              aria-pressed={registerReportDraft.category === category.value}
+                              onClick={() => updateRegisterReportDraft(
+                                "category",
+                                registerReportDraft.category === category.value ? "" : category.value,
+                              )}
+                            >
+                              <span aria-hidden="true">{category.icon}</span>
+                              <strong>{category.value}</strong>
+                              <small>{category.description}</small>
+                            </button>
+                          ))}
+                        </div>
+                      </fieldset>
+
+                      <fieldset className="register-incident-fieldset">
+                        <legend>How serious was it?</legend>
+                        <div className="register-incident-severity-grid">
+                          {REGISTER_INCIDENT_SEVERITIES.map((severity) => (
+                            <button
+                              type="button"
+                              key={severity.value}
+                              className={`${severity.tone} ${registerReportDraft.severity === severity.value ? "is-selected" : ""}`}
+                              aria-pressed={registerReportDraft.severity === severity.value}
+                              onClick={() => updateRegisterReportDraft(
+                                "severity",
+                                registerReportDraft.severity === severity.value ? "" : severity.value,
+                              )}
+                            >
+                              <strong>{severity.value}</strong>
+                              <small>{severity.description}</small>
+                            </button>
+                          ))}
+                        </div>
+                      </fieldset>
+                    </>
+                  )}
+
+                  <label className={registerReportType === "safeguarding" ? "safeguarding-facts" : ""}>
+                    <span>{registerReportType === "first_aid" ? "What happened?" : registerReportType === "safeguarding" ? "4 · What happened?" : "What happened?"}</span>
+                    {registerReportType === "safeguarding" && <small>Record only factual observations. Use the child’s exact words where possible. Do not include opinions, assumptions or conclusions.</small>}
+                    <textarea
+                      rows={registerReportType === "safeguarding" ? "9" : "5"}
+                      value={registerReportDraft.summary}
+                      onChange={(event) => updateRegisterReportDraft("summary", event.target.value)}
+                      placeholder={registerReportType === "incident"
+                        ? "Record a clear, factual account of what was seen, heard or reported. Include the names of any relevant people present."
+                        : registerReportType === "safeguarding"
+                          ? "Record exactly what you saw or were told, including relevant times and the child’s own words."
+                          : "Record what you saw or were told, including relevant times and people present."}
+                      required
+                    />
+                    {registerReportType === "safeguarding" && <em className="safeguarding-autosave">{safeguardingDraftStatus || "Your factual account will autosave securely as you type."}</em>}
+                  </label>
+
+                  {registerReportType === "first_aid" && (
+                    <>
+                      <fieldset className="register-first-aid-quick-fieldset">
+                        <legend>What type of injury was it?</legend>
+                        <p>Select every option that applies.</p>
+                        <div className="register-first-aid-quick-grid">
+                          {["Bump", "Cut", "Bruise", "Graze", "Nosebleed", "Bite or sting", "Burn or scald", "Sprain or strain", "Other"].map((injury) => (
+                            <label key={injury} className={registerReportDraft.injuryTypes.includes(injury) ? "is-selected" : ""}>
+                              <input
+                                type="checkbox"
+                                checked={registerReportDraft.injuryTypes.includes(injury)}
+                                onChange={() => toggleRegisterReportChoice("injuryTypes", injury)}
+                              />
+                              <span>{injury}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+
+                      <div className="register-report-body-section">
+                        <div>
+                          <span className="register-report-label">Where was the injury?</span>
+                          <div className="register-report-side-toggle" role="group" aria-label="Choose front or back of body">
+                            <button
+                              className={registerReportDraft.bodySide === "front" ? "active" : ""}
+                              type="button"
+                              onClick={() => updateRegisterReportDraft("bodySide", "front")}
+                            >
+                              Front
+                            </button>
+                            <button
+                              className={registerReportDraft.bodySide === "back" ? "active" : ""}
+                              type="button"
+                              onClick={() => updateRegisterReportDraft("bodySide", "back")}
+                            >
+                              Back
+                            </button>
+                          </div>
+                        </div>
+                        <RegisterBodyMap
+                          side={registerReportDraft.bodySide}
+                          selectedParts={registerBodyAreas({ bodyAreas: registerReportDraft.bodyAreas })
+                            .filter((area) => area.side === registerReportDraft.bodySide)
+                            .map((area) => area.part)}
+                          onToggle={(part) => toggleRegisterBodyArea(registerReportDraft.bodySide, part)}
+                        />
+                        <div className="register-body-map-selection" aria-live="polite">
+                          <span className="register-report-label">Selected areas</span>
+                          {registerReportDraft.bodyAreas.length ? (
+                            <div>
+                              {registerBodyAreas({ bodyAreas: registerReportDraft.bodyAreas }).map((area) => (
+                                <button
+                                  type="button"
+                                  key={registerBodyAreaKey(area.side, area.part)}
+                                  onClick={() => toggleRegisterBodyArea(area.side, area.part)}
+                                  aria-label={`Remove ${area.part} on ${area.side}`}
+                                >
+                                  {area.part} · {area.side} ×
+                                </button>
+                              ))}
+                            </div>
+                          ) : <small>Tap every affected area on the front or back view.</small>}
+                        </div>
+                      </div>
+
+                      <fieldset className="register-first-aid-quick-fieldset treatment">
+                        <legend>First aid administered</legend>
+                        <p>Select every option that applies.</p>
+                        <div className="register-first-aid-quick-grid">
+                          {["Antiseptic wipe", "Plaster or dressing", "Ice pack", "Observation", "Cleaned with water", "Rest", "Other"].map((action) => (
+                            <label key={action} className={registerReportDraft.firstAidActions.includes(action) ? "is-selected" : ""}>
+                              <input
+                                type="checkbox"
+                                checked={registerReportDraft.firstAidActions.includes(action)}
+                                onChange={() => toggleRegisterReportChoice("firstAidActions", action)}
+                              />
+                              <span>{action}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                    </>
+                  )}
+
+              {registerReportType === "first_aid" ? (
+                <>
+                  <label>
+                    <span>Who performed first aid?</span>
+                    <input
+                      type="text"
+                      value={registerReportDraft.firstAidProvider}
+                      onChange={(event) => updateRegisterReportDraft("firstAidProvider", event.target.value)}
+                      placeholder="Full name of staff member"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>Relevant first aid details</span>
+                    <textarea
+                      rows="3"
+                      value={registerReportDraft.treatment}
+                      onChange={(event) => updateRegisterReportDraft("treatment", event.target.value)}
+                      placeholder="Add any extra treatment details and how the child responded."
+                      required
+                    />
+                  </label>
+                </>
+              ) : (
+                    <label>
+                      <span>{registerReportType === "safeguarding" ? "5 · What did you do immediately?" : "Action taken"}</span>
+                      <textarea
+                        rows="3"
+                        value={registerReportDraft.actionTaken}
+                        onChange={(event) => updateRegisterReportDraft("actionTaken", event.target.value)}
+                        placeholder={registerReportType === "incident"
+                          ? "Record what staff did immediately after the event."
+                          : registerReportType === "safeguarding"
+                            ? "For example: separated children, comforted child, contacted DSL or called emergency services."
+                            : "Record what you did immediately after the event."}
+                        required
+                      />
+                    </label>
+                  )}
+
+                  {registerReportType === "incident" && (
+                    <>
+                      <fieldset className="register-incident-fieldset">
+                        <legend>Who was informed?</legend>
+                        <div className="register-incident-check-grid">
+                          {REGISTER_INCIDENT_PEOPLE.map((person) => (
+                            <label key={person} className={registerReportDraft.peopleInformed.includes(person) ? "is-selected" : ""}>
+                              <input
+                                type="checkbox"
+                                checked={registerReportDraft.peopleInformed.includes(person)}
+                                onChange={() => toggleRegisterReportChoice("peopleInformed", person)}
+                              />
+                              <span>{person}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {registerReportDraft.peopleInformed.includes("Other") && (
+                          <label className="register-incident-other">
+                            <span>Who else was informed?</span>
+                            <input
+                              value={registerReportDraft.peopleInformedOther}
+                              onChange={(event) => updateRegisterReportDraft("peopleInformedOther", event.target.value)}
+                              placeholder="Name or role"
+                              required
+                            />
+                          </label>
+                        )}
+                      </fieldset>
+
+                      <label>
+                        <span>Parent notification</span>
+                        <select value={registerReportDraft.parentNotified} onChange={(event) => updateRegisterReportDraft("parentNotified", event.target.value)}>
+                          <option value="not_required">Not required</option>
+                          <option value="not_yet">Not yet</option>
+                          <option value="spoken_in_person">Spoken to in person</option>
+                          <option value="contacted_by_phone">Contacted by phone</option>
+                          <option value="email_sent">Email sent</option>
+                          <option value="follow_up_required">Follow-up required</option>
+                        </select>
+                      </label>
+
+                      <label>
+                        <span>Outcome</span>
+                        <select value={registerReportDraft.outcome} onChange={(event) => updateRegisterReportDraft("outcome", event.target.value)} required>
+                          <option value="">Choose an outcome</option>
+                          {REGISTER_INCIDENT_OUTCOMES.map((outcome) => <option key={outcome}>{outcome}</option>)}
+                        </select>
+                      </label>
+
+                      {incidentNeedsFollowUp(registerReportDraft.outcome) && (
+                        <label>
+                          <span>Follow-up notes</span>
+                          <textarea
+                            rows="3"
+                            value={registerReportDraft.followUpNotes}
+                            onChange={(event) => updateRegisterReportDraft("followUpNotes", event.target.value)}
+                            placeholder="Record what needs to happen next, who is responsible and any agreed timescale."
+                            required
+                          />
+                        </label>
+                      )}
+                    </>
+                  )}
+
+                  {registerReportType === "safeguarding" ? (
+                    <>
+                      <fieldset className="safeguarding-step">
+                        <legend><span>6</span> Attachments</legend>
+                        <div className="safeguarding-attachment-note">
+                          <LockKeyhole size={20} />
+                          <div><strong>Secure case attachments</strong><p>Photographs, PDFs, letters, emails and screenshots are stored privately and added to the permanent audit trail.</p></div>
+                        </div>
+                        <label>
+                          <span>Add files (optional)</span>
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/jpeg,image/png,image/webp,application/pdf,text/plain,message/rfc822"
+                            onChange={(event) => setSafeguardingFiles(Array.from(event.target.files || []))}
+                          />
+                        </label>
+                        {safeguardingFiles.length ? <small>{safeguardingFiles.length} file{safeguardingFiles.length === 1 ? "" : "s"} ready for secure upload after submission.</small> : null}
+                      </fieldset>
+                      <fieldset className="safeguarding-step">
+                        <legend><span>7</span> Witnesses</legend>
+                        <div className="safeguarding-witness-grid">
+                          <label><span>Staff present</span><input value={registerReportDraft.witnessStaff} onChange={(event) => updateRegisterReportDraft("witnessStaff", event.target.value)} placeholder="Names, separated by commas" /></label>
+                          <label><span>Children present</span><input value={registerReportDraft.witnessChildren} onChange={(event) => updateRegisterReportDraft("witnessChildren", event.target.value)} placeholder="Names, separated by commas" /></label>
+                          <label><span>Other adults present</span><input value={registerReportDraft.witnessAdults} onChange={(event) => updateRegisterReportDraft("witnessAdults", event.target.value)} placeholder="Names or roles" /></label>
+                        </div>
+                      </fieldset>
+                      <fieldset className="safeguarding-step">
+                        <legend><span>8</span> DSL notification</legend>
+                        <label>
+                          <span>Was the DSL informed?</span>
+                          <select value={registerReportDraft.dslNotified} onChange={(event) => updateRegisterReportDraft("dslNotified", event.target.value)} required>
+                            <option value="no">No</option>
+                            <option value="yes">Yes</option>
+                          </select>
+                        </label>
+                        {registerReportDraft.dslNotified === "yes" && (
+                          <div className="safeguarding-witness-grid">
+                            <label><span>Who was informed?</span><input value={registerReportDraft.dslInformedWho} onChange={(event) => updateRegisterReportDraft("dslInformedWho", event.target.value)} placeholder="Full name or role" required /></label>
+                            <label><span>When?</span><input type="datetime-local" value={registerReportDraft.dslInformedAt} onChange={(event) => updateRegisterReportDraft("dslInformedAt", event.target.value)} required /></label>
+                          </div>
+                        )}
+                      </fieldset>
+                    </>
+                  ) : registerReportType !== "incident" ? (
+                    <label>
+                      <span>Has the parent or carer been notified?</span>
+                      <select value={registerReportDraft.parentNotified} onChange={(event) => updateRegisterReportDraft("parentNotified", event.target.value)}>
+                        <option value="not_yet">Not yet</option>
+                        <option value="yes">Yes</option>
+                        <option value="not_required">Not required</option>
+                      </select>
+                    </label>
+                  ) : null}
+
+                  {registerReportType !== "safeguarding" && (
+                    <label className="register-email-copy-option">
+                      <input
+                        type="checkbox"
+                        checked={registerReportDraft.emailPrimaryContact}
+                        onChange={(event) => updateRegisterReportDraft("emailPrimaryContact", event.target.checked)}
+                      />
+                      <span>
+                        <strong>{registerReportType === "incident" ? "Email this incident report to the primary contact" : "Email a copy to the primary contact"}</strong>
+                        <small>{registerReportType === "incident" ? "Send a professional copy after the report is saved." : "The report will be sent after it is saved."}</small>
+                      </span>
+                    </label>
+                  )}
+
+                  {registerReportError && <div className="register-report-message error" role="alert">{registerReportError}</div>}
+                  {registerReportSuccess && <div className="register-report-message success" role="status">{registerReportSuccess}</div>}
+
+                  <div className="register-report-submit">
+                    <button type="button" onClick={() => setRegisterReportType("")} disabled={registerReportSaving}>Cancel</button>
+                    <button type="submit" disabled={registerReportSaving}>
+                      {registerReportSaving ? "Saving securely…" : registerReportType === "safeguarding" ? "Submit Safeguarding Concern" : registerReportType === "incident" ? "Save incident report" : `Save ${registerReportLabels[registerReportType].toLowerCase()} report`}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {registerRewardOpen && (
+                <form className="register-report-form report-reward" onSubmit={submitRegisterReward}>
+                  <div className="register-report-form-title">
+                    <div>
+                      <span>Reward</span>
+                      <strong>{selectedChild.childName}</strong>
+                    </div>
+                    {!registerRewardCelebration && <button type="button" onClick={() => setRegisterRewardOpen(false)} disabled={registerRewardSaving}>Close form</button>}
+                  </div>
+
+                  {registerRewardCelebration ? (
+                    <div className="register-reward-celebration" role="status" aria-live="polite">
+                      <div className="reward-confetti" aria-hidden="true">
+                        {Array.from({ length: 16 }, (_, index) => <i key={index} style={{ "--confetti-index": index }} />)}
+                      </div>
+                      <span className="register-reward-celebration-icon">{registerRewardCelebration.badge.icon}</span>
+                      <h3>{registerRewardCelebration.childName} has earned the {registerRewardCelebration.badge.title} badge!</h3>
+                      <p>{registerRewardCelebration.badge.description}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <fieldset className="register-reward-badge-fieldset">
+                        <legend>Choose a badge</legend>
+                        <div className="register-reward-badge-grid">
+                          {REWARD_BADGES.map((badge) => (
+                            <button
+                              type="button"
+                              key={badge.type}
+                              className={registerRewardDraft.badgeType === badge.type ? "is-selected" : ""}
+                              aria-pressed={registerRewardDraft.badgeType === badge.type}
+                              onClick={() => {
+                                setRegisterRewardDraft((current) => ({
+                                  ...current,
+                                  badgeType: current.badgeType === badge.type ? "" : badge.type,
+                                }));
+                                setRegisterRewardError("");
+                              }}
+                            >
+                              <span aria-hidden="true">{badge.icon}</span>
+                              <strong>{badge.title}</strong>
+                              <small>{badge.description}</small>
+                            </button>
+                          ))}
+                        </div>
+                      </fieldset>
+
+                      <label>
+                        <span>What did they do to earn this badge?</span>
+                        <textarea
+                          rows="6"
+                          maxLength="700"
+                          value={registerRewardDraft.reason}
+                          onChange={(event) => {
+                            setRegisterRewardDraft((current) => ({ ...current, reason: event.target.value }));
+                            setRegisterRewardError("");
+                          }}
+                          placeholder="Share the brilliant moment, kind action or achievement that deserves celebrating."
+                          required
+                        />
+                      </label>
+
+                      <label className="register-email-copy-option reward-email">
+                        <input
+                          type="checkbox"
+                          checked={registerRewardDraft.emailPrimaryContact}
+                          onChange={(event) => setRegisterRewardDraft((current) => ({
+                            ...current,
+                            emailPrimaryContact: event.target.checked,
+                          }))}
+                        />
+                        <span>
+                          <strong>Email this reward home</strong>
+                          <small>Send the family a celebratory certificate with this badge and note.</small>
+                        </span>
+                      </label>
+
+                      {registerRewardError && <div className="register-report-message error" role="alert">{registerRewardError}</div>}
+                      {registerRewardSuccess && <div className="register-report-message success" role="status">{registerRewardSuccess}</div>}
+
+                      <div className="register-report-submit">
+                        <button type="button" onClick={() => setRegisterRewardOpen(false)} disabled={registerRewardSaving}>Cancel</button>
+                        <button type="submit" disabled={registerRewardSaving}>
+                          {registerRewardSaving ? "Awarding badge…" : "Award badge"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </form>
+              )}
+            </section>
+          </aside>
+        </div>
+      )}
+
+      {adHocOpen && (
+        <div className="register-adhoc-layer" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !adHocSaving) setAdHocOpen(false);
+        }}>
+          <section className="register-adhoc-dialog" role="dialog" aria-modal="true" aria-labelledby="register-adhoc-title">
+            <header>
+              <div>
+                <p className="eyebrow">Unexpected arrival</p>
+                <h2 id="register-adhoc-title">Ad-hoc booking</h2>
+                <p>Find the pupil, then add only the sessions they need today.</p>
+              </div>
+              <button type="button" onClick={() => setAdHocOpen(false)} disabled={adHocSaving} aria-label="Close ad-hoc booking"><X size={20} /></button>
+            </header>
+
+            <div className="register-adhoc-step">
+              <div className="register-adhoc-step-title">
+                <span>1</span>
+                <div><strong>Find the pupil</strong><small>Search active family records by pupil or parent name.</small></div>
+              </div>
+              <label className="register-adhoc-search">
+                <span>Search pupil</span>
+                <input
+                  type="search"
+                  value={adHocSearch}
+                  onChange={(event) => setAdHocSearch(event.target.value)}
+                  placeholder="Start typing a pupil’s name"
+                  autoFocus
+                />
+              </label>
+              <div className="register-adhoc-results" aria-live="polite">
+                {adHocLoading && <p>Searching family records…</p>}
+                {!adHocLoading && adHocOptions.children.map((child) => (
+                  <button
+                    className={adHocChildId === child.id ? "selected" : ""}
+                    type="button"
+                    key={child.id}
+                    onClick={() => {
+                      setAdHocChildId(child.id);
+                      setAdHocSessionIds([]);
+                      setAdHocError("");
+                    }}
+                  >
+                    <strong>{child.name}</strong>
+                    <span>{[child.schoolName, child.yearGroup].filter(Boolean).join(" · ") || "School details not recorded"}</span>
+                    <small>{child.parentName || child.parentEmail}</small>
+                  </button>
+                ))}
+                {!adHocLoading && !adHocOptions.children.length && (
+                  <p>{adHocSearch.trim() ? "No active pupil matches this search." : "No active pupils are available."}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="register-adhoc-step">
+              <div className="register-adhoc-step-title">
+                <span>2</span>
+                <div><strong>Choose sessions</strong><small>{selectedAdHocChild ? `Adding care for ${selectedAdHocChild.name} on ${new Date(`${registerDate}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}.` : "Choose a pupil first."}</small></div>
+              </div>
+              <div className="register-adhoc-sessions">
+                {adHocOptions.sessions.map((option) => {
+                  const alreadyBooked = adHocChildId && childAlreadyBookedInSession(adHocChildId, option.id);
+                  const full = option.placesLeft <= 0;
+                  const disabled = !adHocChildId || alreadyBooked || full;
+                  const selected = adHocSessionIds.includes(option.id);
+                  return (
+                    <button
+                      className={`${selected ? "selected" : ""} ${disabled ? "disabled" : ""}`}
+                      type="button"
+                      key={option.id}
+                      onClick={() => toggleAdHocSession(option)}
+                      disabled={disabled}
+                      aria-pressed={selected}
+                    >
+                      <span className="register-adhoc-check">{selected ? "✓" : ""}</span>
+                      <span><strong>{option.label}</strong><small>{option.programmeName} · {option.siteName}</small></span>
+                      <span><strong>{new Date(option.startsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}-{new Date(option.endsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</strong><small>{alreadyBooked ? "Already booked" : full ? "Full" : `${option.placesLeft} places left · £${option.price.toFixed(2)}`}</small></span>
+                    </button>
+                  );
+                })}
+                {!adHocLoading && !adHocOptions.sessions.length && (
+                  <p>
+                    No sessions are scheduled for {school === "All schools" ? "the selected schools" : school}
+                    {programme === "All activities" ? "" : ` · ${programme}`} on{" "}
+                    {new Date(`${registerDate}T12:00:00`).toLocaleDateString("en-GB", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}. Change the register date or filters above, then reopen Ad-hoc booking.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <label className="register-adhoc-fee">
+              <input type="checkbox" checked={adHocApplyFee} onChange={(event) => setAdHocApplyFee(event.target.checked)} />
+              <span><strong>Add £2.50 non-booking fee</strong><small>Optional. The full ad-hoc charge uses account credit first; any remainder becomes due on the parent’s invoice.</small></span>
+              <b>£2.50</b>
+            </label>
+
+            {adHocError && <p className="register-adhoc-error" role="alert">{adHocError}</p>}
+
+            <footer>
+              <div>
+                <span>{selectedAdHocSessions.length} {selectedAdHocSessions.length === 1 ? "session" : "sessions"}</span>
+                <strong>£{adHocTotal.toFixed(2)}</strong>
+              </div>
+              <button className="button light" type="button" onClick={() => setAdHocOpen(false)} disabled={adHocSaving}>Cancel</button>
+              <button className="button book" type="button" onClick={submitAdHocBooking} disabled={adHocSaving || !adHocChildId || !adHocSessionIds.length}>
+                {adHocSaving ? "Adding to register…" : "Add to register"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {adHocCancellationRow && (
+        <div className="register-adhoc-layer" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !adHocCancellationSaving) setAdHocCancellationRow(null);
+        }}>
+          <section className="register-adhoc-dialog register-cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="register-cancel-adhoc-title">
+            <header>
+              <div>
+                <p className="eyebrow">Cancel ad-hoc care</p>
+                <h2 id="register-cancel-adhoc-title">Cancel {adHocCancellationRow.childName}’s ad-hoc booking?</h2>
+                <p>This removes every session added in this ad-hoc booking. It does not affect their other bookings.</p>
+              </div>
+              <button type="button" onClick={() => setAdHocCancellationRow(null)} disabled={adHocCancellationSaving} aria-label="Close cancellation confirmation"><X size={20} /></button>
+            </header>
+
+            <div className="register-cancel-summary">
+              <strong>{adHocCancellationRows.length} {adHocCancellationRows.length === 1 ? "session" : "sessions"} will be cancelled</strong>
+              <ul>
+                {adHocCancellationRows.map((row) => (
+                  <li key={row.bookingItemId}>
+                    <b>{row.sessionLabel}</b>
+                    <span>{new Date(row.startsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}-{new Date(row.endsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span>
+                  </li>
+                ))}
+              </ul>
+              <p>The family account charge will be reversed and any credit used will be returned. The parent will receive a cancellation email and will not need to take any further action.</p>
+            </div>
+
+            {adHocCancellationError && <p className="register-adhoc-error" role="alert">{adHocCancellationError}</p>}
+
+            <footer>
+              <div><span>Booking reference</span><strong>{adHocCancellationRow.bookingReference || "Ad-hoc care"}</strong></div>
+              <button className="button light" type="button" onClick={() => setAdHocCancellationRow(null)} disabled={adHocCancellationSaving}>Keep booking</button>
+              <button className="button register-cancel-confirm" type="button" onClick={confirmAdHocCancellation} disabled={adHocCancellationSaving}>
+                {adHocCancellationSaving ? "Cancelling…" : "Yes, cancel ad-hoc care"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1128,6 +3133,373 @@ function PlatformHeader({ role, actualRole, canPreviewRoles, viewRole, setViewRo
         <span className="secure-label">Protected</span>
         <button className="button light" type="button" onClick={onSignOut}>Sign Out</button>
       </div>
+    </div>
+  );
+}
+
+const familyImportChildSections = ["Overview", "Contacts", "Consents", "Dietary", "Allergies", "Medication", "Medical", "SEND"];
+
+function reviewValue(value, fallback = "Not provided") {
+  if (Array.isArray(value)) return value.filter(Boolean).map((item) => reviewValue(item, "")).filter(Boolean).join(" · ") || fallback;
+  if (value && typeof value === "object") {
+    const preferred = value.name || value.label || value.value || value.detail || value.description;
+    if (preferred) return String(preferred);
+    return Object.entries(value)
+      .filter(([, item]) => item !== "" && item !== null && item !== undefined && item !== false)
+      .map(([key, item]) => `${key.replace(/([A-Z])/g, " $1")}: ${reviewValue(item, "")}`)
+      .filter((item) => !item.endsWith(": "))
+      .join(" · ") || fallback;
+  }
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return String(value || "").trim() || fallback;
+}
+
+function migrationHealthReviewStatus(status) {
+  if (status === "parent_update_required") return "Invitation blocked";
+  if (status === "parent_contacted") return "Parent contacted";
+  if (status === "resolved") return "Resolved";
+  return "Awaiting family import";
+}
+
+function FamilyImportReview({ access }) {
+  const [families, setFamilies] = useState([]);
+  const [healthReviewItems, setHealthReviewItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [centre, setCentre] = useState("All centres");
+  const [selectedFamilyId, setSelectedFamilyId] = useState("");
+  const [selectedChildId, setSelectedChildId] = useState("");
+  const [childSection, setChildSection] = useState("Overview");
+  const [healthResolutionItem, setHealthResolutionItem] = useState(null);
+  const [healthResolutionDraft, setHealthResolutionDraft] = useState({ itemName: "", expiryDate: "", confirmationMethod: "", notes: "" });
+  const [healthResolutionBusy, setHealthResolutionBusy] = useState(false);
+  const [healthResolutionMessage, setHealthResolutionMessage] = useState("");
+  const [creditDialogOpen, setCreditDialogOpen] = useState(false);
+  const [creditDraft, setCreditDraft] = useState({ amount: "", reason: "refund", note: "" });
+  const [creditBusy, setCreditBusy] = useState(false);
+  const [creditMessage, setCreditMessage] = useState("");
+  const [creditMessageTone, setCreditMessageTone] = useState("success");
+  const canReview = ["Admin", "Superadmin"].includes(access?.role);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!canReview) {
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+    setLoading(true);
+    loadSupabaseModule()
+      .then(({ fetchMigrationReviewFamilies, fetchMigrationHealthReviewItems }) => Promise.all([
+        fetchMigrationReviewFamilies(),
+        fetchMigrationHealthReviewItems(),
+      ]))
+      .then(([rows, reviewItems]) => {
+        if (cancelled) return;
+        setFamilies(rows);
+        setHealthReviewItems(reviewItems);
+        setSelectedFamilyId((current) => current || rows[0]?.id || "");
+        setLoading(false);
+      })
+      .catch((loadError) => {
+        if (cancelled) return;
+        setError(loadError?.message || "The imported family records could not be loaded.");
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [canReview]);
+
+  const centres = [...new Set(families.flatMap((family) => family.registered_centres || []).filter(Boolean))].sort();
+  const normalisedSearch = search.trim().toLowerCase();
+  const filteredFamilies = families.filter((family) => {
+    const matchesCentre = centre === "All centres" || (family.registered_centres || []).includes(centre);
+    const searchable = [family.full_name, family.email, ...(family.child_profiles || []).map((child) => child.full_name)].join(" ").toLowerCase();
+    return matchesCentre && (!normalisedSearch || searchable.includes(normalisedSearch));
+  });
+  const selectedFamily = filteredFamilies.find((family) => family.id === selectedFamilyId) || filteredFamilies[0] || null;
+  const selectedChildren = selectedFamily?.child_profiles || [];
+  const selectedCreditEntries = selectedFamily?.parent_account_credit_entries || [];
+  const selectedCreditBalance = selectedCreditEntries
+    .filter((entry) => entry.status === "posted")
+    .reduce((total, entry) => total + Number(entry.amount || 0), 0);
+  const creditAmount = Math.round(Number(creditDraft.amount || 0) * 100) / 100;
+  const creditBalancePreview = Math.round((selectedCreditBalance + (Number.isFinite(creditAmount) ? creditAmount : 0)) * 100) / 100;
+  const selectedChild = selectedChildren.find((child) => child.id === selectedChildId) || selectedChildren[0] || null;
+  const registration = selectedChild?.consents?.registration || {};
+  const consentResponses = selectedChild?.consents?.responses || {};
+  const missingParentFields = selectedFamily?.migration_metadata?.missingFields || [];
+  const missingChildFields = selectedChild?.migration_metadata?.missingFields || [];
+  const allChildren = families.flatMap((family) => family.child_profiles || []);
+  const reviewFamilies = families.filter((family) => family.migration_metadata?.requiresReview === true).length;
+  const linkedFamilies = families.filter((family) => family.profile_id).length;
+  const unresolvedHealthItems = healthReviewItems.filter((item) => item.status !== "resolved");
+  const parentUpdateHealthItems = unresolvedHealthItems.filter((item) => item.status === "parent_update_required").length;
+
+  function openHealthReviewItem(item) {
+    const family = families.find((candidate) => (candidate.child_profiles || []).some((child) => child.external_id === item.external_child_id));
+    const child = family?.child_profiles?.find((candidate) => candidate.external_id === item.external_child_id);
+    if (!family || !child) return;
+    setSearch("");
+    setCentre("All centres");
+    setSelectedFamilyId(family.id);
+    setSelectedChildId(child.id);
+    setChildSection("Medication");
+  }
+
+  function startHealthResolution(item) {
+    setHealthResolutionItem(item);
+    setHealthResolutionDraft({ itemName: item.item_name || "", expiryDate: "", confirmationMethod: "", notes: "" });
+    setHealthResolutionMessage("");
+  }
+
+  async function submitHealthResolution(event) {
+    event.preventDefault();
+    if (!healthResolutionItem || healthResolutionBusy) return;
+    setHealthResolutionBusy(true);
+    setHealthResolutionMessage("");
+    try {
+      const module = await loadSupabaseModule();
+      await module.resolveMigrationHealthReviewItem({
+        itemId: healthResolutionItem.id,
+        itemName: healthResolutionDraft.itemName,
+        expiryDate: healthResolutionDraft.expiryDate,
+        confirmationMethod: healthResolutionDraft.confirmationMethod,
+        notes: healthResolutionDraft.notes,
+      });
+      const [rows, reviewItems] = await Promise.all([
+        module.fetchMigrationReviewFamilies(),
+        module.fetchMigrationHealthReviewItems(),
+      ]);
+      setFamilies(rows);
+      setHealthReviewItems(reviewItems);
+      setHealthResolutionItem(null);
+      setHealthResolutionMessage(`${healthResolutionItem.child_name}'s safety review is resolved. Their family invitation is now unlocked.`);
+    } catch (resolutionError) {
+      setHealthResolutionMessage(resolutionError?.message || "The safety review could not be resolved.");
+    } finally {
+      setHealthResolutionBusy(false);
+    }
+  }
+
+  function openCreditAdjustment() {
+    setCreditDraft({ amount: "", reason: "refund", note: "" });
+    setCreditMessage("");
+    setCreditDialogOpen(true);
+  }
+
+  async function submitCreditAdjustment(event) {
+    event.preventDefault();
+    if (!selectedFamily || creditBusy) return;
+    if (!Number.isFinite(creditAmount) || creditAmount === 0) {
+      setCreditMessageTone("error");
+      setCreditMessage("Enter a positive amount to add credit or a negative amount to remove it.");
+      return;
+    }
+    if (creditBalancePreview < 0) {
+      setCreditMessageTone("error");
+      setCreditMessage(`Only ${formatCurrency(selectedCreditBalance)} is available to remove.`);
+      return;
+    }
+    setCreditBusy(true);
+    setCreditMessage("");
+    try {
+      const module = await loadSupabaseModule();
+      const result = await module.adjustParentAccountCredit({
+        parentAccountId: selectedFamily.id,
+        amount: creditAmount,
+        reason: creditDraft.reason,
+        note: creditDraft.note,
+      });
+      const rows = await module.fetchMigrationReviewFamilies();
+      setFamilies(rows);
+      setCreditDialogOpen(false);
+      setCreditMessageTone(result.emailSent ? "success" : "warning");
+      setCreditMessage(result.emailSent
+        ? `${formatCurrency(Math.abs(creditAmount))} ${creditAmount > 0 ? "added to" : "removed from"} ${selectedFamily.full_name}'s credit. Confirmation emailed to ${selectedFamily.email}.`
+        : `The credit was updated, but the customer email was not sent. ${result.emailError || "Please contact the customer manually."}`);
+    } catch (creditError) {
+      setCreditMessageTone("error");
+      setCreditMessage(creditError?.message || "The credit adjustment could not be saved.");
+    } finally {
+      setCreditBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    const familyChildren = selectedFamily?.child_profiles || [];
+    if (!familyChildren.length) {
+      if (selectedChildId) setSelectedChildId("");
+      return;
+    }
+    if (!familyChildren.some((child) => child.id === selectedChildId)) setSelectedChildId(familyChildren[0].id);
+  }, [selectedFamily?.id, selectedChildId]);
+
+  if (!canReview) {
+    return <EmptyList title="Admin access required" text="Imported family records are available only to Admin and Superadmin accounts." />;
+  }
+
+  return (
+    <div className="family-import-review">
+      <section className="family-import-review-head">
+        <div>
+          <p className="eyebrow">Protected migration review</p>
+          <h2>Customer profiles</h2>
+          <p>Review imported family records, account access and customer credit in one protected place.</p>
+        </div>
+        <div className="family-import-protection">
+          <LockKeyhole />
+          <div><strong>Controlled access</strong><span>Admin-only, audited safety updates</span></div>
+        </div>
+      </section>
+
+      <div className="family-import-summary">
+        <article><span>Families</span><strong>{families.length}</strong><small>Active imported records</small></article>
+        <article><span>Children</span><strong>{allChildren.length}</strong><small>Linked to imported families</small></article>
+        <article><span>Needs review</span><strong>{reviewFamilies}</strong><small>Complete before invitation</small></article>
+        <article><span>Login accounts</span><strong>{linkedFamilies}</strong><small>{linkedFamilies ? "Check before continuing" : "None created"}</small></article>
+      </div>
+
+      <section className="family-import-health-review" aria-labelledby="migration-health-review-title">
+        <div className="family-import-health-review-head">
+          <div>
+            <p className="eyebrow">Safety review</p>
+            <h3 id="migration-health-review-title">Expired auto-injectors</h3>
+            <p>Do not invite these families until a replacement device and current expiry date have been recorded.</p>
+          </div>
+          <div className="family-import-health-review-count"><strong>{unresolvedHealthItems.length}</strong><span>requiring review</span></div>
+        </div>
+        {unresolvedHealthItems.length ? (
+          <div className="family-import-health-review-table" role="table" aria-label="Expired auto-injector review queue">
+            <div className="family-import-health-review-row header" role="row">
+              <span role="columnheader">Family</span><span role="columnheader">Child</span><span role="columnheader">Device</span><span role="columnheader">Expired</span><span role="columnheader">Status</span><span role="columnheader">Action</span>
+            </div>
+            {unresolvedHealthItems.map((item) => {
+              const imported = item.status === "parent_update_required" && item.imported_child_profile_id;
+              return (
+                <div className={`family-import-health-review-row ${item.status}`} role="row" key={item.id}>
+                  <span role="cell"><strong>{item.parent_name || "Parent pending"}</strong><small>{item.parent_email || "Email not imported"}</small></span>
+                  <span role="cell"><strong>{item.child_name}</strong><small>Magicbooking ID {item.external_child_id}</small></span>
+                  <span role="cell"><strong>{item.item_name}</strong><small>Auto-injector</small></span>
+                  <span role="cell"><strong>{formatShortDate(item.expiry_date)}</strong><small>Expired</small></span>
+                  <span role="cell"><strong>{migrationHealthReviewStatus(item.status)}</strong><small>{imported ? "Safety update required before invitation" : "Review when imported"}</small></span>
+                  <span role="cell">{imported ? <div className="family-import-health-actions"><button className="button light" type="button" onClick={() => openHealthReviewItem(item)}>Review record</button><button className="button book" type="button" onClick={() => startHealthResolution(item)}>Resolve</button></div> : <span className="family-import-awaiting">Awaiting import</span>}</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : <EmptyList title="No expired auto-injectors" text="There are no unresolved auto-injector expiry reviews in this migration batch." />}
+        <p className="family-import-health-review-note"><strong>{parentUpdateHealthItems} invitation{parentUpdateHealthItems === 1 ? " is" : "s are"} blocked now.</strong> {unresolvedHealthItems.length - parentUpdateHealthItems} more will be blocked automatically when their family is imported, until the safety review is resolved.</p>
+        {healthResolutionMessage && <p className="family-import-health-resolution-message" role="status">{healthResolutionMessage}</p>}
+      </section>
+
+      {healthResolutionItem && (
+        <div className="platform-modal-backdrop" role="presentation">
+          <form className="hr-dismiss-modal family-import-health-resolution-modal" role="dialog" aria-modal="true" aria-labelledby="health-resolution-title" onSubmit={submitHealthResolution}>
+            <button className="modal-close" type="button" aria-label="Close safety review" onClick={() => setHealthResolutionItem(null)}><X size={18} /></button>
+            <p className="eyebrow">Resolve safety review</p>
+            <h3 id="health-resolution-title">Confirm the replacement auto-injector</h3>
+            <p>{healthResolutionItem.child_name} · Previous {healthResolutionItem.item_name} expired {formatShortDate(healthResolutionItem.expiry_date)}.</p>
+            <div className="family-import-health-resolution-form">
+              <label><span>Replacement device</span><input required value={healthResolutionDraft.itemName} onChange={(event) => setHealthResolutionDraft((current) => ({ ...current, itemName: event.target.value }))} /></label>
+              <label><span>New expiry date</span><input required type="date" min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)} value={healthResolutionDraft.expiryDate} onChange={(event) => setHealthResolutionDraft((current) => ({ ...current, expiryDate: event.target.value }))} /></label>
+              <label><span>Confirmed through</span><select required value={healthResolutionDraft.confirmationMethod} onChange={(event) => setHealthResolutionDraft((current) => ({ ...current, confirmationMethod: event.target.value }))}><option value="">Choose confirmation method</option><option value="parent_email">Parent email</option><option value="parent_phone">Parent phone call</option><option value="parent_portal">Parent portal</option><option value="in_person">In person</option><option value="document">Document supplied</option></select></label>
+              <label><span>Admin note (optional)</span><textarea value={healthResolutionDraft.notes} onChange={(event) => setHealthResolutionDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Add a concise note; avoid unnecessary medical detail." /></label>
+            </div>
+            <div className="family-import-health-resolution-warning"><strong>This unlocks the family invitation.</strong><span>Only continue after checking the replacement device and expiry date against the parent’s confirmation.</span></div>
+            {healthResolutionMessage && <p className="platform-warning" role="alert">{healthResolutionMessage}</p>}
+            <div className="dismiss-modal-actions"><button type="button" className="button secondary" onClick={() => setHealthResolutionItem(null)}>Cancel</button><button type="submit" className="button book" disabled={healthResolutionBusy || !healthResolutionDraft.itemName || !healthResolutionDraft.expiryDate || !healthResolutionDraft.confirmationMethod}>{healthResolutionBusy ? "Saving..." : "Resolve and unlock invitation"}</button></div>
+          </form>
+        </div>
+      )}
+
+      {creditDialogOpen && selectedFamily && (
+        <div className="platform-modal-backdrop" role="presentation">
+          <form className="hr-dismiss-modal family-credit-modal" role="dialog" aria-modal="true" aria-labelledby="family-credit-title" onSubmit={submitCreditAdjustment}>
+            <button className="modal-close" type="button" aria-label="Close credit adjustment" onClick={() => setCreditDialogOpen(false)}><X size={18} /></button>
+            <p className="eyebrow">Customer account credit</p>
+            <h3 id="family-credit-title">Adjust {selectedFamily.full_name}'s credit</h3>
+            <p>Add credit with a positive amount, or remove existing credit with a negative amount. Every change is recorded in the audit trail.</p>
+            <div className="family-credit-balance" aria-live="polite">
+              <div><span>Current balance</span><strong>{formatCurrency(selectedCreditBalance)}</strong></div>
+              <div className={creditBalancePreview < 0 ? "invalid" : ""}><span>Balance after change</span><strong>{formatCurrency(creditBalancePreview)}</strong></div>
+            </div>
+            <div className="family-credit-form">
+              <label><span>Amount (£)</span><input required type="number" inputMode="decimal" step="0.01" min="-10000" max="10000" value={creditDraft.amount} onChange={(event) => setCreditDraft((current) => ({ ...current, amount: event.target.value }))} placeholder="25.00 or -10.00" /><small>Positive adds credit. Negative removes credit.</small></label>
+              <label><span>Reason</span><select required value={creditDraft.reason} onChange={(event) => setCreditDraft((current) => ({ ...current, reason: event.target.value }))}><option value="refund">Refund</option><option value="goodwill">Goodwill</option><option value="credit_adjustment">Credit adjustment</option></select></label>
+              <label className="family-credit-note"><span>Note for the customer</span><textarea required minLength="3" maxLength="300" value={creditDraft.note} onChange={(event) => setCreditDraft((current) => ({ ...current, note: event.target.value }))} placeholder="Briefly explain why this credit is being changed." /><small>{creditDraft.note.length}/300 · This note and the reason will be included in the customer's email.</small></label>
+            </div>
+            {creditMessage && <p className={`family-credit-message ${creditMessageTone}`} role="alert">{creditMessage}</p>}
+            <div className="dismiss-modal-actions"><button type="button" className="button secondary" onClick={() => setCreditDialogOpen(false)}>Cancel</button><button type="submit" className="button book" disabled={creditBusy || !creditDraft.note.trim() || !creditAmount || creditBalancePreview < 0}>{creditBusy ? "Saving..." : creditAmount < 0 ? `Remove ${formatCurrency(Math.abs(creditAmount))} credit` : `Add ${formatCurrency(Math.abs(creditAmount))} credit`}</button></div>
+          </form>
+        </div>
+      )}
+
+      <section className="family-import-controls" aria-label="Filter imported families">
+        <label><span>Search families</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Parent, email or child" /></label>
+        <label><span>Centre</span><select value={centre} onChange={(event) => setCentre(event.target.value)}><option>All centres</option>{centres.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <div><span>Showing</span><strong>{filteredFamilies.length} of {families.length}</strong></div>
+      </section>
+
+      {loading && <EmptyList title="Loading imported families" text="Fetching the protected migration sample from Supabase." />}
+      {error && <EmptyList title="Imported families could not be loaded" text={error} />}
+      {!loading && !error && !families.length && <EmptyList title="No customer profiles" text="No active Magicbooking family records are available." />}
+
+      {!loading && !error && families.length > 0 && (
+        <div className="family-import-layout">
+          <section className="family-import-list" aria-label="Imported family list">
+            <div className="family-import-list-head"><strong>Families</strong><span>{filteredFamilies.length} shown</span></div>
+            {filteredFamilies.map((family) => (
+              <button type="button" className={selectedFamily?.id === family.id ? "active" : ""} key={family.id} onClick={() => { setSelectedFamilyId(family.id); setSelectedChildId(family.child_profiles?.[0]?.id || ""); setChildSection("Overview"); setCreditMessage(""); setCreditDialogOpen(false); }}>
+                <span>{family.migration_metadata?.requiresReview === true ? "Review" : family.profile_id ? "Active" : "Record"}</span>
+                <strong>{family.full_name}</strong>
+                <small>{family.email}</small>
+                <small>{family.child_profiles?.length || 0} child{family.child_profiles?.length === 1 ? "" : "ren"} · {reviewValue(family.registered_centres, "Centre missing")}</small>
+              </button>
+            ))}
+            {!filteredFamilies.length && <EmptyList title="No matching families" text="Try another parent, child or centre." />}
+          </section>
+
+          {selectedFamily && (
+            <section className="family-import-detail" aria-label={`Review ${selectedFamily.full_name}`}>
+              <div className="family-import-family-head">
+                <div><p className="eyebrow">Family record</p><h3>{selectedFamily.full_name}</h3><p>{selectedFamily.email} · {selectedFamily.phone || "Phone missing"}</p></div>
+                <div className="family-credit-profile-actions"><div className="family-credit-profile-balance"><span>Account credit</span><strong>{formatCurrency(selectedCreditBalance)}</strong></div><button className="button book" type="button" onClick={openCreditAdjustment}>Top up / adjust credit</button><Badge value={selectedFamily.portal_status === "migration_review" ? "Migration review" : selectedFamily.portal_status || "Active"} /><span className="family-import-no-login">{selectedFamily.profile_id ? "Login linked" : "No login created"}</span></div>
+              </div>
+              {creditMessage && <p className={`family-credit-status ${creditMessageTone}`} role="status">{creditMessage}</p>}
+              <div className="family-import-parent-grid">
+                <article><span>Registered centres</span><strong>{reviewValue(selectedFamily.registered_centres, "Not recorded")}</strong></article>
+                <article><span>Emergency contacts</span><strong>{selectedFamily.emergency_contact?.contacts?.length || 0} recorded</strong><small>{reviewValue([selectedFamily.emergency_contact?.primaryPhone, selectedFamily.emergency_contact?.secondaryPhone], "Numbers missing")}</small></article>
+                <article><span>Address</span><strong>{reviewValue([selectedFamily.billing_address?.line1, selectedFamily.billing_address?.town, selectedFamily.billing_address?.postcode], "Not recorded")}</strong></article>
+                <article className={missingParentFields.length ? "needs-review" : "complete"}><span>Parent review</span><strong>{missingParentFields.length ? `${missingParentFields.length} item${missingParentFields.length === 1 ? "" : "s"} missing` : "Source record complete"}</strong><small>{reviewValue(missingParentFields, "No missing fields")}</small></article>
+              </div>
+
+              <div className="family-import-child-picker" aria-label="Imported children">
+                {selectedChildren.map((child) => <button type="button" className={selectedChild?.id === child.id ? "active" : ""} key={child.id} onClick={() => { setSelectedChildId(child.id); setChildSection("Overview"); }}><span>{selectedChild?.id === child.id ? "Selected child" : "Saved child"}</span><strong>{child.full_name}</strong><small>{child.school_name || "School missing"} · {child.year_group || "Year group missing"}</small></button>)}
+              </div>
+
+              {selectedChild ? (
+                <>
+                  <nav className="family-import-child-tabs" aria-label="Child review sections">
+                    {familyImportChildSections.map((section) => <button type="button" className={childSection === section ? "active" : ""} aria-current={childSection === section ? "page" : undefined} key={section} onClick={() => setChildSection(section)}>{section}</button>)}
+                  </nav>
+                  <section className="family-import-child-panel">
+                    <div className="family-import-child-panel-head"><div><p className="eyebrow">{childSection}</p><h4>{selectedChild.full_name}</h4></div><span>{missingChildFields.length ? `${missingChildFields.length} item${missingChildFields.length === 1 ? "" : "s"} to complete` : "Source record complete"}</span></div>
+                    {childSection === "Overview" && <div className="family-import-data-grid"><article><span>Date of birth</span><strong>{formatShortDate(selectedChild.date_of_birth)}</strong></article><article><span>School</span><strong>{selectedChild.school_name || "Not provided"}</strong></article><article><span>Year group</span><strong>{selectedChild.year_group || "Not provided"}</strong></article><article><span>Ethnicity</span><strong>{registration.ethnicity || "Not provided"}</strong><small>Optional</small></article><article><span>Languages</span><strong>{reviewValue(registration.languages, "Not provided")}</strong></article><article className={missingChildFields.length ? "needs-review" : "complete"}><span>Missing information</span><strong>{reviewValue(missingChildFields, "Nothing flagged")}</strong></article></div>}
+                    {childSection === "Contacts" && <div className="family-import-record-list"><article><div><span>Family emergency contacts</span><strong>{selectedFamily.emergency_contact?.contacts?.length || 0} recorded</strong><small>{reviewValue(selectedFamily.emergency_contact?.contacts, "No emergency contacts imported")}</small></div></article><article><div><span>Authorised collectors</span><strong>{selectedChild.authorised_collectors?.length || 0} recorded</strong><small>{reviewValue(selectedChild.authorised_collectors, "No authorised collectors imported")}</small></div></article><article><div><span>Collection password</span><strong>{registration.collectionPassword ? "Recorded" : "Not provided"}</strong><small>{registration.collectionPassword ? "Hidden during review" : "Parent will need to add this"}</small></div></article></div>}
+                    {childSection === "Consents" && <div className="family-import-consent-list">{Object.entries(consentResponses).length ? Object.entries(consentResponses).map(([label, value]) => <article key={label}><span>{label}</span><strong className={value ? "yes" : "no"}>{value ? "Yes" : "No"}</strong></article>) : <EmptyList title="No consent responses imported" text="The parent will be asked to review current consents before booking." />}</div>}
+                    {childSection === "Dietary" && <div className="family-import-record-list"><article><div><span>Dietary needs</span><strong>{selectedChild.dietary_notes || "No dietary needs recorded"}</strong><small>{selectedChild.dietary_notes ? "Review with parent" : "Nothing further required unless circumstances changed"}</small></div></article></div>}
+                    {childSection === "Allergies" && <div className="family-import-record-list"><article><div><span>Allergies</span><strong>{selectedChild.allergy_notes || "No allergies recorded"}</strong><small>{selectedChild.allergy_notes ? "Review triggers, symptoms and initial action with parent" : "Nothing further required unless circumstances changed"}</small></div></article></div>}
+                    {childSection === "Medication" && <div className="family-import-record-list"><article><div><span>Medication</span><strong>{reviewValue(registration.medications, "No medication recorded")}</strong><small>{registration.medications?.length ? "Medication details require parent confirmation" : "No action unless medication is now required"}</small></div></article><article><div><span>Auto-injectors</span><strong>{reviewValue(registration.autoInjectors, "No auto-injector recorded")}</strong><small>{registration.autoInjectors?.length ? "Check medicine name and expiry date" : "No action unless circumstances changed"}</small></div></article></div>}
+                    {childSection === "Medical" && <div className="family-import-record-list"><article><div><span>Medical conditions</span><strong>{selectedChild.medical_notes || "No medical conditions recorded"}</strong><small>{selectedChild.medical_notes ? "Review care plan and staff instructions with parent" : "Nothing further required unless circumstances changed"}</small></div></article><article><div><span>Additional information</span><strong>{registration.additionalInfo || "Not provided"}</strong></div></article></div>}
+                    {childSection === "SEND" && <div className="family-import-record-list"><article><div><span>SEND</span><strong>{reviewValue(registration.send, "No SEND information recorded")}</strong><small>{registration.send?.length ? "Review support needs and current plans with parent" : "No action unless support needs have changed"}</small></div></article><article><div><span>External agencies</span><strong>{reviewValue(registration.externalAgencies, "None recorded")}</strong></div></article></div>}
+                  </section>
+                </>
+              ) : <EmptyList title="No child profiles" text="This family has no imported child record and needs manual review." />}
+            </section>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1258,7 +3630,9 @@ function StaffDashboard({ data, access, userEmail }) {
 
 function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenStaffProfile, onOpenInspectionView }) {
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
-  const [dashboardLedger, setDashboardLedger] = useState({ invoices: [], bookings: [], fetchedAt: "" });
+  const [dashboardLedger, setDashboardLedger] = useState(() => ({
+    invoices: [], bookings: [], fetchedAt: "", liveRequested: bookingSystemConfigured(),
+  }));
   const [dashboardLedgerStatus, setDashboardLedgerStatus] = useState("Loading booking ledger...");
   const [dashboardLedgerError, setDashboardLedgerError] = useState("");
   const hasLiveBookingLedger = bookingSystemConfigured();
@@ -1321,21 +3695,21 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
     let cancelled = false;
     async function loadDashboardLedger() {
       if (!hasLiveBookingLedger) {
-        setDashboardLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+        setDashboardLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString(), liveRequested: false });
         setDashboardLedgerStatus("Demo ledger until live booking credentials are present.");
         return;
       }
       setDashboardLedgerStatus("Loading live booking ledger...");
       setDashboardLedgerError("");
       try {
-        const nextLedger = await fetchParentBookingLedger({ limit: 250 });
+        const nextLedger = await fetchAdminBookingLedger({ limit: 250 });
         if (cancelled) return;
-        setDashboardLedger(nextLedger);
+        setDashboardLedger({ ...nextLedger, liveRequested: true });
         setDashboardLedgerStatus(nextLedger.bookings?.length ? "Live booking ledger loaded." : "Live ledger connected. No bookings found yet.");
       } catch (error) {
         if (cancelled) return;
-        setDashboardLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
-        setDashboardLedgerStatus("Showing demo ledger.");
+        setDashboardLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString(), liveRequested: true });
+        setDashboardLedgerStatus("Live booking data unavailable. No booking rows are being shown.");
         setDashboardLedgerError(error?.message || "Could not load live booking ledger.");
       }
     }
@@ -1793,7 +4167,9 @@ function endOfDay(date) {
 }
 
 function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) {
-  const [ledger, setLedger] = useState({ invoices: [], bookings: [], fetchedAt: "" });
+  const [ledger, setLedger] = useState(() => ({
+    invoices: [], bookings: [], fetchedAt: "", liveRequested: bookingSystemConfigured(),
+  }));
   const [status, setStatus] = useState("Loading booking ledger...");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -1805,8 +4181,8 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
   const [adminNote, setAdminNote] = useState("");
   const [setupDraft, setSetupDraft] = useState(() => readJson(bookingAdminSetupStorageKey, {
     school: "Willington Prep",
-    dateFrom: "2026-09-03",
-    dateTo: "2026-12-18",
+    dateFrom: defaultBookingAdminDateFrom,
+    dateTo: defaultBookingAdminDateTo,
     sessionLabel: "Session 1",
     timeWindow: "15:30-16:00",
     price: "6.80",
@@ -1818,7 +4194,7 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
   }));
   const [dayOverride, setDayOverride] = useState(() => readJson(bookingAdminOverrideStorageKey, {
     school: "Willington Prep",
-    sessionDate: "2026-09-03",
+    sessionDate: defaultBookingAdminDateFrom,
     sessionLabel: "Session 1",
     timeWindow: "15:30-16:00",
     price: "6.80",
@@ -1855,22 +4231,22 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
       setError("");
       if (!hasLiveLedger) {
         if (!cancelled) {
-          setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+          setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString(), liveRequested: false });
           setStatus("Using local booking examples until Supabase is available.");
         }
         return;
       }
       try {
         setStatus("Loading live Supabase booking ledger...");
-        const nextLedger = await fetchParentBookingLedger({ limit: 120 });
+        const nextLedger = await fetchAdminBookingLedger({ limit: 120 });
         if (cancelled) return;
-        setLedger(nextLedger);
+        setLedger({ ...nextLedger, liveRequested: true });
         setStatus(`Live ledger loaded${nextLedger.fetchedAt ? ` at ${formatDateTime(nextLedger.fetchedAt)}` : ""}.`);
       } catch (loadError) {
         if (cancelled) return;
-        setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+        setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString(), liveRequested: true });
         setError(loadError?.message || "Could not load live bookings.");
-        setStatus("Live ledger unavailable. Showing safe local examples.");
+        setStatus("Live ledger unavailable. No booking data is being shown.");
       }
     }
     loadLedger();
@@ -1897,13 +4273,13 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
   function refreshLedger() {
     if (!hasLiveLedger) {
       setStatus("Local examples refreshed.");
-      setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+      setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString(), liveRequested: false });
       return;
     }
     setLedger((current) => ({ ...current, fetchedAt: "" }));
-    fetchParentBookingLedger({ limit: 120 })
+    fetchAdminBookingLedger({ limit: 120 })
       .then((nextLedger) => {
-        setLedger(nextLedger);
+        setLedger({ ...nextLedger, liveRequested: true });
         setError("");
         setStatus(`Live ledger refreshed at ${formatDateTime(new Date().toISOString())}.`);
       })
@@ -1924,8 +4300,8 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
           action,
           note: adminNote || `${label} from staff admin bookings.`,
         });
-        const nextLedger = await fetchParentBookingLedger({ limit: 120 });
-        setLedger(nextLedger);
+        const nextLedger = await fetchAdminBookingLedger({ limit: 120 });
+        setLedger({ ...nextLedger, liveRequested: true });
       }
       addAuditLog(label, `${selected.reference} · ${selected.parent}`);
       setStatus(`${label} for ${selected.reference}.`);
@@ -1939,14 +4315,25 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
   }
 
   async function saveSetupDraft() {
+    const canonicalSegments = canonicalTeachingSegments(setupDraft.school, setupDraft.dateFrom, setupDraft.dateTo);
+    if (!canonicalSegments.length) {
+      setError("This range does not contain a published teaching window for the selected school.");
+      setStatus("Booking setup was not saved. Choose dates from the canonical 2026–27 school calendar.");
+      return;
+    }
     setActionPending("setup");
     localStorage.setItem(bookingAdminSetupStorageKey, JSON.stringify(setupDraft));
     try {
       if (hasLiveLedger) {
-        const result = await upsertLiveBookingSessionSetup(setupDraft);
-        addAuditLog("Booking setup saved", `${result.school || setupDraft.school} · ${result.sessionLabel || setupDraft.sessionLabel} · ${result.sessionsUpserted || 0} sessions`);
+        const results = [];
+        for (const segment of canonicalSegments) {
+          results.push(await upsertLiveBookingSessionSetup({ ...setupDraft, ...segment }));
+        }
+        const sessionsUpserted = results.reduce((total, result) => total + Number(result.sessionsUpserted || 0), 0);
+        const result = results[results.length - 1] || {};
+        addAuditLog("Booking setup saved", `${result.school || setupDraft.school} · ${result.sessionLabel || setupDraft.sessionLabel} · ${sessionsUpserted} sessions`);
         setError("");
-        setStatus(`Booking setup saved live: ${result.sessionsUpserted || 0} matching ${result.sessionLabel || setupDraft.sessionLabel} sessions updated for ${result.school || setupDraft.school}.`);
+        setStatus(`Booking setup saved live: ${sessionsUpserted} eligible ${result.sessionLabel || setupDraft.sessionLabel} sessions updated for ${result.school || setupDraft.school}. Holidays and blocked dates were excluded.`);
         refreshLedger();
       } else {
         addAuditLog("Booking setup draft saved", `${setupDraft.school} · ${setupDraft.sessionLabel} · ${formatCurrency(setupDraft.price)}`);
@@ -1965,6 +4352,11 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
   }
 
   async function saveDayOverride() {
+    if (dayOverride.parentBookable && !isCanonicalTeachingDate(dayOverride.school, dayOverride.sessionDate)) {
+      setError("That date is not eligible for parent-bookable wraparound care.");
+      setStatus("Day override was not saved. Use a canonical teaching date or turn off parent booking.");
+      return;
+    }
     setActionPending("override");
     localStorage.setItem(bookingAdminOverrideStorageKey, JSON.stringify(dayOverride));
     try {
@@ -3759,7 +6151,9 @@ function addDays(date, days) {
 }
 
 function BookingFinance({ data, onOpenBookingFocus }) {
-  const [ledger, setLedger] = useState({ invoices: [], bookings: [], fetchedAt: "" });
+  const [ledger, setLedger] = useState(() => ({
+    invoices: [], bookings: [], fetchedAt: "", liveRequested: bookingSystemConfigured(),
+  }));
   const [status, setStatus] = useState("Loading booking finance...");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -3804,22 +6198,22 @@ function BookingFinance({ data, onOpenBookingFocus }) {
       setError("");
       if (!hasLiveLedger) {
         if (!cancelled) {
-          setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+          setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString(), liveRequested: false });
           setStatus("Using local examples until Supabase is available.");
         }
         return;
       }
       try {
         setStatus("Loading live PonchoPay and booking ledger...");
-        const nextLedger = await fetchParentBookingLedger({ limit: 250 });
+        const nextLedger = await fetchAdminBookingLedger({ limit: 250 });
         if (cancelled) return;
-        setLedger(nextLedger);
+        setLedger({ ...nextLedger, liveRequested: true });
         setStatus(`Live finance ledger loaded${nextLedger.fetchedAt ? ` at ${formatDateTime(nextLedger.fetchedAt)}` : ""}.`);
       } catch (loadError) {
         if (cancelled) return;
-        setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+        setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString(), liveRequested: true });
         setError(loadError?.message || "Could not load finance ledger.");
-        setStatus("Live ledger unavailable. Showing safe local examples.");
+        setStatus("Live ledger unavailable. No finance data is being shown.");
       }
     }
     loadFinance();
@@ -3852,14 +6246,14 @@ function BookingFinance({ data, onOpenBookingFocus }) {
 
   function refreshLedger() {
     if (!hasLiveLedger) {
-      setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString() });
+      setLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString(), liveRequested: false });
       setStatus("Local finance examples refreshed.");
       return;
     }
     setStatus("Refreshing finance ledger...");
-    fetchParentBookingLedger({ limit: 250 })
+    fetchAdminBookingLedger({ limit: 250 })
       .then((nextLedger) => {
-        setLedger(nextLedger);
+        setLedger({ ...nextLedger, liveRequested: true });
         setError("");
         setStatus(`Finance ledger refreshed at ${formatDateTime(new Date().toISOString())}.`);
       })
@@ -3907,8 +6301,8 @@ function BookingFinance({ data, onOpenBookingFocus }) {
             source: "booking_finance_control_room",
           },
         });
-        const nextLedger = await fetchParentBookingLedger({ limit: 250 });
-        setLedger(nextLedger);
+        const nextLedger = await fetchAdminBookingLedger({ limit: 250 });
+        setLedger({ ...nextLedger, liveRequested: true });
       }
       addAuditLog(label, `${selected.reference} · ${selected.parent}`);
       setStatus(`${label} for ${selected.reference}.`);
@@ -4198,6 +6592,7 @@ function normaliseBookingLedgerRows(ledger, data) {
     };
   });
   if (liveRows.length) return liveRows;
+  if (ledger.liveRequested) return [];
   return ledger.useDemoFallback === false ? [] : demoBookingAdminRows(data);
 }
 
@@ -5718,10 +8113,24 @@ function HRFiles({ data, targetStaffId = "", onTargetHandled }) {
 
     if (!hasSupabaseConfig) return;
     try {
-      const { createHrFile, uploadHrFile } = await loadSupabaseModule();
+      const { createHrFile, uploadHrFile, notifyPayslipAvailable } = await loadSupabaseModule();
       const saved = hasUploadFile ? await uploadHrFile(payload, uploadFile) : await createHrFile(payload);
+      if (/payslip/i.test(payload.category) && !saved.payslipNotification) {
+        try {
+          saved.payslipNotification = await notifyPayslipAvailable(saved.id);
+        } catch (notificationError) {
+          saved.payslipNotification = {
+            emailed: false,
+            emailError: notificationError.message || "Payslip notification failed.",
+          };
+        }
+      }
       setFiles((current) => current.map((file) => file.id === localRecord.id ? saved : file));
-      setStatus(hasUploadFile ? "HR file uploaded and saved." : "HR file saved.");
+      setStatus(saved.payslipNotification
+        ? saved.payslipNotification.emailed
+          ? "Payslip uploaded and availability email sent."
+          : `Payslip uploaded, but its availability email was not sent: ${saved.payslipNotification.emailError || "check email settings"}`
+        : hasUploadFile ? "HR file uploaded and saved." : "HR file saved.");
     } catch (error) {
       setFiles((current) => current.map((file) => file.id === localRecord.id ? { ...file, storagePath: "", syncError: error.message || "Save failed" } : file));
       setStatus(error.message || "Supabase could not save this HR file. Check permissions/storage settings.");
@@ -9777,13 +12186,55 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
   const [payrollQuery, setPayrollQuery] = useState("");
   const [payrollFilter, setPayrollFilter] = useState("pay-due");
   const [historyStaffId, setHistoryStaffId] = useState("");
-  const [selectedPayslipId, setSelectedPayslipId] = useState("");
-  const payslipPeriods = Array.from(new Set((hrFiles || []).map((file) => payslipPeriod(file)).filter(Boolean))).sort().reverse();
-  const availablePeriods = Array.from(new Set([...Object.keys(records), ...payslipPeriods])).sort().reverse();
+  const [payPrivacyReady, setPayPrivacyReady] = useState(false);
+  const [hasPayPin, setHasPayPin] = useState(false);
+  const [payUnlocked, setPayUnlocked] = useState(false);
+  const [payPrivacyMode, setPayPrivacyMode] = useState("");
+  const [payPrivacyBusy, setPayPrivacyBusy] = useState(false);
+  const [payPrivacyStatus, setPayPrivacyStatus] = useState("");
+  const [payPinDraft, setPayPinDraft] = useState("");
+  const [payCurrentPinDraft, setPayCurrentPinDraft] = useState("");
+  const [payNewPinDraft, setPayNewPinDraft] = useState("");
+  const [payPasswordDraft, setPayPasswordDraft] = useState("");
+  const requestedPayslipId = new URLSearchParams(window.location.search).get("payslip") || "";
+  const [selectedPayslipId, setSelectedPayslipId] = useState(requestedPayslipId);
+  const payslipPeriods = Array.from(new Set(
+    (hrFiles || [])
+      .filter((file) => staffHrFileBucket(file) === "Payslips")
+      .map((file) => payslipPeriod(file))
+      .filter(validPayrollPeriod),
+  )).sort().reverse();
+  const availablePeriods = Array.from(new Set(
+    [...Object.keys(records), ...payslipPeriods].filter(validPayrollPeriod),
+  )).sort().reverse();
   const [period, setPeriod] = useState(availablePeriods[0] || currentPayrollPeriod());
   const isStaff = access?.role === "Staff";
   const isAdmin = ["Admin", "Superadmin"].includes(access?.role);
   const canMarkPaid = access?.role === "Superadmin";
+
+  useEffect(() => {
+    let active = true;
+    setPayPrivacyReady(false);
+    setPayPrivacyStatus("");
+    loadSupabaseModule()
+      .then(({ getStaffPayPinStatus }) => getStaffPayPinStatus())
+      .then((result) => {
+        if (!active) return;
+        const configured = Boolean(result?.hasPin);
+        setHasPayPin(configured);
+        setPayUnlocked(!configured);
+        setPayPrivacyReady(true);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setPayPrivacyStatus(error.message || "Pay privacy could not be checked.");
+        setPayUnlocked(false);
+        setPayPrivacyReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [access?.currentUser?.id, access?.currentUser?.email]);
   const currentRun = runs[period] || { status: "Draft", adjustments: {} };
   const payRunIsPublished = (run) => run?.status === "Paid";
   const showStaffPayCalculation = !isStaff || payRunIsPublished(currentRun);
@@ -9791,31 +12242,34 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
   const runLocked = currentRun.status === "Paid";
   const staffIds = new Set(data.staff.map((person) => person.id));
   const payrollRows = data.staff.map((person) => {
+    const allPayslips = staffPayslips(hrFiles, person.id);
+    const payslips = allPayslips.filter((file) => payslipMatchesPeriod(file, period));
+    const payslipPay = payslipPayRecord(payslips);
     const schoolRows = Object.entries(periodRecords).flatMap(([schoolName, record]) => (record.rows || [])
       .filter((row) => row.staffId === person.id || row.staffId === person.profileId)
       .map((row) => ({ ...row, schoolName, status: record.status || "Draft" })));
     const hours = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
     const hourlyGross = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? person.payRate ?? 0), 0);
     const monthlySalary = showStaffPayCalculation ? monthlySalaryFromAnnual(person.annualSalary) : 0;
-    const gross = monthlySalary + hourlyGross;
+    const calculatedGross = monthlySalary + hourlyGross;
+    const gross = payslipPay ? payslipPay.gross : calculatedGross;
     const adjustment = showStaffPayCalculation ? (currentRun.adjustments?.[person.id] || {}) : {};
     const expenses = Number(adjustment.expenses || 0);
     const deductions = Number(adjustment.deductions || 0);
-    const allPayslips = staffPayslips(hrFiles, person.id);
-    const payslips = allPayslips.filter((file) => payslipMatchesPeriod(file, period));
-    return { ...person, payrollEntries: schoolRows, hours, monthlySalary, hourlyGross, gross, expenses, deductions, payrollNote: adjustment.note || "", payslips, allPayslips };
+    const net = payslipPay ? payslipPay.net : gross + expenses - deductions;
+    return { ...person, payrollEntries: schoolRows, hours, monthlySalary, hourlyGross, calculatedGross, gross, net, expenses, deductions, payrollNote: adjustment.note || "", payslips, allPayslips, payslipPay };
   });
   const totalHours = payrollRows.reduce((sum, row) => sum + row.hours, 0);
   const totalGross = payrollRows.reduce((sum, row) => sum + row.gross, 0);
   const totalExpenses = payrollRows.reduce((sum, row) => sum + row.expenses, 0);
   const totalDeductions = payrollRows.reduce((sum, row) => sum + row.deductions, 0);
-  const totalNet = totalGross + totalExpenses - totalDeductions;
+  const totalNet = payrollRows.reduce((sum, row) => sum + row.net, 0);
   const periodRecordList = Object.values(periodRecords);
   const submittedSites = periodRecordList.filter((record) => ["Submitted", "Approved"].includes(record.status)).length;
   const approvedSites = periodRecordList.filter((record) => record.status === "Approved").length;
   const unapprovedHourSites = periodRecordList.filter((record) => (record.rows || []).some((row) => Number(row.hours || 0) > 0) && record.status !== "Approved");
-  const payrollReady = payrollRows.some((row) => row.hours > 0 || row.monthlySalary > 0);
-  const staffToPay = payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0);
+  const payrollReady = payrollRows.some((row) => row.hours > 0 || row.monthlySalary > 0 || row.payslips.length > 0);
+  const staffToPay = payrollRows.filter((row) => row.hours > 0 || row.monthlySalary > 0 || row.payslips.length > 0);
   const staffPayslipFiles = isStaff ? payrollRows.flatMap((row) => row.allPayslips || []) : [];
   const periodStaffPayslipFiles = staffPayslipFiles.filter((file) => payslipMatchesPeriod(file, period));
   const selectedStaffPayslip = staffPayslipFiles.find((file) => file.id === selectedPayslipId) || periodStaffPayslipFiles[0] || staffPayslipFiles[0] || null;
@@ -9823,7 +12277,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
     ...file,
     staffName: row.name,
     staffEmail: row.email || "",
-    staffNetPay: row.gross + row.expenses - row.deductions,
+    staffNetPay: row.net,
   })));
   const payslipsUploaded = staffToPay.filter((row) => row.payslips.length > 0).length;
   const missingPayslipRows = staffToPay.filter((row) => !row.payslips.length);
@@ -9850,7 +12304,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
   const payrollSearch = payrollQuery.trim().toLowerCase();
   const visiblePayrollRows = payrollRows.filter((row) => {
     const matchesFilter = payrollFilter === "all"
-      || (payrollFilter === "pay-due" && (row.hours > 0 || row.monthlySalary > 0))
+      || (payrollFilter === "pay-due" && (row.hours > 0 || row.monthlySalary > 0 || row.payslips.length > 0))
       || (payrollFilter === "missing-payslips" && (row.hours > 0 || row.monthlySalary > 0) && !row.payslips.length)
       || (payrollFilter === "hours" && row.hours > 0)
       || (payrollFilter === "salary" && row.monthlySalary > 0)
@@ -9984,7 +12438,9 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
     const adjustment = historyPublished ? (historyRun.adjustments?.[currentStaffMember.id] || {}) : {};
     const expenses = Number(adjustment.expenses || 0);
     const deductions = Number(adjustment.deductions || 0);
-    const gross = monthlySalary + hourlyGross;
+    const payslipPay = payslipPayRecord(historyPayslips);
+    const gross = payslipPay ? payslipPay.gross : monthlySalary + hourlyGross;
+    const net = payslipPay ? payslipPay.net : gross + expenses - deductions;
     const schools = Array.from(new Set(payrollEntries.map((entry) => entry.schoolName).filter(Boolean)));
     return {
       period: historyPeriod,
@@ -9996,8 +12452,9 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
       gross,
       expenses,
       deductions,
-      net: gross + expenses - deductions,
+      net,
       payslips: historyPayslips,
+      payslipPay,
       note: historyPublished ? adjustment.note || "" : "",
     };
   }).filter((row) => row && (row.hours > 0 || row.monthlySalary > 0 || row.expenses > 0 || row.deductions > 0 || row.note || row.payslips.length)) : [];
@@ -10013,6 +12470,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
     deductions: totalDeductions,
     net: totalNet,
     payslips: periodStaffPayslipFiles,
+    payslipPay: payrollRows[0]?.payslipPay || null,
     note: "",
   };
   const selectedStaffPayrollHistory = selectedHistoryStaff ? historyPeriods.map((historyPeriod) => {
@@ -10027,8 +12485,10 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
     const adjustment = historyRun.adjustments?.[selectedHistoryStaff.id] || {};
     const expenses = Number(adjustment.expenses || 0);
     const deductions = Number(adjustment.deductions || 0);
-    const gross = monthlySalary + hourlyGross;
     const payslips = staffPayslips(hrFiles, selectedHistoryStaff.id).filter((file) => payslipMatchesPeriod(file, historyPeriod));
+    const payslipPay = payslipPayRecord(payslips);
+    const gross = payslipPay ? payslipPay.gross : monthlySalary + hourlyGross;
+    const net = payslipPay ? payslipPay.net : gross + expenses - deductions;
     return {
       period: historyPeriod,
       status: historyRun.status || "Draft",
@@ -10038,8 +12498,9 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
       gross,
       expenses,
       deductions,
-      net: gross + expenses - deductions,
+      net,
       payslips,
+      payslipPay,
       note: adjustment.note || "",
     };
   }).filter((row) => row.hours > 0 || row.monthlySalary > 0 || row.expenses > 0 || row.deductions > 0 || row.note || row.payslips.length) : [];
@@ -10071,6 +12532,13 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
   useEffect(() => {
     setHrFiles(data.hrFiles || []);
   }, [data.hrFiles]);
+
+  useEffect(() => {
+    if (!requestedPayslipId) return;
+    if (staffPayslipFiles.some((file) => file.id === requestedPayslipId)) {
+      setSelectedPayslipId(requestedPayslipId);
+    }
+  }, [requestedPayslipId, staffPayslipFiles]);
 
   function saveRun(nextRun, action = "Payroll run updated", detail = "") {
     const runToSave = {
@@ -10150,7 +12618,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
       ...rowsToExport.map((row) => {
         const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName))).join("; ");
         const submittedEntries = row.payrollEntries.filter((entry) => ["Submitted", "Approved"].includes(entry.status));
-        const net = row.gross + row.expenses - row.deductions;
+        const net = row.net;
         const payslipStatus = row.payslips.length ? "Uploaded" : submittedEntries.length ? "Ready to upload" : "Pending hours";
         return [
           formatPayrollPeriod(period),
@@ -10215,31 +12683,321 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
       const { uploadHrFile } = await loadSupabaseModule();
       const saved = await uploadHrFile(payload, file);
       setHrFiles((current) => current.map((item) => item.id === localRecord.id ? saved : item));
-      setPayslipStatus(`${person.name}'s payslip uploaded.`);
       addAuditLog("Payslip uploaded", `${person.name}: ${formatPayrollPeriod(period)}`);
+      const notification = saved.payslipNotification;
+      if (notification?.emailed) {
+        setPayslipStatus(notification.alreadyNotified
+          ? `${person.name}'s payslip uploaded. Its availability email was already sent.`
+          : `${person.name}'s payslip uploaded and availability email sent.`);
+        addAuditLog("Payslip availability emailed", `${person.name}: ${formatPayrollPeriod(period)}`);
+      } else {
+        setPayslipStatus(`${person.name}'s payslip uploaded, but its availability email failed: ${notification?.emailError || "check email settings"}`);
+        addAuditLog("Payslip availability email failed", `${person.name}: ${formatPayrollPeriod(period)} · ${notification?.emailError || "Email failed"}`);
+      }
     } catch (error) {
       setHrFiles((current) => current.map((item) => item.id === localRecord.id ? { ...item, storagePath: "", syncError: error.message || "Upload failed" } : item));
       setPayslipStatus(`Payslip upload failed: ${error.message || "check Supabase Storage permissions"}`);
     }
   }
 
+  function normalisePinInput(value) {
+    return String(value || "").replace(/\D/g, "").slice(0, 4);
+  }
+
+  function clearPayPrivacyDrafts() {
+    setPayPinDraft("");
+    setPayCurrentPinDraft("");
+    setPayNewPinDraft("");
+    setPayPasswordDraft("");
+  }
+
+  async function unlockPay(event) {
+    event.preventDefault();
+    if (!/^\d{4}$/.test(payPinDraft)) {
+      setPayPrivacyStatus("Enter your four-digit PIN.");
+      return;
+    }
+    setPayPrivacyBusy(true);
+    setPayPrivacyStatus("Checking PIN...");
+    try {
+      const { verifyStaffPayPin } = await loadSupabaseModule();
+      await verifyStaffPayPin(payPinDraft);
+      setPayUnlocked(true);
+      setPayPrivacyMode("");
+      setPayPrivacyStatus("");
+      clearPayPrivacyDrafts();
+    } catch (error) {
+      setPayPrivacyStatus(error.message || "That PIN could not be verified.");
+      setPayPinDraft("");
+    } finally {
+      setPayPrivacyBusy(false);
+    }
+  }
+
+  async function configurePayPin(event) {
+    event.preventDefault();
+    if (!/^\d{4}$/.test(payNewPinDraft)) {
+      setPayPrivacyStatus("Choose a PIN containing exactly four digits.");
+      return;
+    }
+    setPayPrivacyBusy(true);
+    setPayPrivacyStatus("Protecting Pay...");
+    try {
+      const { setStaffPayPin } = await loadSupabaseModule();
+      await setStaffPayPin(payNewPinDraft);
+      setHasPayPin(true);
+      setPayUnlocked(false);
+      setPayPrivacyMode("");
+      setPayPrivacyStatus("Pay is hidden. Enter your new PIN to open it.");
+      clearPayPrivacyDrafts();
+    } catch (error) {
+      setPayPrivacyStatus(error.message || "The privacy PIN could not be set.");
+    } finally {
+      setPayPrivacyBusy(false);
+    }
+  }
+
+  async function changePayPin(event) {
+    event.preventDefault();
+    if (!/^\d{4}$/.test(payCurrentPinDraft) || !/^\d{4}$/.test(payNewPinDraft)) {
+      setPayPrivacyStatus("Enter the current PIN and a new four-digit PIN.");
+      return;
+    }
+    setPayPrivacyBusy(true);
+    setPayPrivacyStatus("Changing PIN...");
+    try {
+      const { changeStaffPayPin } = await loadSupabaseModule();
+      await changeStaffPayPin(payCurrentPinDraft, payNewPinDraft);
+      setPayPrivacyMode("");
+      setPayPrivacyStatus("Your Pay privacy PIN has been changed.");
+      clearPayPrivacyDrafts();
+    } catch (error) {
+      setPayPrivacyStatus(error.message || "The PIN could not be changed.");
+    } finally {
+      setPayPrivacyBusy(false);
+    }
+  }
+
+  async function resetPayPin(event) {
+    event.preventDefault();
+    if (!payPasswordDraft || !/^\d{4}$/.test(payNewPinDraft)) {
+      setPayPrivacyStatus("Enter your account password and a new four-digit PIN.");
+      return;
+    }
+    setPayPrivacyBusy(true);
+    setPayPrivacyStatus("Confirming your password...");
+    try {
+      const { resetStaffPayPin } = await loadSupabaseModule();
+      await resetStaffPayPin(payPasswordDraft, payNewPinDraft);
+      setHasPayPin(true);
+      setPayUnlocked(true);
+      setPayPrivacyMode("");
+      setPayPrivacyStatus("Your PIN has been reset and Pay is unlocked.");
+      clearPayPrivacyDrafts();
+    } catch (error) {
+      setPayPrivacyStatus(error.message || "The PIN could not be reset.");
+      setPayPasswordDraft("");
+    } finally {
+      setPayPrivacyBusy(false);
+    }
+  }
+
+  async function removePayPin(event) {
+    event.preventDefault();
+    if (!payPasswordDraft) {
+      setPayPrivacyStatus("Enter your account password to remove the PIN.");
+      return;
+    }
+    setPayPrivacyBusy(true);
+    setPayPrivacyStatus("Confirming your password...");
+    try {
+      const { removeStaffPayPin } = await loadSupabaseModule();
+      await removeStaffPayPin(payPasswordDraft);
+      setHasPayPin(false);
+      setPayUnlocked(true);
+      setPayPrivacyMode("");
+      setPayPrivacyStatus("The privacy PIN has been removed.");
+      clearPayPrivacyDrafts();
+    } catch (error) {
+      setPayPrivacyStatus(error.message || "The PIN could not be removed.");
+      setPayPasswordDraft("");
+    } finally {
+      setPayPrivacyBusy(false);
+    }
+  }
+
+  function hidePayNow() {
+    if (!hasPayPin) {
+      setPayPrivacyMode("set");
+      setPayPrivacyStatus("Set a four-digit PIN before hiding Pay.");
+      return;
+    }
+    setPayUnlocked(false);
+    setPayPrivacyMode("");
+    setPayPrivacyStatus("Pay is hidden.");
+    clearPayPrivacyDrafts();
+  }
+
+  const payPrivacyPanel = payPrivacyMode ? (
+    <section className="pay-privacy-drawer" aria-label="Pay privacy settings">
+      <div>
+        <p className="eyebrow">Privacy controls</p>
+        <h3>{payPrivacyMode === "set" ? "Set a four-digit PIN" : payPrivacyMode === "change" ? "Change your PIN" : payPrivacyMode === "remove" ? "Remove Pay PIN" : "Reset your PIN"}</h3>
+        <p>{payPrivacyMode === "set"
+          ? "Once set, Pay hides immediately and asks for this PIN whenever you return."
+          : payPrivacyMode === "change"
+            ? "Enter your current PIN, then choose a new four-digit PIN."
+            : payPrivacyMode === "remove"
+              ? "Confirm your account password to stop PIN-locking the Pay screen."
+              : "Confirm your identity with your account password, then choose a new PIN."}</p>
+      </div>
+      <form onSubmit={payPrivacyMode === "set" ? configurePayPin : payPrivacyMode === "change" ? changePayPin : payPrivacyMode === "remove" ? removePayPin : resetPayPin}>
+        {payPrivacyMode === "change" && (
+          <label>Current PIN<input type="password" inputMode="numeric" autoComplete="off" maxLength="4" value={payCurrentPinDraft} onChange={(event) => setPayCurrentPinDraft(normalisePinInput(event.target.value))} /></label>
+        )}
+        {["reset", "remove"].includes(payPrivacyMode) && (
+          <label>Account password<input type="password" autoComplete="current-password" value={payPasswordDraft} onChange={(event) => setPayPasswordDraft(event.target.value)} /></label>
+        )}
+        {payPrivacyMode !== "remove" && (
+          <label>New four-digit PIN<input type="password" inputMode="numeric" autoComplete="new-password" maxLength="4" value={payNewPinDraft} onChange={(event) => setPayNewPinDraft(normalisePinInput(event.target.value))} /></label>
+        )}
+        <div>
+          <button className="button primary" type="submit" disabled={payPrivacyBusy}>{payPrivacyBusy ? "Please wait..." : payPrivacyMode === "remove" ? "Remove PIN" : payPrivacyMode === "set" ? "Set PIN & hide Pay" : payPrivacyMode === "change" ? "Change PIN" : "Reset PIN"}</button>
+          <button className="button subtle" type="button" onClick={() => { setPayPrivacyMode(""); setPayPrivacyStatus(""); clearPayPrivacyDrafts(); }} disabled={payPrivacyBusy}>Cancel</button>
+        </div>
+      </form>
+    </section>
+  ) : null;
+
+  if (!payPrivacyReady || (hasPayPin && !payUnlocked)) {
+    return (
+      <div className="pay-privacy-lock-screen">
+        <section className="pay-lock-card">
+          <div className="pay-lock-icon"><LockKeyhole size={30} /></div>
+          <p className="eyebrow">Pay privacy</p>
+          <h2>{payPrivacyReady ? "Pay is hidden" : "Securing Pay..."}</h2>
+          <p>{payPrivacyReady ? "Enter your four-digit PIN before viewing pay details or payslips." : "Checking your privacy settings."}</p>
+          {payPrivacyReady && (
+            <form onSubmit={unlockPay}>
+              <label>
+                Four-digit PIN
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength="4"
+                  value={payPinDraft}
+                  onChange={(event) => setPayPinDraft(normalisePinInput(event.target.value))}
+                  autoFocus
+                />
+              </label>
+              <button className="button primary" type="submit" disabled={payPrivacyBusy || payPinDraft.length !== 4}>{payPrivacyBusy ? "Checking..." : "Unlock Pay"}</button>
+            </form>
+          )}
+          {payPrivacyReady && (
+            <button className="pay-reset-link" type="button" onClick={() => { setPayPrivacyMode(payPrivacyMode === "reset" ? "" : "reset"); setPayPrivacyStatus(""); clearPayPrivacyDrafts(); }}>
+              Forgotten your PIN? Reset with your password
+            </button>
+          )}
+          {payPrivacyStatus && <p className="pay-privacy-status" role="status">{payPrivacyStatus}</p>}
+        </section>
+        {payPrivacyMode === "reset" && payPrivacyPanel}
+      </div>
+    );
+  }
+
   return (
     <div className="stack payroll-console">
-      <div className="toolbar">
-        <div>
-          <h2>{isStaff ? "My Pay Summary" : "Payroll Summary"}</h2>
-          <p className="panel-note">{isStaff ? "Your approved hours, gross pay and payslip records appear here once admin has submitted the month." : "Monthly pay is calculated from submitted school hours: paid hours x rate, plus approved expenses, minus separate deductions."}</p>
+      <section className="pay-engine-hero">
+        <div className="pay-engine-heading">
+          <p className="eyebrow">Pay engine room</p>
+          <h2>{isStaff ? "Your pay, under your control" : "Payroll command centre"}</h2>
+          <p>{isStaff ? "Payslips, monthly figures and pay history in one secure place." : "Run the month, inspect every payslip and close payroll from one control surface."}</p>
         </div>
-        <div className="payroll-toolbar">
-          <label>Month<select value={period} onChange={(event) => setPeriod(event.target.value)}>{Array.from(new Set([period, ...availablePeriods, currentPayrollPeriod()])).filter(Boolean).map((item) => <option key={item} value={item}>{formatPayrollPeriod(item)}</option>)}</select></label>
+        <div className="pay-engine-controls">
+          <label>Viewing month<select value={period} onChange={(event) => setPeriod(event.target.value)}>{Array.from(new Set([...availablePeriods, currentPayrollPeriod()])).filter(validPayrollPeriod).map((item) => <option key={item} value={item}>{formatPayrollPeriod(item)}</option>)}</select></label>
+          <div className="pay-engine-privacy-actions">
+            {hasPayPin ? (
+              <>
+                <button className="button primary" type="button" onClick={hidePayNow}><LockKeyhole size={16} /> Hide pay</button>
+                <button className="button subtle" type="button" onClick={() => { setPayPrivacyMode(payPrivacyMode === "change" ? "" : "change"); setPayPrivacyStatus(""); clearPayPrivacyDrafts(); }}>Change PIN</button>
+                <button className="button subtle" type="button" onClick={() => { setPayPrivacyMode(payPrivacyMode === "reset" ? "" : "reset"); setPayPrivacyStatus(""); clearPayPrivacyDrafts(); }}>Reset PIN</button>
+                <button className="button subtle" type="button" onClick={() => { setPayPrivacyMode(payPrivacyMode === "remove" ? "" : "remove"); setPayPrivacyStatus(""); clearPayPrivacyDrafts(); }}>Remove PIN</button>
+              </>
+            ) : (
+              <button className="button primary" type="button" onClick={() => { setPayPrivacyMode("set"); setPayPrivacyStatus(""); clearPayPrivacyDrafts(); }}><LockKeyhole size={16} /> Set privacy PIN</button>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="hr-summary">
-        <Metric icon={<Clock />} label={isStaff ? "My paid hours" : "Paid hours"} value={totalHours.toFixed(2)} tone={totalHours ? "green" : "amber"} />
-        <Metric icon={<PoundSterling />} label={isStaff ? "My gross pay" : "Gross payroll"} value={formatCurrency(totalGross)} tone="green" />
-        <Metric icon={<ClipboardCheck />} label="Submitted sites" value={isAdmin ? submittedSites : payrollRows.flatMap((row) => row.payrollEntries).filter((entry) => ["Submitted", "Approved"].includes(entry.status)).length} tone={submittedSites ? "blue" : "amber"} />
-        {isAdmin && <Metric icon={<CheckCircle2 />} label="Run status" value={currentRun.status || "Draft"} tone={currentRun.status === "Paid" ? "green" : currentRun.status === "Draft" ? "amber" : "blue"} />}
-      </div>
+        <div className="pay-engine-status-strip">
+          <span><i className={hasPayPin ? "online" : "attention"} /> Privacy {hasPayPin ? "armed" : "not set"}</span>
+          <span><i className={monthlyPayslipFiles.length || periodStaffPayslipFiles.length ? "online" : "attention"} /> {isStaff ? `${periodStaffPayslipFiles.length} payslip${periodStaffPayslipFiles.length === 1 ? "" : "s"}` : `${monthlyPayslipFiles.length} payslips`} this month</span>
+          <span><i className={currentRun.status === "Paid" ? "online" : "neutral"} /> {isStaff ? staffSelectedMonth.status || "Payslip record" : currentRun.status || "Draft"}</span>
+        </div>
+        {payPrivacyStatus && <p className="pay-privacy-status" role="status">{payPrivacyStatus}</p>}
+      </section>
+      {payPrivacyPanel}
+      <section className="pay-engine-top-grid">
+        <article className="pay-engine-payslip-vault">
+          <div className="pay-engine-card-head">
+            <div>
+              <p className="eyebrow">Payslip vault</p>
+              <h3>{isStaff ? "Your payslip is ready" : `${formatPayrollPeriod(period)} payslips`}</h3>
+            </div>
+            <Badge value={isStaff ? `${periodStaffPayslipFiles.length} this month` : `${monthlyPayslipFiles.length} uploaded`} />
+          </div>
+          {isStaff ? (
+            staffPayslipFiles.length ? (
+              <div className="pay-engine-payslip-focus">
+                <label>
+                  Choose payslip
+                  <select value={selectedStaffPayslip?.id || ""} onChange={(event) => setSelectedPayslipId(event.target.value)}>
+                    {staffPayslipFiles.map((file) => (
+                      <option key={file.id} value={file.id}>{formatPayrollPeriod(payslipPeriod(file))} - {file.title || "Payslip"}</option>
+                    ))}
+                  </select>
+                </label>
+                <div>
+                  <span>{selectedStaffPayslip ? formatPayrollPeriod(payslipPeriod(selectedStaffPayslip)) : formatPayrollPeriod(period)}</span>
+                  <strong>{selectedStaffPayslip?.title || "Payslip"}</strong>
+                  <small>Stored privately. Sign-in and your Pay PIN protect access on shared devices.</small>
+                </div>
+                {selectedStaffPayslip?.fileUrl
+                  ? <a className="button primary" href={selectedStaffPayslip.fileUrl} target="_blank" rel="noreferrer">Open payslip</a>
+                  : <Badge value={selectedStaffPayslip?.storagePath ? "PDF uploaded" : "File pending"} />}
+              </div>
+            ) : <EmptyList title="No payslips yet" text="Your payslips will appear here as soon as payroll publishes them." />
+          ) : (
+            <>
+              <div className="pay-engine-admin-payslips">
+                {monthlyPayslipFiles.slice(0, 5).map((file) => (
+                  <article key={file.id}>
+                    <div><strong>{file.staffName}</strong><span>{formatCurrency(file.staffNetPay)} net</span></div>
+                    {file.fileUrl ? <a href={file.fileUrl} target="_blank" rel="noreferrer">Open PDF</a> : <Badge value="Private file" />}
+                  </article>
+                ))}
+                {!monthlyPayslipFiles.length && <EmptyList title="No payslips uploaded" text="Upload this month’s payslips from the payroll table below." />}
+              </div>
+              <div className="pay-engine-vault-actions">
+                <span>{missingPayslipRows.length ? `${missingPayslipRows.length} still missing` : "All staff due pay have a payslip"}</span>
+                <button className="button subtle" type="button" onClick={() => { setPayrollFilter(missingPayslipRows.length ? "missing-payslips" : "all"); setPayrollQuery(""); document.getElementById("payroll-table")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Open payslip controls</button>
+              </div>
+            </>
+          )}
+        </article>
+        <article className="pay-engine-instruments">
+          <div className="pay-engine-card-head">
+            <div><p className="eyebrow">Live instruments</p><h3>{formatPayrollPeriod(period)}</h3></div>
+            <span className="pay-engine-live"><i /> Live</span>
+          </div>
+          <div className="pay-engine-dials">
+            <article><span>{isStaff ? "Gross pay" : "Gross payroll"}</span><strong>{formatCurrency(totalGross)}</strong><small>Payslip-backed total</small></article>
+            <article><span>{isStaff ? "Net pay" : "Net payroll"}</span><strong>{formatCurrency(totalNet)}</strong><small>After recorded deductions</small></article>
+            <article><span>Paid hours</span><strong>{totalHours.toFixed(2)}</strong><small>{isStaff ? "Approved hours" : `${submittedSites} submitted sites`}</small></article>
+            <article><span>{isStaff ? "Pay status" : "Run status"}</span><strong>{isStaff ? staffSelectedMonth.status || "Recorded" : currentRun.status || "Draft"}</strong><small>{isStaff ? "For selected month" : `${approvedSites} approved sites`}</small></article>
+          </div>
+        </article>
+      </section>
       {isAdmin && (
         <section className="payroll-review-grid payroll-summary-grid" aria-label="Payroll month summary">
           {payrollSummaryCards.map((card) => (
@@ -10326,45 +13084,6 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
         </Panel>
       )}
       {isAdmin && (
-        <Panel title={`${formatPayrollPeriod(period)} Payslips Uploaded`}>
-          <div className="payslip-admin-panel">
-            <div>
-              <p>{monthlyPayslipFiles.length} payslip{monthlyPayslipFiles.length === 1 ? "" : "s"} uploaded for this payroll month.</p>
-              <small>{missingPayslipRows.length ? `${missingPayslipRows.length} staff member${missingPayslipRows.length === 1 ? "" : "s"} still need a payslip.` : "Every staff member due pay has a payslip recorded."}</small>
-            </div>
-            <button
-              className="button subtle"
-              type="button"
-              onClick={() => {
-                setPayrollFilter("missing-payslips");
-                setPayrollQuery("");
-                document.getElementById("payroll-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-              disabled={!missingPayslipRows.length}
-            >
-              View missing
-            </button>
-          </div>
-          <div className="payslip-admin-list">
-            {monthlyPayslipFiles.map((file) => (
-              <article className="payslip-admin-item" key={file.id}>
-                <div>
-                  <strong>{file.staffName}</strong>
-                  <span>{file.staffEmail || "No email"} · {formatCurrency(file.staffNetPay)}</span>
-                </div>
-                <div>
-                  <small>{file.issueDate ? formatShortDate(file.issueDate) : file.uploadedAt ? formatShortDate(file.uploadedAt.slice(0, 10)) : "Date pending"}</small>
-                  {file.fileUrl
-                    ? <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open PDF</a>
-                    : <Badge value={file.storagePath ? "Private file" : "File pending"} />}
-                </div>
-              </article>
-            ))}
-            {!monthlyPayslipFiles.length && <EmptyList title="No payslips uploaded for this month" text="Upload payslips from the payroll table once the month has been reviewed." />}
-          </div>
-        </Panel>
-      )}
-      {isAdmin && (
         <Panel title="Staff Payroll History">
           <div className="payroll-history-head">
             <div>
@@ -10436,7 +13155,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
             <article>
               <span>Gross pay</span>
               <strong>{formatCurrency(staffSelectedMonth.gross)}</strong>
-              <small>{staffSelectedMonth.monthlySalary ? `${formatCurrency(staffSelectedMonth.monthlySalary)} salary` : "No salary recorded"}{staffSelectedMonth.hourlyGross ? ` · ${formatCurrency(staffSelectedMonth.hourlyGross)} additional hours` : ""}</small>
+              <small>{staffSelectedMonth.payslipPay ? "Amount recorded on your payslip" : staffSelectedMonth.monthlySalary ? `${formatCurrency(staffSelectedMonth.monthlySalary)} salary` : "No salary recorded"}{!staffSelectedMonth.payslipPay && staffSelectedMonth.hourlyGross ? ` · ${formatCurrency(staffSelectedMonth.hourlyGross)} additional hours` : ""}</small>
             </article>
             <article>
               <span>Hours</span>
@@ -10463,36 +13182,6 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
           </div>
         </Panel>
       )}
-      {isStaff && (
-        <Panel title="My Payslip">
-          {staffPayslipFiles.length ? (
-            <div className="staff-payslip-picker">
-              <label>
-                Payslip
-                <select value={selectedStaffPayslip?.id || ""} onChange={(event) => setSelectedPayslipId(event.target.value)}>
-                  {staffPayslipFiles.map((file) => (
-                    <option key={file.id} value={file.id}>
-                      {formatPayrollPeriod(payslipPeriod(file))} - {file.title || "Payslip"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="staff-payslip-preview">
-                <div>
-                  <Badge value={selectedStaffPayslip?.issueDate ? formatShortDate(selectedStaffPayslip.issueDate) : selectedStaffPayslip?.uploadedAt ? formatShortDate(selectedStaffPayslip.uploadedAt.slice(0, 10)) : "Payslip"} />
-                  <strong>{selectedStaffPayslip?.title || "Payslip"}</strong>
-                  {selectedStaffPayslip?.notes && <span>{selectedStaffPayslip.notes}</span>}
-                </div>
-                {selectedStaffPayslip?.fileUrl
-                  ? <a className="button primary" href={selectedStaffPayslip.fileUrl} target="_blank" rel="noreferrer">View payslip</a>
-                  : <Badge value={selectedStaffPayslip?.storagePath ? "PDF uploaded" : "File pending"} />}
-              </div>
-            </div>
-          ) : (
-            <EmptyList title="No payslips yet" text="Payslips will appear here after admin uploads them." />
-          )}
-        </Panel>
-      )}
       {isAdmin && (
         <Panel title={`${formatPayrollPeriod(period)} Pay`}>
           <div className="payroll-table-controls" id="payroll-table">
@@ -10515,7 +13204,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
               <tbody>{visiblePayrollRows.map((row) => {
                 const submittedEntries = row.payrollEntries.filter((entry) => ["Submitted", "Approved"].includes(entry.status));
                 const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName)));
-                const net = row.gross + row.expenses - row.deductions;
+                const net = row.net;
                 return (
                   <tr key={row.id}>
                     <td>
@@ -10525,6 +13214,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
                     <td>{schools.length ? schools.join(", ") : "No hours submitted"}</td>
                     <td><strong>{row.hours.toFixed(2)}</strong></td>
                     <td>
+                      {row.payslipPay ? <><strong>Payslip record</strong><br /></> : null}
                       {row.annualSalary ? <><strong>{formatCurrency(row.monthlySalary)}/mo</strong><br /><small>{formatCurrency(row.annualSalary)} annual salary</small></> : null}
                       {row.payRate ? <><br /><small>{formatCurrency(row.payRate)}/hr extra hours</small></> : !row.annualSalary ? "No rate" : null}
                     </td>
@@ -10614,29 +13304,745 @@ function PayrollAuditTrail({ events = [], period, school = "", title = "Payroll 
   );
 }
 
-function Rewards({ data }) {
-  return <Panel title="Staff Recognition"><RewardList data={data} admin /></Panel>;
+function Rewards() {
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function loadRewards() {
+    setLoading(true);
+    setError("");
+    try {
+      setDashboard(await fetchAdminRewardsDashboard({ limit: 16 }));
+    } catch (loadError) {
+      setError(loadError?.message || "Rewards insights could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadRewards();
+  }, []);
+
+  return (
+    <Panel title="Rewards dashboard">
+      <div className="rewards-dashboard">
+        <header className="rewards-dashboard-intro">
+          <div>
+            <p className="eyebrow">Positive recognition</p>
+            <h2>Celebrate brilliant moments across every club.</h2>
+            <p>See which badges are being shared, who is recognising children and the latest achievements.</p>
+          </div>
+          <button type="button" onClick={loadRewards} disabled={loading}>{loading ? "Refreshing…" : "Refresh insights"}</button>
+        </header>
+
+        {error && <div className="register-report-message error" role="alert">{error}</div>}
+        {!error && (
+          <>
+            <div className="rewards-dashboard-metrics" aria-label="Reward totals">
+              {[
+                ["Rewards issued today", dashboard?.today || 0, "✨"],
+                ["This week", dashboard?.week || 0, "🏅"],
+                ["This month", dashboard?.month || 0, "🎉"],
+              ].map(([label, value, icon]) => (
+                <article key={label}>
+                  <span aria-hidden="true">{icon}</span>
+                  <strong>{loading ? "—" : value}</strong>
+                  <p>{label}</p>
+                </article>
+              ))}
+            </div>
+
+            <div className="rewards-dashboard-columns">
+              <section>
+                <div className="rewards-section-title">
+                  <h3>Top badges awarded</h3>
+                  <span>This month</span>
+                </div>
+                <div className="rewards-top-badges">
+                  {dashboard?.topBadges?.length ? dashboard.topBadges.map((item) => {
+                    const badge = rewardBadge(item.badgeType);
+                    return (
+                      <article key={item.badgeType}>
+                        <span aria-hidden="true">{badge.icon}</span>
+                        <div><strong>{badge.title}</strong><small>{badge.description}</small></div>
+                        <b>{item.total}</b>
+                      </article>
+                    );
+                  }) : <p className="rewards-empty">No badges have been awarded this month yet.</p>}
+                </div>
+              </section>
+
+              <section>
+                <div className="rewards-section-title">
+                  <h3>Top staff recognising children</h3>
+                  <span>This month</span>
+                </div>
+                <div className="rewards-top-staff">
+                  {dashboard?.topStaff?.length ? dashboard.topStaff.map((item, index) => (
+                    <article key={`${item.staffId || item.staffName}-${index}`}>
+                      <span>{index + 1}</span>
+                      <div><strong>{item.staffName || "Staff member"}</strong><small>{item.total} badge{item.total === 1 ? "" : "s"} awarded</small></div>
+                    </article>
+                  )) : <p className="rewards-empty">Staff reward activity will appear here.</p>}
+                </div>
+              </section>
+            </div>
+
+            <section className="rewards-recent">
+              <div className="rewards-section-title">
+                <h3>Recent achievements</h3>
+                <span>Latest first</span>
+              </div>
+              <div className="rewards-recent-grid">
+                {dashboard?.recent?.length ? dashboard.recent.map((item) => {
+                  const badge = rewardBadge(item.badgeType);
+                  return (
+                    <article key={item.id}>
+                      <span className="rewards-recent-icon" aria-hidden="true">{badge.icon}</span>
+                      <div>
+                        <strong>{item.childName}</strong>
+                        <h4>{badge.title}</h4>
+                        <p>{item.reason}</p>
+                        <small>{item.staffName} · {item.clubName || item.siteName || "Après School"} · {registerReportDateTime(item.awardedAt)}</small>
+                      </div>
+                    </article>
+                  );
+                }) : <p className="rewards-empty">New badges will appear here as staff award them.</p>}
+              </div>
+            </section>
+          </>
+        )}
+      </div>
+    </Panel>
+  );
 }
 
 function Sessions({ data }) {
   return <Panel title="Scheduling & Sessions"><SessionList data={data} detailed /></Panel>;
 }
 
-function Incidents() {
-  const incidentTypes = ["Behaviour issue", "Safeguarding concern", "First aid issue", "Accident/incident", "Parent concern", "Site issue", "Staffing issue", "Equipment issue"];
+const registerReportTypeLabels = {
+  incident: "Incident",
+  first_aid: "First aid",
+  safeguarding: "Safeguarding",
+};
+
+const standardRegisterReportStatuses = [
+  ["new", "New"],
+  ["under_review", "Under review"],
+  ["parent_follow_up", "Parent follow-up"],
+  ["closed", "Closed"],
+];
+
+const restrictedRegisterReportStatuses = [
+  ["referred_to_dsl", "Referred to DSL"],
+  ["dsl_reviewing", "DSL reviewing"],
+  ["dsl_closed", "Closed by DSL"],
+];
+
+function registerReportStatusLabel(status) {
+  return [...standardRegisterReportStatuses, ...restrictedRegisterReportStatuses]
+    .find(([value]) => value === status)?.[1] || String(status || "New").replaceAll("_", " ");
+}
+
+function registerReportDateTime(value) {
+  if (!value) return "Time not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function reportBooleanLabel(value) {
+  if (value === true || value === "yes") return "Yes";
+  if (value === false || value === "no") return "No";
+  return value || "Not recorded";
+}
+
+function reportLocalIsoDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value || "").slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+const SAFEGUARDING_STATUSES = ["New", "DSL Reviewing", "Monitoring", "External Referral", "Closed", "Archived"];
+const SAFEGUARDING_PRIORITIES = ["Low", "Standard", "High", "Urgent"];
+
+function SafeguardingCases() {
+  const [cases, setCases] = useState([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [selectedCase, setSelectedCase] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Open");
+  const [siteFilter, setSiteFilter] = useState("All");
+  const [draftStatus, setDraftStatus] = useState("New");
+  const [draftPriority, setDraftPriority] = useState("Standard");
+  const [chronologyType, setChronologyType] = useState("Case note");
+  const [chronologyNote, setChronologyNote] = useState("");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDue, setTaskDue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function loadCases({ keepSelection = true } = {}) {
+    setLoading(true);
+    setError("");
+    try {
+      const next = await fetchSafeguardingCases({ limit: 500 });
+      setCases(next);
+      setSelectedId((current) => keepSelection && next.some((item) => item.id === current) ? current : (next[0]?.id || ""));
+    } catch (loadError) {
+      setError(loadError?.message || "Safeguarding cases could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadCases({ keepSelection: false });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setSelectedCase(null);
+      return;
+    }
+    let active = true;
+    fetchSafeguardingCase({ caseId: selectedId })
+      .then((detail) => {
+        if (!active) return;
+        setSelectedCase(detail);
+        setDraftStatus(detail?.status || "New");
+        setDraftPriority(detail?.priority || "Standard");
+      })
+      .catch((loadError) => active && setError(loadError?.message || "The case could not be opened."));
+    return () => { active = false; };
+  }, [selectedId]);
+
+  async function refreshSelected() {
+    if (!selectedId) return;
+    const [detail] = await Promise.all([
+      fetchSafeguardingCase({ caseId: selectedId }),
+      loadCases(),
+    ]);
+    setSelectedCase(detail);
+    setDraftStatus(detail?.status || "New");
+    setDraftPriority(detail?.priority || "Standard");
+  }
+
+  async function saveCaseSettings() {
+    if (!selectedCase) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      await updateSafeguardingCase({
+        caseId: selectedCase.id,
+        status: draftStatus,
+        priority: draftPriority,
+        assignedDslId: selectedCase.assignedDslId || null,
+      });
+      await refreshSelected();
+      setMessage("Case updated and added to the chronology.");
+    } catch (saveError) {
+      setMessage(saveError?.message || "The case could not be updated.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function addChronologyEntry(event) {
+    event.preventDefault();
+    if (!selectedCase || !chronologyNote.trim()) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      await appendSafeguardingCaseEntry({
+        caseId: selectedCase.id,
+        entryType: chronologyType,
+        content: chronologyNote,
+      });
+      setChronologyNote("");
+      await refreshSelected();
+      setMessage("Chronology entry added permanently.");
+    } catch (saveError) {
+      setMessage(saveError?.message || "The chronology entry could not be added.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function addTask(event) {
+    event.preventDefault();
+    if (!selectedCase || !taskTitle.trim()) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      await createSafeguardingCaseTask({
+        caseId: selectedCase.id,
+        title: taskTitle,
+        dueAt: taskDue ? new Date(`${taskDue}T17:00:00`).toISOString() : null,
+      });
+      setTaskTitle("");
+      setTaskDue("");
+      await refreshSelected();
+      setMessage("Follow-up task added.");
+    } catch (saveError) {
+      setMessage(saveError?.message || "The task could not be added.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function completeTask(taskId) {
+    setSaving(true);
+    setMessage("");
+    try {
+      await completeSafeguardingCaseTask({ taskId });
+      await refreshSelected();
+      setMessage("Task completed and recorded in the chronology.");
+    } catch (saveError) {
+      setMessage(saveError?.message || "The task could not be completed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const sites = [...new Set(cases.map((item) => item.siteName).filter(Boolean))].sort();
+  const queryText = query.trim().toLowerCase();
+  const visibleCases = cases.filter((item) => {
+    const closed = ["Closed", "Archived"].includes(item.status);
+    if (statusFilter === "Open" && closed) return false;
+    if (statusFilter === "Closed" && !closed) return false;
+    if (siteFilter !== "All" && item.siteName !== siteFilter) return false;
+    if (!queryText) return true;
+    return [item.concernNumber, item.childName, item.siteName, item.status, ...(item.categories || [])]
+      .join(" ").toLowerCase().includes(queryText);
+  });
+  const openCases = cases.filter((item) => !["Closed", "Archived"].includes(item.status)).length;
+  const urgentCases = cases.filter((item) => item.priority === "Urgent").length;
+  const openTasks = selectedCase?.tasks?.filter((task) => task.status === "Open") || [];
+
   return (
-    <div className="incident-layout">
-      <Panel title="Report an Issue">
-        <form className="compact-form">
-          <label>Type<select>{incidentTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
-          <label>Sensitivity<select><option>Standard</option><option>Safeguarding restricted</option></select></label>
-          <label>Summary<textarea rows="5" /></label>
-          <button className="button primary" type="button">Submit Secure Report</button>
-        </form>
-      </Panel>
-      <Panel title="Open Issues">
-        <ActionList items={["Restricted report: visible to authorised leads only", "First aid follow-up: awaiting parent confirmation", "Site issue: storage cupboard lock"]} />
-      </Panel>
+    <div className="safeguarding-page">
+      <section className="safeguarding-heading">
+        <div>
+          <span className="eyebrow">Restricted · DSL access</span>
+          <h2>Safeguarding cases</h2>
+          <p>Protected case management built around permanent chronology, factual recording and professional oversight.</p>
+        </div>
+        <button className="button secondary" type="button" onClick={() => loadCases()} disabled={loading}>{loading ? "Refreshing…" : "Refresh cases"}</button>
+      </section>
+
+      <div className="safeguarding-metrics">
+        <article><span>Open cases</span><strong>{openCases}</strong></article>
+        <article className={urgentCases ? "urgent" : ""}><span>Urgent priority</span><strong>{urgentCases}</strong></article>
+        <article><span>All cases</span><strong>{cases.length}</strong></article>
+        <article><span>Open tasks in case</span><strong>{openTasks.length}</strong></article>
+      </div>
+
+      <section className="safeguarding-filters">
+        <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Concern number, child, category or site" /></label>
+        <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Open</option><option>Closed</option><option>All</option></select></label>
+        <label>Site<select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}><option>All</option>{sites.map((site) => <option key={site}>{site}</option>)}</select></label>
+      </section>
+
+      {error && <div className="notice error">{error}</div>}
+
+      <div className="safeguarding-layout">
+        <section className="safeguarding-case-list">
+          <header><strong>{visibleCases.length} case{visibleCases.length === 1 ? "" : "s"}</strong><span>Most recently updated</span></header>
+          {!loading && !visibleCases.length ? <div className="report-review-empty"><strong>No matching cases</strong><p>Submitted concerns will appear here securely.</p></div> : visibleCases.map((item) => (
+            <button type="button" key={item.id} className={item.id === selectedId ? "active" : ""} onClick={() => setSelectedId(item.id)}>
+              <span>Concern #{item.concernNumber}</span>
+              <strong>{item.childName}</strong>
+              <small>{item.siteName || "Site not recorded"} · {registerReportDateTime(item.updatedAt)}</small>
+              <div><em className={`priority-${String(item.priority).toLowerCase()}`}>{item.priority}</em><b>{item.status}</b></div>
+            </button>
+          ))}
+        </section>
+
+        <section className="safeguarding-case-detail">
+          {!selectedCase ? <div className="report-review-empty"><strong>Select a safeguarding case</strong><p>The immutable original concern and chronology will appear here.</p></div> : (
+            <>
+              <header>
+                <div><span>Concern #{selectedCase.concernNumber}</span><h3>{selectedCase.childName}</h3><p>{selectedCase.siteName || "Site not recorded"} · {selectedCase.clubName || "Club not recorded"} · {selectedCase.sessionLabel || "Session not recorded"}</p></div>
+                <span className="restricted-access-badge">Confidential</span>
+              </header>
+
+              <section className="safeguarding-original">
+                <div><span>Original concern · locked</span><small>Submitted {registerReportDateTime(selectedCase.createdAt)} by {selectedCase.reporterName}</small></div>
+                <p>{selectedCase.factualAccount}</p>
+                <dl>
+                  <div><dt>Safe now</dt><dd>{selectedCase.childSafeNow ? "Yes" : "No — urgent escalation recorded"}</dd></div>
+                  <div><dt>Source</dt><dd>{selectedCase.concernSource}</dd></div>
+                  <div><dt>Categories</dt><dd>{selectedCase.categories?.join(" · ")}</dd></div>
+                  <div><dt>Immediate action</dt><dd>{selectedCase.immediateAction}</dd></div>
+                  <div><dt>DSL informed</dt><dd>{selectedCase.dslInformed ? `Yes · ${selectedCase.dslInformedWho || ""}` : "No"}</dd></div>
+                  <div><dt>Witnesses</dt><dd>{[...(selectedCase.witnesses?.staff || []), ...(selectedCase.witnesses?.children || []), ...(selectedCase.witnesses?.otherAdults || [])].join(" · ") || "None recorded"}</dd></div>
+                </dl>
+              </section>
+
+              <section className="safeguarding-case-controls">
+                <h4>Case oversight</h4>
+                <label>Status<select value={draftStatus} onChange={(event) => setDraftStatus(event.target.value)}>{SAFEGUARDING_STATUSES.map((value) => <option key={value}>{value}</option>)}</select></label>
+                <label>Priority<select value={draftPriority} onChange={(event) => setDraftPriority(event.target.value)}>{SAFEGUARDING_PRIORITIES.map((value) => <option key={value}>{value}</option>)}</select></label>
+                <button className="button primary" type="button" onClick={saveCaseSettings} disabled={saving}>Save case update</button>
+              </section>
+
+              <section className="safeguarding-chronology">
+                <header><div><h4>Chronology</h4><p>Permanent safeguarding history. Entries cannot be edited or deleted.</p></div><span>{selectedCase.chronology?.length || 0} entries</span></header>
+                <div className="safeguarding-timeline">
+                  {(selectedCase.chronology || []).map((entry) => (
+                    <article key={entry.id}>
+                      <i />
+                      <div><span>{entry.entryType}</span><strong>{registerReportDateTime(entry.occurredAt)}</strong><p>{entry.content}</p><small>{entry.authorName}{entry.siteName ? ` · ${entry.siteName}` : ""}</small></div>
+                    </article>
+                  ))}
+                </div>
+                <form onSubmit={addChronologyEntry}>
+                  <label>Entry type<select value={chronologyType} onChange={(event) => setChronologyType(event.target.value)}><option>Case note</option><option>Parent contact</option><option>Child meeting</option><option>External referral</option><option>Monitoring update</option></select></label>
+                  <label>Factual chronology entry<textarea rows="4" value={chronologyNote} onChange={(event) => setChronologyNote(event.target.value)} placeholder="Record the factual action, contact or update." required /></label>
+                  <button className="button primary" disabled={saving}>Add chronology entry</button>
+                </form>
+              </section>
+
+              <section className="safeguarding-tasks">
+                <header><h4>Follow-up actions</h4><span>{openTasks.length} open</span></header>
+                {(selectedCase.tasks || []).map((task) => (
+                  <article key={task.id} className={task.status === "Completed" ? "complete" : ""}>
+                    <div><strong>{task.title}</strong><small>{task.dueAt ? `Due ${registerReportDateTime(task.dueAt)}` : "No due date"} · {task.status}</small></div>
+                    {task.status === "Open" && <button type="button" onClick={() => completeTask(task.id)} disabled={saving}>Mark complete</button>}
+                  </article>
+                ))}
+                <form onSubmit={addTask}>
+                  <label>Action<input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="For example: speak to parent" required /></label>
+                  <label>Due date<input type="date" value={taskDue} onChange={(event) => setTaskDue(event.target.value)} /></label>
+                  <button className="button secondary" disabled={saving}>Add task</button>
+                </form>
+              </section>
+              {message && <div className="register-report-message success" role="status">{message}</div>}
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function Incidents() {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("open");
+  const [siteFilter, setSiteFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [selectedId, setSelectedId] = useState("");
+  const [draftStatus, setDraftStatus] = useState("");
+  const [followUpNote, setFollowUpNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+
+  async function loadReports({ preserveSelection = true } = {}) {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const nextReports = await fetchRegisterPupilReports({ limit: 500 });
+      setReports(nextReports);
+      setSelectedId((current) => {
+        if (preserveSelection && nextReports.some((report) => report.id === current)) return current;
+        return nextReports[0]?.id || "";
+      });
+    } catch (error) {
+      setLoadError(error?.message || "The report queue could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadReports({ preserveSelection: false });
+  }, []);
+
+  const availableSites = [...new Set(reports.map((report) => report.siteName).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  const rangeReports = reports.filter((report) => {
+    if (siteFilter !== "all" && report.siteName !== siteFilter) return false;
+    const occurredDate = reportLocalIsoDate(report.occurredAt || report.createdAt);
+    if (dateFrom && occurredDate < dateFrom) return false;
+    if (dateTo && occurredDate > dateTo) return false;
+    return true;
+  });
+  const queryText = query.trim().toLowerCase();
+  const filteredReports = rangeReports.filter((report) => {
+    if (typeFilter !== "all" && report.type !== typeFilter) return false;
+    const isClosed = ["closed", "dsl_closed"].includes(report.status);
+    if (statusFilter === "open" && isClosed) return false;
+    if (statusFilter === "closed" && !isClosed) return false;
+    if (!queryText) return true;
+    return [
+      report.childName,
+      report.siteName,
+      report.programmeName,
+      report.sessionLabel,
+      report.summary,
+      report.reporterName,
+      report.status,
+    ].filter(Boolean).join(" ").toLowerCase().includes(queryText);
+  });
+  const selectedReport = filteredReports.find((report) => report.id === selectedId)
+    || filteredReports[0]
+    || null;
+
+  useEffect(() => {
+    if (!selectedReport) {
+      setDraftStatus("");
+      setFollowUpNote("");
+      return;
+    }
+    setDraftStatus(selectedReport.status || (selectedReport.sensitivity === "safeguarding_restricted" ? "referred_to_dsl" : "new"));
+    setFollowUpNote(selectedReport.followUpNote || "");
+    setSaveMessage("");
+  }, [selectedReport?.id]);
+
+  const firstAidCount = rangeReports.filter((report) => report.type === "first_aid").length;
+  const incidentCount = rangeReports.filter((report) => report.type === "incident").length;
+  const safeguardingCount = rangeReports.filter((report) => report.type === "safeguarding").length;
+  const statusOptions = selectedReport?.sensitivity === "safeguarding_restricted"
+    ? restrictedRegisterReportStatuses
+    : standardRegisterReportStatuses;
+
+  async function saveReview() {
+    if (!selectedReport || !draftStatus) return;
+    setSaving(true);
+    setSaveMessage("");
+    try {
+      await updateRegisterPupilReport({
+        reportId: selectedReport.id,
+        status: draftStatus,
+        followUpNote,
+      });
+      setSaveMessage("Review saved.");
+      await loadReports();
+    } catch (error) {
+      setSaveMessage(error?.message || "The review could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function exportReportSummary() {
+    const rows = [
+      ["Date", "Report type", "Site", "Child", "Programme", "Session", "Status", "Recorded by", "Affected areas", "Summary"],
+      ...rangeReports.map((report) => [
+        reportLocalIsoDate(report.occurredAt || report.createdAt),
+        registerReportTypeLabels[report.type] || report.type,
+        report.siteName || "",
+        report.childName || "",
+        report.programmeName || "",
+        report.sessionLabel || "",
+        registerReportStatusLabel(report.status),
+        report.reporterName || "",
+        report.type === "first_aid" ? registerBodyAreasLabel(report.details || {}) : "",
+        report.summary || "",
+      ]),
+    ];
+    downloadCsv(`apres-school-welfare-report-${dateFrom || "all"}-${dateTo || "all"}.csv`, rows);
+  }
+
+  const details = selectedReport?.details || {};
+  const detailRows = selectedReport?.type === "first_aid"
+    ? [
+      ["Affected areas", registerBodyAreasLabel(details)],
+      ["Treatment given", details.treatment || "Not recorded"],
+      ["Action taken", details.actionTaken || "Not recorded"],
+      ["Parent notified", reportBooleanLabel(details.parentNotified)],
+    ]
+    : selectedReport?.type === "safeguarding"
+      ? [
+        ["Concern route", details.concernRoute || "Not recorded"],
+        ["Immediate action", details.actionTaken || "Not recorded"],
+        ["DSL notified", reportBooleanLabel(details.dslNotified)],
+      ]
+      : [
+        ["Category", details.category || "Not recorded"],
+        ["Action taken", details.actionTaken || "Not recorded"],
+        ["Parent notified", reportBooleanLabel(details.parentNotified)],
+      ];
+
+  return (
+    <div className="report-review-page">
+      <section className="report-review-heading">
+        <div>
+          <span className="eyebrow">Pupil welfare</span>
+          <h2>Reports and follow-up</h2>
+          <p>Review reports recorded from the register, filter by site and date, and keep a clear, secure follow-up trail.</p>
+        </div>
+        <div className="report-review-heading-actions">
+          <button className="button light" type="button" onClick={exportReportSummary} disabled={!rangeReports.length}>Export report</button>
+          <button className="button secondary" type="button" onClick={() => loadReports()} disabled={loading}>
+            {loading ? "Refreshing…" : "Refresh reports"}
+          </button>
+        </div>
+      </section>
+
+      <div className="report-review-metrics">
+        <article><span>Total in range</span><strong>{rangeReports.length}</strong></article>
+        <article><span>First aid</span><strong>{firstAidCount}</strong></article>
+        <article><span>Incidents</span><strong>{incidentCount}</strong></article>
+        <article className={safeguardingCount ? "restricted" : ""}>
+          <span>Safeguarding visible to you</span><strong>{safeguardingCount}</strong>
+        </article>
+      </div>
+
+      <section className="report-review-filters" aria-label="Filter pupil reports">
+        <label>
+          Search
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Child, school, session or summary" />
+        </label>
+        <label>
+          Site
+          <select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
+            <option value="all">All sites</option>
+            {availableSites.map((site) => <option key={site} value={site}>{site}</option>)}
+          </select>
+        </label>
+        <label>
+          From
+          <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+        </label>
+        <label>
+          To
+          <input type="date" min={dateFrom || undefined} value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+        </label>
+        <label>
+          Report type
+          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+            <option value="all">All report types</option>
+            <option value="incident">Incidents</option>
+            <option value="first_aid">First aid</option>
+            <option value="safeguarding">Safeguarding</option>
+          </select>
+        </label>
+        <label>
+          Status
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
+            <option value="all">All statuses</option>
+          </select>
+        </label>
+      </section>
+
+      {loadError ? <div className="notice error">{loadError}</div> : null}
+
+      <div className="report-review-layout">
+        <section className="report-review-queue" aria-label="Pupil report queue">
+          <div className="report-review-queue-title">
+            <strong>{loading ? "Loading reports…" : `${filteredReports.length} report${filteredReports.length === 1 ? "" : "s"}`}</strong>
+            <span>Newest first</span>
+          </div>
+          {!loading && !filteredReports.length ? (
+            <div className="report-review-empty">
+              <strong>No matching reports</strong>
+              <p>New register reports will appear here as soon as staff submit them.</p>
+            </div>
+          ) : filteredReports.map((report) => (
+            <button
+              className={`report-review-row ${report.id === selectedReport?.id ? "active" : ""} ${report.sensitivity === "safeguarding_restricted" ? "restricted" : ""}`}
+              type="button"
+              key={report.id}
+              onClick={() => setSelectedId(report.id)}
+            >
+              <span className={`report-type-badge report-${report.type}`}>{registerReportTypeLabels[report.type] || report.type}</span>
+              <strong>{report.childName || "Child record"}</strong>
+              <span>{report.siteName || "School not recorded"} · {report.sessionLabel || report.programmeName || "Session not recorded"}</span>
+              <small>{registerReportDateTime(report.occurredAt || report.createdAt)}</small>
+              <em>{registerReportStatusLabel(report.status)}</em>
+            </button>
+          ))}
+        </section>
+
+        <section className="report-review-detail" aria-label="Selected pupil report">
+          {!selectedReport ? (
+            <div className="report-review-empty">
+              <strong>Select a report</strong>
+              <p>The report details and review controls will appear here.</p>
+            </div>
+          ) : (
+            <>
+              <header>
+                <div>
+                  <span className={`report-type-badge report-${selectedReport.type}`}>
+                    {registerReportTypeLabels[selectedReport.type] || selectedReport.type}
+                  </span>
+                  {selectedReport.sensitivity === "safeguarding_restricted" ? <span className="restricted-access-badge">Restricted · DSL access</span> : null}
+                  <h3>{selectedReport.childName || "Child report"}</h3>
+                  <p>{selectedReport.siteName || "School not recorded"} · {selectedReport.programmeName || "Programme not recorded"} · {selectedReport.sessionLabel || "Session not recorded"}</p>
+                </div>
+                <span className="report-status-pill">{registerReportStatusLabel(selectedReport.status)}</span>
+              </header>
+
+              <div className="report-review-summary">
+                <span>What was recorded</span>
+                <p>{selectedReport.summary || "No summary was provided."}</p>
+              </div>
+
+              <dl className="report-review-facts">
+                <div><dt>Occurred</dt><dd>{registerReportDateTime(selectedReport.occurredAt || selectedReport.createdAt)}</dd></div>
+                <div><dt>Recorded by</dt><dd>{selectedReport.reporterName || "Staff member"}</dd></div>
+                {detailRows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+              </dl>
+
+              <div className="report-review-controls">
+                <h4>Review and follow-up</h4>
+                <label>
+                  Status
+                  <select value={draftStatus} onChange={(event) => setDraftStatus(event.target.value)}>
+                    {statusOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Follow-up note
+                  <textarea
+                    rows="5"
+                    value={followUpNote}
+                    onChange={(event) => setFollowUpNote(event.target.value)}
+                    placeholder={selectedReport.sensitivity === "safeguarding_restricted"
+                      ? "Record the DSL action or next secure step."
+                      : "Record action taken, parent follow-up or the reason for closing."}
+                  />
+                </label>
+                <div className="report-review-save">
+                  <button className="button primary" type="button" onClick={saveReview} disabled={saving}>
+                    {saving ? "Saving…" : "Save review"}
+                  </button>
+                  {saveMessage ? <span role="status">{saveMessage}</span> : null}
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
@@ -12780,6 +16186,24 @@ function staffPayslips(files = [], staffId) {
     .sort((a, b) => String(b.issueDate || b.uploadedAt || "").localeCompare(String(a.issueDate || a.uploadedAt || "")));
 }
 
+function payslipPayRecord(payslips = []) {
+  const candidates = (payslips || [])
+    .filter((file) => file.payslipGrossPay != null && file.payslipNetPay != null)
+    .sort((left, right) => {
+      const leftSummary = /payment summary/i.test(String(left.title || "")) ? 1 : 0;
+      const rightSummary = /payment summary/i.test(String(right.title || "")) ? 1 : 0;
+      return leftSummary - rightSummary;
+    });
+  const file = candidates[0];
+  if (!file) return null;
+  return {
+    gross: Number(file.payslipGrossPay),
+    net: Number(file.payslipNetPay),
+    processDate: file.payslipProcessDate || file.issueDate || "",
+    fileId: file.id,
+  };
+}
+
 function buildStaffProfileTimeline({ data = {}, person = {}, evidenceRequests = [], hrFiles = [] }) {
   const staffIds = new Set([person.id, person.profileId].filter(Boolean).map(String));
   const staffTokens = [person.name, person.fullName, person.email, person.id, person.profileId].filter(Boolean).map((item) => String(item).toLowerCase());
@@ -12999,12 +16423,16 @@ function staffPayrollOperationalSummary(data = {}, person = {}) {
   const hours = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
   const hourlyGross = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? person.payRate ?? 0), 0);
   const monthlySalary = monthlySalaryFromAnnual(person.annualSalary);
-  const latestGross = latestPeriod ? monthlySalary + hourlyGross : monthlySalary;
+  const latestPayslips = (data.hrFiles || []).filter((file) => file.staffRecordId === person.id && payslipMatchesPeriod(file, latestPeriod));
+  const latestPayslipPay = payslipPayRecord(latestPayslips);
+  const latestGross = latestPayslipPay ? latestPayslipPay.gross : latestPeriod ? monthlySalary + hourlyGross : monthlySalary;
   const basis = person.annualSalary
     ? `${formatCurrency(monthlySalary)}/mo salary`
     : person.payRate
       ? `${formatCurrency(person.payRate)}/hr`
-      : "Not recorded";
+      : latestPayslipPay
+        ? "Payslip record"
+        : "Not recorded";
   return { latestPeriod, hours, latestGross, basis };
 }
 
@@ -13205,8 +16633,8 @@ function buildPreviewUsers(data, viewRole) {
     .filter((user) => {
       if (!user?.id || seen.has(user.id)) return false;
       seen.add(user.id);
-      if (viewRole === "Manager") return user.role === "Manager";
-      if (viewRole === "Staff") return user.role !== "Superadmin" && user.role !== "Admin";
+      if (viewRole === "Manager") return user.role === "Manager" || /manager|director/i.test(user.staffRole || "");
+      if (viewRole === "Staff") return user.source === "staff record";
       return true;
     })
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
@@ -13255,6 +16683,7 @@ function mergeUserRecords(staffRecords, state) {
       id,
       staffRecordId: person.id,
       name: person.name,
+      staffRole: person.role || person.jobRole || "",
       status: "Active",
       source: "staff record",
       ...saved,
@@ -13766,8 +17195,10 @@ function iconFor(item) {
     Rota: <CalendarDays />,
     Hours: <Clock />,
     Bookings: <BookOpen />,
+    Registers: <ClipboardCheck />,
     Incidents: <Bell />,
     CRM: <Mail />,
+    "Customer Profiles": <Users />,
     Users: <Users />,
     HR: <Users />,
     "HR Files": <FileText />,

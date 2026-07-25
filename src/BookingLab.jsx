@@ -48,13 +48,19 @@ import {
 } from "./bookingLab/ponchoLocations.js";
 import {
   addParentBookingItems,
+  activateSignedInParentAccount,
   bookingSystemConfigured,
   cancelParentBooking as cancelRealParentBooking,
+  cancelParentStaffAdHocBooking,
   createChildProfile,
+  createParentCreditTopUp,
   createParentBooking,
   fetchCurrentProfile,
   fetchParentAccount,
+  fetchParentBadgeBook,
   fetchParentBookingLedger,
+  fetchStaffRegister,
+  graduateParentChild,
   getParentAuthSession,
   inviteParentAccountHolder,
   manageParentAccountAccess,
@@ -65,10 +71,26 @@ import {
   requestParentPasswordReset as requestParentPasswordResetCode,
   signInParentAccount as signInRealParentAccount,
   signOutParentAccount as signOutRealParentAccount,
+  archiveOwnParentAccount,
+  updateOwnParentContact,
+  updateOwnParentPassword,
+  upsertParentAccount,
+  updateChildProfile,
   updateLivePaymentAdminAction,
+  updateStaffRegisterEntry,
 } from "./bookingSystem.js";
+import { REWARD_BADGES, rewardBadge } from "./rewardBadges.js";
 import DataModelLab from "./bookingLab/DataModelLab.jsx";
 import ReadinessLab from "./bookingLab/ReadinessLab.jsx";
+import {
+  blockingPeriods,
+  bookingGroups,
+  campCandidatePeriods,
+  schoolCalendarKeyForSite,
+  teachingWindows,
+} from "./bookingLab/schoolCalendars2026.js";
+
+const APRES_TERMS_URL = "https://docs.google.com/document/d/1ursh4YbP1e8cLG7fiUy0z3JezZWBUBG2_-7eG8wA0u0/edit?usp=sharing";
 
 const bookingLabViews = ["Parent", "Family", "Operations", "Collection", "Setup", "Schools", "Audit", "Pilot", "Payments", "Support", "Staffing", "Capacity", "Comms", "QA", "Launch Gate", "Data Model", "Readiness"];
 
@@ -303,7 +325,6 @@ const childConsentRows = [
 
 const childRegistrationSteps = [
   { id: "Basics", label: "Child", detail: "Profile and school" },
-  { id: "Contacts", label: "Emergency contact", detail: "Alternative adult" },
   { id: "Health", label: "Health", detail: "Care notes" },
   { id: "Consents", label: "Consents", detail: "Permissions" },
 ];
@@ -428,6 +449,10 @@ function liveChildProfileToFamilyChild(child = {}) {
   const year = child.year || child.yearGroup || child.year_group || child.classroom || "Year group pending";
   const dob = child.dob || child.dateOfBirth || child.date_of_birth || "";
   const flags = normaliseLiveChildFlags(child);
+  const consentRegistration = child.consents?.registration || {};
+  const dietaryNotes = child.dietaryNotes || child.dietary_notes || "";
+  const allergyNotes = child.allergyNotes || child.allergy_notes || "";
+  const medicalNotes = child.medicalNotes || child.medical_notes || "";
   return {
     ...child,
     id: child.id || `child-${normaliseEmailAddress(name).replace(/[^a-z0-9]+/g, "-") || Date.now()}`,
@@ -439,15 +464,33 @@ function liveChildProfileToFamilyChild(child = {}) {
     yearGroup: year,
     dob,
     dateOfBirth: dob,
+    gender: child.gender || consentRegistration.gender || "",
+    ethnicity: child.ethnicity || consentRegistration.ethnicity || "",
+    languages: child.languages || consentRegistration.languages || [],
+    relationship: child.relationship || consentRegistration.relationship || "",
+    livesWith: child.livesWith || consentRegistration.livesWith || "",
+    parentalResponsibility: child.parentalResponsibility || consentRegistration.parentalResponsibility || "",
+    collectionPassword: child.collectionPassword || consentRegistration.collectionPassword || "",
+    emergencyContacts: child.emergencyContacts || child.authorisedCollectors || child.authorised_collectors || [],
+    dietaryNeeds: child.dietaryNeeds || consentRegistration.dietaryNeeds || (dietaryNotes ? [{ need: dietaryNotes, details: "" }] : []),
+    allergies: child.allergies || consentRegistration.allergies || (allergyNotes ? [{ allergy: "Allergy information", details: allergyNotes }] : []),
+    medications: child.medications || consentRegistration.medications || [],
+    autoInjectors: child.autoInjectors || consentRegistration.autoInjectors || [],
+    medicalConditions: child.medicalConditions || consentRegistration.medicalConditions || (medicalNotes ? [{ condition: "Medical information", details: medicalNotes }] : []),
+    send: child.send || consentRegistration.send || [],
     flags,
     medicalPlan: child.medicalPlan || child.medical_plan || flags.join(" · "),
     consent: child.consent || "Child registration consents recorded",
+    externalSource: child.externalSource || child.external_source || "",
+    externalId: child.externalId || child.external_id || "",
+    migrationMetadata: child.migrationMetadata || child.migration_metadata || consentRegistration.migration || {},
     guest: false,
   };
 }
 
 function parentAccountToFamilyRecord(parentAccount = {}, fallback = {}) {
   const email = normaliseEmailAddress(parentAccount.email || fallback.email);
+  const emergencyContact = parentAccount.emergencyContact || parentAccount.emergency_contact || {};
   const children = Array.isArray(parentAccount.children) ? parentAccount.children.map(liveChildProfileToFamilyChild) : [];
   const firstChildSchool = children.find((child) => child.school)?.school;
   return {
@@ -456,9 +499,16 @@ function parentAccountToFamilyRecord(parentAccount = {}, fallback = {}) {
     primaryEmail: email,
     email,
     phone: parentAccount.phone || fallback.phone || "",
-    secondaryPhone: fallback.secondaryPhone || "",
+    secondaryPhone: emergencyContact.secondaryPhone || fallback.secondaryPhone || "",
     emergencyContact: parentAccount.phone || fallback.emergencyContact || "",
+    emergencyContactRecord: emergencyContact,
     billingAddress: parentAccount.billingAddress || parentAccount.billing_address || fallback.billingAddress || null,
+    marketingPreferences: parentAccount.marketingPreferences || parentAccount.marketing_preferences || fallback.marketingPreferences || {},
+    portalStatus: parentAccount.portalStatus || parentAccount.portal_status || fallback.portalStatus || "",
+    externalSource: parentAccount.externalSource || parentAccount.external_source || fallback.externalSource || "",
+    externalId: parentAccount.externalId || parentAccount.external_id || fallback.externalId || "",
+    registeredCentres: parentAccount.registeredCentres || parentAccount.registered_centres || fallback.registeredCentres || [],
+    migrationMetadata: parentAccount.migrationMetadata || parentAccount.migration_metadata || fallback.migrationMetadata || {},
     collectors: fallback.collectors || [],
     registeredCentre: parentAccount.registeredCentre || parentAccount.registered_centre || firstChildSchool || fallback.registeredCentre || "",
     profile: {
@@ -475,6 +525,54 @@ function parentAccountToFamilyRecord(parentAccount = {}, fallback = {}) {
     children,
     consentHistory: fallback.consentHistory || [],
   };
+}
+
+function clearMigrationMissingFields(metadata = {}, patterns = []) {
+  const matchers = patterns.map((pattern) => pattern instanceof RegExp ? pattern : new RegExp(String(pattern), "i"));
+  const missingFields = (metadata?.missingFields || []).filter((field) => !matchers.some((matcher) => matcher.test(String(field))));
+  return {
+    ...(metadata || {}),
+    missingFields,
+    requiresReview: missingFields.length > 0,
+    lastParentUpdateAt: new Date().toISOString(),
+  };
+}
+
+function familyEmergencyContacts(family = {}) {
+  const emergencyContact = family.emergencyContactRecord && typeof family.emergencyContactRecord === "object"
+    ? family.emergencyContactRecord
+    : family.emergencyContact && typeof family.emergencyContact === "object"
+      ? family.emergencyContact
+      : {};
+  const storedContacts = Array.isArray(family.emergencyContacts)
+    ? family.emergencyContacts
+    : Array.isArray(emergencyContact.contacts)
+      ? emergencyContact.contacts
+      : [];
+  const contacts = [
+    {
+      id: "main-account-holder",
+      name: family.parentName || "Main account holder",
+      relationship: "Main account holder",
+      email: family.email || family.primaryEmail || "",
+      mobile: family.phone || emergencyContact.primaryPhone || "",
+    },
+    {
+      id: "second-emergency-contact",
+      name: emergencyContact.secondaryName || "Second emergency contact",
+      relationship: emergencyContact.secondaryRelationship || "Emergency contact",
+      email: emergencyContact.secondaryEmail || "",
+      mobile: family.secondaryPhone || emergencyContact.secondaryPhone || "",
+    },
+    ...storedContacts,
+  ].filter((contact) => contact.mobile || contact.telephone || contact.email);
+  const seen = new Set();
+  return contacts.filter((contact) => {
+    const key = phoneDigits(contact.mobile || contact.telephone || "") || normaliseEmailAddress(contact.email) || String(contact.name || "").toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function familyAccountRoleForEmail(family, email) {
@@ -586,6 +684,20 @@ const notificationPreferenceOptions = ["Email", "SMS", "Email/SMS", "In-app", "O
 const financeExportWorkflow = ["Generated", "Reviewed", "Approved", "Paid"];
 const defaultBookingSessionId = labSessions.find((session) => session.id === "lab-willington-after")?.id || labSessions[0].id;
 
+function requestedLaunchSchool() {
+  if (typeof window === "undefined") return "";
+  const requestedSchool = new URLSearchParams(window.location.search).get("school")?.trim() || "";
+  return labSessions.some((session) => session.site === requestedSchool) ? requestedSchool : "";
+}
+
+function requestedLaunchSessionId() {
+  const school = requestedLaunchSchool();
+  if (!school) return defaultBookingSessionId;
+  return preferredParentSession(labSessions.filter((session) => session.site === school && session.type === "Wraparound"))?.id
+    || labSessions.find((session) => session.site === school)?.id
+    || defaultBookingSessionId;
+}
+
 const defaultSchoolContracts = [
   {
     id: "contract-willington-prep",
@@ -669,10 +781,6 @@ function generateSessionDays(startDate, endDate, weekdays) {
     }
   }
   return days;
-}
-
-function autumnTermLaunchDays() {
-  return generateSessionDays("2026-09-02", "2026-12-18", ["1", "2", "3", "4", "5"]);
 }
 
 function sessionBlockKey(block, index = 0) {
@@ -844,6 +952,28 @@ function labDayIso(value) {
   return parsed ? parsed.toISOString().slice(0, 10) : "";
 }
 
+function canonicalSessionDays(session, proposedDays = []) {
+  const days = Array.isArray(proposedDays) ? proposedDays : [];
+  if (session?.academicYear !== "2026/27") return days;
+  const calendarKey = schoolCalendarKeyForSite(session?.site);
+  if (!calendarKey) return [];
+  if (session?.type === "Holiday Camp") {
+    const candidates = campCandidatePeriods(calendarKey);
+    return days.filter((day) => {
+      const date = labDayIso(day);
+      return date && candidates.some((period) => date >= period.start && date <= period.end);
+    });
+  }
+  const windows = teachingWindows(calendarKey);
+  const blocked = blockingPeriods(calendarKey).filter((period) => period.end);
+  return days.filter((day) => {
+    const date = labDayIso(day);
+    const insideTeaching = date && windows.some((window) => date >= window.start && date <= window.end);
+    const isBlocked = date && blocked.some((period) => date >= period.start && date <= period.end);
+    return insideTeaching && !isBlocked;
+  });
+}
+
 function safeDomId(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item";
 }
@@ -985,6 +1115,7 @@ function rangeFromPreset(mode, customStart, customEnd) {
 export default function BookingLab({ setPage, mode = "lab" }) {
   const isLaunchMode = mode === "launch"
     || (typeof window !== "undefined" && window.location.pathname.replace(/\/$/, "") === "/launch-booking");
+  const launchRequestedSchool = isLaunchMode ? requestedLaunchSchool() : "";
   const didMountCheckoutRef = useRef(false);
   const launchStateCheckedRef = useRef(false);
   const [labView, setLabView] = useState("Parent");
@@ -1004,7 +1135,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     return Array.isArray(saved) && saved.length ? saved : defaultFamilyAccounts;
   });
   const [activeFamilyId, setActiveFamilyId] = useState(() => readJson("apres-booking-lab-active-family-id", isLaunchMode ? "" : "family-demo"));
-  const [selectedSchool, setSelectedSchool] = useState(() => (labSessions.find((session) => session.id === defaultBookingSessionId) || labSessions[0]).site);
+  const [selectedSchool, setSelectedSchool] = useState(() => (labSessions.find((session) => session.id === requestedLaunchSessionId()) || labSessions[0]).site);
   const [showLaunchSchoolList, setShowLaunchSchoolList] = useState(false);
   const [careType, setCareType] = useState("Wraparound");
   const [area, setArea] = useState("All");
@@ -1033,22 +1164,44 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [approvalReason, setApprovalReason] = useState("Operational correction");
   const [notificationFilter, setNotificationFilter] = useState("All");
   const [invoiceFilter, setInvoiceFilter] = useState("All");
+  const [launchAccountSection, setLaunchAccountSection] = useState(() => {
+    if (typeof window === "undefined") return "Overview";
+    return new URLSearchParams(window.location.search).get("account") === "payments" ? "Payments" : "Overview";
+  });
+  const [launchAccountMenuOpen, setLaunchAccountMenuOpen] = useState(false);
+  const [parentBadgeBook, setParentBadgeBook] = useState({ rewards: [], total: 0 });
+  const [parentBadgeBookLoading, setParentBadgeBookLoading] = useState(false);
+  const [parentBadgeBookError, setParentBadgeBookError] = useState("");
+  const [parentBadgeFilter, setParentBadgeFilter] = useState("all");
+  const [parentBadgeChildFilter, setParentBadgeChildFilter] = useState("all");
+  const [launchFinanceSection, setLaunchFinanceSection] = useState("Overview");
+  const [launchAccountTerms, setLaunchAccountTerms] = useState({ terms: false, privacy: false });
+  const [launchAccountTermsBusy, setLaunchAccountTermsBusy] = useState(false);
+  const [parentContactDraft, setParentContactDraft] = useState({ fullName: "", email: "", phone: "", currentPassword: "" });
+  const [parentContactBusy, setParentContactBusy] = useState(false);
+  const [parentContactMessage, setParentContactMessage] = useState("");
+  const [parentPasswordDraft, setParentPasswordDraft] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [parentPasswordBusy, setParentPasswordBusy] = useState(false);
+  const [parentPasswordMessage, setParentPasswordMessage] = useState("");
   const [staffingSessionId, setStaffingSessionId] = useState(defaultBookingSessionId);
   const [capacitySessionId, setCapacitySessionId] = useState(defaultBookingSessionId);
   const [activeTemplateId, setActiveTemplateId] = useState(defaultMessageTemplates[0].id);
-  const [activeId, setActiveId] = useState(defaultBookingSessionId);
+  const [activeId, setActiveId] = useState(() => requestedLaunchSessionId());
   const [pilotSessionId, setPilotSessionId] = useState(defaultBookingSessionId);
   const [selectedDays, setSelectedDays] = useState(() => {
     const defaultSession = labSessions.find((session) => session.id === defaultBookingSessionId) || labSessions[0];
-    return { [defaultBookingSessionId]: [defaultSession.days[0] || autumnTermLaunchDays()[0]] };
+    const defaultDay = defaultSession.days[0];
+    return defaultDay ? { [defaultBookingSessionId]: [defaultDay] } : {};
   });
   const [selectedDayBlocks, setSelectedDayBlocks] = useState(() => {
     const defaultSession = labSessions.find((session) => session.id === defaultBookingSessionId) || labSessions[0];
-    const defaultDay = defaultSession.days[0] || autumnTermLaunchDays()[0];
+    const defaultDay = defaultSession.days[0];
     return defaultDay ? { [`${defaultBookingSessionId}::${defaultDay}`]: normaliseSessionBlocks(defaultSession).map((block) => block.key) } : {};
   });
   const [selectedChildIds, setSelectedChildIds] = useState(() => (isLaunchMode ? [] : [labChildProfiles[0].id]));
   const [guestChildren, setGuestChildren] = useState([]);
+  const [draftBookingBasket, setDraftBookingBasket] = useState([]);
+  const [editingBasketGroupId, setEditingBasketGroupId] = useState("");
   const [savedQuotes, setSavedQuotes] = useState(() => readJson("apres-booking-lab-saved-quotes", []));
   const [guestName, setGuestName] = useState("");
   const [bookingMode, setBookingMode] = useState("Ad-hoc");
@@ -1065,6 +1218,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [expandedDateMonths, setExpandedDateMonths] = useState({});
   const [selectedAddOns, setSelectedAddOns] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState("card");
+  const [useAccountCredit, setUseAccountCredit] = useState(false);
   const [paymentPlan, setPaymentPlan] = useState("Pay now");
   const [parentPaymentCheckout, setParentPaymentCheckout] = useState(null);
   const [paymentReturnNotice, setPaymentReturnNotice] = useState(null);
@@ -1087,6 +1241,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [parentLogin, setParentLogin] = useState({ username: "", password: "" });
   const [parentPasswordReset, setParentPasswordReset] = useState({
     open: false,
+    forced: false,
     step: "request",
     email: "",
     code: "",
@@ -1099,7 +1254,17 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [childRegistration, setChildRegistration] = useState(() => (isLaunchMode ? defaultChildRegistration : readJson("apres-child-registration-draft", defaultChildRegistration)));
   const [childRegistrationStep, setChildRegistrationStep] = useState("Basics");
   const [launchChildRegistrationOpen, setLaunchChildRegistrationOpen] = useState(false);
+  const [launchBookingActive, setLaunchBookingActive] = useState(false);
+  const [launchFamilyChildTab, setLaunchFamilyChildTab] = useState("Overview");
+  const [launchFamilyChildId, setLaunchFamilyChildId] = useState("");
+  const [launchFamilyEditor, setLaunchFamilyEditor] = useState("");
+  const [launchEmergencyContactsEditorOpen, setLaunchEmergencyContactsEditorOpen] = useState(false);
+  const [launchEmergencyContactsDraft, setLaunchEmergencyContactsDraft] = useState([]);
   const [launchChildSavedNotice, setLaunchChildSavedNotice] = useState("");
+  const [launchArchiveAction, setLaunchArchiveAction] = useState(null);
+  const [launchArchiveConfirmed, setLaunchArchiveConfirmed] = useState(false);
+  const [launchArchiveBusy, setLaunchArchiveBusy] = useState(false);
+  const [launchArchiveError, setLaunchArchiveError] = useState("");
   const [launchAccountSessionEmail, setLaunchAccountSessionEmail] = useState(() => (isLaunchMode ? normaliseEmailAddress(readJson("apres-launch-account-session-email", "")) : ""));
   const [launchChildSavedProfile, setLaunchChildSavedProfile] = useState(null);
   const [launchChildConfirmedForBooking, setLaunchChildConfirmedForBooking] = useState(false);
@@ -1110,15 +1275,22 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [liveParentLedger, setLiveParentLedger] = useState({
     invoices: [],
     bookings: [],
+    creditEntries: [],
+    creditBalance: 0,
     fetchedAt: "",
     loading: false,
     error: "",
   });
+  const [creditTopUpOpen, setCreditTopUpOpen] = useState(false);
+  const [creditTopUpAmount, setCreditTopUpAmount] = useState("50");
+  const [creditTopUpBusy, setCreditTopUpBusy] = useState(false);
+  const [creditTopUpError, setCreditTopUpError] = useState("");
   const [liveFinanceActions, setLiveFinanceActions] = useState(() => readJson("apres-booking-lab-live-finance-actions", {}));
   const [liveFinanceActionPending, setLiveFinanceActionPending] = useState({});
   const [launchParentPortalOpen, setLaunchParentPortalOpen] = useState(false);
   const [cancellationReview, setCancellationReview] = useState(null);
   const [cancellationSubmitting, setCancellationSubmitting] = useState(false);
+  const [adHocCancellationReview, setAdHocCancellationReview] = useState(null);
   const [activePaymentId, setActivePaymentId] = useState("");
   const [activeLaunchExceptionId, setActiveLaunchExceptionId] = useState("");
   const [launchExceptionActions, setLaunchExceptionActions] = useState(() => readJson("apres-booking-lab-launch-exceptions", {}));
@@ -1182,9 +1354,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     return [...saved, ...defaultMessageTemplates.filter((template) => !savedIds.has(template.id))];
   });
   const [registerEvents, setRegisterEvents] = useState(() => readJson("apres-booking-lab-register", {}));
+  const [liveStaffRegister, setLiveStaffRegister] = useState({ rows: [], loading: false, error: "", loadedKey: "" });
+  const [registerRefreshVersion, setRegisterRefreshVersion] = useState(0);
   const [messageLog, setMessageLog] = useState(() => readJson("apres-booking-lab-messages", []));
   const [incidentDrafts, setIncidentDrafts] = useState({});
   const [registerMode, setRegisterMode] = useState("Cards");
+  const [registerSearch, setRegisterSearch] = useState("");
+  const [registerSessionFilter, setRegisterSessionFilter] = useState("All sessions");
+  const [registerFireDrillMode, setRegisterFireDrillMode] = useState(false);
   const [registerAddChildId, setRegisterAddChildId] = useState(labChildProfiles[0]?.id || "");
   const [collectorChecks, setCollectorChecks] = useState({});
   const [collectionWarnings, setCollectionWarnings] = useState({});
@@ -1211,6 +1388,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentCheckoutOpen(false);
     setConfirmation(null);
     setLaunchParentPortalOpen(false);
+    setLaunchBookingActive(false);
     setBookingMode("Ad-hoc");
     setDatePickerMode("All");
     setLaunchFlowStep("Choices");
@@ -1243,10 +1421,29 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const activeFamilyAccountRole = familyAccountRoleForEmail(activeFamily, launchParentEmail || activeFamily.email);
   const activeFamilyIsPrimaryAccountHolder = !isLaunchMode || !launchParentEmail || activeFamilyAccountRole === "primary";
   const launchFamilyName = isLaunchMode ? "Your account" : activeFamily.parentName;
-  const launchFamilyContact = isLaunchMode ? "Saved email · saved phone" : `${activeFamily.email} · ${activeFamily.phone || "No phone recorded"}`;
+  const launchFamilyContact = isLaunchMode ? "Contact details saved" : `${activeFamily.email} · ${activeFamily.phone || "No phone recorded"}`;
   const activeNotificationPreferences = { ...defaultNotificationPreferences, ...(activeFamily.notificationPreferences || {}) };
+  useEffect(() => {
+    const preferences = activeFamily.marketingPreferences || {};
+    setLaunchAccountTerms({
+      terms: Boolean(preferences.termsAcceptedAt || preferences.termsAccepted),
+      privacy: Boolean(preferences.privacyAcceptedAt || preferences.privacyAccepted),
+    });
+  }, [activeFamily.id, activeFamily.marketingPreferences?.termsAcceptedAt, activeFamily.marketingPreferences?.privacyAcceptedAt]);
+  useEffect(() => {
+    const signedInHolder = activeFamilyLinkedAccountHolders.find((holder) => normaliseEmailAddress(holder.email) === launchParentEmail);
+    setParentContactDraft({
+      fullName: signedInHolder?.fullName || activeFamily.parentName || "",
+      email: launchParentEmail || signedInHolder?.email || activeFamily.email || "",
+      phone: activeFamilyIsPrimaryAccountHolder ? activeFamily.phone || "" : "",
+      currentPassword: "",
+    });
+    setParentContactMessage("");
+    setParentPasswordDraft({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    setParentPasswordMessage("");
+  }, [activeFamily.id, activeFamily.parentName, activeFamily.email, activeFamily.phone, launchParentEmail, activeFamilyIsPrimaryAccountHolder]);
   const familyNotificationPreferenceRows = [
-    ["Payment reminders", activeNotificationPreferences.paymentReminders, "Payment plans, voucher/TFC references and failed mandates"],
+    ["Payment reminders", activeNotificationPreferences.paymentReminders, "Payment plans, childcare references and payment issues"],
     ["Invoices", activeNotificationPreferences.invoices, "Invoices, receipts and outstanding balance updates"],
     ["Care notes", activeNotificationPreferences.careNotes, "Medical, incident and register follow-up messages"],
     ["Booking changes", activeNotificationPreferences.bookingChanges, "Confirmations, amendments, cancellations and waitlist offers"],
@@ -1291,7 +1488,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const launchChildFormOpen = launchChildRegistrationOpen;
   const launchChildReviewOpen = launchChildReviewRequested && !launchChildFormOpen;
   const launchGateReady = !isLaunchMode || (launchAccountCanBook && launchHasBookingChild && !launchChildRegistrationOpen && !launchChildReviewOpen);
-  const launchBookingShellOpen = !isLaunchMode || launchAccountCanBook;
+  const launchBookingShellOpen = !isLaunchMode || (launchAccountCanBook && launchBookingActive);
   const launchShowRegistrationGate = isLaunchMode && (launchNeedsAccount || launchChildFormOpen || launchChildReviewOpen);
   const parentRegistrationSchools = schoolOptions.length ? schoolOptions : ["King's House School", "Ripley Court", "Shrewsbury House School", "The Rowans School", "Willington Prep"].sort();
   const careOptionsForSchool = [...new Set(sessions.filter((session) => session.site === selectedSchool).map((session) => session.type))];
@@ -1308,13 +1505,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const validKeys = new Set(blocks.map((block) => block.key));
     const stored = selectedDayBlocks[`${session.id}::${day}`];
     const filtered = Array.isArray(stored) ? stored.filter((key) => validKeys.has(key)) : [];
-    return filtered.length ? filtered : blocks.map((block) => block.key);
+    if (Array.isArray(stored)) return filtered;
+    return isLaunchMode ? [] : blocks.map((block) => block.key);
   };
   const daysForSession = (session) => {
     const importedDays = launchDateImports[session.id]?.days;
-    if (Array.isArray(importedDays) && importedDays.length) return importedDays;
-    if (session.academicYear === "2026/27") return session.days;
-    return session.type === "Wraparound" ? autumnTermLaunchDays() : session.days;
+    const proposedDays = Array.isArray(importedDays) && importedDays.length
+      ? importedDays
+      : session.days;
+    return canonicalSessionDays(session, proposedDays);
   };
   const activeSessionDays = daysForSession(activeSession);
   const launchSchoolChoices = schoolOptions.map((site) => {
@@ -1374,7 +1573,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const pickedDays = (selectedDays[activeSession.id] || []).filter((day) => bookableDaySet.has(day));
   const pickedDayRows = bookableSessionDays.filter((row) => pickedDays.includes(row.day));
   const selectedBlockCount = pickedDayRows.reduce((sum, row) => sum + row.selectedBlocks.length, 0);
-  const realBookingCandidateBlocks = pickedDayRows.flatMap((row) => row.selectedBlocks.map((block) => ({ row, block })));
+  const realBookingCandidateBlocks = isLaunchMode && parentCheckoutOpen && draftBookingBasket.length
+    ? draftBookingBasket.map((item) => ({
+        row: { day: item.day },
+        block: { id: item.sessionBlockId, key: item.blockKey, label: item.sessionLabel },
+      }))
+    : pickedDayRows.flatMap((row) => row.selectedBlocks.map((block) => ({ row, block })));
   const realBookingMapped = realBookingCandidateBlocks.length > 0 && realBookingCandidateBlocks.every(({ row, block }) => {
     const blockId = sessionBlockIdForBooking(block);
     return isUuid(blockId) || Boolean(activeSession.id && labDayIso(row.day) && (block.label || block.key));
@@ -1417,11 +1621,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ? focusedReviewMonthGroups
       : dateMonthGroups;
   const activeLaunchMonth = dateMonthGroups[boundedLaunchMonthIndex];
-  const halfTermCutoff = new Date("2026-10-23T12:00:00");
+  const calendarKey = activeSession.academicYear === "2026/27" ? schoolCalendarKeyForSite(activeSession.site) : null;
+  const calendarBookingGroups = calendarKey ? bookingGroups(calendarKey) : null;
+  const todayIso = isoDate(new Date());
+  const firstBookableIso = bookableSessionDays
+    .map((row) => labDayIso(row.day))
+    .find((date) => date >= todayIso)
+    || labDayIso(bookableSessionDays[0]?.day);
+  const activeHalfTermWindow = calendarBookingGroups?.halfTerms.find((window) =>
+    firstBookableIso && firstBookableIso >= window.start && firstBookableIso <= window.end
+  );
+  const activeTermWindow = calendarBookingGroups?.terms.find((window) =>
+    firstBookableIso && firstBookableIso >= window.start && firstBookableIso <= window.end
+  );
   const halfTermDays = bookableSessionDays
     .filter((row) => {
-      const parsed = parseLabDay(row.day);
-      return parsed && parsed <= halfTermCutoff;
+      const iso = labDayIso(row.day);
+      return activeHalfTermWindow && iso >= activeHalfTermWindow.start && iso <= activeHalfTermWindow.end;
     })
     .map((row) => row.day);
   const previewChildCount = Math.max(1, selectedChildIds.length + guestChildren.length);
@@ -1439,16 +1655,30 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     };
   };
   const openDays = bookableSessionDays.map((row) => row.day);
+  const termDays = bookableSessionDays
+    .filter((row) => {
+      const iso = labDayIso(row.day);
+      return activeTermWindow && iso >= activeTermWindow.start && iso <= activeTermWindow.end;
+    })
+    .map((row) => row.day);
+  const schoolYearDays = bookableSessionDays
+    .filter((row) => {
+      const iso = labDayIso(row.day);
+      return calendarBookingGroups?.halfTerms.some((window) => iso >= window.start && iso <= window.end);
+    })
+    .map((row) => row.day);
   const regularRangeDays = bookingMode === "Half term"
-    ? (halfTermDays.length ? halfTermDays : openDays.slice(0, Math.ceil(openDays.length / 2)))
-    : bookingMode === "Full term" || bookingMode === "Full year"
-      ? openDays
+    ? halfTermDays
+    : bookingMode === "Full term"
+      ? termDays
+      : bookingMode === "Full year"
+      ? schoolYearDays
       : [];
   const regularWeekdayOptions = ["Mon", "Tue", "Wed", "Thu", "Fri"].filter((weekday) => openDays.some((day) => day.startsWith(weekday)));
   const regularSelectedWeekdays = (regularWeekdays.length ? regularWeekdays : regularWeekdayOptions).filter((weekday) => regularWeekdayOptions.includes(weekday));
   const regularSelectedBlockKeys = (regularBlockKeys.length ? regularBlockKeys : activeBlockKeys).filter((key) => activeBlockKeys.includes(key));
   const regularGeneratedDays = regularRangeDays.filter((day) => regularSelectedWeekdays.some((weekday) => day.startsWith(weekday)));
-  const halfTermPresetDays = halfTermDays.length ? halfTermDays : openDays.slice(0, Math.ceil(openDays.length / 2));
+  const halfTermPresetDays = halfTermDays;
   const flexiblePresetPreview = {
     days: pickedDays.length,
     blocks: selectedBlockCount || pickedDays.length,
@@ -1457,23 +1687,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     total: pickedDayRows.reduce((sum, row) => sum + Number(row.price || 0) * previewChildCount, 0),
   };
   const bookingRangePresets = [
-    { mode: "Ad-hoc", title: "This month", label: "Choose days yourself", detail: bookingMode === "Ad-hoc" && pickedDays.length ? `${selectedBlockCount || pickedDays.length} selected` : "Pick exact dates", preview: flexiblePresetPreview, emphasis: "primary" },
-    { mode: "Half term", title: "Half term", label: "Same days weekly", detail: `${halfTermPresetDays.length} dates`, preview: rangePreviewForDays(halfTermPresetDays), emphasis: "shortcut" },
-    { mode: "Full term", title: "Full term", label: "Same days weekly", detail: `${openDays.length} dates`, preview: rangePreviewForDays(openDays), emphasis: "shortcut" },
-    { mode: "Full year", title: "School year", label: "Same days weekly", detail: `${openDays.length} dates`, preview: rangePreviewForDays(openDays), emphasis: "shortcut" },
+    { mode: "Ad-hoc", title: "Choose a month", label: "Manual", detail: activeLaunchMonth?.month || "Pick exact dates", preview: flexiblePresetPreview, emphasis: "primary" },
+    { mode: "Half term", title: "Half term", label: "Same days weekly", detail: halfTermPresetDays.length ? `${halfTermPresetDays.length} dates` : "Calendar unavailable", preview: rangePreviewForDays(halfTermPresetDays), emphasis: "shortcut", disabled: !halfTermPresetDays.length },
+    { mode: "Full term", title: "Full term", label: "Same days weekly", detail: termDays.length ? `${termDays.length} dates` : "Calendar unavailable", preview: rangePreviewForDays(termDays), emphasis: "shortcut", disabled: !termDays.length },
+    { mode: "Full year", title: "School year", label: "Same days weekly", detail: schoolYearDays.length ? `${schoolYearDays.length} dates` : "Calendar unavailable", preview: rangePreviewForDays(schoolYearDays), emphasis: "shortcut", disabled: !schoolYearDays.length },
   ];
   const visibleBookingRangePresets = parentGuidedBooking ? bookingRangePresets.slice(0, 2) : bookingRangePresets;
   const launchVisibleDayLimit = 6;
   const launchDateImportStatus = activeSessionDays.some((day) => /sep/i.test(day)) ? "September dates loaded" : "Dates loaded";
   const launchPickerModeTitle = bookingMode === "Ad-hoc" ? "Choose the days you need." : "Your weekly pattern is ready.";
   const launchPickerModeCopy = bookingMode === "Ad-hoc"
-    ? "Add a day to include every session. Untick any session you do not need."
+    ? "Open a day, then choose only the sessions you need."
     : "We have selected the matching term dates. You can still remove individual days or sessions before checkout.";
   const launchPickerModeCards = bookingMode === "Ad-hoc"
     ? [
         ["Mode", "Exact dates", "Choose by month"],
         ["View", datePickerMode, datePickerMode === "Selected" ? "Only picked dates" : "All open dates"],
-        ["Next", "Add day", "Untick sessions if needed"],
+        ["Next", "Add day", "Choose sessions individually"],
       ]
     : [
         ["Plan", bookingMode, `${pickedDays.length} day${pickedDays.length === 1 ? "" : "s"}`],
@@ -1481,18 +1711,147 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         ["Sessions", String(regularSelectedBlockKeys.length), "Per selected day"],
       ];
   const [registerDay, setRegisterDay] = useState(activeSessionDays[0]);
+  useEffect(() => {
+    if (!activeSessionDays.includes(registerDay)) setRegisterDay(activeSessionDays[0]);
+  }, [activeSession.id]);
   const selectableChildProfiles = isLaunchMode ? launchBookingChildren : allChildProfiles;
   const matchedSelectedChildren = selectableChildProfiles.filter((child) => selectedChildIds.includes(child.id));
   const selectedChildren = [...matchedSelectedChildren, ...guestChildren];
   const childCount = selectedChildren.length;
+  const liveInvoiceForBooking = new Map((liveParentLedger.invoices || []).map((invoice) => [String(invoice.bookingId || ""), invoice]));
+  const inactiveExistingBookingInvoiceStatuses = new Set([
+    "cancelled",
+    "canceled",
+    "refunded",
+    "reversed",
+    "void",
+    "voided",
+  ]);
+  const activeExistingBookingItems = (liveParentLedger.bookings || []).flatMap((booking) => {
+    if (["cancelled", "draft", "waitlist"].includes(String(booking.status || "").toLowerCase())) return [];
+    const invoice = liveInvoiceForBooking.get(String(booking.id || ""))
+      || (liveParentLedger.invoices || []).find((item) => String(item.id || "") === String(booking.invoiceId || ""));
+    const invoicePaymentStatus = String(invoice?.paymentStatus || "").trim().toLowerCase();
+    // A refund/cancellation can settle the invoice before an older booking row is
+    // updated. The invoice is authoritative here so cancelled sessions become
+    // available again instead of being shown as an active duplicate booking.
+    if (inactiveExistingBookingInvoiceStatuses.has(invoicePaymentStatus)) return [];
+    return (booking.items || []).flatMap((item) => {
+      const itemStatus = String(item.status || "").toLowerCase();
+      if (["cancelled", "no_show", "waitlist"].includes(itemStatus)) return [];
+      if (["confirmed", "attended"].includes(itemStatus)) return [{ booking, invoice, item, state: "booked" }];
+      if (itemStatus !== "reserved") return [];
+      const latestCheckoutExpiry = (invoice?.checkoutSessions || [])
+        .map((session) => new Date(session.expiresAt || 0).getTime())
+        .filter(Number.isFinite)
+        .sort((a, b) => b - a)[0];
+      const fallbackExpiry = new Date(booking.createdAt || 0).getTime() + 30 * 60 * 1000;
+      const paymentSettled = ["paid", "complete", "completed", "succeeded", "settled"].includes(invoicePaymentStatus);
+      if (!paymentSettled && Math.max(latestCheckoutExpiry || 0, fallbackExpiry || 0) <= Date.now()) return [];
+      return [{ booking, invoice, item, state: paymentSettled ? "booked" : "pending" }];
+    });
+  });
+  const existingBookingForSelection = (child, row, block) => {
+    const childId = String(child?.id || "");
+    const childName = String(child?.name || "").trim().toLowerCase();
+    const blockId = String(sessionBlockIdForBooking(block) || "");
+    const sessionDate = labDayIso(row?.day);
+    return activeExistingBookingItems.find(({ item }) => {
+      const itemChildId = String(item.childId || item.child_id || "");
+      const itemChildName = String(bookingItemChildName(item) || "").trim().toLowerCase();
+      const sameChild = (isUuid(childId) && itemChildId === childId) || (!itemChildId && childName && itemChildName === childName);
+      if (!sameChild) return false;
+      const itemBlockId = String(item.sessionBlockId || item.session_block_id || "");
+      if (isUuid(blockId) && itemBlockId === blockId) return true;
+      const metadata = item.metadata || {};
+      const sameDate = bookingItemDate(item) === sessionDate || metadata.labDay === row?.day;
+      const sameBlock = bookingItemLabel(item) === block.label || metadata.labBlockKey === block.key;
+      return sameDate && sameBlock;
+    }) || null;
+  };
+  const bookingEligibilityForChild = (child) => {
+    const selections = pickedDayRows.flatMap((row) => row.selectedBlocks.map((block) => ({
+      row,
+      block,
+      existing: existingBookingForSelection(child, row, block),
+    })));
+    const conflicts = selections.filter((selection) => selection.existing);
+    const available = selections.filter((selection) => !selection.existing);
+    return {
+      total: selections.length,
+      conflicts,
+      available,
+      allBooked: Boolean(selections.length) && !available.length,
+      partiallyBooked: Boolean(conflicts.length && available.length),
+      pending: conflicts.some((selection) => selection.existing?.state === "pending"),
+    };
+  };
+  const childBookingEligibilityById = new Map(selectableChildProfiles.map((child) => [child.id, bookingEligibilityForChild(child)]));
+  const blockedSelectedChildIdsSignature = isLaunchMode
+    ? selectableChildProfiles.filter((child) => childBookingEligibilityById.get(child.id)?.allBooked).map((child) => child.id).sort().join("|")
+    : "";
+  useEffect(() => {
+    if (!blockedSelectedChildIdsSignature) return;
+    const blockedIds = new Set(blockedSelectedChildIdsSignature.split("|").filter(Boolean));
+    setSelectedChildIds((current) => current.filter((childId) => !blockedIds.has(childId)));
+  }, [blockedSelectedChildIdsSignature]);
+  const bookingStateForChildren = (row, block, children) => {
+    const conflicts = children
+      .map((child) => ({ child, existing: existingBookingForSelection(child, row, block) }))
+      .filter((entry) => entry.existing);
+    const conflictIds = new Set(conflicts.map(({ child }) => child.id));
+    return {
+      conflicts,
+      availableChildren: children.filter((child) => !conflictIds.has(child.id)),
+      allBooked: Boolean(children.length) && conflicts.length === children.length,
+      pending: conflicts.some(({ existing }) => existing.state === "pending"),
+    };
+  };
+  const bookingStateForBlock = (row, block) => bookingStateForChildren(row, block, selectedChildren);
+  const pickerBookingStateForBlock = (row, block) => bookingStateForChildren(
+    row,
+    block,
+    isLaunchMode && launchBookingChildren.length ? launchBookingChildren : selectedChildren,
+  );
+  const bookableBookingItemCount = pickedDayRows.reduce((sum, row) => sum + row.selectedBlocks.reduce((blockSum, block) => blockSum + bookingStateForBlock(row, block).availableChildren.length, 0), 0);
+  const hasSavedBookingChildren = selectableChildProfiles.length > 0;
+  const hasChosenBookingChildren = selectedChildren.length > 0;
+  const selectedSessionsAreAlreadyBooked = Boolean(
+    selectedBlockCount
+    && hasChosenBookingChildren
+    && !bookableBookingItemCount,
+  );
+  const launchBookingActionLabel = !selectedBlockCount
+    ? "Choose sessions"
+    : !hasSavedBookingChildren
+      ? "Add a child to continue"
+      : !hasChosenBookingChildren
+        ? "Choose a child"
+        : selectedSessionsAreAlreadyBooked
+          ? "Already booked"
+          : editingBasketGroupId
+            ? "Save basket changes"
+            : "Add to basket";
   const launchSelectedSessionChips = pickedDayRows.slice(0, 4).map((row) => ({
     day: row.day,
     label: row.day.split(",")[0],
     detail: row.selectedBlocks.map((block) => `${block.label || "Session"} ${block.start}-${block.end}`).join(" · ") || row.time,
-    value: money(row.price * childCount),
+    value: money(row.selectedBlocks.reduce((sum, block) => sum + Number(block.price || 0) * bookingStateForBlock(row, block).availableChildren.length, 0)),
+  }));
+  const checkoutSelectionRows = pickedDayRows.flatMap((row) => row.selectedBlocks.map((block) => {
+    const availableChildren = selectedChildren.filter((child) => !existingBookingForSelection(child, row, block));
+    const conflictingChildren = selectedChildren.filter((child) => existingBookingForSelection(child, row, block));
+    return {
+      key: `${row.day}-${block.key}`,
+      day: row.day,
+      session: `${block.label || "Session"} · ${block.start}-${block.end}`,
+      selectedFor: availableChildren.map((child) => child.name),
+      alreadyBookedFor: conflictingChildren.map((child) => child.name),
+    };
   }));
   const availableAddOns = labAddOns.filter((item) => item.appliesTo === "All" || item.appliesTo === activeSession.type);
-  const addOnTotal = pickedDays.length * childCount * availableAddOns
+  const bookableDayChildPairs = pickedDayRows.reduce((sum, row) => sum + selectedChildren.filter((child) => row.selectedBlocks.some((block) => !existingBookingForSelection(child, row, block))).length, 0);
+  const addOnTotal = bookableDayChildPairs * availableAddOns
     .filter((item) => selectedAddOns.includes(item.id))
     .reduce((sum, item) => sum + item.price, 0);
   const draftCountsForCapacity = (draft, sessionId, day) => {
@@ -1518,12 +1877,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   };
   const selectedCapacityRows = pickedDayRows.map((row) => {
     const { booked, remaining } = capacitySnapshotForDay(row.day, row.capacity);
-    const fillAfterBooking = row.capacity ? ((booked + childCount) / row.capacity) * 100 : 100;
-    return { ...row, booked, remaining, fillAfterBooking };
+    const bookingChildCount = Math.max(0, ...row.selectedBlocks.map((block) => bookingStateForBlock(row, block).availableChildren.length));
+    const fillAfterBooking = row.capacity ? ((booked + bookingChildCount) / row.capacity) * 100 : 100;
+    return { ...row, booked, remaining, fillAfterBooking, bookingChildCount };
   });
   const remainingSpaces = selectedCapacityRows.length ? Math.min(...selectedCapacityRows.map((row) => row.remaining)) : 0;
   const capacityPercentAfterBooking = selectedCapacityRows.length ? Math.max(...selectedCapacityRows.map((row) => row.fillAfterBooking)) : 0;
-  const isWaitlist = pickedDays.length ? selectedCapacityRows.some((row) => childCount > row.remaining || row.fillAfterBooking > Number(rules.autoWaitlistAtPercent || 100)) : false;
+  const isWaitlist = pickedDays.length ? selectedCapacityRows.some((row) => row.bookingChildCount > row.remaining || row.fillAfterBooking > Number(rules.autoWaitlistAtPercent || 100)) : false;
   const filteredSessions = sessions.filter((session) => {
     const haystack = `${session.site} ${session.area} ${session.type} ${session.title}`.toLowerCase();
     return session.site === selectedSchool
@@ -1531,7 +1891,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       && (area === "All" || session.area === area)
       && haystack.includes(query.toLowerCase());
   });
-  const subtotal = pickedDayRows.reduce((sum, row) => sum + row.price * childCount, 0);
+  const currentSelectionSubtotal = pickedDayRows.reduce((sum, row) => sum + row.selectedBlocks.reduce((blockSum, block) => blockSum + Number(block.price || 0) * bookingStateForBlock(row, block).availableChildren.length, 0), 0);
+  const basketSubtotal = draftBookingBasket.reduce((sum, item) => sum + Number(item.price || 0), 0);
+  const basketCheckoutActive = isLaunchMode && parentCheckoutOpen && draftBookingBasket.length > 0;
+  const basketChildIds = [...new Set(draftBookingBasket.map((item) => item.childId))];
+  const basketDays = [...new Set(draftBookingBasket.map((item) => item.day))];
+  const subtotal = basketCheckoutActive ? basketSubtotal : currentSelectionSubtotal;
   const selectedPaymentRoutes = [...new Set(pickedDayRows.map((row) => row.paymentRoute))];
   const activePaymentRoute = selectedPaymentRoutes.length === 1 ? selectedPaymentRoutes[0] : selectedPaymentRoutes.length ? "Mixed PonchoPay routes" : (activeSession.paymentRoute || "PonchoPay card + vouchers");
   const parentPaymentOptions = activePaymentRoute === "PonchoPay card only"
@@ -1588,10 +1953,18 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       detail: "No card payment is taken at checkout.",
     },
   };
-  const siblingDiscount = childCount > 1 ? subtotal * (Number(rules.siblingDiscountPercent || 0) / 100) : 0;
-  const weeklyDiscount = pickedDays.length >= 4 ? subtotal * (Number(rules.fullWeekDiscountPercent || 0) / 100) : 0;
+  const pricingChildCount = basketCheckoutActive ? basketChildIds.length : childCount;
+  const pricingDayCount = basketCheckoutActive ? basketDays.length : pickedDays.length;
+  const siblingDiscount = pricingChildCount > 1 ? subtotal * (Number(rules.siblingDiscountPercent || 0) / 100) : 0;
+  const weeklyDiscount = pricingDayCount >= 4 ? subtotal * (Number(rules.fullWeekDiscountPercent || 0) / 100) : 0;
   const promoDiscount = promoCode.trim().toUpperCase() === String(rules.promoCode || "").toUpperCase() ? (subtotal + addOnTotal) * (Number(rules.promoDiscountPercent || 0) / 100) : 0;
   const total = Math.max(0, subtotal + addOnTotal - siblingDiscount - weeklyDiscount - promoDiscount);
+  const draftBasketSiblingDiscount = basketChildIds.length > 1 ? basketSubtotal * (Number(rules.siblingDiscountPercent || 0) / 100) : 0;
+  const draftBasketWeeklyDiscount = basketDays.length >= 4 ? basketSubtotal * (Number(rules.fullWeekDiscountPercent || 0) / 100) : 0;
+  const draftBasketPromoDiscount = promoCode.trim().toUpperCase() === String(rules.promoCode || "").toUpperCase()
+    ? basketSubtotal * (Number(rules.promoDiscountPercent || 0) / 100)
+    : 0;
+  const draftBasketTotal = Math.max(0, basketSubtotal - draftBasketSiblingDiscount - draftBasketWeeklyDiscount - draftBasketPromoDiscount);
   const paymentPlanMinimum = Math.max(0, Number(rules.paymentPlanMinTotal ?? defaultLabRules.paymentPlanMinTotal));
   const paymentPlanMaxInstallments = Math.max(2, Number(rules.paymentPlanMaxInstallments ?? defaultLabRules.paymentPlanMaxInstallments));
   const paymentPlanDepositPercent = Math.min(95, Math.max(0, Number(rules.paymentPlanDepositPercent ?? defaultLabRules.paymentPlanDepositPercent)));
@@ -1605,8 +1978,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       : effectivePaymentMethod === "voucher"
         ? rules.paymentPlanAllowVoucher !== false
         : false;
-  const monthlyPlanAvailable = pickedDays.length >= 2 && total >= paymentPlanMinimum && paymentPlanRouteAllowed;
-  const activePaymentPlan = monthlyPlanAvailable ? paymentPlan : "Pay now";
+  const monthlyPlanAvailable = false;
+  const activePaymentPlan = "Pay now";
   const suggestedMonthlyInstallmentCount = total >= 250 || pickedDays.length >= 8 ? 6 : total >= 120 || pickedDays.length >= 4 ? 4 : 3;
   const monthlyInstallmentCount = Math.min(paymentPlanMaxInstallments, suggestedMonthlyInstallmentCount);
   const monthlyPaymentSchedule = activePaymentPlan === "Monthly"
@@ -1615,13 +1988,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const monthlyScheduleSummary = monthlyPaymentSchedule.length
     ? `${monthlyPaymentSchedule.length} instalments from ${monthlyPaymentSchedule[0].label}`
     : "Pay in full at confirmation";
-  const paymentPlanUnavailableReason = pickedDays.length < 2
-    ? "Choose at least two days to split the booking."
-    : total < paymentPlanMinimum
-      ? `Monthly plans start from ${money(paymentPlanMinimum)}.`
-      : !paymentPlanRouteAllowed
-        ? "This payment route is switched off for monthly plans."
-        : "Monthly plans are available for this booking.";
+  const paymentPlanUnavailableReason = "Monthly payments are currently unavailable.";
   function buildBookingComparisonOption(session, label) {
     const sessionRows = session.days.map((day) => {
       const override = setupDayOverrides[`${session.id}-${day}`] || {};
@@ -3476,20 +3843,60 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     .flatMap((draft) => draft.creditEvents || [])
     .filter((event) => !["Refunded", "Applied", "Voided"].includes(event.status))
     .reduce((sum, event) => sum + Number(event.amount || 0), 0);
+  const liveFamilyCreditBalance = Math.max(0, Number(liveParentLedger.creditBalance || 0));
+  const liveCreditLedgerLoaded = Boolean(liveParentLedger.fetchedAt);
+  const displayedFamilyCreditBalance = parentAccountMode === "live" && liveCreditLedgerLoaded
+    ? liveFamilyCreditBalance
+    : familyCreditBalance;
+  const dueTodayAmount = activePaymentPlan === "Monthly" ? Number(monthlyPaymentSchedule[0]?.amount || 0) : total;
+  const availableAccountCreditAmount = isLaunchMode && parentAccountMode === "live"
+    ? Math.min(displayedFamilyCreditBalance, dueTodayAmount)
+    : 0;
+  const accountCreditPreview = isLaunchMode && parentAccountMode === "live" && useAccountCredit
+    ? availableAccountCreditAmount
+    : 0;
+  const payableTodayAmount = Math.max(0, dueTodayAmount - accountCreditPreview);
+  const remainingPlanBalance = Math.max(0, total - dueTodayAmount);
+  const familyCreditNeedsReconciliation = parentAccountMode === "live"
+    && displayedFamilyCreditBalance > 0
+    && (liveParentLedger.creditEntries || []).some((entry) => String(entry.metadata?.financeStatus || "").toLowerCase().includes("review"));
   const activeFamilyBookings = familyDrafts.filter((draft) => draft.status !== "Cancelled");
   const parentManagedBookings = familyDrafts.filter((draft) => draft.status !== "Quote" && (bookingBlockRows(draft).length || (draft.cancelledSessions || []).length));
-  const parentBookedSessionRows = parentManagedBookings
+  const draftParentBookedSessionRows = parentManagedBookings
     .flatMap((draft) => {
       const liveInvoice = liveInvoiceForDraft(draft);
       const liveBooking = liveBookingForDraft(draft, liveInvoice);
       const liveBookingId = liveBookingIdForDraft(draft, liveInvoice);
       const liveItems = ((liveBooking?.items || draft.backendItems || [])).filter((item) => activeBookingItemStatus(item.status));
+      const staffAdHoc = Boolean(
+        draft.staffAdHoc
+        || liveBooking?.metadata?.staffAdHoc
+        || liveInvoice?.metadata?.staffAdHoc
+        || liveBooking?.source === "staff_adhoc"
+        || liveItems.some((item) => item.metadata?.staffAdHoc)
+      );
       const activeRows = bookingBlockRows(draft).map((row) => {
       const start = bookingRowStart(row);
       const future = start ? start > new Date() : false;
       const cancelledSession = (draft.cancelledSessions || []).find((item) => item.day === row.day);
       const childMultiplier = Math.max(1, Number(draft.childCount || draft.children?.length || 1));
       const creditAmount = Math.max(0, Number(row.price || 0) * childMultiplier);
+      const livePaidBalance = Math.max(0, Number(liveInvoice?.paidAmount || 0) - Number(liveInvoice?.refundedAmount || 0));
+      const liveInvoiceTotal = Math.max(0, Number(liveInvoice?.totalAmount || 0));
+      const postedCreditAmount = (liveParentLedger.creditEntries || [])
+        .filter((entry) => entry.status === "posted")
+        .filter((entry) => String(entry.bookingId || "") === String(liveBookingId || "") || String(entry.invoiceId || "") === String(liveInvoice?.id || ""))
+        .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+      const netPostedCreditAmount = Math.max(0, postedCreditAmount);
+      const paymentRefunded = Number(liveInvoice?.refundedAmount || 0) > 0
+        || /refund/.test(String(liveInvoice?.paymentStatus || "").toLowerCase());
+      const actualCreditAmount = cancelledSession
+        ? netPostedCreditAmount > 0
+          ? Math.min(creditAmount, netPostedCreditAmount)
+          : liveInvoice
+          ? Math.min(creditAmount, Math.max(0, livePaidBalance - liveInvoiceTotal))
+          : Math.max(0, Number(cancelledSession.creditAmount || 0))
+        : 0;
       const rowDate = labDayIso(row.day);
       const rowBlockLabels = row.blocks.map((block) => String(block.label || "").trim()).filter(Boolean);
       const draftChildNames = (draft.children || [draft.childName]).filter(Boolean);
@@ -3513,15 +3920,33 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         row,
         childMultiplier,
         creditAmount,
+        actualCreditAmount,
+        cancellationOutcome: cancelledSession
+          ? actualCreditAmount > 0
+            ? "credit"
+            : paymentRefunded
+              ? "refunded"
+              : "unpaid"
+          : "",
         status: cancelledSession ? "Cancelled" : future ? "Future" : "Past",
         canCancel: future && !cancelledSession && draft.status !== "Cancelled",
         cancelledSession,
         liveBookingId,
         liveItemIds,
-        usesRealApi: realBookingServiceReady && Boolean(liveBookingId && liveItemIds.length),
+        usesRealApi: staffAdHoc
+          ? realBookingServiceReady && Boolean(liveBookingId)
+          : realBookingServiceReady && Boolean(liveBookingId && liveItemIds.length),
+        staffAdHoc,
       };
       });
       const activeDaySet = new Set(activeRows.map((row) => row.day));
+      const postedCreditAmount = (liveParentLedger.creditEntries || [])
+        .filter((entry) => entry.status === "posted")
+        .filter((entry) => String(entry.bookingId || "") === String(liveBookingId || "") || String(entry.invoiceId || "") === String(liveInvoice?.id || ""))
+        .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+      const netPostedCreditAmount = Math.max(0, postedCreditAmount);
+      const paymentRefunded = Number(liveInvoice?.refundedAmount || 0) > 0
+        || /refund/.test(String(liveInvoice?.paymentStatus || "").toLowerCase());
       const cancelledRows = (draft.cancelledSessions || [])
         .filter((item) => item.day && !activeDaySet.has(item.day))
         .map((item) => ({
@@ -3539,12 +3964,99 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           },
           childMultiplier: Math.max(1, Number(draft.childCount || draft.children?.length || 1)),
           creditAmount: Number(item.amount || 0),
+          actualCreditAmount: netPostedCreditAmount > 0
+            ? Math.min(Math.max(0, Number(item.amount || 0)), netPostedCreditAmount)
+            : liveInvoice
+            ? Math.min(
+                Math.max(0, Number(item.amount || 0)),
+                Math.max(0, Number(liveInvoice.paidAmount || 0) - Number(liveInvoice.refundedAmount || 0) - Number(liveInvoice.totalAmount || 0)),
+              )
+            : Math.max(0, Number(item.creditAmount || 0)),
+          cancellationOutcome: netPostedCreditAmount > 0
+            ? "credit"
+            : paymentRefunded
+              ? "refunded"
+              : "unpaid",
           status: "Cancelled",
           canCancel: false,
           cancelledSession: item,
         }));
       return [...activeRows, ...cancelledRows];
     })
+    .sort((a, b) => (a.start?.getTime() || 0) - (b.start?.getTime() || 0));
+  const draftLiveBookingIds = new Set(draftParentBookedSessionRows.map((row) => String(row.liveBookingId || "")).filter(Boolean));
+  const liveOnlyBookedSessionRows = (liveParentLedger.bookings || [])
+    .filter((booking) => !draftLiveBookingIds.has(String(booking.id || "")))
+    .filter((booking) => !["cancelled", "draft", "waitlist"].includes(String(booking.status || "").toLowerCase()))
+    .flatMap((booking) => {
+      const invoice = liveInvoiceByBookingId.get(String(booking.id || ""))
+        || liveInvoiceByInvoiceId.get(String(booking.invoiceId || ""));
+      const bookingReference = booking.bookingReference || booking.booking_reference || "Family booking";
+      const staffAdHoc = Boolean(
+        booking.metadata?.staffAdHoc
+        || invoice?.metadata?.staffAdHoc
+        || booking.source === "staff_adhoc"
+        || (booking.items || []).some((item) => item.metadata?.staffAdHoc)
+      );
+      return (booking.items || [])
+        .filter((item) => activeBookingItemStatus(item.status))
+        .map((item) => {
+          const startsAt = new Date(item.startsAt || item.starts_at || 0);
+          const endsAt = new Date(item.endsAt || item.ends_at || 0);
+          const validStart = !Number.isNaN(startsAt.getTime());
+          const validEnd = !Number.isNaN(endsAt.getTime());
+          const childName = bookingItemChildName(item) || "Child";
+          const sessionLabel = bookingItemLabel(item) || "Care session";
+          const sessionDay = validStart
+            ? startsAt.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" })
+            : "Date saved";
+          const startTime = validStart ? startsAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : "";
+          const endTime = validEnd ? endsAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : "";
+          const amount = Math.max(0, Number(item.unitAmount || item.unit_amount || 0));
+          const future = validStart ? startsAt > new Date() : true;
+          const syntheticDraft = {
+            id: booking.id,
+            realBookingId: booking.id,
+            invoiceId: invoice?.id || booking.invoiceId || "",
+            bookingReference,
+            activity: item.programmeName || item.programme_name || "Care booking",
+            site: item.siteName || item.site_name || "Après School",
+            children: [childName],
+            childName,
+            paymentMethod: booking.paymentMethod || invoice?.metadata?.paymentMethod || "card",
+            paymentLabel: Number(invoice?.balance || 0) > 0 ? "Payment required" : "Payment confirmed",
+            status: Number(invoice?.balance || 0) > 0 ? "Payment pending" : "Confirmed",
+            total: Number(booking.totalAmount || invoice?.totalAmount || amount),
+            staffAdHoc,
+          };
+          return {
+            id: `${booking.id}::${item.id || `${bookingItemDate(item)}-${sessionLabel}-${childName}`}`,
+            draft: syntheticDraft,
+            draftId: booking.id,
+            day: sessionDay,
+            start: validStart ? startsAt : null,
+            future,
+            row: {
+              day: sessionDay,
+              time: [startTime, endTime].filter(Boolean).join("–"),
+              price: amount,
+              blocks: [{ label: sessionLabel, start: startTime, end: endTime, price: amount }],
+            },
+            childMultiplier: 1,
+            creditAmount: amount,
+            actualCreditAmount: 0,
+            cancellationOutcome: "",
+            status: future ? "Future" : "Past",
+            canCancel: staffAdHoc && future,
+            cancelledSession: null,
+            liveBookingId: booking.id,
+            liveItemIds: item.id ? [item.id] : [],
+            usesRealApi: staffAdHoc,
+            staffAdHoc,
+          };
+        });
+    });
+  const parentBookedSessionRows = [...draftParentBookedSessionRows, ...liveOnlyBookedSessionRows]
     .sort((a, b) => (a.start?.getTime() || 0) - (b.start?.getTime() || 0));
   const selectedParentBooking = parentManagedBookings.find((draft) => draft.id === selectedParentBookingId) || parentManagedBookings[0] || null;
   const selectedParentBookingRows = selectedParentBooking
@@ -3626,10 +4138,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             ? "Awaiting PonchoPay confirmation"
             : "Awaiting payment";
     const paymentProofRows = [
-      ["Invoice issued", liveInvoice ? `Live ledger · ${issuedLabel}` : `Portal · ${issuedLabel}`, invoiceMessages.length ? `${invoiceMessages.length} invoice email${invoiceMessages.length === 1 ? "" : "s"}` : "Email ready to send"],
-      ["Payment route", isMonthlyPlan ? "Monthly plan" : methodLabel, liveBooking?.paymentRoute || draft.paymentRoute || "PonchoPay"],
+      ["Invoice issued", isLaunchMode ? issuedLabel : liveInvoice ? `Live ledger · ${issuedLabel}` : `Portal · ${issuedLabel}`, invoiceMessages.length ? `${invoiceMessages.length} invoice email${invoiceMessages.length === 1 ? "" : "s"}` : "Available in your account"],
+      [isLaunchMode ? "Payment method" : "Payment route", isMonthlyPlan ? "Monthly plan" : methodLabel, isLaunchMode ? "Managed securely through PonchoPay" : liveBooking?.paymentRoute || draft.paymentRoute || "PonchoPay"],
       ["Receipt", receiptMessages.length ? "Sent" : isPaid ? "Ready" : isCancelled ? "Not needed" : "Not paid yet", isPaid ? `Reference ${liveInvoice?.providerReference || draft.paymentReference || "portal"}` : isCancelled ? "Booking cancelled" : "Generated after payment"],
-      ["Reconciliation", reconciliationLabel, isCancelled ? "Balance closed by cancellation" : isPaid ? `${paidLabel || "Today"} · parent balance clear` : routeNeedsAutoMatch ? "PonchoPay will match voucher/TFC money automatically" : liveInvoicePending ? "PonchoPay is still confirming the payment status" : "Parent can pay from this portal"],
+      [isLaunchMode ? "Payment status" : "Reconciliation", reconciliationLabel, isCancelled ? "No balance due" : isPaid ? `${paidLabel || "Today"} · balance clear` : routeNeedsAutoMatch ? "PonchoPay will match your payment automatically" : liveInvoicePending ? "PonchoPay is still confirming the payment" : "You can pay securely from this account"],
     ];
     const reconciliationTimeline = [
       ["Invoice", "Created", `Visible in portal · ${issuedLabel}`],
@@ -3710,12 +4222,17 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     .map((invoice) => {
       const booking = liveBookingById.get(String(invoice.bookingId || "")) || {};
       const checkout = latestLiveCheckout(invoice);
+      const isCreditTopUp = Boolean(invoice.metadata?.creditTopUp);
       const statusValue = String(invoice.paymentStatus || "").toLowerCase();
       const settled = Number(invoice.balance || 0) <= 0 || invoice.receiptStatus === "issued" || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(statusValue);
       const failed = ["failed", "cancelled", "mismatch", "payment_failed"].includes(statusValue);
-      const totalDue = Number(invoice.totalAmount || booking.totalAmount || checkout?.amount || 0);
+      const creditApplied = Number(invoice.metadata?.accountCreditApplied || 0);
+      const totalDue = Number(invoice.metadata?.grossBookingTotal || invoice.totalAmount || booking.totalAmount || checkout?.amount || 0);
       const balance = settled ? 0 : Math.max(0, Number(invoice.balance || totalDue || 0));
       const created = invoice.createdAt ? new Date(invoice.createdAt) : new Date();
+      const friendlyReference = isCreditTopUp
+        ? `Credit top-up · ${created.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+        : invoice.providerReference || booking.bookingReference || `Payment · ${created.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
       const dueAt = new Date(created.getTime() + Number(rules.paymentDueHours || 24) * 60 * 60 * 1000);
       const firstItem = (booking.items || [])[0] || {};
       const method = booking.paymentMethod || checkout?.paymentMethod || invoice.metadata?.paymentMethod || "card";
@@ -3731,10 +4248,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         invoiceId: invoice.id,
         parentEmail: invoice.parentEmail,
         parentName: booking.parentName || invoice.metadata?.parentName || activeFamily.parentName,
-        activity: firstItem.programmeName || invoice.metadata?.activity || "Care booking",
-        site: firstItem.siteName || invoice.metadata?.site || "Booking",
+        activity: invoice.metadata?.creditTopUp ? "Account credit top-up" : firstItem.programmeName || invoice.metadata?.activity || "Care booking",
+        site: invoice.metadata?.creditTopUp ? "Family account" : firstItem.siteName || invoice.metadata?.site || "Booking",
         children: (booking.items || []).map((item) => item.childName).filter(Boolean),
-        childName: firstItem.childName || invoice.metadata?.childName || "Child",
+        childName: invoice.metadata?.creditTopUp ? "Account balance" : firstItem.childName || invoice.metadata?.childName || "Child",
         days: [],
         total: totalDue,
         outstandingBalance: balance,
@@ -3748,6 +4265,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       return {
         id: syntheticDraft.id,
         invoiceNumber: invoice.id,
+        friendlyReference,
+        isCreditTopUp,
         activity: syntheticDraft.activity,
         site: syntheticDraft.site,
         children: syntheticDraft.children?.join(", ") || syntheticDraft.childName,
@@ -3766,7 +4285,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         liveReceiptStatus: invoice.receiptStatus || "",
         liveCheckoutStatus: checkout?.status || "",
         totalDue,
-        creditApplied: 0,
+        creditApplied,
         creditOpen: 0,
         scheduledPaid: Number(invoice.paidAmount || 0),
         paymentSchedule: [],
@@ -3785,10 +4304,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           status: receipt.deliveryStatus || "Issued",
         })),
         paymentProofRows: [
-          ["Invoice issued", "Live ledger", "Pulled from Supabase after PonchoPay return"],
-          ["Payment route", methodLabel, syntheticDraft.paymentRoute],
+          ["Invoice issued", "Available in your account", "Updated after your PonchoPay visit"],
+          ["Payment method", methodLabel, "Managed securely through PonchoPay"],
           ["Receipt", settled ? "Ready" : "Not paid yet", settled ? `Reference ${invoice.providerReference || "portal"}` : "Issued after PonchoPay confirms payment"],
-          ["Reconciliation", settled ? "Done" : "Awaiting PonchoPay", balance > 0 ? `${money(balance)} remaining` : "Balance clear"],
+          ["Payment status", settled ? "Complete" : "Being checked", balance > 0 ? `${money(balance)} remaining` : "Balance clear"],
         ],
         reconciliationTimeline: [
           ["Invoice", "Created", "Visible in portal"],
@@ -3802,6 +4321,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     });
   const familyInvoiceRows = [...familyInvoiceRowsFromDrafts, ...liveOnlyInvoiceRows];
   const familyOutstandingInvoices = familyInvoiceRows.filter((row) => row.balance > 0);
+  const familyOutstandingBookingInvoices = familyOutstandingInvoices.filter((row) => !row.isCreditTopUp);
+  const accountDeletionOutstandingTotal = familyOutstandingBookingInvoices.reduce((sum, row) => sum + row.balance, 0);
   const familyPaidInvoiceTotal = familyInvoiceRows.reduce((sum, row) => sum + (row.status === "Paid" ? row.totalDue : 0), 0);
   const familyInvoiceOutstandingTotal = familyOutstandingInvoices.reduce((sum, row) => sum + row.balance, 0);
   const liveLedgerFetchedLabel = liveParentLedger.fetchedAt
@@ -3810,7 +4331,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const liveLedgerMatchedCount = familyInvoiceRows.filter((row) => row.liveInvoice).length;
   const familyPaymentPlanRows = familyInvoiceRows.filter((row) => row.isMonthlyPlan);
   const familyNextInvoicePayment = familyOutstandingInvoices
-    .filter((row) => row.status !== "Paid")
+    .filter((row) => row.status !== "Paid" && !row.isCreditTopUp)
     .sort((a, b) => a.dueAt - b.dueAt || b.balance - a.balance)[0] || null;
   const launchPortalReceiptRow = isLaunchMode && confirmation
     ? familyInvoiceRows.find((row) => row.id === confirmation.id) || null
@@ -3841,7 +4362,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   );
   const resolvedPaymentReturnNotice = paymentReturnNotice ? {
     ...paymentReturnNotice,
-    source: paymentReturnHasLiveAnswer ? "Live Supabase ledger" : "Return URL",
+    source: paymentReturnHasLiveAnswer ? "Account updated" : "Payment return",
     invoiceId: paymentReturnLiveInvoice?.id || paymentReturnLiveRow?.invoiceNumber || paymentReturnNotice.invoiceId,
     state: paymentReturnHasLiveAnswer
       ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
@@ -3852,24 +4373,24 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       : paymentReturnNotice.state,
     title: paymentReturnHasLiveAnswer
       ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
-        ? "Payment confirmed"
+        ? paymentReturnNotice.creditTopUp ? "Credit added to your account" : "Payment confirmed"
         : ["failed", "cancelled", "mismatch", "payment_failed"].includes(paymentReturnLiveStatus)
           ? "Payment needs attention"
           : "Payment is still processing"
       : paymentReturnNotice.title,
     detail: paymentReturnHasLiveAnswer
       ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
-        ? "The live ledger shows this invoice as settled. Your receipt is available in the invoice history below."
+        ? paymentReturnNotice.creditTopUp ? "PonchoPay has confirmed the top-up. Your updated credit balance is shown above." : "Your payment is confirmed and your receipt is available under Payments & credit."
         : ["failed", "cancelled", "mismatch", "payment_failed"].includes(paymentReturnLiveStatus)
-          ? "The live ledger shows the payment has not cleared. You can retry payment from the invoice below."
-          : `The live ledger still shows ${money(paymentReturnLiveBalance || 0)} outstanding while PonchoPay finishes the secure payment or voucher match.`
+          ? "The payment has not cleared. You can retry securely from Payments & credit."
+          : `We’re still checking ${money(paymentReturnLiveBalance || 0)} with PonchoPay. You do not need to pay again while this check is in progress.`
       : paymentReturnNotice.detail,
     action: paymentReturnHasLiveAnswer
       ? paymentReturnLiveBalance <= 0 || paymentReturnReceiptReady || ["paid", "captured", "bank_confirmed", "confirmed", "matched"].includes(paymentReturnLiveStatus)
-        ? "Receipt ready"
+        ? "Booking and receipt ready"
         : ["failed", "cancelled", "mismatch", "payment_failed"].includes(paymentReturnLiveStatus)
           ? "Retry payment"
-          : "Awaiting PonchoPay"
+          : "Payment check in progress"
       : paymentReturnNotice.action,
     liveBalance: paymentReturnLiveBalance,
     liveStatus: paymentReturnLiveInvoice?.parentPortalStatus || paymentReturnLiveInvoice?.paymentStatus || paymentReturnLiveRow?.liveParentPortalStatus || paymentReturnLiveRow?.livePaymentStatus || "",
@@ -3882,6 +4403,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         || String(row.liveInvoice?.bookingId || "") === String(resolvedPaymentReturnNotice.bookingId || "")
       )) || null
     : null;
+  const paymentReturnFriendlyReference = resolvedPaymentReturnNotice?.creditTopUp
+    ? paymentReturnTargetRow?.friendlyReference || "Account credit top-up"
+    : paymentReturnTargetRow?.reference || "Latest payment";
   const launchPortalReceiptCards = launchPortalReceiptRow ? [
     ["Booking", launchPortalReceiptRow.children, `${launchPortalReceiptRow.blockCount || launchPortalReceiptRow.sessionCount} session${(launchPortalReceiptRow.blockCount || launchPortalReceiptRow.sessionCount) === 1 ? "" : "s"} · ${launchPortalReceiptRow.site}`],
     ["Status", launchPortalReceiptRow.status === "Paid" ? "Paid and receipted" : launchPortalReceiptRow.status, launchPortalReceiptRow.balance > 0 ? `${money(launchPortalReceiptRow.balance)} left to pay` : "No balance due"],
@@ -4063,6 +4587,30 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const cancellationMessagePreview = cancellationDraft
     ? `Hi ${cancellationDraft.parentName || activeFamily.parentName || "there"}, your booking for ${cancellationDraft.activity} has been cancelled under the ${rules.cancellationHours}h policy. ${cancellationCreditAmount > 0 ? `Parent credit raised: ${money(cancellationCreditAmount)}.` : "No payment credit was needed."} Sessions removed: ${bookingBlockSummary(cancellationDraft, 3)}.`
     : "";
+  const adHocCancellationBooking = adHocCancellationReview
+    ? (liveParentLedger.bookings || []).find((booking) => String(booking.id || "") === String(adHocCancellationReview.liveBookingId || ""))
+    : null;
+  const adHocCancellationInvoice = adHocCancellationBooking
+    ? liveInvoiceByBookingId.get(String(adHocCancellationBooking.id || ""))
+      || liveInvoiceByInvoiceId.get(String(adHocCancellationBooking.invoiceId || ""))
+    : null;
+  const adHocCancellationCredit = Math.max(
+    0,
+    Number(adHocCancellationInvoice?.metadata?.creditAppliedAtCreation || 0),
+  );
+  const adHocCancellationCharge = Math.max(
+    0,
+    Number(adHocCancellationBooking?.totalAmount || adHocCancellationInvoice?.totalAmount || 0),
+  );
+  const adHocCancellationItems = (adHocCancellationBooking?.items || []).filter((item) => activeBookingItemStatus(item.status));
+  const adHocCancellationChild = bookingItemChildName(adHocCancellationItems[0]) || adHocCancellationReview?.draft?.childName || "your child";
+  const adHocCancellationSessionSummary = adHocCancellationItems.map((item) => {
+    const startsAt = new Date(item.startsAt || item.starts_at || 0);
+    const dateLabel = Number.isNaN(startsAt.getTime())
+      ? "saved date"
+      : startsAt.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" });
+    return `${bookingItemLabel(item) || "Care session"} · ${dateLabel}`;
+  }).join(" · ");
   const amendmentSession = amendment ? sessions.find((session) => session.id === amendment.sessionId) : null;
   const amendmentChildren = amendment?.children || [];
   const amendmentDays = amendment?.days || [];
@@ -4184,7 +4732,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ["Booked days", String(parentBookedSessionRows.length), `${parentFutureSessionCount} future · ${parentCancelledSessionCount} cancelled`],
     ["Upcoming bookings", String(activeFamilyBookings.length), "Active bookings and waitlist requests"],
     ["Outstanding", money(familyInvoiceOutstandingTotal), isLaunchMode ? "Invoices waiting for payment or reference" : "Unpaid, pending or voucher/TFC invoices"],
-    ["Credit balance", money(familyCreditBalance), "Local credit from cancellations or amendments"],
+    ["Credit balance", money(displayedFamilyCreditBalance), familyCreditNeedsReconciliation ? "Recorded credit awaiting final reconciliation" : "Available for a future booking"],
     ["Invoices", String(familyInvoiceRows.length), `${familyOutstandingInvoices.length} awaiting payment`],
     ["Children", String(activeFamily.children?.length || 0), "Saved reusable child records"],
     ["Inbox", String(familyMessages.length), "Local confirmation and follow-up messages"],
@@ -4203,6 +4751,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const previousCheckoutStep = checkoutSteps[Math.max(0, checkoutStepIndex - 1)];
   const checkoutActionLabel = isWaitlist
     ? "Change selection"
+    : accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0
+      ? "Confirm booking with credit"
     : activePaymentPlan === "Monthly"
       ? "Continue to PonchoPay"
       : effectivePaymentMethod === "card"
@@ -4212,6 +4762,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           : "Continue to PonchoPay";
   const checkoutActionSummary = isWaitlist
     ? "One or more selected sessions are full. Choose another date or remove a session before checkout."
+    : accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0
+      ? `${money(accountCreditPreview)} account credit covers this booking. It will confirm without opening PonchoPay.`
     : activePaymentPlan === "Monthly"
       ? isLaunchMode ? "PonchoPay opens securely to set up the payment plan and confirm the booking automatically." : "PonchoPay handles the monthly payment schedule before confirmation."
       : effectivePaymentMethod === "card"
@@ -4223,14 +4775,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             : `PonchoPay opens securely, stores the card guarantee and matches the ${effectivePaymentMethod === "tfc" || effectivePaymentMethod === "tax-free" ? "Tax-Free Childcare" : "voucher"} payment automatically.`;
   const checkoutPaymentHeading = activePaymentPlan === "Monthly"
     ? "Set up monthly payments"
-    : "Choose how to pay";
-  const primaryCheckoutLabel = checkoutStep === "Review"
-    ? isLaunchMode
-      ? checkoutActionLabel
-      : effectivePaymentMethod === "card"
-        ? "Prototype Pay Now"
-        : checkoutActionLabel
-    : `Continue to ${nextCheckoutStep}`;
+    : availableAccountCreditAmount > 0 ? "Use credit or choose how to pay" : "Choose how to pay";
   const campUpsellSession = sessions.find((session) => session.type === "Holiday Camp");
   const showCampUpsell = activeSession.type === "Wraparound" && campUpsellSession && !dismissedCampUpsell;
   const journeySteps = [
@@ -4329,6 +4874,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     if (!isLaunchMode || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    let storedReturnContext = {};
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem("apres-ponchopay-return-context") || "{}");
+      const storedAt = Number(parsed?.storedAt || 0);
+      if (parsed && typeof parsed === "object" && storedAt > Date.now() - (24 * 60 * 60 * 1000)) storedReturnContext = parsed;
+    } catch {
+      storedReturnContext = {};
+    }
     const getReturnParam = (...keys) => {
       for (const key of keys) {
         const value = params.get(key) || hashParams.get(key);
@@ -4344,10 +4897,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         : returnPath.includes("/booking/") || returnPath.includes("/ponchopay/return")
           ? "pending"
           : "";
-    const providerReturnId = getReturnParam("id", "payment_id", "paymentId", "ponchoPaymentId");
-    const reference = getReturnParam("reference", "bookingReference", "booking_reference");
+    const providerReturnId = getReturnParam("id", "payment_id", "paymentId", "ponchoPaymentId") || storedReturnContext.providerReturnId || "";
+    const reference = getReturnParam("reference", "bookingReference", "booking_reference") || storedReturnContext.reference || "";
     const paymentState = getReturnParam("payment", "status", "state") || pathPaymentState || (providerReturnId || reference ? "pending" : "");
-    const invoiceId = getReturnParam("invoice", "invoiceId", "externalInvoiceId");
+    const invoiceId = getReturnParam("invoice", "invoiceId", "externalInvoiceId") || storedReturnContext.invoiceId || "";
+    const creditTopUpReturn = Boolean(storedReturnContext.creditTopUp || String(invoiceId).startsWith("credit_topup_"));
     const handledKey = `${paymentState}:${invoiceId || reference || providerReturnId}`;
     if (!paymentState || paymentReturnNotice?.handledKey === handledKey) return;
 
@@ -4355,7 +4909,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ? drafts.find((draft) => draft.invoiceId === invoiceId || draft.invoiceNumber === invoiceId || draft.ponchoCheckout?.invoiceId === invoiceId)
       : reference
         ? drafts.find((draft) => draft.bookingReference === reference || draft.paymentReference === reference || draft.ponchoCheckout?.providerReference === reference) || drafts[0]
-        : drafts[0];
+        : storedReturnContext.bookingId
+          ? drafts.find((draft) => String(draft.id) === String(storedReturnContext.bookingId)) || drafts[0]
+          : drafts[0];
     const state = paymentState === "complete" || paymentState === "completed"
       ? "complete"
       : paymentState === "cancelled" || paymentState === "failed"
@@ -4365,25 +4921,26 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       handledKey,
       state,
       invoiceId,
+      creditTopUp: creditTopUpReturn,
       bookingId: matchingDraft?.id || "",
       title: state === "complete"
-        ? "Booking confirmed"
+        ? creditTopUpReturn ? "Credit added" : "Booking confirmed"
         : state === "cancelled"
-          ? "Payment was cancelled"
-          : state === "failed"
-            ? "Payment needs another try"
+          ? creditTopUpReturn ? "Credit top-up cancelled" : "Payment was cancelled"
+        : state === "failed"
+            ? creditTopUpReturn ? "Credit top-up needs another try" : "Payment needs another try"
             : providerReturnId || reference
-              ? "Returned from PonchoPay"
-              : "Payment pending with PonchoPay",
+              ? creditTopUpReturn ? "Credit top-up is being checked" : "Returned from PonchoPay"
+              : creditTopUpReturn ? "Credit top-up pending" : "Payment pending with PonchoPay",
       detail: state === "complete"
-        ? "Your payment is complete and your booking is confirmed. We will email your confirmation and receipt shortly."
+        ? creditTopUpReturn ? "Your payment is complete and the credit is now available on your family account." : "Your payment is complete and your booking is confirmed. We will email your confirmation and receipt shortly."
         : state === "cancelled"
-          ? "The booking is still visible. You can retry card payment or choose another available payment route."
+          ? creditTopUpReturn ? "No credit was added and no further action is needed." : "The booking is still visible. You can retry card payment or choose another available payment route."
           : state === "failed"
-            ? "The booking has not been removed. Please retry payment or use a voucher/TFC route if available."
+            ? creditTopUpReturn ? "No credit was added. You can start another secure top-up from your account." : "The booking has not been removed. Please retry payment or use a voucher/TFC route if available."
             : providerReturnId || reference
-              ? "Thanks. We are checking the secure payment result now. Your booking and invoice will update automatically as soon as PonchoPay confirms the final status."
-              : "Your booking is held while PonchoPay completes payment or matches the voucher/TFC reference. The invoice below will update automatically.",
+              ? creditTopUpReturn ? "Thanks. The balance will update automatically as soon as PonchoPay confirms the payment." : "Thanks. We are checking the secure payment result now. Your booking and invoice will update automatically as soon as PonchoPay confirms the final status."
+              : creditTopUpReturn ? "The balance will update automatically after PonchoPay confirms payment." : "Your booking is held while PonchoPay completes payment or matches the voucher/TFC reference. The invoice below will update automatically.",
       action: state === "complete" ? "Receipt on its way" : state === "pending" ? "Waiting for PonchoPay" : "Parent action needed",
       providerReturnId,
       reference,
@@ -4391,6 +4948,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setPaymentReturnNotice(nextNotice);
     setLabView("Parent");
     setLaunchParentPortalOpen(true);
+    setLaunchBookingActive(false);
     setInvoiceFilter(state === "complete" ? "All" : "Outstanding");
 
     if (matchingDraft) {
@@ -4414,13 +4972,44 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     if (realBookingServiceReady) {
       window.setTimeout(() => refreshLiveParentLedger({ quiet: true }), 250);
     }
-    window.setTimeout(() => scrollToFlowSection(".lab-parent-invoice-centre", "start"), 180);
+    if (["complete", "cancelled", "failed"].includes(state)) {
+      window.localStorage.removeItem("apres-ponchopay-return-context");
+    }
+    window.setTimeout(() => scrollToFlowSection(".lab-payment-return-notice", "start"), 180);
     const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
     window.history.replaceState(window.history.state, "", cleanUrl);
   }, [isLaunchMode, drafts, paymentReturnNotice?.handledKey, realBookingServiceReady]);
+  useEffect(() => {
+    if (!isLaunchMode || !parentAccountSignedIn || !realBookingServiceReady || paymentReturnNotice?.state !== "pending") return undefined;
+    let cancelled = false;
+    let attempts = 0;
+    const checkPayment = async () => {
+      attempts += 1;
+      const ledger = await refreshLiveParentLedger({ quiet: true });
+      const targetInvoice = (ledger?.invoices || []).find((invoice) => String(invoice.id) === String(paymentReturnNotice.invoiceId || ""));
+      const settled = targetInvoice && (Number(targetInvoice.balance || 0) <= 0 || targetInvoice.receiptStatus === "issued");
+      if ((settled || attempts >= 10) && !cancelled) window.clearInterval(intervalId);
+    };
+    const intervalId = window.setInterval(checkPayment, 3000);
+    checkPayment();
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [isLaunchMode, parentAccountSignedIn, realBookingServiceReady, paymentReturnNotice?.handledKey, paymentReturnNotice?.invoiceId, paymentReturnNotice?.state]);
+  useEffect(() => {
+    if (!isLaunchMode || resolvedPaymentReturnNotice?.state !== "complete" || typeof window === "undefined") return undefined;
+    window.localStorage.removeItem("apres-ponchopay-return-context");
+    const dismissTimer = window.setTimeout(() => setPaymentReturnNotice(null), 10000);
+    return () => window.clearTimeout(dismissTimer);
+  }, [isLaunchMode, resolvedPaymentReturnNotice?.handledKey, resolvedPaymentReturnNotice?.state]);
+  function dismissPaymentReturnNotice() {
+    if (typeof window !== "undefined") window.localStorage.removeItem("apres-ponchopay-return-context");
+    setPaymentReturnNotice(null);
+  }
   async function refreshLiveParentLedger({ quiet = false } = {}) {
     if (!realBookingServiceReady) {
-      if (!quiet) setStatus("Connect Supabase before refreshing live parent invoices.");
+      if (!quiet) setStatus("Account information is temporarily unavailable. Please try again shortly.");
       return null;
     }
     setLiveParentLedger((current) => ({ ...current, loading: true, error: "" }));
@@ -4429,19 +5018,50 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       setLiveParentLedger({
         invoices: ledger.invoices || [],
         bookings: ledger.bookings || [],
+        creditEntries: ledger.creditEntries || [],
+        creditBalance: Number(ledger.creditBalance || 0),
         fetchedAt: ledger.fetchedAt || new Date().toISOString(),
         loading: false,
         error: "",
       });
       if (!quiet) {
-        setStatus(`Live parent ledger refreshed: ${(ledger.invoices || []).length} invoice${(ledger.invoices || []).length === 1 ? "" : "s"}.`);
+        setStatus("Your account is up to date.");
       }
       return ledger;
     } catch (error) {
-      const message = error?.message || "Could not fetch live parent invoices.";
+      const message = isLaunchMode ? "We could not refresh your account. Please try again." : error?.message || "Could not fetch live parent invoices.";
       setLiveParentLedger((current) => ({ ...current, loading: false, error: message }));
       if (!quiet) setStatus(message);
       return null;
+    }
+  }
+
+  async function submitCreditTopUp(event) {
+    event.preventDefault();
+    const amount = Math.round(Number(creditTopUpAmount) * 100) / 100;
+    if (!Number.isFinite(amount) || amount < 5 || amount > 500) {
+      setCreditTopUpError("Choose an amount between £5 and £500.");
+      return;
+    }
+    setCreditTopUpBusy(true);
+    setCreditTopUpError("");
+    try {
+      const result = await createParentCreditTopUp({
+        amount,
+        siteName: activeFamily.children?.[0]?.school || "Willington Prep",
+      });
+      const checkout = result?.checkout || {};
+      if (!checkout.checkoutUrl) throw new Error(checkout.message || "PonchoPay did not return a secure payment link.");
+      setCreditTopUpOpen(false);
+      openPonchoCheckoutWindow(checkout.checkoutUrl, {
+        invoiceId: result.invoiceId,
+        reference: checkout.providerReference || result.invoiceId,
+        creditTopUp: true,
+      });
+    } catch (error) {
+      setCreditTopUpError(error?.message || "Unable to start the credit top-up.");
+    } finally {
+      setCreditTopUpBusy(false);
     }
   }
 
@@ -4451,12 +5071,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentLogin({ username: "", password: "" });
     setLaunchAccountSessionEmail("");
     setSelectedChildIds([]);
-    setLiveParentLedger({ invoices: [], bookings: [], fetchedAt: "", loading: false, error: "" });
+    setLiveParentLedger({ invoices: [], bookings: [], creditEntries: [], creditBalance: 0, fetchedAt: "", loading: false, error: "" });
     localStorage.setItem("apres-parent-account-signed-in", "false");
     localStorage.setItem("apres-parent-account-mode", JSON.stringify(isLaunchMode ? "live" : "demo"));
     localStorage.removeItem("apres-launch-account-session-email");
     if (isLaunchMode) {
       setLaunchParentPortalOpen(false);
+      setLaunchBookingActive(false);
       setConfirmation(null);
     }
     if (message) setStatus(message);
@@ -4467,10 +5088,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     let cancelled = false;
 
     getParentAuthSession()
-      .then((session) => {
+      .then(async (session) => {
         if (cancelled) return null;
         if (!session?.user) {
           if (isLaunchMode) clearLaunchParentSession();
+          return null;
+        }
+        const profile = await fetchCurrentProfile();
+        if (profile?.must_change_password) {
+          await signOutRealParentAccount();
+          if (!cancelled) await requireParentPasswordChange(profile.email || session.user.email || "");
           return null;
         }
         return fetchParentAccount();
@@ -4482,7 +5109,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         setParentAccountMode("live");
         setParentLogin((current) => ({ ...current, username: account.email || current.username }));
         setLaunchAccountSessionEmail(normaliseEmailAddress(account.email || ""));
-        if (isLaunchMode) setLaunchParentPortalOpen(true);
+        if (isLaunchMode) {
+          setLaunchParentPortalOpen(true);
+          setLaunchBookingActive(false);
+        }
         localStorage.setItem("apres-parent-account-signed-in", "true");
         localStorage.setItem("apres-parent-account-mode", JSON.stringify("live"));
         localStorage.setItem("apres-launch-account-session-email", JSON.stringify(normaliseEmailAddress(account.email || "")));
@@ -4507,6 +5137,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         setLiveParentLedger({
           invoices: ledger.invoices || [],
           bookings: ledger.bookings || [],
+          creditEntries: ledger.creditEntries || [],
+          creditBalance: Number(ledger.creditBalance || 0),
           fetchedAt: ledger.fetchedAt || new Date().toISOString(),
           loading: false,
           error: "",
@@ -4524,24 +5156,568 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       cancelled = true;
     };
   }, [realBookingServiceReady, parentAccountSignedIn, parentAccountMode, launchParentPortalOpen, labView, paymentReturnNotice?.handledKey]);
+
+  useEffect(() => {
+    if (!realBookingServiceReady || !parentAccountSignedIn || parentAccountMode !== "live" || !launchParentPortalOpen) {
+      setParentBadgeBook({ rewards: [], total: 0 });
+      setParentBadgeBookError("");
+      return undefined;
+    }
+    let cancelled = false;
+    setParentBadgeBookLoading(true);
+    setParentBadgeBookError("");
+    fetchParentBadgeBook()
+      .then((badgeBook) => {
+        if (cancelled) return;
+        setParentBadgeBook({
+          rewards: badgeBook?.rewards || [],
+          total: Number(badgeBook?.total || badgeBook?.rewards?.length || 0),
+        });
+        setParentBadgeBookLoading(false);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setParentBadgeBookLoading(false);
+        setParentBadgeBookError(error?.message || "We could not load the Badge Book.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [realBookingServiceReady, parentAccountSignedIn, parentAccountMode, launchParentPortalOpen]);
+
+  function openLaunchParentPortal() {
+    setLaunchBookingActive(false);
+    setLaunchParentPortalOpen(true);
+    setLaunchAccountSection(new URLSearchParams(window.location.search).get("account") === "payments" ? "Payments" : "Overview");
+    setLaunchAccountMenuOpen(false);
+    setLaunchChildRegistrationOpen(false);
+    setLaunchChildSavedNotice("");
+    setLabView("Parent");
+    window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 80);
+  }
+
+  function openLaunchBookingFlow() {
+    if (!launchAccountCanBook) {
+      setLaunchBookingActive(false);
+      setLaunchParentPortalOpen(false);
+      setStatus("Sign in or create a parent account before booking care.");
+      return;
+    }
+    if (!launchBookingChildren.length) {
+      setStatus("Add a child to your family account before booking care.");
+      openLaunchChildEditor("Basics");
+      return;
+    }
+    setLaunchBookingActive(true);
+    setLaunchParentPortalOpen(false);
+    setLaunchChildRegistrationOpen(false);
+    setLaunchChildSavedNotice("");
+    setConfirmation(null);
+    setParentCheckoutOpen(false);
+    setUseAccountCredit(false);
+    setCheckoutStep("Children");
+    setLaunchFlowStep("Choices");
+    setLabView("Parent");
+    window.setTimeout(() => scrollToFlowSection(".booking-lab-flow", "start"), 80);
+  }
+
+  async function saveLaunchAccountTerms(event) {
+    event.preventDefault();
+    if (!launchAccountTerms.terms || !launchAccountTerms.privacy) {
+      setStatus("Accept the Terms and Conditions and confirm the privacy policy before saving.");
+      return;
+    }
+    const acceptedAt = new Date().toISOString();
+    const marketingPreferences = {
+      ...(activeFamily.marketingPreferences || {}),
+      termsAccepted: true,
+      termsAcceptedAt: acceptedAt,
+      privacyAccepted: true,
+      privacyAcceptedAt: acceptedAt,
+    };
+    const migrationMetadata = clearMigrationMissingFields(activeFamily.migrationMetadata, [/terms/i, /privacy/i]);
+    const updatedFamily = { ...activeFamily, marketingPreferences, migrationMetadata };
+    setLaunchAccountTermsBusy(true);
+    try {
+      let savedFamily = updatedFamily;
+      if (realBookingServiceReady && parentAccountMode === "live") {
+        const savedAccount = await upsertParentAccount({
+          fullName: activeFamily.parentName,
+          email: activeFamily.email || activeFamily.primaryEmail,
+          phone: activeFamily.phone,
+          billingAddress: activeFamily.billingAddress || activeFamily.profile?.billingAddress || {},
+          emergencyContact: activeFamily.emergencyContactRecord || {},
+          marketingPreferences,
+          migrationMetadata,
+        });
+        savedFamily = { ...parentAccountToFamilyRecord(savedAccount, updatedFamily), children: updatedFamily.children || [] };
+      }
+      persistFamilies(families.map((family) => family.id === activeFamily.id ? savedFamily : family));
+      setStatus("Your current terms and privacy choices have been saved.");
+    } catch (error) {
+      setStatus(`Your choices could not be saved: ${error instanceof Error ? error.message : "Please try again."}`);
+    } finally {
+      setLaunchAccountTermsBusy(false);
+    }
+  }
+
+  async function saveOwnParentContact(event) {
+    event.preventDefault();
+    if (parentContactBusy) return;
+    const fullName = parentContactDraft.fullName.trim();
+    const email = normaliseEmailAddress(parentContactDraft.email);
+    const phone = parentContactDraft.phone.trim();
+    const emailChanged = email !== launchParentEmail;
+    if (!fullName) {
+      setParentContactMessage("Enter your name.");
+      return;
+    }
+    if (!isValidEmailAddress(email)) {
+      setParentContactMessage("Enter a valid email address.");
+      return;
+    }
+    if (activeFamilyIsPrimaryAccountHolder && phone && !isValidPhoneNumber(phone)) {
+      setParentContactMessage("Enter a valid UK or international phone number.");
+      return;
+    }
+    if (emailChanged && !parentContactDraft.currentPassword) {
+      setParentContactMessage("Enter your current password to change your login email.");
+      return;
+    }
+
+    setParentContactBusy(true);
+    setParentContactMessage("");
+    try {
+      await updateOwnParentContact({
+        fullName,
+        email,
+        phone: activeFamilyIsPrimaryAccountHolder ? phone : "",
+        currentPassword: parentContactDraft.currentPassword,
+      });
+      const refreshedAccount = await fetchParentAccount();
+      hydrateLiveParentAccount(refreshedAccount, email);
+      setLaunchAccountSessionEmail(email);
+      setParentLogin((current) => ({ ...current, username: email, password: "" }));
+      localStorage.setItem("apres-launch-account-session-email", JSON.stringify(email));
+      setParentContactDraft((current) => ({ ...current, fullName, email, phone, currentPassword: "" }));
+      setParentContactMessage(emailChanged
+        ? "Your contact details and login email have been updated. Use the new email next time you sign in."
+        : "Your contact details have been updated.");
+      setStatus("Your account contact details have been updated.");
+    } catch (error) {
+      setParentContactMessage(error instanceof Error ? error.message : "Your contact details could not be updated.");
+    } finally {
+      setParentContactBusy(false);
+    }
+  }
+
+  async function saveOwnParentPassword(event) {
+    event.preventDefault();
+    if (parentPasswordBusy) return;
+    const passwordError = parentPasswordPolicyError(parentPasswordDraft.newPassword);
+    if (!parentPasswordDraft.currentPassword) {
+      setParentPasswordMessage("Enter your current password.");
+      return;
+    }
+    if (passwordError) {
+      setParentPasswordMessage(passwordError);
+      return;
+    }
+    if (parentPasswordDraft.newPassword !== parentPasswordDraft.confirmPassword) {
+      setParentPasswordMessage("The new passwords do not match.");
+      return;
+    }
+    if (parentPasswordDraft.currentPassword === parentPasswordDraft.newPassword) {
+      setParentPasswordMessage("Choose a new password that is different from your current password.");
+      return;
+    }
+
+    setParentPasswordBusy(true);
+    setParentPasswordMessage("");
+    try {
+      await updateOwnParentPassword({
+        currentPassword: parentPasswordDraft.currentPassword,
+        newPassword: parentPasswordDraft.newPassword,
+      });
+      setParentPasswordDraft({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setParentPasswordMessage("Your password has been updated securely.");
+      setStatus("Your password has been updated securely.");
+    } catch (error) {
+      setParentPasswordMessage(error instanceof Error ? error.message : "Your password could not be updated.");
+    } finally {
+      setParentPasswordBusy(false);
+    }
+  }
+
+  function openLaunchChildEditor(step = "Basics", child = null) {
+    const emergencyContact = child?.emergencyContacts?.[0] || {};
+    const dietary = child?.dietaryNeeds?.[0] || {};
+    const allergy = child?.allergies?.[0] || {};
+    const medication = child?.medications?.[0] || {};
+    const autoInjector = child?.autoInjectors?.[0] || {};
+    const medicalCondition = child?.medicalConditions?.[0] || {};
+    const send = child?.send?.[0] || {};
+    if (child) {
+      const nameParts = String(child.name || child.fullName || "").trim().split(/\s+/);
+      setLaunchFamilyChildId(child.id || "");
+      setChildRegistration({
+        ...defaultChildRegistration,
+        firstName: child.firstName || nameParts[0] || "",
+        lastName: child.lastName || nameParts.slice(1).join(" ") || "",
+        dob: child.dob || child.dateOfBirth || "",
+        gender: child.gender || "",
+        ethnicity: child.ethnicity || child.consents?.registration?.ethnicity || "",
+        languages: child.languages?.length ? child.languages : ["English"],
+        relationship: child.relationship || defaultChildRegistration.relationship,
+        livesWith: child.livesWith || defaultChildRegistration.livesWith,
+        parentalResponsibility: child.parentalResponsibility || defaultChildRegistration.parentalResponsibility,
+        school: child.school || child.schoolName || selectedSchool,
+        classroom: child.classroom || child.year || child.yearGroup || "",
+        collectionPassword: child.collectionPassword || "",
+        emergencyTitle: emergencyContact.title || "",
+        emergencyRelationship: emergencyContact.relationship || "",
+        emergencyFirstName: emergencyContact.firstName || "",
+        emergencyLastName: emergencyContact.lastName || "",
+        emergencyEmail: emergencyContact.email || "",
+        emergencyMobile: emergencyContact.mobile || "",
+        emergencyTelephone: emergencyContact.telephone || "",
+        dietaryNeed: dietary.need || "",
+        dietaryDetails: dietary.details || "",
+        allergy: allergy.allergy || "",
+        allergyTriggers: allergy.triggers || "",
+        allergySymptoms: allergy.symptoms || "",
+        allergyInitialAction: allergy.initialAction || "",
+        allergyMedication: allergy.medication || "",
+        allergyDetails: allergy.details || "",
+        medicationName: medication.name || "",
+        medicationAdministered: medication.administered || "",
+        medicationSupervision: medication.supervision || "",
+        medicationTime: medication.time || "",
+        medicationDosage: medication.dosage || "",
+        medicationEffect: medication.effect || "",
+        medicationReason: medication.reason || "",
+        medicationDetails: medication.details || "",
+        medicationExpiry: medication.expiry || "",
+        autoInjector: autoInjector.type || "",
+        autoInjectorExpiry: autoInjector.expiry || "",
+        medicalCondition: medicalCondition.condition || "",
+        medicalConditionDetails: medicalCondition.details || "",
+        sendNeed: send.need || "",
+        sendEhcp: send.ehcp || "No",
+        sendDetails: send.details || "",
+        consents: child.consents?.responses || child.consents || defaultChildRegistration.consents,
+      });
+    } else {
+      setLaunchFamilyChildId("");
+      setChildRegistration({ ...defaultChildRegistration, school: selectedSchool, languages: ["English"] });
+    }
+    setLaunchBookingActive(false);
+    setLaunchParentPortalOpen(false);
+    setLaunchChildSavedNotice("");
+    setChildRegistrationSubmitAttempted(false);
+    setChildRegistrationStep(step);
+    setLaunchChildRegistrationOpen(true);
+    setLabView("Parent");
+    window.setTimeout(() => scrollToFlowSection(".lab-launch-registration-gate", "start"), 80);
+  }
+
+  function openLaunchFamilySectionEditor(section, child) {
+    if (!child) return;
+    const emergencyContact = child.emergencyContacts?.[0] || child.authorisedCollectors?.[0] || {};
+    const dietary = child.dietaryNeeds?.[0] || {};
+    const allergy = child.allergies?.[0] || {};
+    const medication = child.medications?.[0] || {};
+    const autoInjector = child.autoInjectors?.[0] || {};
+    const medicalCondition = child.medicalConditions?.[0] || {};
+    const send = child.send?.[0] || {};
+    setLaunchFamilyChildId(child.id);
+    setChildRegistration((current) => ({
+      ...current,
+      emergencyTitle: emergencyContact.title || "",
+      emergencyRelationship: emergencyContact.relationship || "",
+      emergencyFirstName: emergencyContact.firstName || "",
+      emergencyLastName: emergencyContact.lastName || "",
+      emergencyEmail: emergencyContact.email || "",
+      emergencyMobile: emergencyContact.mobile || "",
+      emergencyTelephone: emergencyContact.telephone || "",
+      dietaryNeed: dietary.need || "",
+      dietaryDetails: dietary.details || "",
+      allergy: allergy.allergy || allergy.name || "",
+      allergyTriggers: allergy.triggers || "",
+      allergySymptoms: allergy.symptoms || "",
+      allergyInitialAction: allergy.initialAction || "",
+      allergyMedication: allergy.medication || "",
+      allergyDetails: allergy.details || "",
+      medicationName: medication.name || "",
+      medicationAdministered: medication.administered || "",
+      medicationSupervision: medication.supervision || "",
+      medicationTime: medication.time || "",
+      medicationDosage: medication.dosage || "",
+      medicationEffect: medication.effect || "",
+      medicationReason: medication.reason || "",
+      medicationDetails: medication.details || "",
+      medicationExpiry: medication.expiry || "",
+      autoInjector: autoInjector.type || "",
+      autoInjectorExpiry: autoInjector.expiry || "",
+      medicalCondition: medicalCondition.condition || "",
+      medicalConditionDetails: medicalCondition.details || "",
+      sendNeed: send.need || "",
+      sendEhcp: send.ehcp || "No",
+      sendDetails: send.details || "",
+      consents: child.consents?.responses || child.consents || defaultChildRegistration.consents,
+    }));
+    setLaunchFamilyEditor(section);
+  }
+
+  function openLaunchEmergencyContactsEditor() {
+    const contacts = familyEmergencyContacts(activeFamily).map((contact, index) => ({
+      id: contact.id || `family-emergency-contact-${index + 1}`,
+      name: contact.name || [contact.firstName, contact.lastName].filter(Boolean).join(" ") || "",
+      relationship: contact.relationship || "",
+      email: contact.email || "",
+      mobile: contact.mobile || contact.telephone || "",
+    }));
+    while (contacts.length < 2) {
+      contacts.push({
+        id: `family-emergency-contact-${contacts.length + 1}`,
+        name: "",
+        relationship: "",
+        email: "",
+        mobile: "",
+      });
+    }
+    setLaunchEmergencyContactsDraft(contacts);
+    setLaunchEmergencyContactsEditorOpen(true);
+    setStatus("");
+  }
+
+  function updateLaunchEmergencyContact(index, field, value) {
+    setLaunchEmergencyContactsDraft((contacts) => contacts.map((contact, contactIndex) => contactIndex === index ? { ...contact, [field]: value } : contact));
+  }
+
+  async function saveLaunchEmergencyContacts(event) {
+    event.preventDefault();
+    if (parentAccountLoading) return;
+    const contacts = launchEmergencyContactsDraft.map((contact, index) => ({
+      id: contact.id || `family-emergency-contact-${index + 1}`,
+      type: index === 0 ? "primary" : "emergency",
+      name: String(contact.name || "").trim(),
+      relationship: String(contact.relationship || "").trim(),
+      email: normaliseEmailAddress(contact.email),
+      mobile: String(contact.mobile || "").trim(),
+    }));
+    if (contacts.length < 2 || contacts.some((contact) => !contact.name || !contact.relationship || !contact.mobile)) {
+      setStatus("Add a name, relationship and mobile number for at least two emergency contacts.");
+      return;
+    }
+    const invalidContact = contacts.find((contact) => !isValidPhoneNumber(contact.mobile, { required: true }) || (contact.email && !isValidEmailAddress(contact.email)));
+    if (invalidContact) {
+      setStatus("Check each emergency contact has a valid mobile number and email address.");
+      return;
+    }
+    const phoneKeys = contacts.map((contact) => phoneDigits(contact.mobile));
+    if (new Set(phoneKeys).size !== phoneKeys.length) {
+      setStatus("Each emergency contact must use a different mobile number.");
+      return;
+    }
+    const emergencyContact = {
+      primaryPhone: contacts[0].mobile,
+      secondaryPhone: contacts[1].mobile,
+      contacts,
+    };
+    const migrationMetadata = clearMigrationMissingFields(activeFamily.migrationMetadata, [/emergency contact/i]);
+    const updatedFamily = {
+      ...activeFamily,
+      phone: contacts[0].mobile,
+      secondaryPhone: contacts[1].mobile,
+      emergencyContact: contacts[0].mobile,
+      emergencyContactRecord: emergencyContact,
+      emergencyContacts: contacts,
+      migrationMetadata,
+    };
+    setParentAccountLoading(true);
+    try {
+      let savedFamily = updatedFamily;
+      if (realBookingServiceReady && parentAccountMode === "live") {
+        const savedAccount = await upsertParentAccount({
+          fullName: activeFamily.parentName,
+          email: activeFamily.email || activeFamily.primaryEmail,
+          phone: contacts[0].mobile,
+          billingAddress: activeFamily.billingAddress || activeFamily.profile?.billingAddress || {},
+          emergencyContact,
+          marketingPreferences: activeFamily.marketingPreferences || {},
+          migrationMetadata,
+        });
+        savedFamily = {
+          ...parentAccountToFamilyRecord(savedAccount, updatedFamily),
+          children: updatedFamily.children || [],
+        };
+      }
+      persistFamilies(families.map((family) => family.id === activeFamily.id ? savedFamily : family));
+      setLaunchEmergencyContactsEditorOpen(false);
+      setStatus("Family emergency contacts updated for every child.");
+    } catch (error) {
+      setStatus(`Emergency contacts could not be saved: ${error instanceof Error ? error.message : "Please try again."}`);
+    } finally {
+      setParentAccountLoading(false);
+    }
+  }
+
+  async function saveLaunchFamilySection(event) {
+    event.preventDefault();
+    const child = launchRegisteredChildren.find((item) => item.id === launchFamilyChildId);
+    if (!child || !launchFamilyEditor || parentAccountLoading) return;
+    const sectionPatch = launchFamilyEditor === "Contacts" ? {
+      emergencyContacts: [{
+        title: childRegistration.emergencyTitle,
+        relationship: childRegistration.emergencyRelationship,
+        firstName: childRegistration.emergencyFirstName,
+        lastName: childRegistration.emergencyLastName,
+        email: childRegistration.emergencyEmail,
+        mobile: childRegistration.emergencyMobile,
+        telephone: childRegistration.emergencyTelephone,
+      }],
+    } : launchFamilyEditor === "Dietary Needs" ? {
+      dietaryNeeds: childRegistration.dietaryNeed ? [{ need: childRegistration.dietaryNeed, details: childRegistration.dietaryDetails }] : [],
+    } : launchFamilyEditor === "Allergies" ? {
+      allergies: childRegistration.allergy ? [{
+        allergy: childRegistration.allergy,
+        triggers: childRegistration.allergyTriggers,
+        symptoms: childRegistration.allergySymptoms,
+        initialAction: childRegistration.allergyInitialAction,
+        medication: childRegistration.allergyMedication,
+        details: childRegistration.allergyDetails,
+      }] : [],
+    } : launchFamilyEditor === "Medications" ? {
+      medications: childRegistration.medicationName ? [{
+        name: childRegistration.medicationName,
+        administered: childRegistration.medicationAdministered,
+        supervision: childRegistration.medicationSupervision,
+        time: childRegistration.medicationTime,
+        dosage: childRegistration.medicationDosage,
+        effect: childRegistration.medicationEffect,
+        reason: childRegistration.medicationReason,
+        details: childRegistration.medicationDetails,
+        expiry: childRegistration.medicationExpiry,
+      }] : [],
+      autoInjectors: childRegistration.autoInjector ? [{
+        type: childRegistration.autoInjector,
+        expiry: childRegistration.autoInjectorExpiry,
+      }] : [],
+    } : launchFamilyEditor === "Medical Conditions" ? {
+      medicalConditions: childRegistration.medicalCondition ? [{ condition: childRegistration.medicalCondition, details: childRegistration.medicalConditionDetails }] : [],
+    } : launchFamilyEditor === "SEND" ? {
+      send: childRegistration.sendNeed ? [{ need: childRegistration.sendNeed, ehcp: childRegistration.sendEhcp, details: childRegistration.sendDetails }] : [],
+    } : launchFamilyEditor === "Consents" ? {
+      consents: {
+        responses: childRegistration.consents,
+        registration: child.consents?.registration || {},
+      },
+    } : {};
+    const migrationReviewPatterns = {
+      Consents: [/consent/i],
+      "Dietary Needs": [/dietary/i],
+      Allergies: [/allerg/i],
+      Medications: [/medication/i, /auto-injector/i],
+      "Medical Conditions": [/medical condition/i],
+      SEND: [/send/i],
+    };
+    const migrationMetadata = clearMigrationMissingFields(child.migrationMetadata, migrationReviewPatterns[launchFamilyEditor] || []);
+    const updatedChild = { ...child, ...sectionPatch, migrationMetadata };
+    const nextFamilies = families.map((family) => ({
+      ...family,
+      children: (family.children || []).map((item) => item.id === child.id ? updatedChild : item),
+    }));
+    setParentAccountLoading(true);
+    try {
+      if (realBookingServiceReady && parentAccountMode === "live") {
+        const registration = child.consents?.registration || {};
+        await updateChildProfile(child.id, {
+          fullName: child.name || child.fullName,
+          preferredName: child.preferredName,
+          dob: child.dob || child.dateOfBirth,
+          school: child.school || child.schoolName,
+          year: child.year || child.yearGroup,
+          medicalNotes: (updatedChild.medicalConditions || []).map((item) => [item.condition, item.details].filter(Boolean).join(": ")).join("\n"),
+          allergyNotes: (updatedChild.allergies || []).map((item) => [item.allergy, item.triggers && `Avoid: ${item.triggers}`, item.symptoms && `Symptoms: ${item.symptoms}`, item.initialAction && `Action: ${item.initialAction}`, item.medication && `Medication: ${item.medication}`, item.details].filter(Boolean).join("\n")).join("\n"),
+          dietaryNotes: (updatedChild.dietaryNeeds || []).map((item) => [item.need, item.details].filter(Boolean).join(": ")).join("\n"),
+          authorisedCollectors: updatedChild.emergencyContacts || [],
+          consents: {
+            responses: updatedChild.consents?.responses || updatedChild.consents || {},
+            registration: {
+              ...registration,
+              dietaryNeeds: updatedChild.dietaryNeeds || [],
+              allergies: updatedChild.allergies || [],
+              medications: updatedChild.medications || [],
+              autoInjectors: updatedChild.autoInjectors || [],
+              medicalConditions: updatedChild.medicalConditions || [],
+              send: updatedChild.send || [],
+            },
+          },
+          flags: updatedChild.flags || [],
+          migrationMetadata,
+        });
+      }
+      persistFamilies(nextFamilies);
+      setLaunchChildSavedProfile((current) => current?.id === child.id ? updatedChild : current);
+      setStatus(`${launchFamilyEditor} updated for ${child.name}.`);
+      setLaunchFamilyEditor("");
+    } catch (error) {
+      setStatus(`${launchFamilyEditor} could not be updated: ${error instanceof Error ? error.message : "Please try again."}`);
+    } finally {
+      setParentAccountLoading(false);
+    }
+  }
+
   function moveLaunchFlowStep(step, selector) {
     setLaunchFlowStep(step);
     window.setTimeout(() => scrollToFlowSection(selector, "start"), 80);
   }
-  const eligibilityIssues = selectedChildren.flatMap((child) => {
+  const eligibilityChildren = basketCheckoutActive
+    ? selectableChildProfiles.filter((child) => basketChildIds.includes(child.id))
+    : selectedChildren;
+  const eligibilitySite = basketCheckoutActive ? draftBookingBasket[0]?.site || activeSession.site : activeSession.site;
+  const eligibilityCareType = basketCheckoutActive ? draftBookingBasket[0]?.careType || activeSession.type : activeSession.type;
+  const eligibilityIssues = eligibilityChildren.flatMap((child) => {
     const issues = [];
-    if (rules.schoolOnlyStrict && activeSession.type === "Wraparound" && child.school !== activeSession.site && child.school !== "Guest") {
-      issues.push(`${child.name} is not linked to ${activeSession.site}`);
+    if (rules.schoolOnlyStrict && eligibilityCareType === "Wraparound" && child.school !== eligibilitySite && child.school !== "Guest") {
+      issues.push(`${child.name} is not linked to ${eligibilitySite}`);
     }
     const childYear = schoolYearIndex(child.year);
-    if (activeSession.type === "Holiday Camp" && (childYear < schoolYearIndex(rules.holidayYearMin) || childYear > schoolYearIndex(rules.holidayYearMax))) {
+    if (eligibilityCareType === "Holiday Camp" && (childYear < schoolYearIndex(rules.holidayYearMin) || childYear > schoolYearIndex(rules.holidayYearMax))) {
       issues.push(`${child.name} is outside the holiday camp year range`);
     }
     return issues;
   });
   const rulesBlocked = eligibilityIssues.length > 0 && !(adminOverride && rules.allowAdminOverride);
-  const selectedCareFlags = selectedChildren.flatMap((child) => (child.flags || []).map((flag) => `${child.name}: ${flag}`));
-  const selectedConsentNotes = selectedChildren.map((child) => child.consent).filter(Boolean);
+  const schoolEligibilityIssueChild = eligibilityChildren.find((child) => (
+    rules.schoolOnlyStrict
+    && eligibilityCareType === "Wraparound"
+    && child.school !== eligibilitySite
+    && child.school !== "Guest"
+  ));
+  const yearEligibilityIssueChild = eligibilityChildren.find((child) => {
+    const childYear = schoolYearIndex(child.year);
+    return eligibilityCareType === "Holiday Camp"
+      && (childYear < schoolYearIndex(rules.holidayYearMin) || childYear > schoolYearIndex(rules.holidayYearMax));
+  });
+  const eligibilityIssueChild = schoolEligibilityIssueChild || yearEligibilityIssueChild || eligibilityChildren[0] || null;
+  const eligibilityActionLabel = schoolEligibilityIssueChild
+    ? `Update ${schoolEligibilityIssueChild.name}'s school`
+    : yearEligibilityIssueChild
+      ? `Update ${yearEligibilityIssueChild.name}'s year group`
+      : "Update child details";
+  const primaryCheckoutLabel = checkoutStep === "Review" && rulesBlocked
+    ? "Update child details to continue"
+    : checkoutStep === "Review"
+      ? isLaunchMode
+        ? checkoutActionLabel
+        : effectivePaymentMethod === "card"
+          ? "Prototype Pay Now"
+          : checkoutActionLabel
+      : `Continue to ${nextCheckoutStep}`;
+  const selectedCareFlags = eligibilityChildren.flatMap((child) => (child.flags || []).map((flag) => `${child.name}: ${flag}`));
+  const selectedConsentNotes = eligibilityChildren.map((child) => child.consent).filter(Boolean);
   const capacityConfidenceStatus = rulesBlocked
     ? "Review needed"
     : isWaitlist
@@ -4583,8 +5759,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ["Parent account", activeFamily.parentName || "Parent", `${activeFamily.email || "Email needed"} · ${activeFamily.phone || activeFamily.emergencyContact || "Phone needed"}`],
   ];
   const discountTotal = siblingDiscount + weeklyDiscount + promoDiscount;
-  const dueTodayAmount = activePaymentPlan === "Monthly" ? Number(monthlyPaymentSchedule[0]?.amount || 0) : total;
-  const remainingPlanBalance = Math.max(0, total - dueTodayAmount);
+  const draftBasketChildNames = [...new Set(draftBookingBasket.map((item) => item.childName))];
+  const checkoutChildNames = basketCheckoutActive ? draftBasketChildNames : selectedChildren.map((child) => child.name);
+  const checkoutItemCount = basketCheckoutActive ? draftBookingBasket.length : (selectedBlockCount || pickedDays.length);
+  const checkoutDayCount = basketCheckoutActive ? basketDays.length : pickedDays.length;
+  const checkoutChildCount = basketCheckoutActive ? draftBasketChildNames.length : childCount;
   const selectedMonthCostRows = pickedDayRows.reduce((rows, row) => {
     const parsed = parseLabDay(row.day);
     const month = parsed ? parsed.toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : "Other dates";
@@ -4624,22 +5803,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     return existing ? rows : [...rows, item];
   }, []);
   const reviewCostCards = [
-    ["Booking value", money(total), `${selectedBlockCount || pickedDays.length} block${selectedBlockCount === 1 ? "" : "s"} · ${childCount} child${childCount === 1 ? "" : "ren"}`],
-    ["Due today", money(dueTodayAmount), activePaymentPlan === "Monthly" ? `${remainingPlanBalance > 0 ? `${money(remainingPlanBalance)} scheduled` : "No remaining balance"}` : effectivePaymentMethod === "card" ? "Taken securely at booking" : "No card charge today"],
+    ["Booking value", money(total), `${checkoutItemCount} child session${checkoutItemCount === 1 ? "" : "s"} · ${checkoutChildCount} child${checkoutChildCount === 1 ? "" : "ren"}`],
+    ["Due today", money(payableTodayAmount), accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied first` : activePaymentPlan === "Monthly" ? `${remainingPlanBalance > 0 ? `${money(remainingPlanBalance)} scheduled` : "No remaining balance"}` : effectivePaymentMethod === "card" ? "Taken securely at booking" : "No card charge today"],
     ["Discounts", discountTotal ? `-${money(discountTotal)}` : money(0), siblingDiscount ? "Sibling discount included" : weeklyDiscount ? "Full-week discount included" : promoDiscount ? "Promo applied" : "No discount applied"],
     [isLaunchMode ? "Invoice" : "Payment route", activePaymentPlan === "Monthly" ? "Payment plan" : effectivePaymentMethod === "card" ? "Receipt emailed" : "Invoice emailed", isLaunchMode ? "Saved in your parent portal" : activePaymentRoute],
   ];
   const reviewLedgerRows = [
-    ["Session fees", `${selectedBlockCount || pickedDays.length} block${(selectedBlockCount || pickedDays.length) === 1 ? "" : "s"} x ${childCount}`, money(subtotal)],
+    ["Session fees", `${checkoutItemCount} child session${checkoutItemCount === 1 ? "" : "s"} across ${checkoutDayCount} day${checkoutDayCount === 1 ? "" : "s"}`, money(subtotal)],
     ["Add-ons", `${selectedAddOns.length} selected`, money(addOnTotal)],
     ["Discounts", "Applied before payment", `-${money(discountTotal)}`],
-    ["Final total", activePaymentPlan === "Monthly" ? monthlyScheduleSummary : "Pay at confirmation", money(total)],
+    ...(accountCreditPreview > 0 ? [["Account credit", "Applied automatically", `-${money(accountCreditPreview)}`]] : []),
+    ["Pay today", activePaymentPlan === "Monthly" ? monthlyScheduleSummary : accountCreditPreview >= dueTodayAmount ? "Covered by account credit" : "Pay at confirmation", money(payableTodayAmount)],
   ];
   const basketReviewCards = [
     ["Care", activeSession.type, `${activeSession.site} · ${parentActivityLabel(activeSession)}`],
     ["Sessions", String(selectedBlockCount || pickedDays.length), `${pickedDays.length} day${pickedDays.length === 1 ? "" : "s"} · ${pickedDaysSummary || "Choose dates"}`],
     ["Children", String(childCount), selectedChildren.map((child) => child.name).join(", ")],
-    ["Due today", money(dueTodayAmount), activePaymentPlan === "Monthly" ? `${money(remainingPlanBalance)} scheduled` : selectedPaymentLabel],
+    ["Due today", money(payableTodayAmount), accountCreditPreview > 0 ? `${money(accountCreditPreview)} credit applied` : activePaymentPlan === "Monthly" ? `${money(remainingPlanBalance)} scheduled` : selectedPaymentLabel],
   ];
   const basketLineItems = [
     ["Session fees", `${selectedBlockCount || pickedDays.length} block${(selectedBlockCount || pickedDays.length) === 1 ? "" : "s"} across ${pickedDays.length} day${pickedDays.length === 1 ? "" : "s"} x ${childCount}`, money(subtotal)],
@@ -4654,6 +5834,30 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ...(discountTotal ? [`${money(discountTotal)} discount applied.`] : []),
   ];
   const basketReadyLabel = rulesBlocked ? "Review rules" : !pickedDays.length ? "Choose sessions" : isWaitlist ? "Waitlist review" : "Ready for payment";
+  const draftBasketGroups = draftBookingBasket.reduce((groups, item) => {
+    const existing = groups.find((group) => group.id === item.groupId);
+    if (existing) existing.items.push(item);
+    else groups.push({ id: item.groupId, items: [item] });
+    return groups;
+  }, []);
+  const checkoutReviewMonthRows = basketCheckoutActive ? draftBookingBasket.reduce((rows, item) => {
+    const parsed = parseLabDay(item.day);
+    const month = parsed ? parsed.toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : "Other dates";
+    const existing = rows.find((row) => row.month === month);
+    const row = existing || { month, days: 0, sessions: 0, gross: 0, rows: [] };
+    const sameDate = row.rows.find((entry) => entry.day === item.day);
+    if (!sameDate) {
+      row.days += 1;
+      row.rows.push({ day: item.day, label: item.day.split(",")[0], date: item.day.split(",").slice(1).join(",").trim(), sessions: 0, detail: "", value: 0 });
+    }
+    const dateRow = row.rows.find((entry) => entry.day === item.day);
+    dateRow.sessions += 1;
+    dateRow.detail = [...new Set([...dateRow.detail.split(" · ").filter(Boolean), `${item.childName}: ${item.sessionLabel} ${item.start}-${item.end}`])].join(" · ");
+    dateRow.value += Number(item.price || 0);
+    row.sessions += 1;
+    row.gross += Number(item.price || 0);
+    return existing ? rows : [...rows, row];
+  }, []) : parentReviewMonthRows;
   const paymentRouteGuidance = {
     card: {
       title: "Card through PonchoPay",
@@ -4694,7 +5898,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       : effectivePaymentMethod === "invoice"
         ? "invoice"
         : "card";
-  const parentPaymentGuideTitle = activePaymentPlan === "Monthly"
+  const parentPaymentGuideTitle = accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0
+    ? "Pay with account credit"
+    : activePaymentPlan === "Monthly"
     ? "Monthly payments"
     : effectivePaymentMethod === "card"
       ? "Pay by card"
@@ -4710,7 +5916,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         : "No reference needed";
   const paymentStepCards = [
     [isLaunchMode ? "Payment" : "Route", isLaunchMode ? parentPaymentGuideTitle : activeRouteGuidance.title, isLaunchMode ? parentPaymentReferenceLabel : activeRouteGuidance.reference],
-    ["Due today", money(dueTodayAmount), activePaymentPlan === "Monthly" ? `${remainingPlanBalance ? `${money(remainingPlanBalance)} scheduled` : "No remaining balance"}` : isLaunchMode ? "Taken or guaranteed by PonchoPay" : "Paid or guaranteed by PonchoPay"],
+    ["Due today", money(payableTodayAmount), accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied automatically` : activePaymentPlan === "Monthly" ? `${remainingPlanBalance ? `${money(remainingPlanBalance)} scheduled` : "No remaining balance"}` : isLaunchMode ? "Taken or guaranteed by PonchoPay" : "Paid or guaranteed by PonchoPay"],
     ["Booking total", money(total), `${pickedDays.length} session${pickedDays.length === 1 ? "" : "s"}`],
   ];
   const paymentNextSteps = isLaunchMode
@@ -4725,11 +5931,17 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         effectivePaymentMethod === "card" ? "Auto receipt" : "Payment matched",
       ];
   const parentPaymentReassuranceRows = [
-    ["Today", activePaymentPlan === "Monthly" ? money(dueTodayAmount) : effectivePaymentMethod === "card" ? money(total) : "Card guarantee", activePaymentPlan === "Monthly" ? "First payment through PonchoPay" : effectivePaymentMethod === "card" ? "Paid through PonchoPay" : "Charged only if voucher/TFC fails"],
+    ["Today", activePaymentPlan === "Monthly" ? money(dueTodayAmount) : effectivePaymentMethod === "card" ? money(total) : "Card guarantee", activePaymentPlan === "Monthly" ? "First payment due through PonchoPay" : effectivePaymentMethod === "card" ? "Pay securely through PonchoPay" : "Charged only if voucher/TFC fails"],
     ["Invoice", activePaymentPlan === "Monthly" ? "Plan prepared" : effectivePaymentMethod === "card" ? "Receipt after payment" : "Invoice pending match", "Also shown in parent portal"],
     ["Payment status", effectivePaymentMethod === "card" ? "Authorises now" : "Auto reconciles", effectivePaymentMethod === "card" ? "Booking confirms after payment" : "PonchoPay watches for the voucher/TFC payment"],
   ];
-  const parentPaymentDecisionRows = activePaymentPlan === "Monthly"
+  const parentPaymentDecisionRows = accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0
+    ? [
+        ["Today", money(0), `${money(accountCreditPreview)} account credit used`],
+        ["Card", "Not needed", "No PonchoPay payment opens"],
+        ["Status", "Confirms immediately", "Receipt saved in your portal"],
+      ]
+    : activePaymentPlan === "Monthly"
     ? [
         ["Today", money(dueTodayAmount), "First payment only"],
         ["Then", monthlyPaymentSchedule.length > 1 ? `${monthlyPaymentSchedule.length - 1} later payment${monthlyPaymentSchedule.length - 1 === 1 ? "" : "s"}` : "No later payments", "Schedule shown before booking"],
@@ -4737,8 +5949,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ]
     : effectivePaymentMethod === "card"
       ? [
-          ["Today", money(total), "Paid through PonchoPay"],
-          ["Email", "Receipt after authorisation", "Also saved in your portal"],
+          ["Today", money(total), "Pay securely through PonchoPay"],
+          ["Email", "Receipt after payment", "Also saved in your account"],
           ["Status", "Confirms after payment", "Nothing else to do"],
         ]
       : [
@@ -4824,13 +6036,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         effectivePaymentMethod === "card" ? "Balance clear" : "Payment matched automatically",
       ];
   const parentReviewHighlights = [
-    ["Booked", parentActivityLabel(activeSession), `${activeSession.site} · ${pickedDays.length} day${pickedDays.length === 1 ? "" : "s"}`],
-    ["Sessions", `${selectedBlockCount || pickedDays.length} selected`, pickedDaysSummary || "Choose dates"],
-    ["Children", selectedChildren.map((child) => child.name).join(", ") || "Saved child", selectedCareFlags.length ? selectedCareFlags.join(" · ") : "No selected care flags"],
-    ["Payment", activePaymentPlan === "Monthly" ? monthlyScheduleSummary : selectedPaymentLabel, activePaymentPlan === "Monthly" ? `${money(dueTodayAmount)} first payment via PonchoPay` : effectivePaymentMethod === "card" ? "Authorised in PonchoPay" : "Confirmed with card guarantee"],
+    ["Booked", parentActivityLabel(activeSession), `${activeSession.site} · ${checkoutDayCount} day${checkoutDayCount === 1 ? "" : "s"}`],
+    ["Sessions", `${checkoutItemCount} selected`, basketCheckoutActive ? basketDays.join(" · ") : pickedDaysSummary || "Choose dates"],
+    ["Children", checkoutChildNames.join(", ") || "Saved child", selectedCareFlags.length ? selectedCareFlags.join(" · ") : "No selected care flags"],
+    ["Payment", accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Account credit" : activePaymentPlan === "Monthly" ? monthlyScheduleSummary : selectedPaymentLabel, accountCreditPreview > 0 ? `${money(accountCreditPreview)} credit applied · ${money(payableTodayAmount)} left to pay` : activePaymentPlan === "Monthly" ? `${money(dueTodayAmount)} first payment via PonchoPay` : effectivePaymentMethod === "card" ? "Pay securely through PonchoPay" : "Secured by card guarantee"],
   ];
   const parentAgreementRows = [
-    ["Pay today", money(dueTodayAmount), activePaymentPlan === "Monthly" ? `${money(remainingPlanBalance)} scheduled after today` : effectivePaymentMethod === "card" ? "Card payment in PonchoPay" : "Card guarantee in PonchoPay"],
+    ["Pay today", money(payableTodayAmount), accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied first` : activePaymentPlan === "Monthly" ? `${money(remainingPlanBalance)} scheduled after today` : effectivePaymentMethod === "card" ? "Card payment in PonchoPay" : "Card guarantee in PonchoPay"],
     ["Email", activePaymentPlan === "Monthly" ? "Plan after setup" : effectivePaymentMethod === "card" ? "Receipt after payment" : "Invoice after guarantee", "Also saved in the parent portal"],
     ["Portal", "Updated instantly", "Booking, invoice and payment status stay together"],
     ["Changes", `${rules.cancellationHours}h cancellation`, `${rules.amendmentHours}h amendment window before the first session`],
@@ -4842,7 +6054,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   ];
   const parentSubmitConfidenceRows = [
     ["Dates checked", `${pickedDays.length} day${pickedDays.length === 1 ? "" : "s"}`, `${selectedBlockCount || pickedDays.length} session block${(selectedBlockCount || pickedDays.length) === 1 ? "" : "s"}`],
-    ["Pay today", money(dueTodayAmount), activePaymentPlan === "Monthly" ? monthlyScheduleSummary : effectivePaymentMethod === "card" ? "PonchoPay card payment; booking confirms only after payment is authorised" : "PonchoPay card guarantee; booking confirms only after payment is authorised"],
+    ["Pay today", money(payableTodayAmount), accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied automatically` : activePaymentPlan === "Monthly" ? monthlyScheduleSummary : effectivePaymentMethod === "card" ? "PonchoPay card payment; booking confirms only after payment is authorised" : "PonchoPay card guarantee; booking confirms only after payment is authorised"],
     ["Parent portal", "Updated instantly", "Invoice, receipt and booking history stay visible"],
   ];
   const launchHandoffRows = [
@@ -4881,6 +6093,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const confirmationOutstanding = Number(confirmation?.outstandingBalance ?? Math.max(0, Number(confirmation?.total || 0) - confirmationDueToday));
   const confirmationCheckoutUrl = confirmation?.checkoutUrl || confirmation?.ponchoCheckout?.checkoutUrl || "";
   const confirmationHasCheckoutUrl = Boolean(confirmationCheckoutUrl);
+  const confirmationPaidWithCredit = confirmation?.paymentStatus === "Paid with account credit"
+    || confirmation?.paymentMethod === "account_credit"
+    || confirmation?.checkoutSessionStatus === "paid_by_credit"
+    || confirmation?.ponchoCheckout?.status === "paid_by_credit";
+  const confirmationDisplayPaymentLabel = confirmationPaidWithCredit ? "Account credit" : confirmationPaymentLabel;
+  const confirmationDisplayDueToday = confirmationPaidWithCredit ? 0 : confirmationDueToday;
+  const confirmationDisplayOutstanding = confirmationPaidWithCredit ? 0 : confirmationOutstanding;
   const confirmationInvoiceStatus = confirmation?.invoiceStatus
     || (confirmation?.status === "Waitlist"
       ? "Not issued until a place is confirmed"
@@ -4905,6 +6124,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ? "Bookings confirmed"
     : confirmation?.status === "Waitlist"
       ? "Waitlist request saved"
+      : confirmationPaidWithCredit
+        ? "Booking confirmed"
       : confirmation?.paymentPlan === "Monthly"
         ? "Complete setup in PonchoPay"
         : confirmationHasCheckoutUrl
@@ -4914,18 +6135,20 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           : "Awaiting PonchoPay guarantee";
   const confirmationDocumentLabel = confirmation?.status === "Waitlist"
     ? "Request"
-    : confirmation?.paymentMethod === "card"
+    : confirmationPaidWithCredit || confirmation?.paymentMethod === "card"
       ? "Receipt"
       : "Invoice";
   const confirmationParentEmail = isLaunchMode ? "your saved email" : confirmation?.parentEmail || activeFamily.email || "Parent email";
   const confirmationNextPayment = confirmationPaymentSchedule.find((item) => item.status !== "Paid") || confirmationPaymentSchedule[0] || null;
   const confirmationNextPaymentText = confirmation?.paymentPlan === "Monthly" && confirmationNextPayment
     ? `${confirmationNextPayment.label} · ${money(confirmationNextPayment.amount)}`
-    : confirmationOutstanding > 0
-      ? `${money(confirmationOutstanding)} outstanding`
+    : confirmationDisplayOutstanding > 0
+      ? `${money(confirmationDisplayOutstanding)} outstanding`
       : "Nothing else due";
   const confirmationHeroText = confirmation?.status === "Waitlist"
     ? "We have saved the request and will confirm the place before any payment is taken."
+    : confirmationPaidWithCredit
+      ? "Your booking is confirmed and paid in full using account credit. No card payment is needed."
     : confirmation?.paymentPlan === "Monthly"
       ? isLaunchMode ? "Open PonchoPay to set up the monthly plan and confirm the booking automatically." : "Open PonchoPay to set up the monthly plan before the booking is confirmed."
       : confirmationHasCheckoutUrl
@@ -4934,46 +6157,46 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         ? "Complete the card payment in PonchoPay and the booking will confirm automatically."
         : isLaunchMode ? "Complete the PonchoPay card guarantee and the booking will confirm automatically while voucher or Tax-Free Childcare reconciliation runs." : "PonchoPay will store the card guarantee and match the voucher or Tax-Free Childcare payment automatically.";
   const confirmationOutcomeRows = confirmation ? [
-    ["Booking", confirmation?.status === "Waitlist" ? "Request saved" : confirmationOutstanding > 0 || confirmationHasCheckoutUrl ? "Pending PonchoPay" : "Confirmed", `${confirmationChildren} · ${confirmationDayCount} session${confirmationDayCount === 1 ? "" : "s"}`],
+    ["Booking", confirmation?.status === "Waitlist" ? "Request saved" : confirmationDisplayOutstanding > 0 || confirmationHasCheckoutUrl ? "Pending PonchoPay" : "Confirmed", `${confirmationChildren} · ${confirmationDayCount} session${confirmationDayCount === 1 ? "" : "s"}`],
     ["Invoice", confirmationInvoiceStatus, confirmationParentEmail],
     ["Payment", confirmationPaymentStatus, confirmationNextPaymentText],
   ] : [];
   const confirmationEmailRows = confirmation ? [
     ["Booking confirmation", confirmationParentEmail, `${confirmationDayCount} session${confirmationDayCount === 1 ? "" : "s"} and child details`],
-    [confirmation?.paymentMethod === "card" ? "Receipt email" : "Invoice email", confirmationInvoiceStatus, isLaunchMode ? "Also saved in your portal" : confirmation.paymentRoute || "PonchoPay route"],
-    ["Parent portal", confirmationOutstanding > 0 ? `${money(confirmationOutstanding)} outstanding` : "No outstanding balance", "Invoice and payment history updated"],
+    [confirmationPaidWithCredit || confirmation?.paymentMethod === "card" ? "Receipt email" : "Invoice email", confirmationInvoiceStatus, isLaunchMode ? "Also saved in your portal" : confirmation.paymentRoute || "PonchoPay route"],
+    ["Parent portal", confirmationDisplayOutstanding > 0 ? `${money(confirmationDisplayOutstanding)} outstanding` : "No outstanding balance", "Invoice and payment history updated"],
   ] : [];
   const confirmationRegisterState = confirmationHasCheckoutUrl
     ? "Ready after checkout"
-    : confirmationOutstanding > 0
+    : confirmationDisplayOutstanding > 0
       ? "Awaiting balance"
       : "Session added";
   const confirmationRegisterDetail = confirmationHasCheckoutUrl
     ? `${confirmationChildren} appears automatically once PonchoPay authorises payment or the card guarantee.`
-    : confirmationOutstanding > 0
+    : confirmationDisplayOutstanding > 0
       ? `${confirmationChildren} appears once the remaining balance clears.`
       : `${confirmationChildren} appears on the daily register.`;
   const confirmationNextRows = confirmation ? [
     [confirmationDocumentLabel, confirmationInvoiceStatus, `Emailed to ${confirmationParentEmail}`],
-    ["Portal", confirmationHasCheckoutUrl ? "Secure checkout ready" : "Updated", confirmationOutstanding > 0 ? `${money(confirmationOutstanding)} still to clear` : "Balance clear"],
+    ["Portal", confirmationHasCheckoutUrl ? "Secure checkout ready" : "Updated", confirmationDisplayOutstanding > 0 ? `${money(confirmationDisplayOutstanding)} still to clear` : "Balance clear"],
     ["Register", confirmationRegisterState, confirmationRegisterDetail],
-    ["Parent portal", "Updated", confirmationOutstanding > 0 ? `${money(confirmationOutstanding)} outstanding` : "Balance clear"],
+    ["Parent portal", "Updated", confirmationDisplayOutstanding > 0 ? `${money(confirmationDisplayOutstanding)} outstanding` : "Balance clear"],
   ] : [];
   const confirmationParentReceiptRows = confirmation ? [
     ["Booked", confirmationChildren, `${confirmation.site} · ${parentActivityLabel(confirmation)}`],
     ["When", `${confirmationDayCount} session${confirmationDayCount === 1 ? "" : "s"}`, confirmationDaysSummary],
-    ["Payment", confirmationPaymentStatus, confirmation.paymentPlan === "Monthly" ? confirmationNextPaymentText : isLaunchMode ? confirmationPaymentLabel : confirmation.paymentRoute || confirmationPaymentLabel],
-    ["Email", confirmationParentEmail, confirmation.status === "Waitlist" ? "Waitlist request confirmation" : confirmation.paymentMethod === "card" ? "Receipt and booking confirmation" : `${confirmationDocumentLabel} and booking confirmation`],
+    ["Payment", confirmationPaymentStatus, confirmation.paymentPlan === "Monthly" ? confirmationNextPaymentText : isLaunchMode ? confirmationDisplayPaymentLabel : confirmation.paymentRoute || confirmationDisplayPaymentLabel],
+    ["Email", confirmationParentEmail, confirmation.status === "Waitlist" ? "Waitlist request confirmation" : confirmationPaidWithCredit || confirmation.paymentMethod === "card" ? "Receipt and booking confirmation" : `${confirmationDocumentLabel} and booking confirmation`],
   ] : [];
   const confirmationAssuranceRows = confirmation ? [
-    ["Portal", confirmationOutstanding > 0 ? `${money(confirmationOutstanding)} outstanding` : "Balance clear", "Invoice, receipt and payment history are visible."],
+    ["Portal", confirmationDisplayOutstanding > 0 ? `${money(confirmationDisplayOutstanding)} outstanding` : "Balance clear", "Invoice, receipt and payment history are visible."],
     ["Register", "Updated", "Staff can see the booking on the daily register."],
     ["Changes", `${rules.amendmentHours}h amendment window`, `${rules.cancellationHours}h cancellation window before the session.`],
   ] : [];
   const confirmationReceiptHeroRows = confirmation ? [
     ["Reference", confirmationReference, `${confirmationDocumentLabel} reference`],
-    ["Today", confirmation.status === "Waitlist" ? "No payment" : money(confirmationDueToday), confirmation.status === "Waitlist" ? "Place not charged yet" : confirmation.paymentPlan === "Monthly" ? "First payment" : confirmationPaymentLabel],
-    ["Status", confirmation.status === "Waitlist" ? "Awaiting place" : confirmationOutstanding > 0 ? confirmationNextPaymentText : "No balance due", confirmation.status === "Waitlist" ? "We will confirm before charging" : confirmationOutstanding > 0 ? "Shown in parent portal" : "Booking confirmed"],
+    ["Today", confirmation.status === "Waitlist" ? "No payment" : money(confirmationDisplayDueToday), confirmation.status === "Waitlist" ? "Place not charged yet" : confirmation.paymentPlan === "Monthly" ? "First payment" : confirmationDisplayPaymentLabel],
+    ["Status", confirmation.status === "Waitlist" ? "Awaiting place" : confirmationDisplayOutstanding > 0 ? confirmationNextPaymentText : "No balance due", confirmation.status === "Waitlist" ? "We will confirm before charging" : confirmationDisplayOutstanding > 0 ? "Shown in parent portal" : "Booking confirmed"],
   ] : [];
   const confirmationPonchoRows = confirmation?.ponchoCheckout ? [
     ["Checkout", confirmation.ponchoCheckout.status === "ready_for_payment" ? "Ready" : confirmation.ponchoCheckout.status === "provider_not_configured" ? "Config needed" : confirmation.ponchoCheckout.status === "provider_error" ? "Review" : "Prepared", confirmation.ponchoCheckout.message || "PonchoPay checkout state recorded"],
@@ -5671,7 +6894,33 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ["Holiday age range", { ...ruleTest, careType: "Holiday Camp", site: "Wimbledon Camp", childSchool: "Any School", childYear: "Year 7", childCount: 1, days: 5, capacity: 24, alreadyBooked: 12, paymentMethod: "voucher", promo: rules.promoCode || "", override: false }],
   ];
   const comparedRuleScenarios = ruleScenarios.map((scenario) => ({ ...scenario, result: buildRuleSimulation(scenario.test) }));
-  const registerRows = drafts
+  const registerQueryDate = labDayIso(registerDay);
+  const registerQueryKey = `${activeSession.id}|${registerQueryDate}`;
+  const useServerRegister = realBookingServiceReady && ["Staff", "Manager", "Admin"].includes(activeRole);
+
+  useEffect(() => {
+    if (!useServerRegister || !registerQueryDate || labView !== "Operations") return undefined;
+    let cancelled = false;
+    setLiveStaffRegister((current) => ({ ...current, loading: true, error: "" }));
+    fetchStaffRegister({
+      registerDate: registerQueryDate,
+      siteName: activeSession.site,
+      programmeName: activeSession.title,
+    })
+      .then((rows) => {
+        if (cancelled) return;
+        setLiveStaffRegister({ rows, loading: false, error: "", loadedKey: registerQueryKey });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setLiveStaffRegister({ rows: [], loading: false, error: error?.message || "The live register could not be loaded.", loadedKey: registerQueryKey });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [useServerRegister, registerQueryDate, registerQueryKey, activeSession.site, activeSession.title, labView, registerRefreshVersion]);
+
+  const localRegisterRows = drafts
     .filter((draft) => draft.sessionId === activeSession.id && (draft.days || []).includes(registerDay) && draft.status !== "Cancelled")
     .flatMap((draft) => {
       const names = draft.children?.length ? draft.children : [draft.childName || "Child"];
@@ -5685,6 +6934,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           rowId,
           draft,
           name,
+          sessionLabel: draft.blockSummary || draft.sessionLabel || activeSession.blocks?.[0]?.label || "Session",
+          startsAt: "",
+          endsAt: "",
+          childSchoolName: profile?.school || draft.site || activeSession.site,
+          childYearGroup: profile?.year || "",
+          childDateOfBirth: profile?.dob || "",
+          parentName: draft.parentName || "",
+          parentPhone: draft.emergencyPhone || "",
+          emergencyContact: draft.emergencyPhone ? { phone: draft.emergencyPhone } : {},
           flags: profile?.flags || [],
           previousIncident,
           status: event.status || "Booked",
@@ -5696,6 +6954,87 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         };
       });
     });
+  const liveRegisterRows = liveStaffRegister.rows.map((row) => {
+    const statusLabels = {
+      booked: "Booked",
+      checked_in: "Checked in",
+      checked_out: "Checked out",
+      absent: "Absent",
+      late_collection: "Late collection",
+      incident: "Incident",
+    };
+    const careFlags = [
+      ...(row.flags || []),
+      row.allergyNotes ? `Allergy: ${row.allergyNotes}` : "",
+      row.dietaryNotes ? `Dietary: ${row.dietaryNotes}` : "",
+    ].filter(Boolean);
+    const collectors = row.authorisedCollectors || [];
+    const collector = collectors[0];
+    const emergency = row.emergencyContact && typeof row.emergencyContact === "object" ? row.emergencyContact : {};
+    const emergencyName = emergency.name || emergency.full_name || emergency.contact_name || "";
+    const emergencyPhone = emergency.phone || emergency.mobile || emergency.telephone || row.parentPhone || "";
+    return {
+      rowId: row.bookingItemId,
+      bookingItemId: row.bookingItemId,
+      live: true,
+      name: row.childName || "Child",
+      sessionLabel: row.sessionLabel || "Session",
+      startsAt: row.startsAt || "",
+      endsAt: row.endsAt || "",
+      childSchoolName: row.childSchoolName || row.siteName || activeSession.site,
+      childYearGroup: row.childYearGroup || "",
+      childDateOfBirth: row.childDateOfBirth || "",
+      parentName: row.parentName || "",
+      parentPhone: row.parentPhone || "",
+      emergencyContact: emergency,
+      emergencyName,
+      emergencyPhone,
+      flags: careFlags,
+      previousIncident: false,
+      status: statusLabels[row.attendanceStatus] || "Booked",
+      note: row.attendanceNote || "",
+      time: row.attendanceTime ? new Date(row.attendanceTime).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "",
+      collector: typeof collector === "string" ? collector : collector?.name || "Collector not set",
+      authorisedCollectors: collectors,
+      collectionPassword: "Check family collection details",
+      draft: {
+        id: row.bookingId,
+        realBookingId: row.bookingId,
+        bookingReference: row.bookingReference,
+        activity: row.programmeName || activeSession.title,
+        site: row.siteName || activeSession.site,
+        sessionId: activeSession.id,
+        children: [row.childName],
+        childName: row.childName,
+        parentName: row.parentName || "",
+        emergencyPhone,
+        days: [registerDay],
+        status: "Confirmed",
+        medicalNotes: row.medicalNotes || "",
+      },
+    };
+  });
+  const registerRows = useServerRegister ? liveRegisterRows : localRegisterRows;
+  const registerSessionOptions = ["All sessions", ...new Set(registerRows.map((row) => row.sessionLabel || "Session"))];
+  const normalizedRegisterSearch = registerSearch.trim().toLowerCase();
+  const visibleRegisterRows = registerRows.filter((row) => {
+    if (registerSessionFilter !== "All sessions" && row.sessionLabel !== registerSessionFilter) return false;
+    if (registerFireDrillMode && !["Checked in", "Late collection", "Incident"].includes(row.status)) return false;
+    if (!normalizedRegisterSearch) return true;
+    return [
+      row.name,
+      row.childYearGroup,
+      row.childSchoolName,
+      row.parentName,
+      row.parentPhone,
+      row.emergencyName,
+      row.emergencyPhone,
+      row.collector,
+      row.draft.medicalNotes,
+      row.note,
+      ...(row.flags || []),
+    ].some((value) => String(value || "").toLowerCase().includes(normalizedRegisterSearch));
+  });
   const pilotDrafts = drafts.filter((draft) => draft.sessionId === pilotSession.id && draft.status !== "Cancelled");
   const pilotChildSessions = pilotDrafts.reduce((sum, draft) => sum + Number(draft.childCount || 0) * (draft.days?.length || 0), 0);
   const pilotCapacity = pilotSession.capacity * pilotSession.days.length;
@@ -6234,8 +7573,22 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     }
     const blockStoreKey = `${activeSession.id}::${day}`;
     const removing = pickedDays.includes(day);
+    const row = activeDayRows.find((item) => item.day === day);
+    const noBookableSessions = Boolean(row?.blocks?.length) && row.blocks.every((block) => pickerBookingStateForBlock(row, block).allBooked);
+    if (!removing && noBookableSessions) {
+      setStatus("Every selected child already has these sessions booked or awaiting payment.");
+      return;
+    }
     if (!removing && isLaunchMode && capacitySnapshotForDay(day).fullForSelection) {
       setStatus("That day is full for the selected child. Choose another date or reduce the number of children.");
+      return;
+    }
+    if (!removing && isLaunchMode) {
+      setSelectedDayBlocks((current) => ({ ...current, [blockStoreKey]: [] }));
+      setLaunchExpandedDay(day);
+      setBookingMode("Ad-hoc");
+      setStatus("Choose the session or sessions you need for this day.");
+      scrollToFlowSection(".lab-date-picker-panel", "center");
       return;
     }
     setSelectedDays((current) => {
@@ -6265,9 +7618,20 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const blockKey = block.key;
     const currentKeysForDay = selectedBlockKeysForDay(day);
     const addingBlock = !pickedDays.includes(day) || !currentKeysForDay.includes(blockKey);
+    const row = activeDayRows.find((item) => item.day === day);
+    const existingState = row ? bookingStateForBlock(row, block) : null;
+    const pickerState = row ? pickerBookingStateForBlock(row, block) : null;
+    if (addingBlock && pickerState?.allBooked) {
+      setStatus(pickerState.pending ? "Every saved child already has this session awaiting payment." : "Every saved child is already booked for this session.");
+      return;
+    }
+    const shouldAddEligibleChildren = addingBlock && isLaunchMode && existingState?.allBooked && pickerState?.availableChildren.length;
     if (addingBlock && isLaunchMode && capacitySnapshotForDay(day).fullForSelection) {
       setStatus("That session is full for the selected child. Choose another session or date.");
       return;
+    }
+    if (shouldAddEligibleChildren) {
+      setSelectedChildIds((current) => [...new Set([...current, ...pickerState.availableChildren.map((child) => child.id)])]);
     }
     setSelectedDays((current) => {
       const existingDays = current[activeSession.id] || [];
@@ -6291,7 +7655,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     });
     setLaunchExpandedDay(day);
     if (bookingMode === "Ad-hoc") setBookingMode("Ad-hoc");
-    setStatus("");
+    if (shouldAddEligibleChildren) {
+      const availableNames = pickerState.availableChildren.map((child) => child.name).join(", ");
+      const bookedNames = pickerState.conflicts.map(({ child }) => child.name).join(", ");
+      setStatus(`Selected for ${availableNames}.${bookedNames ? ` ${bookedNames} already ${pickerState.pending ? "has payment pending" : "booked"}.` : ""}`);
+    } else {
+      setStatus("");
+    }
     scrollToFlowSection(".lab-basket-review", "center");
   }
 
@@ -6309,6 +7679,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }
 
   function editReviewedMonth(month) {
+    if (basketCheckoutActive) {
+      setParentCheckoutOpen(false);
+      moveLaunchFlowStep("Dates", ".lab-draft-basket");
+      setStatus(`Choose Edit booking beside the ${month} basket item you want to change.`);
+      return;
+    }
     const monthRow = parentReviewMonthRows.find((row) => row.month === month);
     const firstDay = monthRow?.rows?.[0]?.day || "";
     const allMonthNames = bookableSessionDays.reduce((months, row) => {
@@ -6333,6 +7709,17 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }
 
   function removeReviewedMonth(month) {
+    if (basketCheckoutActive) {
+      setDraftBookingBasket((current) => current.filter((item) => {
+        const parsed = parseLabDay(item.day);
+        const itemMonth = parsed ? parsed.toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : "Other dates";
+        return itemMonth !== month;
+      }));
+      setParentCheckoutOpen(false);
+      moveLaunchFlowStep("Dates", ".lab-draft-basket");
+      setStatus(`${month} removed from the basket.`);
+      return;
+    }
     const daysToRemove = new Set((parentReviewMonthRows.find((row) => row.month === month)?.rows || []).map((row) => row.day));
     if (!daysToRemove.size) return;
     setSelectedDays((current) => ({
@@ -6348,6 +7735,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }
 
   function removeReviewedDay(day) {
+    if (basketCheckoutActive) {
+      setDraftBookingBasket((current) => current.filter((item) => item.day !== day));
+      setParentCheckoutOpen(false);
+      moveLaunchFlowStep("Dates", ".lab-draft-basket");
+      setStatus(`${day} removed from the basket.`);
+      return;
+    }
     if (!pickedDays.includes(day)) return;
     toggleDay(day);
     setStatus(`${day} removed from this booking.`);
@@ -6417,12 +7811,24 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   function applyBookingMode(mode) {
     setBookingMode(mode);
     setStatus("");
+    setLaunchFocusedReviewMonth("");
+    if (mode === "Ad-hoc") {
+      setDatePickerMode("All");
+      setLaunchExpandedDay("");
+    }
     const openDays = bookableSessionDays.map((row) => row.day);
     const rangeDays = mode === "Half term"
-      ? (halfTermDays.length ? halfTermDays : openDays.slice(0, Math.ceil(openDays.length / 2)))
-      : mode === "Full term" || mode === "Full year"
-        ? openDays
+      ? halfTermDays
+      : mode === "Full term"
+        ? termDays
+        : mode === "Full year"
+        ? schoolYearDays
         : [];
+    if (mode !== "Ad-hoc" && !rangeDays.length) {
+      setSelectedDays((current) => ({ ...current, [activeSession.id]: [] }));
+      setStatus(`No canonical ${mode.toLowerCase()} dates are available for this school. Choose exact dates or contact support.`);
+      return;
+    }
     const weekdayOptions = ["Mon", "Tue", "Wed", "Thu", "Fri"].filter((weekday) => openDays.some((day) => day.startsWith(weekday)));
     const chosenWeekdays = (regularWeekdays.length ? regularWeekdays : weekdayOptions).filter((weekday) => weekdayOptions.includes(weekday));
     const chosenBlocks = (regularBlockKeys.length ? regularBlockKeys : activeBlockKeys).filter((key) => activeBlockKeys.includes(key));
@@ -6437,7 +7843,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       });
       nextDays.forEach((day) => {
         const key = `${activeSession.id}::${day}`;
-        if (mode !== "Ad-hoc" || !next[key]?.length) next[key] = mode === "Ad-hoc" ? activeBlockKeys : chosenBlocks;
+        if (mode !== "Ad-hoc") next[key] = chosenBlocks;
+        else if (!(key in next)) next[key] = isLaunchMode ? [] : activeBlockKeys;
       });
       return next;
     });
@@ -6450,8 +7857,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     if (mode === "Ad-hoc") return;
     const openDays = bookableSessionDays.map((row) => row.day);
     const rangeDays = mode === "Half term"
-      ? (halfTermDays.length ? halfTermDays : openDays.slice(0, Math.ceil(openDays.length / 2)))
-      : openDays;
+      ? halfTermDays
+      : mode === "Full term"
+        ? termDays
+        : mode === "Full year"
+          ? schoolYearDays
+          : [];
+    if (!rangeDays.length) {
+      setStatus(`No canonical ${mode.toLowerCase()} dates are available for this school.`);
+      return;
+    }
     const chosenWeekdays = nextWeekdays.filter(Boolean);
     const chosenBlocks = nextBlockKeys.filter((key) => activeBlockKeys.includes(key));
     const nextDays = rangeDays.filter((day) => chosenWeekdays.some((weekday) => day.startsWith(weekday)));
@@ -6507,9 +7922,126 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }
 
   function toggleChild(childId) {
+    const currentlySelected = selectedChildIds.includes(childId);
+    const eligibility = childBookingEligibilityById.get(childId);
+    if (!currentlySelected && eligibility?.allBooked) {
+      setStatus(eligibility.pending ? "This child already has every selected session awaiting payment." : "This child is already booked onto every selected session.");
+      return;
+    }
     setSelectedChildIds((current) => {
       return current.includes(childId) ? current.filter((id) => id !== childId) : [...current, childId];
     });
+    setStatus("");
+  }
+
+  function basketLineKey(item) {
+    return `${item.childId}::${item.sessionId}::${item.day}::${item.blockKey}`;
+  }
+
+  function addSelectionToBasket() {
+    if (!selectedChildren.length) {
+      setStatus("Choose the child or children this care is for.");
+      scrollToFlowSection(".lab-basket-child-chooser", "center");
+      return;
+    }
+    if (!pickedDayRows.length || !selectedBlockCount) {
+      setStatus("Choose at least one date and session before adding to the basket.");
+      scrollToFlowSection(".lab-date-picker-panel", "start");
+      return;
+    }
+    const basketSite = draftBookingBasket.find((item) => item.groupId !== editingBasketGroupId)?.site;
+    if (basketSite && basketSite !== activeSession.site) {
+      setStatus(`Your basket contains care at ${basketSite}. Complete or clear that basket before booking at ${activeSession.site}.`);
+      window.setTimeout(() => scrollToFlowSection(".lab-draft-basket", "center"), 80);
+      return;
+    }
+    const groupId = editingBasketGroupId || `basket-group-${Date.now()}`;
+    const replacingGroup = new Set(draftBookingBasket.filter((item) => item.groupId === editingBasketGroupId).map(basketLineKey));
+    const existingKeys = new Set(draftBookingBasket.filter((item) => item.groupId !== editingBasketGroupId).map(basketLineKey));
+    const nextLines = pickedDayRows.flatMap((row) => row.selectedBlocks.flatMap((block) => (
+      bookingStateForBlock(row, block).availableChildren.map((child) => ({
+        id: `${groupId}-${child.id}-${labDayIso(row.day)}-${block.key}`,
+        groupId,
+        childId: child.id,
+        childName: child.name,
+        childSchool: child.school || activeSession.site,
+        sessionId: activeSession.id,
+        site: activeSession.site,
+        activity: activeSession.title,
+        careType: activeSession.type,
+        day: row.day,
+        sessionDate: labDayIso(row.day),
+        blockKey: block.key,
+        sessionBlockId: sessionBlockIdForBooking(block),
+        sessionLabel: block.label || "Session",
+        start: block.start || "",
+        end: block.end || "",
+        price: Number(block.price || 0),
+        paymentRoute: row.paymentRoute || activeSession.paymentRoute,
+      })).filter((item) => !existingKeys.has(basketLineKey(item)))
+    )));
+    if (!nextLines.length) {
+      setStatus(replacingGroup.size ? "No changes were made to this basket booking." : "Those child sessions are already in your basket or already booked.");
+      return;
+    }
+    setDraftBookingBasket((current) => [
+      ...current.filter((item) => item.groupId !== editingBasketGroupId),
+      ...nextLines,
+    ]);
+    setEditingBasketGroupId("");
+    setSelectedChildIds([]);
+    clearPickedSessions();
+    setParentCheckoutOpen(false);
+    setStatus(`${nextLines.length} child session${nextLines.length === 1 ? "" : "s"} added to your basket. Choose another child or proceed to checkout.`);
+    window.setTimeout(() => scrollToFlowSection(".lab-draft-basket", "center"), 80);
+  }
+
+  function removeBasketLine(lineId) {
+    setDraftBookingBasket((current) => current.filter((item) => item.id !== lineId));
+    setStatus("Session removed from your basket.");
+  }
+
+  function loadBasketGroup(groupId, duplicate = false) {
+    const group = draftBookingBasket.filter((item) => item.groupId === groupId);
+    if (!group.length) return;
+    const session = sessions.find((item) => item.id === group[0].sessionId);
+    if (session) chooseSession(session, { advance: false });
+    const groupDays = [...new Set(group.map((item) => item.day))];
+    const groupChildIds = [...new Set(group.map((item) => item.childId))];
+    setSelectedDays((current) => ({ ...current, [group[0].sessionId]: groupDays }));
+    setSelectedDayBlocks((current) => {
+      const next = { ...current };
+      groupDays.forEach((day) => {
+        next[`${group[0].sessionId}::${day}`] = [...new Set(group.filter((item) => item.day === day).map((item) => item.blockKey))];
+      });
+      return next;
+    });
+    setSelectedChildIds(duplicate ? [] : groupChildIds);
+    setEditingBasketGroupId(duplicate ? "" : groupId);
+    setParentCheckoutOpen(false);
+    moveLaunchFlowStep("Dates", ".lab-date-picker-panel");
+    setStatus(duplicate
+      ? `Booking copied. Choose another child, then add it to the basket.`
+      : `Editing ${group.map((item) => item.childName).filter((name, index, names) => names.indexOf(name) === index).join(", ")}. Save the changes back to the basket.`);
+  }
+
+  function clearDraftBasket() {
+    setDraftBookingBasket([]);
+    setEditingBasketGroupId("");
+    setParentCheckoutOpen(false);
+    setStatus("Basket cleared.");
+  }
+
+  function proceedBasketCheckout() {
+    if (!draftBookingBasket.length) {
+      setStatus("Add at least one child session to the basket first.");
+      return;
+    }
+    setStatus("");
+    setParentCheckoutOpen(true);
+    setCheckoutStep(isLaunchMode ? "Payment" : "Children");
+    if (isLaunchMode) moveLaunchFlowStep("Checkout", ".lab-checkout");
+    else scrollToFlowSection(".lab-checkout", "start");
   }
 
   function persistFamilies(nextFamilies) {
@@ -6533,7 +8065,19 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ].slice(0, 16);
     persistFamilies(nextFamilies);
     setActiveFamilyId(hydratedFamily.id);
-    if (hydratedFamily.registeredCentre) setSelectedSchool(hydratedFamily.registeredCentre);
+    const bookingSchool = launchRequestedSchool || hydratedFamily.registeredCentre;
+    if (bookingSchool) {
+      const requestedSchoolSessions = sessions.filter((session) => session.site === bookingSchool);
+      const requestedSession = preferredParentSession(
+        requestedSchoolSessions.filter((session) => session.type === "Wraparound"),
+      ) || requestedSchoolSessions[0];
+      setSelectedSchool(bookingSchool);
+      if (requestedSession) {
+        setActiveId(requestedSession.id);
+        setCareType(requestedSession.type);
+        setArea(requestedSession.area);
+      }
+    }
     setLaunchChildSavedProfile(null);
     setLaunchChildConfirmedForBooking(false);
     if (hydratedFamily.children.length) {
@@ -6672,6 +8216,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       phone: liveParentAccount?.phone || parentRegistration.primaryPhone,
       secondaryPhone: parentRegistration.secondaryPhone,
       emergencyContact: parentRegistration.primaryPhone,
+      emergencyContactRecord: {
+        primaryPhone: parentRegistration.primaryPhone,
+        secondaryPhone: parentRegistration.secondaryPhone,
+      },
+      emergencyContacts: [
+        { id: "main-account-holder", name: `${parentRegistration.firstName} ${parentRegistration.lastName}`.trim(), relationship: "Main account holder", email, mobile: parentRegistration.primaryPhone },
+        { id: "second-emergency-contact", name: "Second emergency contact", relationship: "Emergency contact", mobile: parentRegistration.secondaryPhone },
+      ],
       collectionPassword: "",
       collectors: [],
       registeredCentre: centre,
@@ -6713,6 +8265,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentLogin({ username: email, password: "" });
     setLaunchAccountSessionEmail(email);
     setLaunchParentPortalOpen(true);
+    setLaunchBookingActive(false);
     setLaunchChildRegistrationOpen(false);
     setSelectedSchool(centre);
     const freshChildRegistration = { ...defaultChildRegistration, school: centre, languages: ["English"] };
@@ -6766,6 +8319,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ["town", "town", parentRegistration.town],
       ["postcode", "postcode", parentRegistration.postcode],
       ["primaryPhone", "primary contact number", parentRegistration.primaryPhone],
+      ["secondaryPhone", "second emergency contact number", parentRegistration.secondaryPhone],
     ].filter(([, , value]) => !String(value || "").trim()).map(([field, label]) => ({ field, label }));
   }
 
@@ -6781,10 +8335,6 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ["school", "main school", childRegistration.school || selectedSchool, "Basics"],
       ["classroom", "year group", childRegistration.classroom, "Basics"],
       ["collectionPassword", "collection password", childRegistration.collectionPassword, "Basics"],
-      ["emergencyRelationship", "emergency contact relationship", childRegistration.emergencyRelationship, "Contacts"],
-      ["emergencyFirstName", "emergency contact first name", childRegistration.emergencyFirstName, "Contacts"],
-      ["emergencyLastName", "emergency contact last name", childRegistration.emergencyLastName, "Contacts"],
-      ["emergencyMobile", "emergency contact mobile", childRegistration.emergencyMobile, "Contacts"],
     ].filter(([, , value]) => !String(value || "").trim()).map(([field, label, , step]) => ({ field, label, step }));
     if (childRegistration.dob && !normaliseChildDob(childRegistration.dob)) {
       missingFields.push({ field: "dob", label: "valid date of birth", step: "Basics" });
@@ -6803,7 +8353,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       parentRegistration.email && !isValidEmailAddress(parentRegistration.email) && "enter a valid email address",
       parentRegistration.confirmEmail && !isValidEmailAddress(parentRegistration.confirmEmail) && "enter a valid confirmation email",
       parentRegistration.primaryPhone && !isValidPhoneNumber(parentRegistration.primaryPhone, { required: true }) && "enter a valid primary contact number",
-      parentRegistration.secondaryPhone && !isValidPhoneNumber(parentRegistration.secondaryPhone) && "enter a valid secondary contact number",
+      parentRegistration.secondaryPhone && !isValidPhoneNumber(parentRegistration.secondaryPhone, { required: true }) && "enter a valid second emergency contact number",
+      phoneDigits(parentRegistration.primaryPhone) && phoneDigits(parentRegistration.primaryPhone) === phoneDigits(parentRegistration.secondaryPhone) && "use a different number for the second emergency contact",
     ].filter(Boolean);
   }
 
@@ -6839,18 +8390,6 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       window.setTimeout(() => scrollToFirstFormError(".lab-launch-child-form"), 60);
       return;
     }
-    const missingContacts = childMissingContacts();
-    if (childRegistrationStep === "Contacts" && missingContacts.length) {
-      setStatus(`Add ${missingContacts.slice(0, 3).join(", ")} before continuing.`);
-      window.setTimeout(() => scrollToFirstFormError(".lab-launch-child-form"), 60);
-      return;
-    }
-    const contactValidationMessages = childContactValidationMessages();
-    if (childRegistrationStep === "Contacts" && contactValidationMessages.length) {
-      setStatus(`Please ${contactValidationMessages.slice(0, 3).join(", ")} before continuing.`);
-      window.setTimeout(() => scrollToFirstFormError(".lab-launch-child-form"), 60);
-      return;
-    }
     setStatus("");
     setChildRegistrationSubmitAttempted(false);
     moveChildRegistrationStep(nextStep);
@@ -6859,6 +8398,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   async function registerLaunchChild(event) {
     event.preventDefault();
     if (parentAccountLoading) return;
+    const editingChildId = launchFamilyChildId;
     setChildRegistrationSubmitAttempted(true);
     const childRequiredErrors = childRequiredFieldErrors();
     if (childRequiredErrors.length) {
@@ -6868,20 +8408,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       return;
     }
     const missingBasics = childMissingBasics();
-    const missingContacts = childMissingContacts();
-    if (missingBasics.length || missingContacts.length) {
-      setChildRegistrationStep(missingBasics.length ? "Basics" : "Contacts");
-      setStatus(`Complete ${[...missingBasics, ...missingContacts].slice(0, 3).join(", ")} before booking.`);
+    if (missingBasics.length) {
+      setChildRegistrationStep("Basics");
+      setStatus(`Complete ${missingBasics.slice(0, 3).join(", ")} before booking.`);
       window.setTimeout(() => scrollToFirstFormError(".lab-launch-child-form"), 90);
       return;
     }
-    const contactValidationMessages = childContactValidationMessages();
-    if (contactValidationMessages.length) {
-      setChildRegistrationStep("Contacts");
-      setStatus(`Please ${contactValidationMessages.slice(0, 3).join(", ")} before booking.`);
-      window.setTimeout(() => scrollToFirstFormError(".lab-launch-child-form"), 90);
-      return;
-    }
+    const existingChild = launchRegisteredChildren.find((child) => child.id === editingChildId);
     const childName = `${childRegistration.firstName} ${childRegistration.lastName}`.trim();
     const childDob = normaliseChildDob(childRegistration.dob);
     const childFlags = [
@@ -6892,12 +8425,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       childRegistration.medicalCondition && `Medical: ${childRegistration.medicalCondition}`,
       childRegistration.sendNeed && `SEND: ${childRegistration.sendNeed}`,
     ].filter(Boolean);
+    const completedMigrationMetadata = clearMigrationMissingFields(existingChild?.migrationMetadata, [/.*/]);
     let liveChildProfile = null;
     if (realBookingServiceReady && parentAccountMode === "live") {
       setParentAccountLoading(true);
       try {
         setStatus("Saving child profile...");
-        liveChildProfile = await createChildProfile({
+        const saveChildProfile = editingChildId ? (payload) => updateChildProfile(editingChildId, payload) : createChildProfile;
+        liveChildProfile = await saveChildProfile({
           fullName: childName,
           preferredName: childRegistration.firstName,
           firstName: childRegistration.firstName,
@@ -6919,16 +8454,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             childRegistration.allergyDetails,
           ].filter(Boolean).join("\n"),
           dietaryNotes: [childRegistration.dietaryNeed, childRegistration.dietaryDetails].filter(Boolean).join(": "),
-          authorisedCollectors: [{
-            type: "emergency",
-            title: childRegistration.emergencyTitle,
-            relationship: childRegistration.emergencyRelationship,
-            firstName: childRegistration.emergencyFirstName,
-            lastName: childRegistration.emergencyLastName,
-            email: childRegistration.emergencyEmail,
-            mobile: childRegistration.emergencyMobile,
-            telephone: childRegistration.emergencyTelephone,
-          }],
+          authorisedCollectors: existingChild?.emergencyContacts || existingChild?.authorisedCollectors || [],
           consents: {
             responses: childRegistration.consents,
             registration: {
@@ -6965,6 +8491,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             },
           },
           flags: childFlags,
+          migrationMetadata: completedMigrationMetadata,
         });
       } catch (error) {
         setParentAccountLoading(false);
@@ -6973,7 +8500,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       }
       setParentAccountLoading(false);
     }
-    const childId = liveChildProfile?.id || `family-child-${Date.now()}`;
+    const childId = liveChildProfile?.id || editingChildId || `family-child-${Date.now()}`;
     const childProfile = {
       id: childId,
       name: liveChildProfile?.fullName || childName,
@@ -6993,15 +8520,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       collectionPassword: childRegistration.collectionPassword,
       religiousInfo: childRegistration.religiousInfo,
       additionalInfo: childRegistration.additionalInfo,
-      emergencyContacts: [{
-        title: childRegistration.emergencyTitle,
-        relationship: childRegistration.emergencyRelationship,
-        firstName: childRegistration.emergencyFirstName,
-        lastName: childRegistration.emergencyLastName,
-        email: childRegistration.emergencyEmail,
-        mobile: childRegistration.emergencyMobile,
-        telephone: childRegistration.emergencyTelephone,
-      }],
+      emergencyContacts: existingChild?.emergencyContacts || existingChild?.authorisedCollectors || [],
       doctorContacts: childRegistration.doctorName || childRegistration.doctorSurgery || childRegistration.doctorTelephone ? [{
         name: childRegistration.doctorName,
         surgery: childRegistration.doctorSurgery,
@@ -7034,6 +8553,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       flags: childFlags,
       medicalPlan: childFlags.join(" · "),
       consent: "Child registration consents recorded",
+      externalSource: existingChild?.externalSource || "",
+      externalId: existingChild?.externalId || "",
+      migrationMetadata: completedMigrationMetadata,
     };
     const signedInEmail = String(parentLogin.username || parentRegistration.email || activeFamily.email || "").trim().toLowerCase();
     let attachedToFamily = false;
@@ -7046,11 +8568,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ...family,
       registeredCentre: family.registeredCentre || childProfile.school,
       collectionPassword: childRegistration.collectionPassword || family.collectionPassword,
-      children: [...(family.children || []), childProfile],
-      collectors: [
-        ...(family.collectors || []),
-        `${childRegistration.emergencyFirstName} ${childRegistration.emergencyLastName}`.trim(),
-      ].filter(Boolean),
+      children: editingChildId
+        ? (family.children || []).map((child) => child.id === editingChildId ? childProfile : child)
+        : [...(family.children || []), childProfile],
+      collectors: family.collectors || [],
       };
     });
     const fallbackFamilies = attachedToFamily ? nextFamilies : [{
@@ -7059,7 +8580,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       email: signedInEmail || activeFamily.email,
       registeredCentre: childProfile.school,
       collectionPassword: childRegistration.collectionPassword || activeFamily.collectionPassword,
-      children: [...(activeFamily.children || []), childProfile],
+      children: editingChildId
+        ? (activeFamily.children || []).map((child) => child.id === editingChildId ? childProfile : child)
+        : [...(activeFamily.children || []), childProfile],
     }, ...families];
     persistFamilies(fallbackFamilies);
     setSelectedChildIds([childId]);
@@ -7070,10 +8593,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setChildRegistration({ ...defaultChildRegistration, school: childProfile.school, languages: ["English"] });
     setChildRegistrationStep("Basics");
     setLaunchChildRegistrationOpen(false);
-    setLaunchChildSavedNotice(`${childName} is registered.`);
+    setLaunchFamilyChildId(childId);
+    setLaunchChildSavedNotice(editingChildId ? "" : `${childName} is registered.`);
     setChildRegistrationSubmitAttempted(false);
-    setStatus(`${childName} is registered. Add another child or continue to booking.`);
-    window.setTimeout(() => scrollToFlowSection(".lab-launch-child-summary", "start"), 160);
+    setStatus(`${childName} is ${editingChildId ? "updated" : "registered"}.`);
+    if (editingChildId) openLaunchParentPortal();
+    else window.setTimeout(() => scrollToFlowSection(".lab-launch-child-summary", "start"), 160);
   }
 
   function createFamily(event) {
@@ -7468,6 +8993,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     if (realBookingServiceReady) {
       try {
         const auth = await signInRealParentAccount({ email: username, password });
+        const profile = await fetchCurrentProfile();
+        if (profile?.must_change_password) {
+          await signOutRealParentAccount();
+          await requireParentPasswordChange(profile.email || auth?.user?.email || username);
+          return;
+        }
+        await activateSignedInParentAccount();
         const parentAccount = await fetchParentAccount();
         if (!parentAccount) {
           await signOutRealParentAccount();
@@ -7478,6 +9010,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         setParentAccountMode("live");
         setLaunchAccountSessionEmail(username);
         setLaunchParentPortalOpen(true);
+        setLaunchBookingActive(false);
+        setLaunchAccountSection(new URLSearchParams(window.location.search).get("account") === "payments" ? "Payments" : "Overview");
+        setLaunchAccountMenuOpen(false);
         localStorage.setItem("apres-parent-account-signed-in", "true");
         localStorage.setItem("apres-parent-account-mode", JSON.stringify("live"));
         localStorage.setItem("apres-launch-account-session-email", JSON.stringify(username));
@@ -7518,6 +9053,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentAccessMode("signin");
     setParentPasswordReset({
       open: true,
+      forced: false,
       step: "request",
       email,
       code: "",
@@ -7528,6 +9064,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }
 
   function closeParentPasswordReset() {
+    if (parentPasswordReset.forced) return;
     setParentPasswordReset((current) => ({
       ...current,
       open: false,
@@ -7535,6 +9072,43 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       password: "",
       confirmPassword: "",
     }));
+  }
+
+  async function requireParentPasswordChange(email = "") {
+    const normalizedEmail = normaliseEmailAddress(email || parentLogin.username);
+    clearLaunchParentSession();
+    setParentAccessMode("signin");
+    setParentLogin({ username: normalizedEmail, password: "" });
+    setParentPasswordReset({
+      open: true,
+      forced: true,
+      step: "request",
+      email: normalizedEmail,
+      code: "",
+      password: "",
+      confirmPassword: "",
+    });
+    setParentPasswordResetBusy(true);
+    setStatus("For your security, choose your own password before continuing.");
+    try {
+      await requestParentPasswordResetCode({
+        email: normalizedEmail,
+        loginUrl: `${window.location.origin}/launch-booking`,
+      });
+      setParentPasswordReset((current) => ({
+        ...current,
+        forced: true,
+        step: "confirm",
+        code: "",
+        password: "",
+        confirmPassword: "",
+      }));
+      setStatus("Enter the six digit passcode sent to your email, then choose your own password.");
+    } catch (error) {
+      setStatus(`We could not send the security passcode: ${error instanceof Error ? error.message : "Please try again."}`);
+    } finally {
+      setParentPasswordResetBusy(false);
+    }
   }
 
   function updateParentPasswordReset(field, value) {
@@ -7601,6 +9175,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       setParentPasswordReset((current) => ({
         ...current,
         open: false,
+        forced: false,
         code: "",
         password: "",
         confirmPassword: "",
@@ -7615,6 +9190,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             setParentAccountMode("live");
             setLaunchAccountSessionEmail(email);
             setLaunchParentPortalOpen(true);
+            setLaunchBookingActive(false);
             localStorage.setItem("apres-parent-account-signed-in", "true");
             localStorage.setItem("apres-parent-account-mode", JSON.stringify("live"));
             localStorage.setItem("apres-launch-account-session-email", JSON.stringify(email));
@@ -7673,9 +9249,71 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setLaunchChildSavedNotice("");
     setLaunchChildConfirmedForBooking(false);
     setLaunchChildRegistrationOpen(false);
-    setLiveParentLedger({ invoices: [], bookings: [], fetchedAt: "", loading: false, error: "" });
+    setLiveParentLedger({ invoices: [], bookings: [], creditEntries: [], creditBalance: 0, fetchedAt: "", loading: false, error: "" });
     setParentAccountLoading(false);
     setStatus("Parent account signed out.");
+  }
+
+  function openGraduateChildWarning(child) {
+    if (!child || !activeFamilyIsPrimaryAccountHolder) return;
+    setLaunchArchiveAction({ kind: "child", childId: child.id, childName: child.name || child.fullName || "this child" });
+    setLaunchArchiveConfirmed(false);
+    setLaunchArchiveError("");
+  }
+
+  function openDeleteAccountWarning() {
+    if (!activeFamilyIsPrimaryAccountHolder) return;
+    setLaunchArchiveAction({ kind: "account" });
+    setLaunchArchiveConfirmed(false);
+    setLaunchArchiveError("");
+  }
+
+  function closeLaunchArchiveWarning() {
+    if (launchArchiveBusy) return;
+    setLaunchArchiveAction(null);
+    setLaunchArchiveConfirmed(false);
+    setLaunchArchiveError("");
+  }
+
+  async function confirmLaunchArchiveAction() {
+    if (!launchArchiveAction || !launchArchiveConfirmed || launchArchiveBusy) return;
+    setLaunchArchiveBusy(true);
+    setLaunchArchiveError("");
+    try {
+      if (launchArchiveAction.kind === "child") {
+        const archivedChildName = launchArchiveAction.childName;
+        await graduateParentChild(launchArchiveAction.childId);
+        const refreshedAccount = await fetchParentAccount();
+        const refreshedFamily = hydrateLiveParentAccount(refreshedAccount, launchParentEmail);
+        const nextChild = refreshedFamily?.children?.[0] || null;
+        setLaunchFamilyChildId(nextChild?.id || "");
+        setSelectedChildIds((current) => current.filter((id) => id !== launchArchiveAction.childId));
+        setLaunchArchiveAction(null);
+        setLaunchArchiveConfirmed(false);
+        setStatus(`${archivedChildName} has been graduated and removed from future booking choices. Historical bookings remain safely archived.`);
+        return;
+      }
+
+      const result = await archiveOwnParentAccount();
+      if (!result?.ok) {
+        const outstanding = Number(result?.outstandingBalance || accountDeletionOutstandingTotal || 0);
+        setLaunchArchiveError(result?.message || `Pay the outstanding balance of ${money(outstanding)} before archiving this account.`);
+        await refreshLiveParentLedger({ quiet: true });
+        return;
+      }
+      try {
+        await signOutRealParentAccount();
+      } catch {
+        // The account has already been archived server-side; clear the local session regardless.
+      }
+      setLaunchArchiveAction(null);
+      setLaunchArchiveConfirmed(false);
+      clearLaunchParentSession("Your family account has been archived. Contact us if you need it restored.");
+    } catch (error) {
+      setLaunchArchiveError(error instanceof Error ? error.message : "This change could not be completed. Please try again.");
+    } finally {
+      setLaunchArchiveBusy(false);
+    }
   }
 
   function persistParentInviteRuns(nextRuns) {
@@ -7837,7 +9475,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           email,
           phone: activeFamily.phone || activeFamily.emergencyContact || "",
           temporaryPassword,
-          loginUrl: `${window.location.origin}/booking-lab`,
+          loginUrl: `${window.location.origin}/launch-booking`,
+          marketingPreferences: {
+            ...(activeFamily.marketingPreferences || {}),
+            imported: activeFamily.externalSource === "magicbooking",
+            source: activeFamily.externalSource || "",
+          },
         });
       }
       const run = {
@@ -7871,7 +9514,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   function resetLaunchTestData() {
     if (!isLaunchMode) return;
     const defaultSession = labSessions.find((session) => session.id === defaultBookingSessionId) || labSessions[0];
-    const defaultDay = defaultSession.days[0] || autumnTermLaunchDays()[0];
+    const defaultDay = defaultSession.days[0];
     const cleanSelectedDays = defaultDay ? { [defaultSession.id]: [defaultDay] } : {};
     const cleanSelectedBlocks = defaultDay ? { [`${defaultSession.id}::${defaultDay}`]: normaliseSessionBlocks(defaultSession).map((block) => block.key) } : {};
     [
@@ -7908,6 +9551,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setCheckoutStep("Children");
     setLaunchFlowStep("Choices");
     setPaymentMethod("card");
+    setUseAccountCredit(false);
     setPaymentPlan("Pay now");
     setSelectedSchool(defaultSession.site);
     setCareType(defaultSession.type);
@@ -7930,8 +9574,38 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     localStorage.setItem("apres-booking-lab-register", JSON.stringify(nextEvents));
   }
 
-  function updateRegisterRow(rowId, nextStatus, note = "") {
+  async function updateRegisterRow(rowId, nextStatus, note = "") {
     const timestamp = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    const liveRow = liveStaffRegister.rows.find((row) => row.bookingItemId === rowId);
+    if (useServerRegister && liveRow) {
+      const statusValues = {
+        Booked: "booked",
+        "Checked in": "checked_in",
+        "Checked out": "checked_out",
+        Absent: "absent",
+        "Late collection": "late_collection",
+        Incident: "incident",
+      };
+      const attendanceStatus = statusValues[nextStatus] || "booked";
+      const nextNote = note || liveRow.attendanceNote || "";
+      setLiveStaffRegister((current) => ({
+        ...current,
+        rows: current.rows.map((row) => row.bookingItemId === rowId
+          ? { ...row, attendanceStatus, attendanceNote: nextNote, attendanceTime: new Date().toISOString() }
+          : row),
+      }));
+      try {
+        await updateStaffRegisterEntry({ bookingItemId: rowId, status: attendanceStatus, note: nextNote });
+        setStatus(`${liveRow.childName || "Child"} updated on the live register.`);
+      } catch (error) {
+        setLiveStaffRegister((current) => ({
+          ...current,
+          error: error?.message || "The register update could not be saved.",
+          rows: current.rows.map((row) => row.bookingItemId === rowId ? liveRow : row),
+        }));
+      }
+      return;
+    }
     const current = registerEvents[rowId] || {};
     persistRegisterEvents({
       ...registerEvents,
@@ -7968,9 +9642,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const booking = {
       id: `manager-add-${Date.now()}`,
       createdAt: new Date().toISOString(),
-      sessionId: activeSession.id,
-      site: activeSession.site,
-      activity: activeSession.title,
+      sessionId: submittingBasketItems[0]?.sessionId || activeSession.id,
+      site: submittingBasketItems[0]?.site || activeSession.site,
+      activity: submittingBasketItems[0]?.activity || activeSession.title,
       days: [registerDay],
       dayBreakdown: [{
         day: registerDay,
@@ -8443,11 +10117,36 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setStatus(`${row.name} marked as late collection.`);
   }
 
-  function bulkUpdateRegister(nextStatus) {
-    if (!registerRows.length) return;
+  async function bulkUpdateRegister(nextStatus) {
+    const targetRows = visibleRegisterRows;
+    if (!targetRows.length) return;
+    if (useServerRegister) {
+      const statusValues = {
+        Booked: "booked",
+        "Checked in": "checked_in",
+        "Checked out": "checked_out",
+        Absent: "absent",
+        "Late collection": "late_collection",
+        Incident: "incident",
+      };
+      setStatus(`Saving ${targetRows.length} register updates…`);
+      const results = await Promise.allSettled(targetRows.map((row) => updateStaffRegisterEntry({
+        bookingItemId: row.bookingItemId,
+        status: statusValues[nextStatus] || "booked",
+        note: row.note || "",
+      })));
+      const failed = results.filter((result) => result.status === "rejected");
+      setRegisterRefreshVersion((value) => value + 1);
+      if (failed.length) {
+        setStatus(`${targetRows.length - failed.length} updated. ${failed.length} could not be saved; refresh and try those children again.`);
+      } else {
+        setStatus(`${targetRows.length} visible register row${targetRows.length === 1 ? "" : "s"} marked ${nextStatus.toLowerCase()}.`);
+      }
+      return;
+    }
     const timestamp = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
     const nextEvents = { ...registerEvents };
-    registerRows.forEach((row) => {
+    targetRows.forEach((row) => {
       nextEvents[row.rowId] = {
         ...(nextEvents[row.rowId] || {}),
         status: nextStatus,
@@ -8457,7 +10156,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       };
     });
     persistRegisterEvents(nextEvents);
-    setStatus(`${registerRows.length} register row${registerRows.length === 1 ? "" : "s"} marked ${nextStatus.toLowerCase()}.`);
+    setStatus(`${targetRows.length} visible register row${targetRows.length === 1 ? "" : "s"} marked ${nextStatus.toLowerCase()}.`);
   }
 
   function seedDemoBooking() {
@@ -12171,6 +13870,37 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setStatus("Review the cancellation impact before confirming.");
   }
 
+  function reviewParentAdHocCancellation(row) {
+    if (!row?.staffAdHoc || !row.liveBookingId) return;
+    setAdHocCancellationReview(row);
+    setStatus("Please confirm that you want to cancel this ad-hoc booking.");
+  }
+
+  async function confirmParentAdHocCancellation() {
+    const row = adHocCancellationReview;
+    if (!row?.liveBookingId || cancellationSubmitting) return;
+    setCancellationSubmitting(true);
+    setParentSessionCancellingId(row.id);
+    setStatus("Cancelling the ad-hoc booking and updating the family balance...");
+    try {
+      const result = await cancelParentStaffAdHocBooking({
+        bookingId: row.liveBookingId,
+        reason: "Parent cancelled future ad-hoc care from their family account",
+      });
+      setAdHocCancellationReview(null);
+      await refreshLiveParentLedger({ quiet: true });
+      const restoredCredit = Math.max(0, Number(result?.creditRestored || 0));
+      setStatus(restoredCredit > 0
+        ? `Ad-hoc booking cancelled. ${money(restoredCredit)} credit has been returned to the family account.`
+        : "Ad-hoc booking cancelled. The charge has been removed and no further action is needed.");
+    } catch (error) {
+      setStatus(`Ad-hoc cancellation failed: ${error instanceof Error ? error.message : "Unable to cancel this booking."}`);
+    } finally {
+      setParentSessionCancellingId("");
+      setCancellationSubmitting(false);
+    }
+  }
+
   async function cancelParentBookedSession(draftId, day) {
     const draft = drafts.find((item) => item.id === draftId);
     if (!draft) return;
@@ -12212,7 +13942,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
 
     const now = new Date().toISOString();
     const childMultiplier = Math.max(1, Number(draft.childCount || draft.children?.length || 1));
-    const creditAmount = Math.max(0, Number(backendAmendment?.removedTotal ?? dayRow.price ?? 0) * (backendAmendment ? 1 : childMultiplier));
+    const removedValue = Math.max(0, Number(backendAmendment?.removedTotal ?? dayRow.price ?? 0) * (backendAmendment ? 1 : childMultiplier));
+    const liveInvoiceBeforeCancellation = liveInvoiceForDraft(draft);
+    const paidBeforeCancellation = Math.max(0, Number(liveInvoiceBeforeCancellation?.paidAmount || 0) - Number(liveInvoiceBeforeCancellation?.refundedAmount || 0));
+    const remainingInvoiceTotal = Math.max(0, Number(liveInvoiceBeforeCancellation?.totalAmount || draft.total || 0) - removedValue);
+    const creditAmount = backendAmendment
+      ? Math.min(removedValue, Math.max(0, paidBeforeCancellation - remainingInvoiceTotal))
+      : draft.status === "Prototype paid"
+        ? removedValue
+        : 0;
     const remainingDayBreakdown = (draft.dayBreakdown || []).filter((row) => row.day !== day);
     const remainingDays = (draft.days || []).filter((item) => item !== day);
     const nextStatus = remainingDays.length ? "Partially cancelled" : "Cancelled";
@@ -12220,10 +13958,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       id: `session-cancel-${Date.now()}`,
       day,
       blocks: dayRow.blocks,
-      amount: creditAmount,
+      amount: removedValue,
+      creditAmount,
       cancelledAt: now,
       reason: "Parent cancelled future session",
-      status: "Credit issued",
+      status: creditAmount > 0 ? "Credit issued" : "Cancelled; no payment taken",
     };
     const nextDrafts = drafts.map((item) => item.id === draft.id ? {
       ...item,
@@ -12233,7 +13972,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       updatedAt: now,
       outstandingBalance: backendAmendment?.booking
         ? Number(backendAmendment.booking.outstandingBalance || 0)
-        : Math.max(0, Number(item.outstandingBalance || 0) - creditAmount),
+        : Math.max(0, Number(item.outstandingBalance || 0) - removedValue),
       total: backendAmendment?.booking
         ? Number(backendAmendment.booking.totalAmount || item.total || 0)
         : item.total,
@@ -12248,14 +13987,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ],
       creditEvents: [
         ...(item.creditEvents || []),
-        {
+        ...(creditAmount > 0 ? [{
           id: `credit-${Date.now()}`,
           amount: creditAmount,
           createdAt: now,
           reason: `Cancelled ${day}`,
           status: "Open",
           type: "Session cancellation credit",
-        },
+        }] : []),
       ],
       amendmentHistory: [
         ...(item.amendmentHistory || []),
@@ -12282,7 +14021,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       recipient: draft.parentEmail || activeFamily.email || "parent@example.com",
       bookingId: draft.id,
       subject: `Session cancelled · ${day}`,
-      body: `Your ${draft.activity} session on ${day} has been cancelled. ${money(creditAmount)} has been added as account credit.`,
+      body: creditAmount > 0
+        ? `Your ${draft.activity} session on ${day} has been cancelled. ${money(creditAmount)} has been added as account credit.`
+        : `Your ${draft.activity} session on ${day} has been cancelled. No payment was taken, so no credit was needed.`,
       status: "Sent",
     };
     persistMessages([message, ...messageLog].slice(0, 70));
@@ -12291,7 +14032,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     if (backendAmendment) {
       refreshLiveParentLedger({ quiet: true });
     }
-    setStatus(`${day} cancelled${backendAmendment ? " through the booking API" : ""}. ${money(creditAmount)} credit added to the parent account.`);
+    setStatus(creditAmount > 0
+      ? `${day} cancelled${backendAmendment ? " through the booking API" : ""}. ${money(creditAmount)} credit added to the parent account.`
+      : `${day} cancelled${backendAmendment ? " through the booking API" : ""}. No payment was taken, so no credit was needed.`);
   }
 
   async function confirmParentCancellation() {
@@ -12309,7 +14052,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     if (cancellationSubmitting) return;
 
     setCancellationSubmitting(true);
-    const creditAmount = draft.status === "Prototype paid" ? Number(draft.total || 0) : 0;
+    const creditAmount = cancellationCreditAmount;
     const now = new Date().toISOString();
     let backendCancellation = null;
     if (cancellationUsesRealApi) {
@@ -12687,37 +14430,39 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setStatus(isPaid ? "Receipt message added to the parent inbox." : "Invoice message added to the parent inbox.");
   }
 
-  function downloadReceipt(draft) {
-    const documentType = draft.status === "Waitlist" ? "request summary" : draft.paymentMethod === "card" ? "receipt" : "invoice summary";
-    const receipt = [
-      isLaunchMode ? `Après School ${documentType}` : "Après School prototype receipt",
-      `${documentType.replace(/^./, (letter) => letter.toUpperCase())}: ${draft.id}`,
-      `Parent: ${draft.parentName || activeFamily.parentName}`,
-      `Email: ${draft.parentEmail || activeFamily.email}`,
-      `Activity: ${draft.activity}`,
-      `Site: ${draft.site}`,
-      `Dates: ${(draft.days || []).join(", ")}`,
-      "Session blocks:",
-      ...bookingBlockReceiptLines(draft),
-      `Children: ${(draft.children || [draft.childName]).join(", ")}`,
-      `Payment method: ${draft.paymentLabel || draft.paymentMethod || "card"}`,
-      `Payment route: ${draft.paymentRoute || "PonchoPay"}`,
-      `Payment status: ${draft.paymentStatus || draft.paymentPlanStatus || draft.status}`,
-      `Invoice status: ${draft.invoiceStatus || "Ready in parent portal"}`,
-      `Due today: ${money(Number(draft.dueToday ?? draft.total ?? 0))}`,
-      `Outstanding balance: ${money(Number(draft.outstandingBalance || 0))}`,
-      `Status: ${draft.status}`,
-      `Total: ${money(Number(draft.total || 0))}`,
-      "",
-      isLaunchMode ? "This document matches the parent portal booking summary." : "Prototype only. No live payment has been processed unless connected to a real payment provider.",
-    ].join("\n");
-    downloadTextFile(`apres-receipt-${draft.id}.txt`, receipt);
+  async function downloadReceipt(draft) {
+    const { exportBookingInvoicePdf } = await import("./pdfExports.js");
+    const children = (draft.children?.length ? draft.children : [draft.childName]).filter(Boolean);
+    const lines = bookingBlockRows(draft).flatMap((row) => row.blocks.flatMap((block) => (
+      (children.length ? children : ["Child"]).map((child) => ({
+        date: row.day,
+        time: `${block.start || ""}-${block.end || ""}`.replace(/^-|-$/g, "") || row.time,
+        child,
+        description: [block.label || draft.activity || "Care session", draft.site].filter(Boolean).join(" · "),
+        total: Number(block.price || row.price / Math.max(1, row.blocks.length) || 0),
+      }))
+    )));
+    const total = Number(draft.total || 0);
+    const balance = Number(draft.outstandingBalance || 0);
+    const paid = Math.max(0, total - balance);
+    exportBookingInvoicePdf({
+      reference: draft.bookingReference || draft.paymentReference || draft.id,
+      issueDate: draft.createdAt || new Date().toISOString(),
+      parentName: draft.parentName || activeFamily.parentName,
+      parentEmail: draft.parentEmail || activeFamily.email,
+      total,
+      paid,
+      balance,
+      status: draft.status === "Cancelled" ? "Cancelled" : balance <= 0 ? "Paid" : draft.paymentStatus || draft.invoiceStatus || "Payment arranged",
+      paymentMethod: draft.paymentLabel || draft.paymentMethod || draft.paymentRoute || "PonchoPay",
+      lines,
+    });
   }
 
   function createActivity(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const days = String(form.get("days") || "")
+    const proposedDays = String(form.get("days") || "")
       .split(",")
       .map((day) => day.trim())
       .filter(Boolean);
@@ -12731,13 +14476,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       price: Number(form.get("price") || 0),
       age: form.get("age") || "Eligible children",
       capacity: Number(form.get("capacity") || 12),
-      days: days.length ? days : ["Mon 8 Jun", "Tue 9 Jun", "Wed 10 Jun", "Thu 11 Jun", "Fri 12 Jun"],
+      academicYear: "2026/27",
+      days: [],
       features: String(form.get("features") || "Draft activity")
         .split(",")
         .map((feature) => feature.trim())
         .filter(Boolean),
       custom: true,
     };
+    if (!schoolCalendarKeyForSite(activity.site)) {
+      setStatus("Choose a school with a published 2026–27 calendar before creating an activity.");
+      return;
+    }
+    activity.days = canonicalSessionDays(activity, proposedDays);
+    if (!activity.days.length) {
+      setStatus("Enter at least one eligible date from the school's published 2026–27 calendar.");
+      return;
+    }
     const next = [activity, ...customSessions].slice(0, 12);
     setCustomSessions(next);
     localStorage.setItem("apres-booking-lab-activities", JSON.stringify(next));
@@ -12758,8 +14513,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       form.get("endDate"),
       Array.from(form.getAll("weekdays")),
     );
-    const days = manualDays.length ? manualDays : generatedDays;
-    if (!days.length) {
+    const proposedDays = manualDays.length ? manualDays : generatedDays;
+    if (!proposedDays.length) {
       setStatus("Choose future dates or enter manual dates before creating the launch plan.");
       return;
     }
@@ -12780,7 +14535,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       amendmentHours: Number(form.get("amendmentHours") || rules.amendmentHours),
       paymentRoute: form.get("paymentRoute") || "PonchoPay card + vouchers",
       paymentMethods: Array.from(form.getAll("paymentMethods")),
-      days,
+      academicYear: "2026/27",
+      days: [],
       checklist: {
         safeguarding: Boolean(form.get("safeguarding")),
         registers: Boolean(form.get("registers")),
@@ -12789,6 +14545,17 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       },
       status: "Draft launch",
     };
+    if (!schoolCalendarKeyForSite(plan.site)) {
+      setStatus("Choose a school with a published 2026–27 calendar before creating a launch plan.");
+      return;
+    }
+    plan.days = canonicalSessionDays(plan, proposedDays);
+    if (!plan.days.length) {
+      setStatus(plan.type === "Holiday Camp"
+        ? "No entered dates fall inside a finite, published 2026–27 camp period."
+        : "No entered dates fall inside the school's published 2026–27 teaching windows.");
+      return;
+    }
     const activity = {
       id: `custom-${Date.now()}`,
       site: plan.site,
@@ -12799,6 +14566,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       price: plan.price,
       age: plan.eligibility || (plan.type === "Wraparound" ? `${plan.site} pupils` : "Open to eligible children"),
       capacity: plan.capacity,
+      academicYear: plan.academicYear,
       days: plan.days,
       paymentRoute: plan.paymentRoute,
       cancellationHours: plan.cancellationHours,
@@ -13025,6 +14793,21 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }
 
   function bookingCheckoutItems(booking) {
+    if (booking.basketItems?.length) {
+      return booking.basketItems.map((item, index) => ({
+        id: item.id || `${booking.id}-basket-${index}`,
+        childName: item.childName,
+        siteName: item.site || booking.site,
+        careType: item.careType || booking.activity,
+        sessionId: `${item.sessionId}-${item.blockKey}`,
+        sessionName: item.sessionLabel || `Session ${index + 1}`,
+        date: item.day,
+        startTime: item.start || "",
+        endTime: item.end || "",
+        quantity: 1,
+        unitAmount: Number(item.price || 0),
+      }));
+    }
     return (booking.dayBreakdown || []).flatMap((day) => {
       const date = day.day;
       return (day.blocks?.length ? day.blocks : [{ label: "Session", start: "", end: "", price: day.price }]).map((block, index) => ({
@@ -13075,8 +14858,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       paymentMethod: booking.paymentMethod,
       paymentPlan: booking.paymentPlan === "Monthly" ? "monthly" : "pay_now",
       currency: "GBP",
-      successUrl: `${window.location.origin}/booking/success?reference=${encodeURIComponent(adapterPayload.invoiceId)}`,
-      cancelUrl: `${window.location.origin}/launch-booking?payment=cancelled&invoice=${encodeURIComponent(adapterPayload.invoiceId)}`,
+      successUrl: `${window.location.origin}/api/ponchopay_redirect?payment=pending&reference=${encodeURIComponent(adapterPayload.invoiceId)}`,
+      cancelUrl: `${window.location.origin}/api/ponchopay_redirect?payment=cancelled&invoice=${encodeURIComponent(adapterPayload.invoiceId)}`,
       amount: adapterPayload.amount,
       reason: options.reason || "booking_checkout",
       idempotencyKey: adapterPayload.idempotencyKey,
@@ -13151,11 +14934,28 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }
 
   function buildRealParentBookingRequest(form, booking) {
-    const activeLocationUrn = ponchoLocationUrnForSite(activeSession.site);
-    const activeLocationStatus = ponchoLocationStatusForSite(activeSession.site);
-    const selectedItems = pickedDayRows.flatMap((row) => (
+    const bookingSite = booking.site || activeSession.site;
+    const activeLocationUrn = ponchoLocationUrnForSite(bookingSite);
+    const activeLocationStatus = ponchoLocationStatusForSite(bookingSite);
+    const selectedItems = booking.basketItems?.length ? booking.basketItems.map((item) => ({
+      childId: isUuid(item.childId) ? item.childId : undefined,
+      childName: item.childName,
+      sessionBlockId: isUuid(item.sessionBlockId) ? item.sessionBlockId : undefined,
+      labSessionId: item.sessionId,
+      sessionDate: item.sessionDate || labDayIso(item.day),
+      sessionLabel: item.sessionLabel,
+      quantity: 1,
+      metadata: {
+        labSessionId: item.sessionId,
+        labDay: item.day,
+        sessionDate: item.sessionDate || labDayIso(item.day),
+        labBlockKey: item.blockKey,
+        labBlockLabel: item.sessionLabel,
+        basketGroupId: item.groupId,
+      },
+    })) : pickedDayRows.flatMap((row) => (
       row.selectedBlocks.flatMap((block) => (
-        selectedChildren.map((child) => {
+        bookingStateForBlock(row, block).availableChildren.map((child) => {
           const blockId = sessionBlockIdForBooking(block);
           const sessionDate = labDayIso(row.day);
           return {
@@ -13188,20 +14988,21 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       paymentMethod: effectivePaymentMethod === "tax-free" ? "tax_free_childcare" : effectivePaymentMethod,
       paymentPlan: activePaymentPlan === "Monthly" ? "monthly" : "pay_now",
       paymentRoute: activePaymentRoute,
+      applyAccountCredit: Boolean(useAccountCredit && displayedFamilyCreditBalance > 0),
       depositAmount: activePaymentPlan === "Monthly" ? dueTodayAmount : 0,
       cancellationHours: rules.cancellationHours,
       amendmentHours: rules.amendmentHours,
       source: isLaunchMode ? "launch_parent_flow" : "booking_lab",
-      successUrl: `${window.location.origin}/booking/success?reference=${encodeURIComponent(booking.id)}`,
-      cancelUrl: `${window.location.origin}/launch-booking?payment=cancelled`,
+      successUrl: `${window.location.origin}/api/ponchopay_redirect?payment=pending&reference=${encodeURIComponent(booking.id)}`,
+      cancelUrl: `${window.location.origin}/api/ponchopay_redirect?payment=cancelled&reference=${encodeURIComponent(booking.id)}`,
       metadata: {
         clientRequestId: booking.id,
         localDraftId: booking.id,
-        site: activeSession.site,
+        site: bookingSite,
         locationUrn: activeLocationUrn || undefined,
         ponchoLocationStatus: activeLocationStatus,
-        activity: activeSession.title,
-        selectedDays: pickedDays,
+        activity: booking.activity || activeSession.title,
+        selectedDays: booking.days || pickedDays,
         promoCode: booking.promoCode,
         paymentReference: booking.paymentReference,
       },
@@ -13432,6 +15233,18 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const invoiceId = context.invoiceId || context.invoice || "";
     const bookingId = context.bookingId || "";
     const reference = context.reference || "";
+    const creditTopUp = Boolean(context.creditTopUp);
+    try {
+      window.localStorage.setItem("apres-ponchopay-return-context", JSON.stringify({
+        invoiceId,
+        bookingId,
+        reference,
+        creditTopUp,
+        storedAt: Date.now(),
+      }));
+    } catch {
+      // The return URL can still provide the matching identifiers when storage is unavailable.
+    }
     const opened = window.open(checkoutUrl, "apres-ponchopay-checkout", "noopener,noreferrer,width=520,height=760");
     if (!opened && isLaunchMode) {
       window.location.assign(checkoutUrl);
@@ -13441,24 +15254,45 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       state: "pending",
       invoiceId,
       bookingId,
-      title: opened ? "Secure payment window opened" : isLaunchMode ? "Opening secure payment" : "Secure payment link ready",
+      title: creditTopUp ? "Secure credit top-up opened" : opened ? "Secure payment window opened" : isLaunchMode ? "Opening secure payment" : "Secure payment link ready",
       detail: opened
-        ? "Complete the PonchoPay step. Your booking confirms automatically once payment or the card guarantee is authorised."
+        ? creditTopUp ? "Complete the PonchoPay step. Your account balance will update automatically after payment is confirmed." : "Complete the PonchoPay step. Your booking confirms automatically once payment or the card guarantee is authorised."
         : isLaunchMode
-          ? "We are taking you to PonchoPay. Your booking confirms automatically once payment or the card guarantee is authorised."
+          ? creditTopUp ? "We are taking you to PonchoPay. Your balance will update automatically after payment is confirmed." : "We are taking you to PonchoPay. Your booking confirms automatically once payment or the card guarantee is authorised."
         : "Use the secure payment button. Your booking confirms automatically once payment or the card guarantee is authorised.",
       action: "Secure checkout",
     });
     setStatus(opened
-      ? "PonchoPay checkout opened. The booking will confirm automatically after the payment or card guarantee completes."
+      ? creditTopUp ? "PonchoPay credit top-up opened. The balance will update automatically after payment completes." : "PonchoPay checkout opened. The booking will confirm automatically after the payment or card guarantee completes."
       : isLaunchMode
-        ? "Opening PonchoPay checkout. The booking will confirm automatically after the payment or card guarantee completes."
+        ? creditTopUp ? "Opening PonchoPay credit top-up. The balance will update automatically after payment completes." : "Opening PonchoPay checkout. The booking will confirm automatically after the payment or card guarantee completes."
       : "PonchoPay checkout is ready. Use the secure payment button to continue.");
     return Boolean(opened || isLaunchMode);
   }
 
   async function submitBooking(event) {
     event.preventDefault();
+    const submittingBasketItems = isLaunchMode ? draftBookingBasket : [];
+    const submittingBasketChildren = isLaunchMode
+      ? selectableChildProfiles.filter((child) => new Set(submittingBasketItems.map((item) => item.childId)).has(child.id))
+      : selectedChildren;
+    const submittingDays = isLaunchMode && submittingBasketItems.length
+      ? [...new Set(submittingBasketItems.map((item) => item.day))]
+      : pickedDays;
+    const submittingEligibilityIssues = submittingBasketChildren.flatMap((child) => {
+      const childItems = submittingBasketItems.filter((item) => item.childId === child.id);
+      const careTypes = childItems.length ? childItems.map((item) => item.careType) : [activeSession.type];
+      const sites = childItems.length ? childItems.map((item) => item.site) : [activeSession.site];
+      const issues = [];
+      if (rules.schoolOnlyStrict && careTypes.includes("Wraparound") && sites.some((site) => child.school !== site && child.school !== "Guest")) {
+        issues.push(`${child.name} is not linked to ${sites.find((site) => child.school !== site) || activeSession.site}`);
+      }
+      const childYear = schoolYearIndex(child.year);
+      if (careTypes.includes("Holiday Camp") && (childYear < schoolYearIndex(rules.holidayYearMin) || childYear > schoolYearIndex(rules.holidayYearMax))) {
+        issues.push(`${child.name} is outside the holiday camp year range`);
+      }
+      return issues;
+    });
     if (isLaunchMode && launchNeedsAccount) {
       setStatus("Sign in or create an account before booking.");
       scrollToFlowSection(".lab-launch-registration-gate", "start");
@@ -13469,18 +15303,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       scrollToFlowSection(".lab-launch-registration-gate", "start");
       return;
     }
-    if (!pickedDays.length) {
+    if (!submittingDays.length) {
       setStatus("Choose at least one session before checkout.");
       return;
     }
-    if (!selectedChildren.length) {
+    if (!submittingBasketChildren.length) {
       setStatus(isLaunchMode ? "Choose a saved child, or add a child from your family account before checkout." : "Choose or add at least one child before continuing.");
       setCheckoutStep("Children");
       window.setTimeout(() => scrollToFlowSection(".lab-checkout", "start"), 60);
       return;
     }
-    if (rulesBlocked) {
-      setStatus("Booking blocked by the rules engine. Use an admin override or adjust the selected children/activity.");
+    if (!submittingBasketItems.length && !bookableBookingItemCount) {
+      setStatus("The selected sessions are already booked or awaiting payment for the selected child. Choose another session or return to your account.");
+      scrollToFlowSection(".lab-date-picker-panel", "start");
+      return;
+    }
+    if (submittingEligibilityIssues.length && !(adminOverride && rules.allowAdminOverride)) {
+      setStatus(`${submittingEligibilityIssues.join(" ")} Update the child record to continue.`);
       return;
     }
     if (isLaunchMode && isWaitlist) {
@@ -13491,7 +15330,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const form = new FormData(event.currentTarget);
     if (isLaunchMode && checkoutStep === "Review" && !form.get("launchConsent")) {
       setLaunchConsentAttempted(true);
-      setStatus("Tick I agree to book before continuing to secure payment.");
+      setStatus("Confirm the booking details and terms before continuing to secure payment.");
       scrollToFlowSection(".lab-consents", "center");
       return;
     }
@@ -13501,8 +15340,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       sessionId: activeSession.id,
       site: activeSession.site,
       activity: activeSession.title,
-      days: pickedDays,
-      dayBreakdown: pickedDayRows.map((row) => ({
+      days: submittingDays,
+      basketItems: submittingBasketItems,
+      dayBreakdown: submittingBasketItems.length ? submittingDays.map((day) => ({
+        day,
+        time: submittingBasketItems.filter((item) => item.day === day).map((item) => `${item.start}-${item.end}`).join(", "),
+        price: submittingBasketItems.filter((item) => item.day === day).reduce((sum, item) => sum + Number(item.price || 0), 0),
+        capacity: activeSession.capacity,
+        paymentRoute: submittingBasketItems.find((item) => item.day === day)?.paymentRoute || activePaymentRoute,
+        blocks: submittingBasketItems.filter((item) => item.day === day).map((item) => ({
+          label: item.sessionLabel,
+          start: item.start,
+          end: item.end,
+          price: item.price,
+          childId: item.childId,
+          childName: item.childName,
+        })),
+      })) : pickedDayRows.map((row) => ({
         day: row.day,
         time: row.time,
         price: row.price,
@@ -13515,8 +15369,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           price: block.price,
         })),
       })),
-      children: selectedChildren.map((child) => child.name),
-      childCount,
+      children: submittingBasketChildren.map((child) => child.name),
+      childCount: submittingBasketChildren.length,
       addOns: availableAddOns.filter((item) => selectedAddOns.includes(item.id)).map((item) => item.label),
       total,
       dueToday: dueTodayAmount,
@@ -13524,6 +15378,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         ? remainingPlanBalance
         : effectivePaymentMethod === "card" ? 0 : total,
       paymentMethod: effectivePaymentMethod,
+      applyAccountCredit: Boolean(useAccountCredit && displayedFamilyCreditBalance > 0),
       paymentLabel: selectedPaymentLabel,
       paymentRoute: activePaymentRoute,
       paymentPlan: activePaymentPlan,
@@ -13557,10 +15412,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       override: adminOverride ? { reason: overrideReason, appliedAt: new Date().toISOString() } : null,
       parentName: form.get("parentName") || activeFamily.parentName,
       parentEmail: form.get("parentEmail") || activeFamily.email,
-      childName: form.get("childName") || selectedChildren[0]?.name || activeFamily.children?.[0]?.name || "",
+      childName: form.get("childName") || submittingBasketChildren[0]?.name || activeFamily.children?.[0]?.name || "",
       collector: form.get("collector") || activeFamily.collectors?.[0] || activeFamily.parentName || "",
       emergencyPhone: form.get("emergencyPhone") || activeFamily.phone || activeFamily.emergencyContact || "",
-      medicalNotes: form.get("medicalNotes") || selectedChildren.flatMap((child) => child.flags || []).join(", "),
+      medicalNotes: form.get("medicalNotes") || submittingBasketChildren.flatMap((child) => child.flags || []).join(", "),
       consents: {
         terms: Boolean(form.get("terms")),
         emergency: Boolean(form.get("emergencyConsent")),
@@ -13586,8 +15441,27 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           message: error instanceof Error ? error.message : "Real booking service failed.",
         };
       }
+      if (!realBookingResult?.booking) {
+        const bookingError = realBookingResult?.message || "The booking could not be saved to your account.";
+        setStatus(`We could not reserve these sessions, so no payment has been opened. ${bookingError}`);
+        setConfirmation(null);
+        return;
+      }
     }
     const realCheckout = realBookingResult?.checkout || null;
+    const creditCoveredCheckout = realBookingResult?.credit?.fullyCovered
+      ? {
+          mode: "supabase",
+          status: "paid_by_credit",
+          invoiceId: realBookingResult.credit.invoiceId || realBookingResult.booking?.invoiceId || `inv_${booking.id}`,
+          providerPaymentId: null,
+          providerReference: realBookingResult.booking?.bookingReference || null,
+          checkoutUrl: null,
+          requiresProviderConfig: false,
+          response: realBookingResult.credit,
+          message: `${money(Number(realBookingResult.credit.applied || 0))} account credit applied. Booking confirmed without a card payment.`,
+        }
+      : null;
     const ponchoCheckout = realCheckout
       ? {
           mode: "supabase",
@@ -13600,13 +15474,24 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           response: realCheckout,
           message: realCheckout.message || "Real booking checkout prepared.",
         }
+      : creditCoveredCheckout
+        ? creditCoveredCheckout
       : await createCheckoutSessionForBooking(booking);
     const bookingWithCheckout = {
       ...booking,
+      status: realBookingResult?.credit?.fullyCovered ? "Prototype paid" : booking.status,
+      paymentStatus: realBookingResult?.credit?.fullyCovered ? "Paid with account credit" : booking.paymentStatus,
+      invoiceStatus: realBookingResult?.credit?.fullyCovered ? "Paid" : booking.invoiceStatus,
+      paymentMethod: realBookingResult?.credit?.fullyCovered ? "account_credit" : booking.paymentMethod,
+      paymentLabel: realBookingResult?.credit?.fullyCovered ? "Account credit" : booking.paymentLabel,
+      dueToday: realBookingResult?.credit?.fullyCovered ? 0 : booking.dueToday,
+      outstandingBalance: realBookingResult?.credit?.fullyCovered ? 0 : booking.outstandingBalance,
       id: realBookingResult?.booking?.id || booking.id,
       bookingReference: realBookingResult?.booking?.bookingReference || booking.bookingReference || "",
       realBookingStatus: realBookingResult?.booking ? "created" : realBookingResult?.status || "local_prototype",
-      realBookingMessage: realBookingResult?.booking ? "Stored through the real booking API." : realBookingResult?.message || "Stored locally.",
+      realBookingMessage: realBookingResult?.credit?.fullyCovered
+        ? "Confirmed through the real booking API and paid with account credit."
+        : realBookingResult?.booking ? "Stored through the real booking API." : realBookingResult?.message || "Stored locally.",
       invoiceId: ponchoCheckout.invoiceId || realBookingResult?.booking?.invoiceId,
       paymentReference: booking.paymentReference || ponchoCheckout.providerReference || "",
       ponchoCheckout,
@@ -13614,10 +15499,21 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       checkoutUrl: ponchoCheckout.checkoutUrl,
       backendBooking: realBookingResult?.booking || null,
       backendItems: realBookingResult?.items || [],
+      creditApplications: Number(realBookingResult?.credit?.applied || 0) > 0 ? [{
+        id: realBookingResult.credit.entryId || `credit-application-${Date.now()}`,
+        amount: Number(realBookingResult.credit.applied || 0),
+        createdAt: new Date().toISOString(),
+        status: "Applied",
+        type: "Account credit",
+      }] : [],
     };
     const nextDrafts = [bookingWithCheckout, ...drafts].slice(0, 20);
     persistDrafts(nextDrafts);
     setConfirmation(bookingWithCheckout);
+    if (isLaunchMode && submittingBasketItems.length) {
+      setDraftBookingBasket([]);
+      setEditingBasketGroupId("");
+    }
     const checkoutOpened = isLaunchMode && ponchoCheckout.checkoutUrl
       ? openPonchoCheckoutWindow(ponchoCheckout.checkoutUrl, {
           invoiceId: bookingWithCheckout.invoiceId,
@@ -13638,7 +15534,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       : realBookingResult?.message
         ? ` ${realBookingResult.message}`
         : "";
-    const launchCheckoutStatus = isWaitlist
+    const launchCheckoutStatus = realBookingResult?.credit?.fullyCovered
+      ? `Booking confirmed. ${money(Number(realBookingResult.credit.applied || 0))} account credit was used and no card payment was needed.`
+      : isWaitlist
         ? "One or more selected sessions are full. Remove those sessions or choose another date before checkout."
       : activePaymentPlan === "Monthly"
         ? ponchoCheckout.checkoutUrl
@@ -13682,7 +15580,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     town: parentRequiredError("town"),
     postcode: parentRequiredError("postcode"),
     primaryPhone: parentRequiredError("primaryPhone") || (parentRegistration.primaryPhone && !isValidPhoneNumber(parentRegistration.primaryPhone, { required: true }) ? phoneValidationHint : ""),
-    secondaryPhone: parentRegistration.secondaryPhone && !isValidPhoneNumber(parentRegistration.secondaryPhone) ? phoneValidationHint : "",
+    secondaryPhone: parentRequiredError("secondaryPhone")
+      || (parentRegistration.secondaryPhone && !isValidPhoneNumber(parentRegistration.secondaryPhone, { required: true }) ? phoneValidationHint : "")
+      || (phoneDigits(parentRegistration.primaryPhone) && phoneDigits(parentRegistration.primaryPhone) === phoneDigits(parentRegistration.secondaryPhone) ? "Use a different number from the main account holder." : ""),
   };
   const linkedAccountInviteEmailError = linkedAccountInviteEmail && !isValidEmailAddress(linkedAccountInviteEmail)
     ? "Enter a valid email address."
@@ -13738,9 +15638,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     return (
       <section className="lab-parent-reset-panel" aria-label="Reset parent password">
         <div>
-          <p className="eyebrow">Password help</p>
-          <h3>{isConfirmStep ? "Enter your passcode." : "Reset your password."}</h3>
-          <p>{isConfirmStep ? "Use the six digit code from your email, then choose a new password." : "We will send a six digit passcode to the parent account email."}</p>
+          <p className="eyebrow">{parentPasswordReset.forced ? "Account security" : "Password help"}</p>
+          <h3>{parentPasswordReset.forced ? (isConfirmStep ? "Choose your new password." : "Secure your account.") : (isConfirmStep ? "Enter your passcode." : "Reset your password.")}</h3>
+          <p>{isConfirmStep ? "Use the six digit code from your email, then choose a new password." : parentPasswordReset.forced ? "Your temporary password must be replaced before you can use the account. We will email you a six digit passcode so you can choose your own password." : "We will send a six digit passcode to the parent account email."}</p>
         </div>
         <form onSubmit={isConfirmStep ? confirmParentPasswordReset : requestParentPasswordReset}>
           <label>
@@ -13793,15 +15693,400 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           <div className="lab-parent-reset-actions">
             <button type="submit" disabled={parentPasswordResetBusy}>{parentPasswordResetBusy ? "Please wait..." : isConfirmStep ? "Set new password" : "Send passcode"}</button>
             {isConfirmStep && <button type="button" disabled={parentPasswordResetBusy} onClick={requestParentPasswordReset}>Send another code</button>}
-            <button type="button" disabled={parentPasswordResetBusy} onClick={closeParentPasswordReset}>Cancel</button>
+            {!parentPasswordReset.forced && <button type="button" disabled={parentPasswordResetBusy} onClick={closeParentPasswordReset}>Cancel</button>}
           </div>
         </form>
       </section>
     );
   }
 
+  function renderLaunchCompletionChecklist() {
+    const parentMissing = activeFamily.migrationMetadata?.missingFields || [];
+    const tasks = [];
+    const emergencyFields = parentMissing.filter((field) => /emergency contact/i.test(String(field)));
+    if (emergencyFields.length) {
+      tasks.push({
+        id: "family-emergency-contacts",
+        title: "Complete your emergency contacts",
+        detail: "Add a name, relationship and a different mobile number for your second emergency contact.",
+        action: "Add contact details",
+        run: () => { setLaunchAccountSection("Family"); window.setTimeout(openLaunchEmergencyContactsEditor, 60); },
+      });
+    }
+    if (parentMissing.some((field) => /terms|privacy/i.test(String(field)))) {
+      tasks.push({
+        id: "family-current-terms",
+        title: "Review the current account terms",
+        detail: "Confirm the latest Terms and Conditions and privacy policy for your family account.",
+        action: "Review and accept",
+        run: () => { setLaunchAccountSection("Account"); window.setTimeout(() => scrollToFlowSection(".lab-parent-terms-review", "start"), 70); },
+      });
+    }
+    launchRegisteredChildren.forEach((child) => {
+      const missing = child.migrationMetadata?.missingFields || child.consents?.registration?.migration?.missingFields || [];
+      const consentMissing = missing.filter((field) => /consent/i.test(String(field)));
+      const healthcareMissing = missing.filter((field) => /dietary|allerg|medication|auto-injector|medical condition|send/i.test(String(field)));
+      const profileMissing = missing.filter((field) => !/consent|dietary|allerg|medication|auto-injector|medical condition|send/i.test(String(field)));
+      if (profileMissing.length) {
+        tasks.push({
+          id: `${child.id}-profile`,
+          title: `Complete ${child.name}'s profile`,
+          detail: profileMissing.map((field) => String(field).replace(/^./, (letter) => letter.toUpperCase())).join(" · "),
+          action: "Complete profile",
+          run: () => openLaunchChildEditor("Basics", child),
+        });
+      }
+      if (consentMissing.length) {
+        tasks.push({
+          id: `${child.id}-consents`,
+          title: `Review ${child.name}'s consents`,
+          detail: "Check each current care consent and save your choices.",
+          action: "Review consents",
+          run: () => { setLaunchAccountSection("Family"); setLaunchFamilyChildId(child.id); setLaunchFamilyChildTab("Consents"); window.setTimeout(() => openLaunchFamilySectionEditor("Consents", child), 60); },
+        });
+      }
+      const healthcareSections = [
+        ["Dietary Needs", /dietary/i],
+        ["Allergies", /allerg/i],
+        ["Medications", /medication|auto-injector/i],
+        ["Medical Conditions", /medical condition/i],
+        ["SEND", /send/i],
+      ].filter(([, pattern]) => healthcareMissing.some((field) => pattern.test(String(field))));
+      healthcareSections.forEach(([section]) => {
+        tasks.push({
+          id: `${child.id}-${section.toLowerCase().replace(/\s+/g, "-")}-review`,
+          title: `Review ${child.name}'s ${section.toLowerCase()}`,
+          detail: section === "Medications"
+            ? "Confirm the medication, administration instructions and current expiry dates."
+            : `Confirm that the imported ${section.toLowerCase()} information is still current.`,
+          action: `Review ${section.toLowerCase()}`,
+          run: () => { setLaunchAccountSection("Family"); setLaunchFamilyChildId(child.id); setLaunchFamilyChildTab(section); window.setTimeout(() => openLaunchFamilySectionEditor(section, child), 60); },
+        });
+      });
+    });
+    if (!tasks.length) return null;
+    return (
+      <section className="lab-parent-completion-checklist" aria-label="Details to complete">
+        <div className="lab-parent-completion-head">
+          <div>
+            <p className="eyebrow">Action needed</p>
+            <h3>Complete your family details</h3>
+            <p>We imported your existing information. Please complete these items so staff have everything they need.</p>
+          </div>
+          <strong>{tasks.length} item{tasks.length === 1 ? "" : "s"} left</strong>
+        </div>
+        <div className="lab-parent-completion-tasks">
+          {tasks.map((task, index) => (
+            <article key={task.id}>
+              <span>{index + 1}</span>
+              <div><strong>{task.title}</strong><small>{task.detail}</small></div>
+              <button type="button" onClick={task.run}>{task.action}</button>
+            </article>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  function renderParentBadgeBook() {
+    const childOptions = [...new Map(parentBadgeBook.rewards.map((reward) => [reward.childId, reward.childName])).entries()];
+    const filteredRewards = parentBadgeBook.rewards.filter((reward) => (
+      (parentBadgeFilter === "all" || reward.badgeType === parentBadgeFilter)
+      && (parentBadgeChildFilter === "all" || reward.childId === parentBadgeChildFilter)
+    ));
+    const formatAwardDate = (value) => value
+      ? new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+      : "Date not available";
+
+    return (
+      <section className="lab-parent-badge-book" aria-label="Badge Book">
+        <header className="lab-parent-badge-book-head">
+          <div>
+            <p className="eyebrow">Family achievements</p>
+            <h3>🏅 Badge Book</h3>
+            <p>A joyful record of the moments our team has celebrated at Après School.</p>
+          </div>
+          <div className="lab-parent-badge-total">
+            <strong>{parentBadgeBook.total}</strong>
+            <span>Total badge{parentBadgeBook.total === 1 ? "" : "s"} earned</span>
+          </div>
+        </header>
+        <div className="lab-parent-badge-filters" aria-label="Filter Badge Book">
+          <label>
+            Child
+            <select value={parentBadgeChildFilter} onChange={(event) => setParentBadgeChildFilter(event.target.value)}>
+              <option value="all">All children</option>
+              {childOptions.map(([id, name]) => <option value={id} key={id}>{name}</option>)}
+            </select>
+          </label>
+          <label>
+            Badge
+            <select value={parentBadgeFilter} onChange={(event) => setParentBadgeFilter(event.target.value)}>
+              <option value="all">All badge types</option>
+              {REWARD_BADGES.map((badge) => <option value={badge.type} key={badge.type}>{badge.icon} {badge.title}</option>)}
+            </select>
+          </label>
+        </div>
+        {parentBadgeBookLoading ? (
+          <div className="lab-parent-badge-empty"><strong>Opening the Badge Book…</strong><p>Collecting the latest achievements.</p></div>
+        ) : parentBadgeBookError ? (
+          <div className="lab-parent-badge-empty is-error"><strong>Badge Book unavailable</strong><p>{parentBadgeBookError}</p></div>
+        ) : filteredRewards.length ? (
+          <div className="lab-parent-badge-timeline">
+            {filteredRewards.map((reward) => {
+              const badge = rewardBadge(reward.badgeType);
+              return (
+                <article key={reward.id}>
+                  <span className="lab-parent-badge-icon" aria-hidden="true">{badge.icon}</span>
+                  <div>
+                    <span>{formatAwardDate(reward.awardedAt)}</span>
+                    <h4>{reward.childName} earned {badge.title}</h4>
+                    <p>“{reward.reason}”</p>
+                    <small>Awarded by {reward.staffName} · {reward.clubName}</small>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="lab-parent-badge-empty">
+            <span aria-hidden="true">✨</span>
+            <strong>{parentBadgeBook.total ? "No badges match these filters" : "The first badge is waiting to be earned"}</strong>
+            <p>{parentBadgeBook.total ? "Choose another child or badge type." : "Every achievement will appear here as your child’s collection grows."}</p>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function renderLaunchFamilyConsole() {
+    const tabs = ["Overview", "Contacts", "Consents", "Dietary Needs", "Allergies", "Medications", "Medical Conditions", "SEND", "Badges"];
+    const selectedChild = launchRegisteredChildren.find((child) => child.id === launchFamilyChildId) || launchRegisteredChildren[0] || null;
+    const selectedChildBadges = selectedChild ? parentBadgeBook.rewards.filter((reward) => reward.childId === selectedChild.id) : [];
+    const editStepForTab = launchFamilyChildTab === "Overview" ? "Basics" : launchFamilyChildTab === "Consents" ? "Consents" : "Health";
+    const openSelectedSectionEditor = () => launchFamilyChildTab === "Overview"
+      ? openLaunchChildEditor(editStepForTab, selectedChild)
+      : openLaunchFamilySectionEditor(launchFamilyChildTab, selectedChild);
+    const emptyPanel = (title, action) => (
+      <div className="lab-launch-family-empty">
+        <strong>{title}</strong>
+        <p>Keep this record up to date so staff have the right information when your child attends.</p>
+        <button type="button" onClick={openSelectedSectionEditor}>{action}</button>
+      </div>
+    );
+    const detailCards = (items, fields) => (
+      <div className="lab-launch-family-details">
+        {items.map((item, index) => (
+          <article key={item.id || `${launchFamilyChildTab}-${index}`}>
+            {fields.map(([label, value]) => value(item) ? <div key={label}><span>{label}</span><strong>{value(item)}</strong></div> : null)}
+          </article>
+        ))}
+      </div>
+    );
+    const emergencyContacts = familyEmergencyContacts(activeFamily);
+    const consentRecord = selectedChild?.consents?.responses || selectedChild?.consents || {};
+    const consentRows = consentRecord && typeof consentRecord === "object" && !Array.isArray(consentRecord) ? Object.entries(consentRecord) : [];
+    const dietaryNeeds = selectedChild?.dietaryNeeds || [];
+    const allergies = selectedChild?.allergies || [];
+    const medications = selectedChild?.medications || [];
+    const autoInjectors = selectedChild?.autoInjectors || [];
+    const medicalConditions = selectedChild?.medicalConditions || [];
+    const sendNeeds = selectedChild?.send || [];
+
+    return (
+      <section className="lab-launch-family-console" aria-label="Family records">
+        <div className="lab-launch-family-head">
+          <div>
+            <p className="eyebrow">Family records</p>
+            <h3>Children and care information</h3>
+            <p>Select a child, then open one section at a time.</p>
+          </div>
+          <div className="lab-launch-family-head-actions">
+            <button type="button" onClick={openLaunchEmergencyContactsEditor}>Manage emergency contacts</button>
+            <button type="button" onClick={() => openLaunchChildEditor("Basics")}>Add child</button>
+          </div>
+        </div>
+        {launchRegisteredChildren.length ? (
+          <>
+            <div className="lab-launch-family-children" role="list" aria-label="Saved children">
+              {launchRegisteredChildren.map((child) => {
+                const active = selectedChild?.id === child.id;
+                return (
+                  <button className={active ? "active" : ""} key={child.id} type="button" role="listitem" onClick={() => { setLaunchFamilyChildId(child.id); setLaunchFamilyChildTab("Overview"); }}>
+                    <span>{active ? "Selected child" : "Saved child"}</span>
+                    <strong>{child.name}</strong>
+                    <small>{child.school || "School not added"} · {child.year || child.classroom || "Year group not added"}</small>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="lab-launch-family-tabs" role="tablist" aria-label={`${selectedChild.name} record sections`}>
+              {tabs.map((tab) => <button aria-selected={launchFamilyChildTab === tab} className={launchFamilyChildTab === tab ? "active" : ""} key={tab} onClick={() => setLaunchFamilyChildTab(tab)} role="tab" type="button">{tab === "Badges" ? "🏅 Badge Collection" : tab}</button>)}
+            </div>
+            <section className="lab-launch-family-panel" role="tabpanel">
+              <div className="lab-launch-family-panel-head">
+                <div><span>{launchFamilyChildTab === "Badges" ? "Badge Collection" : launchFamilyChildTab}</span><h4>{launchFamilyChildTab === "Contacts" ? "Family emergency contacts" : selectedChild.name}</h4></div>
+                <div className="lab-launch-family-panel-actions">
+                  {launchFamilyChildTab === "Contacts"
+                    ? <button type="button" onClick={openLaunchEmergencyContactsEditor}>Edit contacts</button>
+                    : launchFamilyChildTab !== "Badges" && <button type="button" onClick={openSelectedSectionEditor}>Edit {launchFamilyChildTab.toLowerCase()}</button>}
+                  {activeFamilyIsPrimaryAccountHolder && <button className="danger" type="button" onClick={() => openGraduateChildWarning(selectedChild)}>Graduate child</button>}
+                </div>
+              </div>
+              {launchFamilyChildTab === "Overview" && (
+                <div className="lab-launch-family-overview">
+                  <article><span>Date of birth</span><strong>{selectedChild.dob || selectedChild.dateOfBirth || "Not added"}</strong></article>
+                  <article><span>School</span><strong>{selectedChild.school || "Not added"}</strong></article>
+                  <article><span>Year group</span><strong>{selectedChild.year || selectedChild.classroom || "Not added"}</strong></article>
+                  <article><span>Ethnicity</span><strong>{selectedChild.ethnicity || "Not provided"}</strong><small>Optional</small></article>
+                </div>
+              )}
+              {launchFamilyChildTab === "Contacts" && <><p className="lab-section-copy">These emergency contacts belong to the family account and are shared by every child. You only need to keep them up to date once.</p>{emergencyContacts.length ? detailCards(emergencyContacts, [["Name", (item) => item.name || [item.firstName, item.lastName].filter(Boolean).join(" ")], ["Relationship", (item) => item.relationship], ["Mobile", (item) => item.mobile || item.telephone], ["Email", (item) => item.email]]) : <div className="lab-launch-family-empty"><strong>No family emergency contacts found</strong><p>Add at least two emergency contacts in account settings.</p></div>}</>}
+              {launchFamilyChildTab === "Consents" && (consentRows.length ? <div className="lab-launch-family-consents">{consentRows.map(([label, value]) => <article key={label}><strong>{label}</strong><span>{String(value)}</span></article>)}</div> : emptyPanel("No consent responses added", "Add consents"))}
+              {launchFamilyChildTab === "Dietary Needs" && (dietaryNeeds.length ? detailCards(dietaryNeeds, [["Dietary need", (item) => item.need], ["Details", (item) => item.details]]) : emptyPanel("No dietary needs added", "Add dietary need"))}
+              {launchFamilyChildTab === "Allergies" && (allergies.length ? detailCards(allergies, [["Allergy", (item) => item.allergy || item.name], ["Triggers", (item) => item.triggers], ["Symptoms", (item) => item.symptoms], ["Action", (item) => item.initialAction], ["Medication", (item) => item.medication]]) : emptyPanel("No allergies added", "Add allergy"))}
+              {launchFamilyChildTab === "Medications" && (medications.length || autoInjectors.length ? <>
+                {medications.length ? detailCards(medications, [["Medication", (item) => item.name], ["How administered", (item) => item.administered], ["Supervision", (item) => item.supervision], ["Dosage", (item) => item.dosage], ["When", (item) => item.time], ["Expiry", (item) => item.expiry], ["Details", (item) => item.details]]) : null}
+                {autoInjectors.length ? detailCards(autoInjectors, [["Auto-injector", (item) => item.type], ["Expiry", (item) => item.expiry || "Expiry date required"]]) : null}
+              </> : emptyPanel("No medications or auto-injectors added", "Add medication"))}
+              {launchFamilyChildTab === "Medical Conditions" && (medicalConditions.length ? detailCards(medicalConditions, [["Condition", (item) => item.condition], ["Details", (item) => item.details]]) : emptyPanel("No medical conditions added", "Add medical condition"))}
+              {launchFamilyChildTab === "SEND" && (sendNeeds.length ? detailCards(sendNeeds, [["Need", (item) => item.need], ["EHCP", (item) => item.ehcp], ["Details", (item) => item.details]]) : emptyPanel("No SEND needs added", "Add SEND information"))}
+              {launchFamilyChildTab === "Badges" && (
+                <div className="lab-child-badge-collection">
+                  {parentBadgeBookLoading ? (
+                    <div className="lab-launch-family-empty"><strong>Loading badge collection…</strong><p>Collecting {selectedChild.name}’s latest achievements.</p></div>
+                  ) : selectedChildBadges.length ? selectedChildBadges.map((reward) => {
+                    const badge = rewardBadge(reward.badgeType);
+                    return (
+                      <article key={reward.id}>
+                        <span aria-hidden="true">{badge.icon}</span>
+                        <div>
+                          <h5>{badge.title}</h5>
+                          <small>{reward.awardedAt ? new Date(reward.awardedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "Date not available"} · {reward.staffName}</small>
+                          <p>{reward.reason}</p>
+                        </div>
+                      </article>
+                    );
+                  }) : (
+                    <div className="lab-launch-family-empty">
+                      <strong>No badges earned yet</strong>
+                      <p>When staff celebrate {selectedChild.name} with a badge, it will appear here.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          </>
+        ) : (
+          <div className="lab-launch-family-empty no-children">
+            <strong>No children saved yet</strong>
+            <p>Add a child once, then you can select them for future bookings.</p>
+            <button type="button" onClick={() => openLaunchChildEditor("Basics")}>Add child</button>
+          </div>
+        )}
+        {launchFamilyEditor && selectedChild && (
+          <div className="lab-launch-family-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setLaunchFamilyEditor(""); }}>
+            <form className="lab-launch-family-modal" onSubmit={saveLaunchFamilySection} role="dialog" aria-modal="true" aria-label={`Edit ${launchFamilyEditor}`}>
+              <header>
+                <div><span>{selectedChild.name}</span><h4>{launchFamilyEditor}</h4></div>
+                <button type="button" aria-label="Close editor" onClick={() => setLaunchFamilyEditor("")}>×</button>
+              </header>
+              {launchFamilyEditor === "Contacts" && <div className="lab-launch-family-modal-fields">
+                <label>Relationship<select value={childRegistration.emergencyRelationship} onChange={(event) => updateChildRegistration("emergencyRelationship", event.target.value)}><option value="">Select</option>{parentRelationshipOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                <label>First name<input value={childRegistration.emergencyFirstName} onChange={(event) => updateChildRegistration("emergencyFirstName", event.target.value)} /></label>
+                <label>Last name<input value={childRegistration.emergencyLastName} onChange={(event) => updateChildRegistration("emergencyLastName", event.target.value)} /></label>
+                <label>Email<input type="email" value={childRegistration.emergencyEmail} onChange={(event) => updateChildRegistration("emergencyEmail", event.target.value)} /></label>
+                <label>Mobile<input inputMode="tel" value={childRegistration.emergencyMobile} onChange={(event) => updateChildRegistration("emergencyMobile", event.target.value)} /></label>
+                <label>Telephone<input inputMode="tel" value={childRegistration.emergencyTelephone} onChange={(event) => updateChildRegistration("emergencyTelephone", event.target.value)} /></label>
+              </div>}
+              {launchFamilyEditor === "Dietary Needs" && <div className="lab-launch-family-modal-fields">
+                <label>Dietary need<select value={childRegistration.dietaryNeed} onChange={(event) => updateChildRegistration("dietaryNeed", event.target.value)}><option value="">No dietary needs</option>{childDietaryOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                <label className="full">Details<textarea rows="4" value={childRegistration.dietaryDetails} onChange={(event) => updateChildRegistration("dietaryDetails", event.target.value)} placeholder="Foods to avoid, preparation needs or other instructions" /></label>
+              </div>}
+              {launchFamilyEditor === "Allergies" && <div className="lab-launch-family-modal-fields">
+                <label>Allergic to<select value={childRegistration.allergy} onChange={(event) => updateChildRegistration("allergy", event.target.value)}><option value="">No allergies</option>{childAllergyOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                <label>Foods and triggers to avoid<input value={childRegistration.allergyTriggers} onChange={(event) => updateChildRegistration("allergyTriggers", event.target.value)} /></label>
+                <label className="full">Symptoms<textarea rows="3" value={childRegistration.allergySymptoms} onChange={(event) => updateChildRegistration("allergySymptoms", event.target.value)} /></label>
+                <label className="full">Initial action<textarea rows="3" value={childRegistration.allergyInitialAction} onChange={(event) => updateChildRegistration("allergyInitialAction", event.target.value)} /></label>
+                <label>Medication<input value={childRegistration.allergyMedication} onChange={(event) => updateChildRegistration("allergyMedication", event.target.value)} /></label>
+                <label className="full">Additional details<textarea rows="3" value={childRegistration.allergyDetails} onChange={(event) => updateChildRegistration("allergyDetails", event.target.value)} /></label>
+              </div>}
+              {launchFamilyEditor === "Medications" && <div className="lab-launch-family-modal-fields">
+                <label>Medication name<input value={childRegistration.medicationName} onChange={(event) => updateChildRegistration("medicationName", event.target.value)} /></label>
+                <label>How administered<input value={childRegistration.medicationAdministered} onChange={(event) => updateChildRegistration("medicationAdministered", event.target.value)} /></label>
+                <label>Supervision required<input value={childRegistration.medicationSupervision} onChange={(event) => updateChildRegistration("medicationSupervision", event.target.value)} /></label>
+                <label>Timing<input value={childRegistration.medicationTime} onChange={(event) => updateChildRegistration("medicationTime", event.target.value)} /></label>
+                <label>Dosage<input value={childRegistration.medicationDosage} onChange={(event) => updateChildRegistration("medicationDosage", event.target.value)} /></label>
+                <label>Expiry date<input type="date" value={childRegistration.medicationExpiry} onChange={(event) => updateChildRegistration("medicationExpiry", event.target.value)} /></label>
+                <label className="full">Effect<textarea rows="3" value={childRegistration.medicationEffect} onChange={(event) => updateChildRegistration("medicationEffect", event.target.value)} /></label>
+                <label className="full">Reason<textarea rows="3" value={childRegistration.medicationReason} onChange={(event) => updateChildRegistration("medicationReason", event.target.value)} /></label>
+                <label className="full">Additional details<textarea rows="3" value={childRegistration.medicationDetails} onChange={(event) => updateChildRegistration("medicationDetails", event.target.value)} /></label>
+                <div className="lab-family-medication-subheading full"><strong>Auto-injector</strong><small>Keep the device type and expiry date current.</small></div>
+                <label>Auto-injector type<input value={childRegistration.autoInjector} onChange={(event) => updateChildRegistration("autoInjector", event.target.value)} placeholder="For example, EpiPen or JEXT" /></label>
+                <label>Auto-injector expiry<input type="date" value={childRegistration.autoInjectorExpiry} onChange={(event) => updateChildRegistration("autoInjectorExpiry", event.target.value)} /></label>
+                {childRegistration.autoInjector && (!childRegistration.autoInjectorExpiry || childRegistration.autoInjectorExpiry < new Date().toISOString().slice(0, 10)) && <p className="lab-family-medication-warning full" role="alert">Add the current expiry date for the auto-injector before making a booking.</p>}
+                {childRegistration.medicationName && (!childRegistration.medicationExpiry || childRegistration.medicationExpiry < new Date().toISOString().slice(0, 10)) && <p className="lab-family-medication-warning full" role="alert">Add the current expiry date for this medication before making a booking.</p>}
+                <p className="lab-family-medication-warning full">Parents must bring the relevant medication to the school or centre.</p>
+              </div>}
+              {launchFamilyEditor === "Medical Conditions" && <div className="lab-launch-family-modal-fields">
+                <label>Medical condition<select value={childRegistration.medicalCondition} onChange={(event) => updateChildRegistration("medicalCondition", event.target.value)}><option value="">No medical conditions</option>{childMedicalConditionOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                <label className="full">Symptoms, triggers and staff action<textarea rows="5" value={childRegistration.medicalConditionDetails} onChange={(event) => updateChildRegistration("medicalConditionDetails", event.target.value)} /></label>
+              </div>}
+              {launchFamilyEditor === "SEND" && <div className="lab-launch-family-modal-fields">
+                <label>SEND need<select value={childRegistration.sendNeed} onChange={(event) => updateChildRegistration("sendNeed", event.target.value)}><option value="">No SEND needs</option>{childSendOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                <label>EHCP<select value={childRegistration.sendEhcp} onChange={(event) => updateChildRegistration("sendEhcp", event.target.value)}><option>No</option><option>Yes</option><option>In progress</option></select></label>
+                <label className="full">Support details<textarea rows="5" value={childRegistration.sendDetails} onChange={(event) => updateChildRegistration("sendDetails", event.target.value)} /></label>
+              </div>}
+              {launchFamilyEditor === "Consents" && <div className="lab-launch-family-consent-editor">
+                {childConsentRows.map((row) => <label key={row}><span>{row}</span><select value={childRegistration.consents?.[row] || "N/A"} onChange={(event) => updateChildConsent(row, event.target.value)}><option>Yes</option><option>No</option><option>N/A</option></select></label>)}
+              </div>}
+              <footer>
+                <button type="button" onClick={() => setLaunchFamilyEditor("")}>Cancel</button>
+                <button type="submit" disabled={parentAccountLoading || (launchFamilyEditor === "Medications" && Boolean(
+                  (childRegistration.medicationName && (!childRegistration.medicationExpiry || childRegistration.medicationExpiry < new Date().toISOString().slice(0, 10)))
+                  || (childRegistration.autoInjector && (!childRegistration.autoInjectorExpiry || childRegistration.autoInjectorExpiry < new Date().toISOString().slice(0, 10)))
+                ))}>{parentAccountLoading ? "Saving..." : `Save ${launchFamilyEditor.toLowerCase()}`}</button>
+              </footer>
+            </form>
+          </div>
+        )}
+        {launchEmergencyContactsEditorOpen && (
+          <div className="lab-launch-family-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setLaunchEmergencyContactsEditorOpen(false); }}>
+            <form className="lab-launch-family-modal lab-launch-emergency-contacts-modal" onSubmit={saveLaunchEmergencyContacts} role="dialog" aria-modal="true" aria-label="Edit family emergency contacts">
+              <header>
+                <div><span>Family account</span><h4>Emergency contacts</h4></div>
+                <button type="button" aria-label="Close emergency contacts editor" onClick={() => setLaunchEmergencyContactsEditorOpen(false)}>×</button>
+              </header>
+              <p className="lab-section-copy">These contacts are shared by every child. Keep at least two contacts with different mobile numbers.</p>
+              {status && <div className="lab-error-summary" role="alert"><strong>Check emergency contacts</strong><span>{status}</span></div>}
+              <div className="lab-launch-emergency-contact-list">
+                {launchEmergencyContactsDraft.map((contact, index) => (
+                  <fieldset key={contact.id || index}>
+                    <legend>{index === 0 ? "Main emergency contact" : `Emergency contact ${index + 1}`}</legend>
+                    <div className="lab-launch-family-modal-fields">
+                      <label>Name <span>Required</span><input required value={contact.name} onChange={(event) => updateLaunchEmergencyContact(index, "name", event.target.value)} /></label>
+                      <label>Relationship <span>Required</span><input required value={contact.relationship} onChange={(event) => updateLaunchEmergencyContact(index, "relationship", event.target.value)} placeholder="Parent, grandparent, family friend" /></label>
+                      <label>Mobile number <span>Required</span><input required inputMode="tel" autoComplete="tel" value={contact.mobile} onChange={(event) => updateLaunchEmergencyContact(index, "mobile", event.target.value)} /></label>
+                      <label>Email <span>Optional</span><input type="email" inputMode="email" value={contact.email} onChange={(event) => updateLaunchEmergencyContact(index, "email", event.target.value)} /></label>
+                    </div>
+                    {launchEmergencyContactsDraft.length > 2 && <button className="lab-launch-remove-contact" type="button" onClick={() => setLaunchEmergencyContactsDraft((contacts) => contacts.filter((_, contactIndex) => contactIndex !== index))}>Remove contact</button>}
+                  </fieldset>
+                ))}
+              </div>
+              <button className="lab-launch-add-contact" type="button" onClick={() => setLaunchEmergencyContactsDraft((contacts) => [...contacts, { id: `family-emergency-contact-${Date.now()}`, name: "", relationship: "", email: "", mobile: "" }])}>+ Add another emergency contact</button>
+              <footer>
+                <button type="button" onClick={() => setLaunchEmergencyContactsEditorOpen(false)}>Cancel</button>
+                <button type="submit" disabled={parentAccountLoading}>{parentAccountLoading ? "Saving..." : "Save emergency contacts"}</button>
+              </footer>
+            </form>
+          </div>
+        )}
+      </section>
+    );
+  }
+
   return (
-    <section className={`page-shell booking-lab-page lab-view-${labView.toLowerCase().replace(/[^a-z0-9]+/g, "-")} ${isLaunchMode ? `booking-launch-page launch-step-${launchFlowStep.toLowerCase()}` : ""} ${isLaunchMode && launchShowRegistrationGate ? "launch-gated" : ""} ${isLaunchMode && confirmation ? "launch-confirmed" : ""} ${isLaunchMode && (launchParentPortalOpen || parentAccountSignedIn) ? "launch-parent-portal-open" : ""}`}>
+    <section className={`page-shell booking-lab-page lab-view-${labView.toLowerCase().replace(/[^a-z0-9]+/g, "-")} ${isLaunchMode ? `booking-launch-page launch-step-${launchFlowStep.toLowerCase()}` : ""} ${isLaunchMode && launchShowRegistrationGate ? "launch-gated" : ""} ${isLaunchMode && confirmation ? "launch-confirmed" : ""} ${isLaunchMode && launchBookingActive ? "launch-booking-active" : ""} ${isLaunchMode && launchParentPortalOpen && !launchBookingActive ? "launch-parent-portal-open" : ""}`}>
       <div className="section-heading narrow">
         <p className="eyebrow">{isLaunchMode ? "Book care" : "Booking Lab"}</p>
         <h1>{isLaunchMode ? "Book wraparound care or holiday camp." : "A local prototype for an Après booking system."}</h1>
@@ -13811,11 +16096,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           <div>
             <span>Beta</span>
             <strong>We are testing a simpler booking journey.</strong>
-            <p>Magicbooking and Pebble remain the official booking routes while we test this beta.</p>
+            <p>Your feedback will help us make booking clearer and easier for families.</p>
           </div>
           <div>
-            <button type="button" onClick={() => setPage("Bookings")}>Use current booking routes</button>
-            <button type="button" onClick={() => setPage("Contact")}>Ask for help</button>
+            <button type="button" onClick={() => setPage("Contact")}>Share feedback or contact us</button>
           </div>
         </section>
       )}
@@ -13929,6 +16213,61 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               <button type="button" onClick={() => setCancellationReview(null)} disabled={cancellationSubmitting}>Keep Booking</button>
               <button type="button" onClick={confirmParentCancellation} disabled={!cancellationPolicy?.allowed || cancellationSubmitting}>
                 {cancellationSubmitting ? "Cancelling..." : cancellationUsesRealApi ? "Cancel Booking" : "Confirm Cancellation"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {adHocCancellationReview && (
+        <div className="platform-modal-backdrop" role="presentation">
+          <section className="lab-cancellation-modal" role="dialog" aria-modal="true" aria-label="Cancel ad-hoc booking">
+            <button
+              className="modal-close"
+              type="button"
+              onClick={() => setAdHocCancellationReview(null)}
+              disabled={cancellationSubmitting}
+              aria-label="Close ad-hoc cancellation"
+            >x</button>
+            <div className="lab-parent-payment-head">
+              <div>
+                <p className="eyebrow">Cancel ad-hoc care</p>
+                <h2>Are you sure?</h2>
+                <p>This cancels every session in this ad-hoc booking for {adHocCancellationChild}.</p>
+              </div>
+              <strong>{money(adHocCancellationCharge)}</strong>
+            </div>
+            <div className="lab-cancellation-review">
+              <article>
+                <span>Child</span>
+                <strong>{adHocCancellationChild}</strong>
+                <small>{adHocCancellationReview.draft?.bookingReference || "Ad-hoc booking"}</small>
+              </article>
+              <article>
+                <span>Sessions</span>
+                <strong>{adHocCancellationItems.length} to cancel</strong>
+                <small>{adHocCancellationSessionSummary || "Saved ad-hoc care"}</small>
+              </article>
+              <article>
+                <span>Family balance</span>
+                <strong>Charge removed</strong>
+                <small>{adHocCancellationCredit > 0
+                  ? `${money(adHocCancellationCredit)} previously used credit will be returned`
+                  : "Any outstanding ad-hoc charge will be cleared"}</small>
+              </article>
+              <article>
+                <span>Parent email</span>
+                <strong>Cancellation confirmation</strong>
+                <small>The email will confirm that no further action is needed.</small>
+              </article>
+            </div>
+            <div className="lab-policy-banner open">
+              <strong>This action cancels the whole ad-hoc booking.</strong>
+              <span>The places will be released and the account balance will update immediately.</span>
+            </div>
+            <div className="lab-parent-payment-actions">
+              <button type="button" onClick={() => setAdHocCancellationReview(null)} disabled={cancellationSubmitting}>Keep booking</button>
+              <button type="button" onClick={confirmParentAdHocCancellation} disabled={cancellationSubmitting}>
+                {cancellationSubmitting ? "Cancelling..." : "Yes, cancel ad-hoc booking"}
               </button>
             </div>
           </section>
@@ -14251,6 +16590,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <p>{activeSession.title} · {activeSession.time}</p>
               </div>
               <div className="lab-register-tools">
+                <label>School<select value={activeSession.site} onChange={(event) => {
+                  const nextSession = sessions.find((session) => session.site === event.target.value);
+                  if (nextSession) {
+                    setActiveId(nextSession.id);
+                    setRegisterSessionFilter("All sessions");
+                  }
+                }}>
+                  {schoolOptions.map((site) => <option key={site} value={site}>{site}</option>)}
+                </select></label>
+                <label>Activity<select value={activeSession.id} onChange={(event) => {
+                  setActiveId(event.target.value);
+                  setRegisterSessionFilter("All sessions");
+                }}>
+                  {sessions.filter((session) => session.site === activeSession.site).map((session) => (
+                    <option key={session.id} value={session.id}>{session.title}</option>
+                  ))}
+                </select></label>
                 <label>Register date<select value={registerDay} onChange={(event) => setRegisterDay(event.target.value)}>
                   {activeSessionDays.map((day) => <option key={day}>{day}</option>)}
                 </select></label>
@@ -14259,9 +16615,47 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     <button className={registerMode === mode ? "active" : ""} key={mode} type="button" onClick={() => setRegisterMode(mode)}>{mode}</button>
                   ))}
                 </div>
-                <button className="button light" type="button" onClick={seedDemoBooking}>Seed Demo</button>
-                <button className="button book" type="button" onClick={exportDailyRegister} disabled={!registerRows.length}>Export Register</button>
+                {!useServerRegister && <button className="button light" type="button" onClick={seedDemoBooking}>Seed Demo</button>}
+                <button className="button book" type="button" onClick={exportDailyRegister} disabled={!registerRows.length}>Download register</button>
               </div>
+            </div>
+            {useServerRegister && (
+              <div className={`lab-live-register-state ${liveStaffRegister.error ? "error" : liveStaffRegister.loading ? "loading" : "ready"}`} role={liveStaffRegister.error ? "alert" : "status"}>
+                <div>
+                  <strong>{liveStaffRegister.error ? "Live register unavailable" : liveStaffRegister.loading ? "Loading confirmed bookings…" : "Live register synced"}</strong>
+                  <span>{liveStaffRegister.error || (liveStaffRegister.loading ? "Checking the booking database." : `${registerRows.length} confirmed child${registerRows.length === 1 ? "" : "ren"} · one row per booking item`)}</span>
+                </div>
+                <button type="button" onClick={() => setRegisterRefreshVersion((value) => value + 1)} disabled={liveStaffRegister.loading}>Refresh register</button>
+              </div>
+            )}
+            <section className="lab-register-command-bar" aria-label="Register controls">
+              <label>
+                <span>Find a child or care need</span>
+                <input type="search" value={registerSearch} onChange={(event) => setRegisterSearch(event.target.value)} placeholder="Search name, year group, allergy or contact" />
+              </label>
+              <label>
+                <span>Session</span>
+                <select value={registerSessionFilter} onChange={(event) => setRegisterSessionFilter(event.target.value)}>
+                  {registerSessionOptions.map((label) => <option key={label} value={label}>{label}</option>)}
+                </select>
+              </label>
+              <button className={registerFireDrillMode ? "active" : ""} type="button" onClick={() => setRegisterFireDrillMode((value) => !value)}>
+                {registerFireDrillMode ? "Exit fire drill" : "Fire drill list"}
+              </button>
+            </section>
+            <div className="lab-register-session-strip">
+              {registerSessionOptions.filter((label) => label !== "All sessions").map((label) => {
+                const rows = registerRows.filter((row) => row.sessionLabel === label);
+                const present = rows.filter((row) => row.status === "Checked in").length;
+                const completed = rows.filter((row) => ["Checked out", "Absent"].includes(row.status)).length;
+                return (
+                  <button className={registerSessionFilter === label ? "active" : ""} type="button" key={label} onClick={() => setRegisterSessionFilter(registerSessionFilter === label ? "All sessions" : label)}>
+                    <strong>{label}</strong>
+                    <span>{rows.length} booked · {present} present · {completed} complete</span>
+                  </button>
+                );
+              })}
+              {!registerRows.length && <span>No confirmed sessions for this date.</span>}
             </div>
             <div className="lab-register-stats">
               {registerCounts.map(([label, count]) => <span key={label}><strong>{count}</strong>{label}</span>)}
@@ -14518,9 +16912,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <article><span>Active day</span><strong>{registerDay}</strong><small>{activeSession.time}</small></article>
               </div>
               <div className="lab-bulk-register-actions">
-                <button type="button" onClick={() => bulkUpdateRegister("Checked in")} disabled={!registerRows.length}>Bulk Check-in</button>
-                <button type="button" onClick={() => bulkUpdateRegister("Checked out")} disabled={!registerRows.length}>Bulk Check-out</button>
-                <button type="button" onClick={() => bulkUpdateRegister("Absent")} disabled={!registerRows.length}>Mark All Absent</button>
+                <span>{visibleRegisterRows.length} visible child{visibleRegisterRows.length === 1 ? "" : "ren"}</span>
+                <button type="button" onClick={() => bulkUpdateRegister("Checked in")} disabled={!visibleRegisterRows.length}>Check in visible</button>
+                <button type="button" onClick={() => bulkUpdateRegister("Checked out")} disabled={!visibleRegisterRows.length}>Check out visible</button>
+                <button type="button" onClick={() => bulkUpdateRegister("Absent")} disabled={!visibleRegisterRows.length}>Mark visible absent</button>
               </div>
             </section>
             <section className="lab-manager-add-child">
@@ -14535,12 +16930,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             </section>
             {registerMode === "Cards" ? (
               <div className="lab-staff-card-grid">
-                {registerRows.map((row) => (
+                {visibleRegisterRows.map((row) => (
                   <article key={row.rowId} className={`status-${row.status.toLowerCase().replace(/\s+/g, "-")} ${row.flags.length || row.previousIncident ? "has-alert" : ""}`}>
                     <div className="lab-staff-card-top">
                       <div>
                         <strong>{row.name}</strong>
-                        <span>{row.draft.parentName || "Parent"} · {row.draft.emergencyPhone || "No emergency phone"}</span>
+                        <span>{row.sessionLabel} · {row.childYearGroup || "Year group not set"} · {row.childSchoolName}</span>
+                        <small>{row.parentName || "Parent"} · {row.emergencyPhone || row.parentPhone || "No emergency phone"}</small>
                       </div>
                       <em>{row.status}</em>
                     </div>
@@ -14581,20 +16977,21 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     {row.note && <p className="lab-register-note">{row.note}</p>}
                   </article>
                 ))}
-                {!registerRows.length && (
+                {!visibleRegisterRows.length && (
                   <div className="lab-empty-register">
-                    <strong>No children on this register yet.</strong>
-                    <p>Complete a parent booking for this activity or use Seed Demo to test staff actions.</p>
+                    <strong>{liveStaffRegister.error && useServerRegister ? "Do not use this register until it reconnects." : registerRows.length ? "No children match these filters." : "No confirmed children on this register yet."}</strong>
+                    <p>{liveStaffRegister.error && useServerRegister ? "Refresh the register or contact a manager. Local drafts are deliberately not shown as live attendance." : registerRows.length ? "Clear the search, change session, or exit fire drill mode." : "Confirmed bookings will appear here automatically."}</p>
                   </div>
                 )}
               </div>
             ) : (
               <div className="lab-register-rows">
-                {registerRows.map((row) => (
+                {visibleRegisterRows.map((row) => (
                   <article key={row.rowId} className={`status-${row.status.toLowerCase().replace(/\s+/g, "-")}`}>
                     <div className="lab-register-person">
                       <strong>{row.name}</strong>
-                      <span>{row.draft.activity} · {row.draft.parentName || "Parent"} · {row.collector}</span>
+                      <span>{row.sessionLabel} · {row.childYearGroup || "Year group not set"} · {row.childSchoolName}</span>
+                      <span>{row.parentName || "Parent"} · {row.emergencyPhone || row.parentPhone || "No emergency phone"} · {row.collector}</span>
                       <small>{row.flags.length ? row.flags.join(", ") : "No medical flags"} · {row.previousIncident ? "Previous incident · " : ""}{row.draft.medicalNotes || "No notes"}</small>
                     </div>
                     <div className="lab-register-status">
@@ -14614,10 +17011,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     {row.note && <p className="lab-register-note">{row.note}</p>}
                   </article>
                 ))}
-                {!registerRows.length && (
+                {!visibleRegisterRows.length && (
                   <div className="lab-empty-register">
-                    <strong>No children on this register yet.</strong>
-                    <p>Complete a parent booking for this activity or use Seed Demo to test staff actions.</p>
+                    <strong>{liveStaffRegister.error && useServerRegister ? "Do not use this register until it reconnects." : registerRows.length ? "No children match these filters." : "No confirmed children on this register yet."}</strong>
+                    <p>{liveStaffRegister.error && useServerRegister ? "Refresh the register or contact a manager. Local drafts are deliberately not shown as live attendance." : registerRows.length ? "Clear the search, change session, or exit fire drill mode." : "Confirmed bookings will appear here automatically."}</p>
                   </div>
                 )}
               </div>
@@ -18940,6 +21337,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       {labView === "Readiness" && <ReadinessLab onExport={exportReadinessPlan} />}
 
       {labView === "Parent" && <section className={`booking-lab-flow parent-flow-simple ${parentCheckoutOpen ? "parent-checkout-open" : ""} ${!isLaunchMode && parentAccountSignedIn ? "parent-account-open" : ""}`} id="booking-lab-flow">
+        {isLaunchMode && launchBookingShellOpen && parentAccountSignedIn && (
+          <nav className="lab-launch-booking-nav" aria-label="Booking navigation">
+            <button type="button" onClick={openLaunchParentPortal}>← Back to account</button>
+            <span>Your selections will be kept.</span>
+          </nav>
+        )}
         {launchBookingShellOpen && <div className="lab-booking-journey-shell">
           <div className="lab-booking-journey-head">
             <div>
@@ -18973,23 +21376,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <small>{launchBookingChildren.length} child{launchBookingChildren.length === 1 ? "" : "ren"} registered</small>
               </div>
               <div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLaunchParentPortalOpen(true);
-                    window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 80);
-                  }}
-                >
+                <button type="button" onClick={openLaunchParentPortal}>
                   My account
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLaunchChildRegistrationOpen(true);
-                    setLaunchChildSavedNotice("");
-                    window.setTimeout(() => scrollToFlowSection(".lab-launch-registration-gate", "start"), 80);
-                  }}
-                >
+                <button type="button" onClick={() => openLaunchChildEditor("Basics")}>
                   Add child
                 </button>
                 <button type="button" onClick={signOutParentAccount} disabled={parentAccountLoading}>
@@ -19036,9 +21426,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           <section className="lab-launch-registration-gate" aria-label="Parent registration gate">
             <div className="lab-launch-gate-head">
               <div>
-                <p className="eyebrow">{launchNeedsAccount ? "Account first" : launchChildReviewOpen ? "Children ready" : "Child profile needed"}</p>
-                <h2>{launchNeedsAccount ? "Sign in or create your account." : launchChildReviewOpen ? "Choose who you are booking for." : "Register your child before booking."}</h2>
-                <p>{launchNeedsAccount ? "Parents need a username and password so they can manage bookings, invoices, cancellations and credit." : launchChildReviewOpen ? "You can add another child now or continue into the booking flow with the children already attached to this account." : "We need the care, contact, medical and consent details staff rely on before a booking can be made."}</p>
+                <p className="eyebrow">{parentPasswordReset.forced ? "Account security" : launchNeedsAccount ? "Account first" : launchChildReviewOpen ? "Children ready" : "Child profile needed"}</p>
+                <h2>{parentPasswordReset.forced ? "Choose your own password." : launchNeedsAccount ? "Sign in or create your account." : launchChildReviewOpen ? "Choose who you are booking for." : "Register your child before booking."}</h2>
+                <p>{parentPasswordReset.forced ? "Complete this one-time security step to continue to your family account." : launchNeedsAccount ? "Create one secure account to manage bookings, payments, cancellations and credit." : launchChildReviewOpen ? "Choose from the children already saved to your account, or add another child." : "Please add the care, medical and consent details our team needs before your child attends."}</p>
+                {launchNeedsAccount && launchRequestedSchool && <p className="lab-launch-booking-context"><strong>{launchRequestedSchool}</strong> is ready and will stay selected after you sign in.</p>}
               </div>
               <div className="lab-launch-gate-steps">
                 <span className={parentAccountSignedIn ? "complete" : "active"}>1. Account</span>
@@ -19054,11 +21445,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <p>{resolvedPaymentReturnNotice.detail}</p>
                 </div>
                 <div>
-                  <span>{resolvedPaymentReturnNotice.invoiceId || resolvedPaymentReturnNotice.reference || "Secure return received"}</span>
+                  <span>{resolvedPaymentReturnNotice.creditTopUp ? "Account credit top-up" : "Secure payment received"}</span>
                   <strong>{resolvedPaymentReturnNotice.action}</strong>
                   <small>Sign in or create your parent account to view the booking and invoice status.</small>
                   <div className="lab-payment-return-actions">
-                    <button type="button" onClick={() => setParentAccessMode("signin")}>View booking</button>
+                    <button type="button" onClick={() => setParentAccessMode("signin")}>{resolvedPaymentReturnNotice.creditTopUp ? "Sign in to view credit" : "Sign in to view booking"}</button>
                     <button type="button" onClick={() => window.location.assign("/")}>Return home</button>
                     <button type="button" onClick={() => { setParentAccessMode("signin"); scrollToFlowSection(".lab-launch-auth-card", "start"); }}>Book another child</button>
                   </div>
@@ -19069,18 +21460,18 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             {!parentAccountSignedIn ? (
               <div className="lab-launch-account-grid">
                 <section className="lab-launch-auth-card">
-                  <div className="lab-launch-auth-tabs" aria-label="Account mode">
+                  {!parentPasswordReset.forced && <div className="lab-launch-auth-tabs" aria-label="Account mode">
                     <button className={parentAccessMode === "signin" ? "active" : ""} type="button" onClick={() => setParentAccessMode("signin")}>Sign in</button>
                     <button className={parentAccessMode === "create" ? "active" : ""} type="button" onClick={() => setParentAccessMode("create")}>Create account</button>
-                  </div>
+                  </div>}
                   {parentAccessMode === "signin" ? (
-                    <>
+                    parentPasswordReset.forced ? renderParentPasswordResetPanel() : <>
                       <form className="lab-launch-signin-form" onSubmit={signInParentAccount}>
                         <label>Email<input type="email" inputMode="email" autoComplete="email" value={parentLogin.username} onChange={(event) => setParentLogin((current) => ({ ...current, username: event.target.value }))} placeholder="parent@example.com" /></label>
                         <label>Password<input type="password" autoComplete="current-password" value={parentLogin.password} onChange={(event) => setParentLogin((current) => ({ ...current, password: event.target.value }))} placeholder="Password" /></label>
                         <div className="lab-launch-form-actions">
-                          <button type="submit" disabled={parentAccountLoading}>{parentAccountLoading ? "Signing in..." : "Continue"}</button>
-                          <button type="button" onClick={() => setParentAccessMode("create")}>New parent?</button>
+                          <button type="submit" disabled={parentAccountLoading}>{parentAccountLoading ? "Signing in..." : "Sign in"}</button>
+                          <button type="button" onClick={() => setParentAccessMode("create")}>Create an account</button>
                           <button type="button" className="lab-link-button" onClick={openParentPasswordReset}>Forgot password?</button>
                         </div>
                       </form>
@@ -19111,12 +21502,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         <label>Town <span>Required</span><input aria-invalid={fieldInvalid(parentRegistrationErrors.town)} value={parentRegistration.town} onChange={(event) => updateParentRegistration("town", event.target.value)} />{fieldError(parentRegistrationErrors.town)}</label>
                         <label>County <span>Optional</span><input value={parentRegistration.county} onChange={(event) => updateParentRegistration("county", event.target.value)} /></label>
                         <label>Postcode <span>Required</span><input aria-invalid={fieldInvalid(parentRegistrationErrors.postcode)} value={parentRegistration.postcode} onChange={(event) => updateParentRegistration("postcode", event.target.value)} />{fieldError(parentRegistrationErrors.postcode)}</label>
-                        <label>Secondary contact number <span>Optional</span><input inputMode="tel" autoComplete="tel" aria-invalid={Boolean(parentRegistrationErrors.secondaryPhone)} title={phoneValidationHint} value={parentRegistration.secondaryPhone} onChange={(event) => updateParentRegistration("secondaryPhone", event.target.value)} />{fieldError(parentRegistrationErrors.secondaryPhone)}</label>
+                        <label>Second emergency contact number <span>Required</span><input inputMode="tel" autoComplete="tel" aria-invalid={Boolean(parentRegistrationErrors.secondaryPhone)} title={phoneValidationHint} value={parentRegistration.secondaryPhone} onChange={(event) => updateParentRegistration("secondaryPhone", event.target.value)} />{fieldError(parentRegistrationErrors.secondaryPhone)}<small className="lab-field-hint">Shared by every child on this family account. Use a different number from the main account holder.</small></label>
                         <label>Country <span>Optional</span><input value={parentRegistration.country} onChange={(event) => updateParentRegistration("country", event.target.value)} /></label>
-                        <label className="lab-checkbox-row"><input type="checkbox" checked={parentRegistration.marketingEmail} onChange={(event) => updateParentRegistration("marketingEmail", event.target.checked)} /> Email me useful updates from Apres School</label>
-                        <label className="lab-checkbox-row"><input type="checkbox" checked={parentRegistration.marketingSms} onChange={(event) => updateParentRegistration("marketingSms", event.target.checked)} /> SMS me useful updates from Apres School</label>
-                        <label className="lab-checkbox-row"><input type="checkbox" checked={parentRegistration.terms} onChange={(event) => updateParentRegistration("terms", event.target.checked)} /> I accept the Apres School terms</label>
-                        <label className="lab-checkbox-row"><input type="checkbox" checked={parentRegistration.privacy} onChange={(event) => updateParentRegistration("privacy", event.target.checked)} /> I accept the Apres School privacy policy</label>
+                        <label className="lab-checkbox-row"><input type="checkbox" checked={parentRegistration.marketingEmail} onChange={(event) => updateParentRegistration("marketingEmail", event.target.checked)} /> Email me useful updates from Après School</label>
+                        <label className="lab-checkbox-row"><input type="checkbox" checked={parentRegistration.marketingSms} onChange={(event) => updateParentRegistration("marketingSms", event.target.checked)} /> Text me useful updates from Après School</label>
+                        <label className="lab-checkbox-row"><input type="checkbox" checked={parentRegistration.terms} onChange={(event) => updateParentRegistration("terms", event.target.checked)} /> <span>I accept the <a className="lab-terms-link" href={APRES_TERMS_URL} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Terms and Conditions</a></span></label>
+                        <label className="lab-checkbox-row"><input type="checkbox" checked={parentRegistration.privacy} onChange={(event) => updateParentRegistration("privacy", event.target.checked)} /> I accept the Après School privacy policy</label>
                       </div>
                       <div className="lab-launch-form-actions">
                         <button type="submit">Create account</button>
@@ -19143,18 +21534,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   ))}
                 </div>
                 <div className="lab-launch-form-actions">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLaunchChildSavedNotice("");
-                      setLaunchChildConfirmedForBooking(false);
-                      setLaunchChildRegistrationOpen(true);
-                      setChildRegistration({ ...defaultChildRegistration, school: selectedSchool, languages: ["English"] });
-                      setChildRegistrationStep("Basics");
-                      setChildRegistrationSubmitAttempted(false);
-                      window.setTimeout(() => scrollToFlowSection(".lab-launch-child-form", "start"), 80);
-                    }}
-                  >
+                  <button type="button" onClick={() => { setLaunchChildConfirmedForBooking(false); openLaunchChildEditor("Basics"); }}>
                     + Add another child
                   </button>
                   <button
@@ -19175,10 +21555,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <div className="lab-launch-child-head">
                   <div>
                     <p className="eyebrow">Child registration</p>
-                    <h3>Add the child you want to book for.</h3>
-                    <p>This gives staff allergies, emergency contacts, collection password and consents before any session is confirmed.</p>
+                    <h3>Add a child to your family account.</h3>
+                    <p>Save the care information our team needs before your child attends. Your family emergency contacts are reused automatically.</p>
                   </div>
-                  <button type="button" onClick={signOutParentAccount}>Use another account</button>
+                  <button type="button" onClick={signOutParentAccount}>Sign out</button>
                 </div>
                 <div className="lab-launch-child-progress" aria-label="Child registration steps">
                   {childRegistrationSteps.map((step, index) => (
@@ -19235,11 +21615,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <label className="full">Additional information <span>Optional</span><textarea rows="2" value={childRegistration.additionalInfo} onChange={(event) => updateChildRegistration("additionalInfo", event.target.value)} /></label>
                 </div>
                 <div className="lab-launch-step-actions">
-                  <span>Next: emergency contact</span>
-                  <button type="button" onClick={() => continueChildRegistrationStep("Contacts")}>Continue</button>
+                  <span>Next: health and care</span>
+                  <button type="button" onClick={() => continueChildRegistrationStep("Health")}>Continue</button>
                 </div>
                 </>}
-                {childRegistrationStep === "Contacts" && <div className="lab-launch-child-section">
+                {false && childRegistrationStep === "Contacts" && <div className="lab-launch-child-section">
                   {childMissingFields.some((field) => field.step === "Contacts") && (
                     <div className="lab-error-summary" role="alert">
                       <strong>Check emergency contact</strong>
@@ -19269,6 +21649,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 {childRegistrationStep === "Health" && <div className="lab-launch-child-section">
                   <h4>Care, medical and SEND</h4>
                   <div className="lab-form-grid">
+                    <label>Child's GP / Doctor <span>Optional</span><input value={childRegistration.doctorName} onChange={(event) => updateChildRegistration("doctorName", event.target.value)} /></label>
+                    <label>Doctor surgery <span>Optional</span><input value={childRegistration.doctorSurgery} onChange={(event) => updateChildRegistration("doctorSurgery", event.target.value)} /></label>
+                    <label>Doctor telephone <span>Optional</span><input inputMode="tel" autoComplete="tel" aria-invalid={Boolean(childContactErrors.doctorTelephone)} title={phoneValidationHint} value={childRegistration.doctorTelephone} onChange={(event) => updateChildRegistration("doctorTelephone", event.target.value)} />{fieldError(childContactErrors.doctorTelephone)}</label>
                     <label>Dietary need<select value={childRegistration.dietaryNeed} onChange={(event) => updateChildRegistration("dietaryNeed", event.target.value)}><option value="">None</option>{childDietaryOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
                     <label>Diet details<input value={childRegistration.dietaryDetails} onChange={(event) => updateChildRegistration("dietaryDetails", event.target.value)} /></label>
                     <label>Allergy<select value={childRegistration.allergy} onChange={(event) => updateChildRegistration("allergy", event.target.value)}><option value="">None</option>{childAllergyOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
@@ -19287,7 +21670,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     <label className="full">SEND details<textarea rows="2" value={childRegistration.sendDetails} onChange={(event) => updateChildRegistration("sendDetails", event.target.value)} /></label>
                   </div>
                   <div className="lab-launch-step-actions">
-                    <button type="button" onClick={() => moveChildRegistrationStep("Contacts")}>Back</button>
+                    <button type="button" onClick={() => moveChildRegistrationStep("Basics")}>Back</button>
                     <button type="button" onClick={() => moveChildRegistrationStep("Consents")}>Continue</button>
                   </div>
                 </div>
@@ -19316,7 +21699,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             )}
           </section>
         )}
-          <div className="lab-search-panel">
+          {launchBookingShellOpen && <div className="lab-search-panel">
             <div className="lab-panel-heading">
             <p className="eyebrow">{isLaunchMode ? "Step 1" : "Start booking"}</p>
             <h2>{isLaunchMode ? "Choose your care." : "Choose school, care and pattern."}</h2>
@@ -19495,46 +21878,171 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               {!savedQuotes.length && <p>No saved quotes yet. Save the current plan or hold an option from the comparison panel.</p>}
             </div>
           </section>}
-        </div>
+        </div>}
 
         <div className="lab-booking-panel">
-          {(!isLaunchMode || launchParentPortalOpen || parentAccountSignedIn) && <section className="lab-parent-portal">
+          {(!isLaunchMode || (launchParentPortalOpen && !launchBookingActive)) && <section className={`lab-parent-portal${isLaunchMode && parentAccountSignedIn ? ` has-account-sections account-section-${launchAccountSection.toLowerCase()}` : ""}`}>
+            {isLaunchMode && parentAccountSignedIn && launchAccountSection === "Overview" && (
+              <section className="lab-parent-booking-cta" aria-label="Make a booking">
+                <div>
+                  <p className="eyebrow">Book care</p>
+                  <h2>Ready to make a booking?</h2>
+                  <p>Choose your children, care sessions and dates, then pay securely to confirm.</p>
+                </div>
+                <button type="button" onClick={openLaunchBookingFlow}>
+                  <strong>Make a booking</strong>
+                  <span>Start booking care</span>
+                </button>
+              </section>
+            )}
             <div className="lab-parent-portal-head">
               <div className="lab-parent-portal-title">
                 <p className="eyebrow">Family account</p>
-                <h2>{launchFamilyName}</h2>
-                <p>{parentAccountSignedIn ? "Track booked days, invoices, receipts and account credit in one place." : "Sign in to view bookings, invoices, receipts and account credit."}</p>
+                <h2>{parentAccountSignedIn && isLaunchMode ? "Your family account" : launchFamilyName}</h2>
+                <p>{parentAccountSignedIn ? "Manage bookings, payments, children and account details." : "Sign in to view bookings, payments, children and account details."}</p>
                 <div className="lab-parent-portal-meta">
                   <span>{launchFamilyContact}</span>
-                  <span>{parentAccountSignedIn ? "Secure portal active" : "Sign in required"}</span>
+                  <span>{parentAccountSignedIn ? "Secure account" : "Sign in required"}</span>
                 </div>
               </div>
               <div className="lab-parent-portal-actions">
-                {parentAccountSignedIn && <span className="lab-parent-auth-state">{parentAccountMode === "live" ? "Live account" : "Demo account"}</span>}
+                {parentAccountSignedIn && (
+                  <span className={`lab-parent-auth-state${familyInvoiceOutstandingTotal > 0 ? " needs-payment" : ""}`}>
+                    {parentAccountMode === "live"
+                      ? familyInvoiceOutstandingTotal > 0
+                        ? `${money(familyInvoiceOutstandingTotal)} to pay`
+                        : "Account up to date"
+                      : "Demo account"}
+                  </span>
+                )}
                 {realBookingServiceReady && parentAccountMode === "live" && (
                   <button className="button light" type="button" onClick={() => refreshLiveParentLedger()} disabled={liveParentLedger.loading || parentAccountLoading}>
-                    {liveParentLedger.loading ? "Refreshing..." : "Refresh live invoices"}
+                    {liveParentLedger.loading ? "Refreshing..." : "Refresh account"}
                   </button>
                 )}
                 {parentAccountSignedIn ? (
                   <button className="button light" type="button" onClick={signOutParentAccount} disabled={parentAccountLoading}>{parentAccountLoading ? "Signing out..." : "Sign out"}</button>
                 ) : null}
                 {isLaunchMode && parentAccountSignedIn && (
-                  <button
-                    className="button light"
-                    type="button"
-                    onClick={() => {
-                      setLaunchChildRegistrationOpen(true);
-                      setLaunchChildSavedNotice("");
-                      window.setTimeout(() => scrollToFlowSection(".lab-launch-registration-gate", "start"), 80);
-                    }}
-                  >
+                  <button className="button light" type="button" onClick={() => openLaunchChildEditor("Basics")}>
                     Add child
                   </button>
                 )}
-                <button className="button light" type="button" onClick={() => setLabView("Family")}>Family details</button>
+                {!isLaunchMode && <button className="button light" type="button" onClick={() => setLabView("Family")}>Family details</button>}
               </div>
             </div>
+            {isLaunchMode && parentAccountSignedIn && (
+              <div className="lab-parent-account-navigation">
+                <button
+                  type="button"
+                  className="lab-parent-account-menu-toggle"
+                  aria-expanded={launchAccountMenuOpen}
+                  aria-controls="parent-account-sections"
+                  onClick={() => setLaunchAccountMenuOpen((current) => !current)}
+                >
+                  <span>Account menu</span>
+                  <strong>{launchAccountSection === "Payments" ? "Payments & credit" : launchAccountSection === "Badges" ? "Badge Book" : launchAccountSection === "Account" ? "Account settings" : launchAccountSection}</strong>
+                  <b aria-hidden="true">{launchAccountMenuOpen ? "Close" : "Open"}</b>
+                </button>
+                <nav id="parent-account-sections" className={`lab-parent-account-sections${launchAccountMenuOpen ? " is-open" : ""}`} aria-label="Parent account sections">
+                  {[
+                    ["Overview", "Overview"],
+                    ["Family", "Family"],
+                    ["Badges", "Badge Book"],
+                    ["Bookings", "Bookings"],
+                    ["Payments", "Payments & credit"],
+                    ["Messages", "Messages"],
+                    ["Account", "Account settings"],
+                  ].map(([section, label]) => (
+                    <button
+                      type="button"
+                      key={section}
+                      aria-current={launchAccountSection === section ? "page" : undefined}
+                      className={launchAccountSection === section ? "active" : ""}
+                      onClick={() => {
+                        setLaunchAccountSection(section);
+                        setLaunchAccountMenuOpen(false);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+              </div>
+            )}
+            {isLaunchMode && parentAccountSignedIn && familyInvoiceOutstandingTotal > 0 && (
+              <section className="lab-parent-balance-alert" role="status" aria-label="Outstanding account balance">
+                <div>
+                  <p className="eyebrow">Payment needed</p>
+                  <h3>{money(familyInvoiceOutstandingTotal)} is outstanding</h3>
+                  <p>Clear this balance before making another booking. Your ad-hoc care and unpaid bookings are listed under Payments & credit.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLaunchAccountSection("Payments");
+                    setLaunchFinanceSection("Payments");
+                    setInvoiceFilter("All");
+                    setLaunchAccountMenuOpen(false);
+                    window.setTimeout(() => scrollToFlowSection(".lab-parent-invoice-centre", "start"), 60);
+                  }}
+                >
+                  View and pay balance
+                </button>
+              </section>
+            )}
+            {isLaunchMode && parentAccountSignedIn && launchAccountSection === "Overview" && renderLaunchCompletionChecklist()}
+            {parentAccountSignedIn && (
+              <section className={`lab-parent-credit-balance${familyCreditNeedsReconciliation ? " is-pending" : ""}`} aria-label="Account credit balance">
+                <div>
+                  <p className="eyebrow">Account credit</p>
+                  <strong>{money(displayedFamilyCreditBalance)}</strong>
+                </div>
+                <div>
+                  <h3>{displayedFamilyCreditBalance > 0 ? "Credit on your account" : "No credit on your account"}</h3>
+                  <p>{displayedFamilyCreditBalance > 0
+                    ? familyCreditNeedsReconciliation
+                      ? "This credit has been recorded and is awaiting final finance reconciliation."
+                      : "This balance will be available to apply to a future booking."
+                    : "Credit from eligible cancellations and cheaper amendments will appear here."}</p>
+                </div>
+                {realBookingServiceReady && parentAccountMode === "live" && (
+                  <div className="lab-parent-credit-actions">
+                    <button className="button primary" type="button" onClick={() => { setCreditTopUpOpen((current) => !current); setCreditTopUpError(""); }}>
+                      {creditTopUpOpen ? "Close top-up" : "Top up credit"}
+                    </button>
+                    <button className="button light" type="button" onClick={() => refreshLiveParentLedger()} disabled={liveParentLedger.loading || parentAccountLoading}>
+                      {liveParentLedger.loading ? "Checking..." : "Refresh credit"}
+                    </button>
+                  </div>
+                )}
+              </section>
+            )}
+            {parentAccountSignedIn && creditTopUpOpen && parentAccountMode === "live" && (
+              <form className="lab-credit-topup-panel" onSubmit={submitCreditTopUp}>
+                <div>
+                  <p className="eyebrow">Add account credit</p>
+                  <h3>Choose how much to add</h3>
+                  <p>Pay securely through PonchoPay. Credit appears only after payment is confirmed.</p>
+                </div>
+                <div className="lab-credit-topup-presets" aria-label="Credit top-up amounts">
+                  {[25, 50, 100].map((amount) => (
+                    <button className={Number(creditTopUpAmount) === amount ? "is-selected" : ""} type="button" key={amount} onClick={() => setCreditTopUpAmount(String(amount))}>
+                      {money(amount)}
+                    </button>
+                  ))}
+                </div>
+                <label>
+                  Custom amount
+                  <span className="lab-credit-topup-input"><b>£</b><input type="number" min="5" max="500" step="0.01" inputMode="decimal" value={creditTopUpAmount} onChange={(event) => setCreditTopUpAmount(event.target.value)} required /></span>
+                </label>
+                {creditTopUpError && <p className="lab-credit-topup-error" role="alert">{creditTopUpError}</p>}
+                <div className="lab-credit-topup-submit">
+                  <button className="button light" type="button" onClick={() => setCreditTopUpOpen(false)} disabled={creditTopUpBusy}>Cancel</button>
+                  <button className="button primary" type="submit" disabled={creditTopUpBusy}>{creditTopUpBusy ? "Opening secure payment..." : `Continue with ${money(Number(creditTopUpAmount) || 0)}`}</button>
+                </div>
+              </form>
+            )}
             {!parentAccountSignedIn && (
               <>
                 <form className="lab-parent-login-panel" onSubmit={signInParentAccount}>
@@ -19578,6 +22086,36 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </>
             )}
             {parentAccountSignedIn && <>
+            {resolvedPaymentReturnNotice && (
+              <section className={`lab-payment-return-notice lab-payment-return-notice--prominent state-${resolvedPaymentReturnNotice.state}`} aria-live="polite">
+                <div>
+                  <p className="eyebrow">{resolvedPaymentReturnNotice.state === "complete" ? resolvedPaymentReturnNotice.creditTopUp ? "Top-up successful" : "Payment confirmed" : "Payment update"}</p>
+                  <h3>{resolvedPaymentReturnNotice.title}</h3>
+                  <p>{resolvedPaymentReturnNotice.detail}</p>
+                </div>
+                <div>
+                  <span>{paymentReturnFriendlyReference}</span>
+                  <strong>{resolvedPaymentReturnNotice.action}</strong>
+                  <small>{resolvedPaymentReturnNotice.source}{resolvedPaymentReturnNotice.liveStatus ? ` · ${resolvedPaymentReturnNotice.liveStatus}` : resolvedPaymentReturnNotice.bookingId ? " · matched to this booking" : " · checking your latest payment"}</small>
+                  <div className="lab-payment-return-actions">
+                    {resolvedPaymentReturnNotice.creditTopUp ? (
+                      <button type="button" onClick={() => { setLaunchAccountSection("Payments"); window.setTimeout(() => scrollToFlowSection(".lab-parent-credit-balance", "start"), 40); }}>View credit balance</button>
+                    ) : (
+                      <button type="button" onClick={() => { setLaunchAccountSection("Bookings"); window.setTimeout(() => scrollToFlowSection(".lab-parent-session-manager", "start"), 40); }}>View booking</button>
+                    )}
+                    <button type="button" onClick={openLaunchBookingFlow}>Make another booking</button>
+                    {realBookingServiceReady && (
+                      <button type="button" onClick={() => refreshLiveParentLedger()} disabled={liveParentLedger.loading}>
+                        {liveParentLedger.loading ? "Checking..." : "Check payment status"}
+                      </button>
+                    )}
+                    <button type="button" onClick={dismissPaymentReturnNotice}>Dismiss</button>
+                  </div>
+                </div>
+              </section>
+            )}
+            {isLaunchMode && renderLaunchFamilyConsole()}
+            {isLaunchMode && renderParentBadgeBook()}
             <div className="lab-parent-portal-cards">
               {parentPortalCards.map(([label, value, text]) => (
                 <article key={label}>
@@ -19585,8 +22123,136 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <strong>{value}</strong>
                   <small>{text}</small>
                 </article>
-              ))}
+                ))}
             </div>
+            <section className="lab-parent-security-settings" aria-label="Your contact and sign-in details">
+              <div className="lab-parent-security-intro">
+                <p className="eyebrow">Your details</p>
+                <h3>Contact and sign-in details</h3>
+                <p>Keep your contact information current and choose the email address you use to sign in.</p>
+              </div>
+              <form className="lab-parent-contact-form" onSubmit={saveOwnParentContact}>
+                <div className="lab-parent-settings-form-head">
+                  <div>
+                    <h4>Contact details</h4>
+                    <p>{activeFamilyIsPrimaryAccountHolder ? "These details are used for your family account and booking communications." : "Update your own name and login email. The main holder manages the family phone number."}</p>
+                  </div>
+                  <span>Secure account</span>
+                </div>
+                <div className="lab-parent-settings-fields">
+                  <label>
+                    Your name
+                    <input autoComplete="name" value={parentContactDraft.fullName} onChange={(event) => setParentContactDraft((current) => ({ ...current, fullName: event.target.value }))} required />
+                  </label>
+                  <label>
+                    Login email
+                    <input type="email" inputMode="email" autoComplete="email" value={parentContactDraft.email} onChange={(event) => setParentContactDraft((current) => ({ ...current, email: event.target.value }))} required />
+                    <small>This is the email you will use next time you sign in. We will ask for your current password if you change it.</small>
+                  </label>
+                  {activeFamilyIsPrimaryAccountHolder && (
+                    <label>
+                      Mobile number
+                      <input type="tel" inputMode="tel" autoComplete="tel" value={parentContactDraft.phone} onChange={(event) => setParentContactDraft((current) => ({ ...current, phone: event.target.value }))} placeholder="07..." />
+                    </label>
+                  )}
+                  {normaliseEmailAddress(parentContactDraft.email) !== launchParentEmail && (
+                    <label>
+                      Current password
+                      <input type="password" autoComplete="current-password" value={parentContactDraft.currentPassword} onChange={(event) => setParentContactDraft((current) => ({ ...current, currentPassword: event.target.value }))} required />
+                      <small>Confirm your identity to save the new login email.</small>
+                    </label>
+                  )}
+                </div>
+                {parentContactMessage && <p className="lab-parent-settings-message" role="status">{parentContactMessage}</p>}
+                <button type="submit" disabled={parentContactBusy || parentAccountMode !== "live"}>{parentContactBusy ? "Saving securely..." : "Save contact details"}</button>
+              </form>
+              <form className="lab-parent-password-form" onSubmit={saveOwnParentPassword}>
+                <div className="lab-parent-settings-form-head">
+                  <div>
+                    <h4>Change password</h4>
+                    <p>Use at least 10 characters, including a capital letter, lowercase letter, number and symbol.</p>
+                  </div>
+                </div>
+                <div className="lab-parent-settings-fields password-fields">
+                  <label>
+                    Current password
+                    <input type="password" autoComplete="current-password" value={parentPasswordDraft.currentPassword} onChange={(event) => setParentPasswordDraft((current) => ({ ...current, currentPassword: event.target.value }))} required />
+                  </label>
+                  <label>
+                    New password
+                    <input type="password" autoComplete="new-password" value={parentPasswordDraft.newPassword} onChange={(event) => setParentPasswordDraft((current) => ({ ...current, newPassword: event.target.value }))} required />
+                  </label>
+                  <label>
+                    Confirm new password
+                    <input type="password" autoComplete="new-password" value={parentPasswordDraft.confirmPassword} onChange={(event) => setParentPasswordDraft((current) => ({ ...current, confirmPassword: event.target.value }))} required />
+                  </label>
+                </div>
+                {parentPasswordMessage && <p className="lab-parent-settings-message" role="status">{parentPasswordMessage}</p>}
+                <button type="submit" disabled={parentPasswordBusy || parentAccountMode !== "live"}>{parentPasswordBusy ? "Updating securely..." : "Update password"}</button>
+              </form>
+            </section>
+            <form className="lab-parent-terms-review" onSubmit={saveLaunchAccountTerms}>
+              <div>
+                <p className="eyebrow">Account confirmations</p>
+                <h3>Terms and privacy</h3>
+                <p>Review the current documents and save your choices for this family account.</p>
+              </div>
+              <div className="lab-parent-terms-choices">
+                <label><input type="checkbox" checked={launchAccountTerms.terms} onChange={(event) => setLaunchAccountTerms((current) => ({ ...current, terms: event.target.checked }))} /><span>I accept the <a className="lab-terms-link" href={APRES_TERMS_URL} target="_blank" rel="noreferrer">Terms and Conditions</a>.</span></label>
+                <label><input type="checkbox" checked={launchAccountTerms.privacy} onChange={(event) => setLaunchAccountTerms((current) => ({ ...current, privacy: event.target.checked }))} /><span>I confirm I have reviewed the Après School privacy policy.</span></label>
+              </div>
+              <button type="submit" disabled={launchAccountTermsBusy || !launchAccountTerms.terms || !launchAccountTerms.privacy}>{launchAccountTermsBusy ? "Saving..." : "Save confirmations"}</button>
+            </form>
+            <section className="lab-parent-account-danger" aria-label="Archive family account">
+              <div>
+                <p className="eyebrow">Account closure</p>
+                <h3>Delete my account</h3>
+                <p>This archives your family account and removes portal access. Booking, payment and safeguarding records are retained securely where required.</p>
+              </div>
+              {activeFamilyIsPrimaryAccountHolder ? (
+                <div className="lab-parent-account-danger-action">
+                  {accountDeletionOutstandingTotal > 0 && <p><strong>{money(accountDeletionOutstandingTotal)} is outstanding.</strong> Pay all outstanding invoices before closing this account.</p>}
+                  {displayedFamilyCreditBalance > 0 && accountDeletionOutstandingTotal <= 0 && <p>Your {money(displayedFamilyCreditBalance)} credit will remain recorded. Contact us before closing the account if you want to discuss it.</p>}
+                  <button
+                    type="button"
+                    disabled={accountDeletionOutstandingTotal > 0 || parentAccountMode !== "live"}
+                    onClick={openDeleteAccountWarning}
+                  >
+                    {accountDeletionOutstandingTotal > 0 ? `Cannot delete — ${money(accountDeletionOutstandingTotal)} outstanding` : "Delete my account"}
+                  </button>
+                </div>
+              ) : <p className="lab-parent-account-danger-note">Only the main account holder can close this family account.</p>}
+            </section>
+            {launchArchiveAction && (
+              <div className="lab-archive-warning-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeLaunchArchiveWarning(); }}>
+                <section className="lab-archive-warning" role="dialog" aria-modal="true" aria-labelledby="archive-warning-title">
+                  <header>
+                    <div>
+                      <p className="eyebrow">Please check before continuing</p>
+                      <h3 id="archive-warning-title">{launchArchiveAction.kind === "child" ? `Graduate ${launchArchiveAction.childName}?` : "Delete your family account?"}</h3>
+                    </div>
+                    <button type="button" aria-label="Close warning" onClick={closeLaunchArchiveWarning}>×</button>
+                  </header>
+                  {launchArchiveAction.kind === "child" ? (
+                    <div className="lab-archive-warning-copy">
+                      <p><strong>{launchArchiveAction.childName} will be archived</strong> and will no longer appear in your family list or future booking choices.</p>
+                      <p>Existing and past bookings are not cancelled or erased. Contact Après School if you need this child restored later.</p>
+                    </div>
+                  ) : (
+                    <div className="lab-archive-warning-copy">
+                      <p><strong>Your account and every child profile will be archived.</strong> You will be signed out and will no longer be able to access the parent portal.</p>
+                      <p>Booking, invoice, payment and safeguarding history is retained securely. Existing bookings are not cancelled automatically.</p>
+                    </div>
+                  )}
+                  <label className="lab-archive-confirmation"><input type="checkbox" checked={launchArchiveConfirmed} onChange={(event) => setLaunchArchiveConfirmed(event.target.checked)} /><span>{launchArchiveAction.kind === "child" ? "I understand this child will be archived and existing bookings will not be cancelled." : "I understand my family account will be archived, my access will end and existing bookings will not be cancelled."}</span></label>
+                  {launchArchiveError && <p className="lab-archive-warning-error" role="alert">{launchArchiveError}</p>}
+                  <footer>
+                    <button type="button" onClick={closeLaunchArchiveWarning} disabled={launchArchiveBusy}>Keep {launchArchiveAction.kind === "child" ? "child" : "account"}</button>
+                    <button className="danger" type="button" onClick={confirmLaunchArchiveAction} disabled={!launchArchiveConfirmed || launchArchiveBusy}>{launchArchiveBusy ? "Archiving..." : launchArchiveAction.kind === "child" ? "Graduate child" : "Delete and archive account"}</button>
+                  </footer>
+                </section>
+              </div>
+            )}
             <section className="lab-parent-linked-access" aria-label="Family account access">
               <div className="lab-parent-linked-head">
                 <div>
@@ -19688,60 +22354,87 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               <div className="lab-parent-session-head">
                 <div>
                   <p className="eyebrow">Bookings</p>
-                  <h3>{selectedParentBooking ? selectedParentBooking.activity : "No bookings yet"}</h3>
-                  <p>{selectedParentBooking ? `${selectedParentBooking.site} · ${selectedParentBookingRows.length} booked day${selectedParentBookingRows.length === 1 ? "" : "s"} visible` : "Future bookings will appear here once payment has been completed."}</p>
-                </div>
-                <div className="lab-parent-session-tabs" aria-label="Choose booking">
-                  {parentManagedBookings.slice(0, 5).map((draft) => (
-                    <button className={selectedParentBooking?.id === draft.id ? "active" : ""} key={draft.id} type="button" onClick={() => setSelectedParentBookingId(draft.id)}>
-                      <strong>{draft.activity}</strong>
-                      <span>{bookingBlockCount(draft)} session{bookingBlockCount(draft) === 1 ? "" : "s"}</span>
-                    </button>
-                  ))}
+                  <h3>{parentBookedSessionRows.length ? "Your booked sessions" : "No bookings yet"}</h3>
+                  <p>{parentBookedSessionRows.length ? `${parentFutureSessionCount} upcoming · ${parentCancelledSessionCount} cancelled` : "Future bookings will appear here once payment has been completed."}</p>
                 </div>
               </div>
-              {selectedParentBooking && (
-                <div className="lab-parent-booking-detail">
-                  <article>
-                    <span>Booking</span>
-                    <strong>{selectedParentBooking.activity}</strong>
-                    <small>{selectedParentBooking.site} · {selectedParentBooking.children?.join(", ") || selectedParentBooking.childName}</small>
-                  </article>
-                  <article>
-                    <span>Status</span>
-                    <strong>{parentSafeStatusLabel(selectedParentBooking.status)}</strong>
-                    <small>{selectedParentBooking.paymentLabel || selectedParentBooking.paymentMethod || "Payment route saved"}</small>
-                  </article>
-                  <article>
-                    <span>Credit</span>
-                    <strong>{money((selectedParentBooking.creditEvents || []).filter((event) => !["Refunded", "Applied", "Voided"].includes(event.status)).reduce((sum, event) => sum + Number(event.amount || 0), 0))}</strong>
-                    <small>Available on parent account</small>
-                  </article>
-                </div>
-              )}
-              <div className="lab-parent-session-list">
-                {selectedParentBookingRows.map((row) => (
-                  <article className={`state-${row.status.toLowerCase()}`} key={row.id}>
-                    <div>
-                      <span>{row.status}</span>
-                      <strong>{row.day}</strong>
-                      <small>{row.row.blocks.map((block) => `${block.label}${block.start || block.end ? ` · ${block.start}-${block.end}` : ""}`).join(" · ")}</small>
-                    </div>
-                    <div>
-                      <span>Credit value</span>
-                      <strong>{money(row.creditAmount)}</strong>
-                      <small>{row.canCancel ? row.usesRealApi ? "Live booking and credit update" : "Added to account if cancelled" : row.cancelledSession ? "Already credited" : "Past sessions cannot be cancelled here"}</small>
-                    </div>
-                    <button type="button" disabled={!row.canCancel || parentSessionCancellingId === row.id} onClick={() => cancelParentBookedSession(row.draftId, row.day)}>
-                      {parentSessionCancellingId === row.id ? "Cancelling..." : row.canCancel ? "Cancel session" : row.status === "Cancelled" ? "Cancelled" : "Past session"}
-                    </button>
-                  </article>
-                ))}
-                {selectedParentBooking && !selectedParentBookingRows.length && <p>All sessions in this booking have been cancelled or moved into history.</p>}
-                {!selectedParentBooking && <p>No booked days are attached to this account yet.</p>}
+              <div className="lab-parent-booking-table" role="table" aria-label="Your booked sessions">
+                {parentBookedSessionRows.length > 0 && (
+                  <div className="lab-parent-booking-table-head" role="row">
+                    <span role="columnheader">Booking</span>
+                    <span role="columnheader">Child</span>
+                    <span role="columnheader">Date and time</span>
+                    <span role="columnheader">Payment</span>
+                    <span role="columnheader">Amount</span>
+                    <span role="columnheader">Actions</span>
+                  </div>
+                )}
+                {parentBookedSessionRows.map((row) => {
+                  const invoiceRow = familyInvoiceRows.find((invoice) => invoice.draft?.id === row.draftId || invoice.liveBooking?.id === row.liveBookingId);
+                  const childNames = row.draft.children?.join(", ") || row.draft.childName || "Child not recorded";
+                  const sessionDetail = row.row.blocks.map((block) => `${block.label}${block.start || block.end ? ` · ${block.start}-${block.end}` : ""}`).join(" · ");
+                  const paymentCheckInProgress = /payment being checked|awaiting ponchopay confirmation/i.test(`${row.draft.status || ""} ${row.draft.paymentStatus || ""}`);
+                  return (
+                    <article className={`lab-parent-booking-row state-${row.status.toLowerCase()}`} role="row" key={row.id}>
+                      <div role="cell" data-label="Booking">
+                        <strong>{row.draft.activity}</strong>
+                        <small>{row.draft.site}</small>
+                        <span className={`lab-parent-booking-status state-${row.status.toLowerCase()}`}>{row.status}</span>
+                      </div>
+                      <div role="cell" data-label="Child">
+                        <strong>{childNames}</strong>
+                        <small>{row.draft.bookingReference || row.draft.reference || "Family booking"}</small>
+                      </div>
+                      <div role="cell" data-label="Date and time">
+                        <strong>{row.day}</strong>
+                        <small>{sessionDetail || row.row.time || "Session time saved"}</small>
+                      </div>
+                      <div role="cell" data-label="Payment">
+                        <strong>{invoiceRow?.status || parentSafeStatusLabel(row.draft.status)}</strong>
+                        <small>{row.draft.paymentLabel || row.draft.paymentMethod || "Payment route saved"}</small>
+                      </div>
+                      <div role="cell" data-label={row.cancelledSession && row.cancellationOutcome === "credit" ? "Credit" : "Amount"}>
+                        <strong>{money(row.cancelledSession && row.actualCreditAmount > 0 ? row.actualCreditAmount : row.creditAmount)}</strong>
+                        <small>{row.cancelledSession
+                          ? row.cancellationOutcome === "credit"
+                            ? "Credit applied to account"
+                            : row.cancellationOutcome === "refunded"
+                              ? "Payment refunded"
+                              : "No payment taken"
+                          : "Session value"}</small>
+                      </div>
+                      <div className="lab-parent-booking-row-actions" role="cell" data-label="Actions">
+                        {invoiceRow?.balance > 0 && paymentCheckInProgress && (
+                          <button type="button" disabled>Payment checking</button>
+                        )}
+                        {invoiceRow?.balance > 0 && !paymentCheckInProgress && (
+                          <button type="button" onClick={() => openParentPaymentCheckout(invoiceRow.isMonthlyPlan ? "next" : "single", invoiceRow.id, row.draft.paymentMethod || "card")}>Pay now</button>
+                        )}
+                        <button type="button" className="button light" onClick={() => { setLaunchAccountSection("Payments"); setLaunchFinanceSection("Payments"); setInvoiceFilter("All"); window.setTimeout(() => scrollToFlowSection(".lab-parent-invoice-list", "start"), 40); }}>View invoice</button>
+                        <button
+                          type="button"
+                          className="button light danger"
+                          disabled={!row.canCancel || parentSessionCancellingId === row.id}
+                          onClick={() => row.staffAdHoc ? reviewParentAdHocCancellation(row) : cancelParentBookedSession(row.draftId, row.day)}
+                        >
+                          {parentSessionCancellingId === row.id
+                            ? "Cancelling..."
+                            : row.canCancel
+                              ? row.staffAdHoc ? "Cancel ad-hoc booking" : "Cancel session"
+                              : row.status === "Cancelled"
+                                ? "Cancelled"
+                                : row.future
+                                  ? "Cancellation unavailable"
+                                  : "Past session"}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+                {!parentBookedSessionRows.length && <p className="lab-parent-booking-empty">No booked sessions are attached to this account yet.</p>}
               </div>
             </section>
-            {realBookingServiceReady && (
+            {realBookingServiceReady && !isLaunchMode && (
               <div className={`lab-live-ledger-strip ${liveParentLedger.error ? "warn" : ""}`}>
                 <div>
                   <span>Live Supabase ledger</span>
@@ -19755,55 +22448,32 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 </div>
               </div>
             )}
-            {resolvedPaymentReturnNotice && (
-              <section className={`lab-payment-return-notice state-${resolvedPaymentReturnNotice.state}`} aria-live="polite">
-                <div>
-                  <p className="eyebrow">{resolvedPaymentReturnNotice.state === "complete" ? "Thank you" : "Payment update"}</p>
-                  <h3>{resolvedPaymentReturnNotice.title}</h3>
-                  <p>{resolvedPaymentReturnNotice.detail}</p>
-                </div>
-                <div>
-                  <span>{resolvedPaymentReturnNotice.invoiceId || resolvedPaymentReturnNotice.reference || "Latest invoice"}</span>
-                  <strong>{resolvedPaymentReturnNotice.action}</strong>
-                  <small>{resolvedPaymentReturnNotice.source}{resolvedPaymentReturnNotice.liveStatus ? ` · ${resolvedPaymentReturnNotice.liveStatus}` : resolvedPaymentReturnNotice.bookingId ? " · matched to this booking" : " · open the invoice below"}</small>
-                  <div className="lab-payment-return-actions">
-                    {paymentReturnTargetRow?.balance > 0 && (
-                      <button type="button" onClick={() => openParentPaymentCheckout(paymentReturnTargetRow.isMonthlyPlan ? "next" : "single", paymentReturnTargetRow.id, paymentReturnTargetRow.draft.paymentMethod || "card")}>
-                        Pay invoice
-                      </button>
-                    )}
-                    <button type="button" onClick={() => { setInvoiceFilter(paymentReturnTargetRow?.balance > 0 ? "Outstanding" : "All"); scrollToFlowSection(".lab-parent-invoice-list", "start"); }}>
-                      View booking
-                    </button>
-                    <button type="button" onClick={() => window.location.assign("/")}>
-                      Return home
-                    </button>
-                    <button type="button" onClick={() => { setLaunchParentPortalOpen(false); setLabView("Parent"); scrollToFlowSection(".lab-search-panel", "start"); }}>
-                      Book another child
-                    </button>
-                    {realBookingServiceReady && (
-                      <button type="button" onClick={() => refreshLiveParentLedger()} disabled={liveParentLedger.loading}>
-                        Refresh status
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </section>
-            )}
             <section className="lab-parent-invoice-centre">
               <div className="lab-parent-invoice-head">
                 <div>
-                  <p className="eyebrow">Invoices and payments</p>
+                  <p className="eyebrow">Payments and credit</p>
                   <h3>{familyOutstandingInvoices.length ? `${familyOutstandingInvoices.length} invoice${familyOutstandingInvoices.length === 1 ? " needs" : "s need"} attention` : "All invoices are settled"}</h3>
                   <p>{money(familyPaidInvoiceTotal)} paid · {money(familyInvoiceOutstandingTotal)} outstanding</p>
                 </div>
-                {familyOutstandingInvoices.length ? (
-                  <button type="button" onClick={() => openParentPaymentCheckout("bulk", familyOutstandingInvoices.map((row) => row.id))}>Pay all outstanding</button>
+                {familyOutstandingBookingInvoices.length ? (
+                  <button type="button" onClick={() => openParentPaymentCheckout("bulk", familyOutstandingBookingInvoices.map((row) => row.id))}>Pay all outstanding</button>
+                ) : familyOutstandingInvoices.length ? (
+                  <span className="lab-parent-invoice-settled">Payment being checked</span>
                 ) : (
                   <span className="lab-parent-invoice-settled">All paid</span>
                 )}
               </div>
-              {isLaunchMode && launchParentPortalOpen && launchPortalReceiptRow && (
+              {isLaunchMode && (
+                <div className="lab-parent-finance-tabs" role="tablist" aria-label="Payments and credit sections">
+                  {["Overview", "Payments", "Credit history"].map((section) => (
+                    <button type="button" role="tab" aria-selected={launchFinanceSection === section} className={launchFinanceSection === section ? "active" : ""} key={section} onClick={() => setLaunchFinanceSection(section)}>
+                      {section === "Overview" ? "Summary" : section === "Payments" ? "Invoices" : section}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {(!isLaunchMode || launchFinanceSection === "Overview") && <>
+              {isLaunchMode && launchParentPortalOpen && launchPortalReceiptRow && !launchPortalReceiptRow.isCreditTopUp && (
                 <section className={`lab-launch-portal-receipt ${launchPortalReceiptRow.balance > 0 ? "needs-action" : "settled"}`} aria-label="Latest booking receipt">
                   <div>
                     <p className="eyebrow">Latest booking</p>
@@ -19826,14 +22496,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                       <button type="button" onClick={() => downloadReceipt(launchPortalReceiptRow.draft)}>Download receipt</button>
                     )}
                     <button type="button" onClick={() => sendParentInvoice(launchPortalReceiptRow.id)}>{launchPortalReceiptRow.status === "Paid" ? "Email receipt" : "Email invoice"}</button>
-                    <button type="button" onClick={() => { setLaunchParentPortalOpen(false); setConfirmation(null); setCheckoutStep("Children"); setLaunchFlowStep("Choices"); scrollToFlowSection(".booking-lab-flow", "start"); }}>Book more care</button>
+                    <button type="button" onClick={openLaunchBookingFlow}>Book more care</button>
                   </div>
                 </section>
               )}
               <section className={`lab-parent-payment-spotlight ${familyNextInvoicePayment ? "" : "settled"}`}>
                 <div>
                   <p className="eyebrow">Next payment</p>
-                  <h4>{familyNextInvoicePayment ? `${familyNextInvoicePayment.invoiceNumber} is ready` : "No payment needed"}</h4>
+                  <h4>{familyNextInvoicePayment ? `${familyNextInvoicePayment.friendlyReference || familyNextInvoicePayment.reference || "Payment"} is ready` : "No payment needed"}</h4>
                   <p>{familyNextInvoicePayment ? `${familyNextInvoicePayment.activity} · ${familyNextInvoicePayment.children}` : "Paid receipts and invoice history remain available below."}</p>
                 </div>
                 <div className="lab-parent-payment-spotlight-cards">
@@ -19887,6 +22557,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <span className="lab-parent-invoice-settled">Nothing to pay</span>
                 )}
               </section>
+              </>}
+              {!isLaunchMode && <>
               <div className="lab-parent-invoice-journey" aria-label="Invoice payment journey">
                 {parentInvoiceJourneyRows.map(([step, label, value, detail]) => (
                   <article key={label}>
@@ -19908,6 +22580,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   </article>
                 ))}
               </div>
+              </>}
+              {(!isLaunchMode || launchFinanceSection === "Payments") && <>
               <div className="lab-parent-invoice-filters" aria-label="Invoice filters">
                 {invoiceFilterOptions.map(([label, count]) => (
                   <button className={invoiceFilter === label ? "active" : ""} key={label} type="button" onClick={() => setInvoiceFilter(label)}>
@@ -19929,9 +22603,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 {visibleFamilyInvoiceRows.map((row) => (
                   <article className={`state-${row.status.toLowerCase().replace(/[^a-z0-9]+/g, "-")} ${launchPortalReceiptRow?.id === row.id ? "is-latest" : ""} ${paymentReturnTargetRow?.id === row.id ? "is-returned-payment" : ""}`} key={row.id}>
                     <div>
-                      <strong>{row.invoiceNumber}</strong>
+                      <strong>{row.friendlyReference || row.reference || "Payment record"}</strong>
                       <span>{row.activity}</span>
-                      <small>{row.children} · {row.blockCount || row.sessionCount} block{(row.blockCount || row.sessionCount) === 1 ? "" : "s"} · {row.blockSummary || row.daySummary || row.site}</small>
+                      <small>{row.isCreditTopUp ? `${money(row.totalDue)} added to the family account` : `${row.children} · ${row.blockCount || row.sessionCount} block${(row.blockCount || row.sessionCount) === 1 ? "" : "s"} · ${row.blockSummary || row.daySummary || row.site}`}</small>
                     </div>
                     <div className={`lab-parent-invoice-decision ${row.balance > 0 ? "needs-action" : "settled"}`}>
                       <span>{row.status === "Cancelled" ? "Closed" : row.balance > 0 ? "Next step" : "All done"}</span>
@@ -19946,21 +22620,22 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                           : `${row.methodLabel}${row.reference ? ` · ref ${row.reference}` : ""}. Receipt is ready.`}
                       </small>
                     </div>
-                    <div><span>Status</span><strong>{row.status}</strong><small>{row.liveInvoice ? `Live · ${row.liveParentPortalStatus || row.livePaymentStatus || row.dueLabel}` : row.dueLabel}</small></div>
+                    <div><span>Status</span><strong>{row.status}</strong><small>{row.liveInvoice ? (isLaunchMode ? row.liveParentPortalStatus || row.livePaymentStatus || row.dueLabel : `Live · ${row.liveParentPortalStatus || row.livePaymentStatus || row.dueLabel}`) : row.dueLabel}</small></div>
                     <div><span>{isLaunchMode ? "Payment" : "Route"}</span><strong>{row.methodLabel}</strong><small>{isLaunchMode ? (row.balance > 0 ? "Can be paid from this invoice" : "Saved with this invoice") : row.paymentRoute}</small></div>
                     <div><span>Reference</span><strong>{row.reference || "Pending"}</strong><small>{row.messageCount ? `${row.messageCount} email${row.messageCount === 1 ? "" : "s"} sent` : "Invoice email ready"}</small></div>
                     <div><span>Balance</span><strong>{money(row.balance)}</strong><small>{row.creditOpen ? `${money(row.creditOpen)} credit open` : `${money(row.totalDue)} invoice total`}</small></div>
                     <div className={`lab-parent-invoice-status-strip ${row.balance > 0 ? "needs-action" : "settled"}`}>
                       <span>{row.status === "Cancelled" ? "Cancelled" : row.status === "Paid" ? "Paid and receipted" : row.isMonthlyPlan ? "Monthly payment plan" : row.balance > 0 ? "Payment needed" : "No balance"}</span>
                       <strong>{row.balance > 0 ? `${money(row.balance)} left to pay` : "Nothing outstanding"}</strong>
-                      <small>{row.liveInvoice ? `Supabase invoice ${row.invoiceNumber} · ${row.liveFinanceStatus || row.liveCheckoutStatus || "ledger synced"}` : row.status === "Cancelled" ? "The cancelled booking remains in history for parent and finance proof." : row.status === "Paid" ? "Receipt can be downloaded or resent." : row.isMonthlyPlan ? `${row.dueLabel}. You can pay the next instalment or settle the full balance.` : isLaunchMode ? "You can pay by card, Tax-Free Childcare or childcare voucher." : "Card, Tax-Free Childcare and voucher routes reconcile through PonchoPay."}</small>
+                      <small>{row.liveInvoice ? (isLaunchMode ? "Your payment record is up to date." : `Payment record synced · ${row.liveFinanceStatus || row.liveCheckoutStatus || "up to date"}`) : row.status === "Cancelled" ? "This cancelled booking remains available in your account history." : row.status === "Paid" ? "Your receipt can be downloaded or emailed again." : row.isMonthlyPlan ? `${row.dueLabel}. You can pay the next instalment or settle the full balance.` : isLaunchMode ? "You can pay by card, Tax-Free Childcare or childcare voucher." : "Card, Tax-Free Childcare and voucher routes reconcile through PonchoPay."}</small>
                     </div>
                     <div className="lab-parent-invoice-actions">
-                      {row.isMonthlyPlan && row.nextInstallment && <button type="button" onClick={() => openParentPaymentCheckout("next", row.id, row.draft.paymentMethod || "card")}>Pay Next</button>}
-                      {row.balance > 0 && !row.isMonthlyPlan && <button type="button" onClick={() => openParentPaymentCheckout("single", row.id, row.draft.paymentMethod || "card")}>Pay Now</button>}
-                      {row.isMonthlyPlan && row.balance > 0 && <button type="button" onClick={() => openParentPaymentCheckout("single", row.id, row.draft.paymentMethod || "card")}>Settle Balance</button>}
-                      <button type="button" onClick={() => sendParentInvoice(row.id)}>{row.status === "Cancelled" ? "Email Confirmation" : row.status === "Paid" ? `${row.receiptMessages.length ? "Resend" : "Email"} Receipt` : `${row.messageCount ? "Resend" : "Email"} Invoice`}</button>
-                      <button type="button" onClick={() => downloadReceipt(row.draft)}>{row.status === "Cancelled" ? "Download Summary" : row.status === "Paid" ? "Download Receipt" : "Download Invoice"}</button>
+                      {row.isMonthlyPlan && row.nextInstallment && <button type="button" onClick={() => openParentPaymentCheckout("next", row.id, row.draft.paymentMethod || "card")}>Pay next</button>}
+                      {row.balance > 0 && !row.isMonthlyPlan && !row.isCreditTopUp && <button type="button" onClick={() => openParentPaymentCheckout("single", row.id, row.draft.paymentMethod || "card")}>Pay now</button>}
+                      {row.balance > 0 && row.isCreditTopUp && <button type="button" onClick={() => refreshLiveParentLedger()} disabled={liveParentLedger.loading}>{liveParentLedger.loading ? "Checking..." : "Check status"}</button>}
+                      {row.isMonthlyPlan && row.balance > 0 && <button type="button" onClick={() => openParentPaymentCheckout("single", row.id, row.draft.paymentMethod || "card")}>Settle balance</button>}
+                      <button type="button" onClick={() => sendParentInvoice(row.id)}>{row.status === "Cancelled" ? "Email confirmation" : row.status === "Paid" ? `${row.receiptMessages.length ? "Resend" : "Email"} receipt` : `${row.messageCount ? "Resend" : "Email"} invoice`}</button>
+                      <button type="button" onClick={() => downloadReceipt(row.draft)}>{row.status === "Cancelled" ? "Download summary" : row.status === "Paid" ? "Download receipt" : "Download invoice"}</button>
                     </div>
                     <div className="lab-parent-invoice-proof">
                       {row.paymentProofRows.map(([label, value, detail]) => (
@@ -20037,6 +22712,28 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 {familyInvoiceRows.length > 0 && !visibleFamilyInvoiceRows.length && <p>No invoices match this filter yet.</p>}
                 {!familyInvoiceRows.length && <p>No invoices yet. Completed bookings will appear here automatically.</p>}
               </div>
+              </>}
+              {isLaunchMode && launchFinanceSection === "Credit history" && (
+                <section className="lab-parent-credit-history" aria-label="Account credit history">
+                  <div>
+                    <p className="eyebrow">Credit activity</p>
+                    <h4>{money(displayedFamilyCreditBalance)} available</h4>
+                    <p>Top-ups, cancellation credits and credit used on bookings are listed separately from booking invoices.</p>
+                  </div>
+                  <div className="lab-parent-credit-history-list">
+                    {(liveParentLedger.creditEntries || []).map((entry) => (
+                      <article key={entry.id}>
+                        <div>
+                          <strong>{entry.description || (Number(entry.amount) >= 0 ? "Credit added" : "Credit used")}</strong>
+                          <small>{entry.createdAt ? new Date(entry.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "Account activity"}</small>
+                        </div>
+                        <strong className={Number(entry.amount) >= 0 ? "credit-in" : "credit-out"}>{Number(entry.amount) >= 0 ? "+" : "−"}{money(Math.abs(Number(entry.amount || 0)))}</strong>
+                      </article>
+                    ))}
+                    {!(liveParentLedger.creditEntries || []).length && <p>No credit activity yet.</p>}
+                  </div>
+                </section>
+              )}
             </section>
             <div className="lab-parent-portal-grid">
               <article>
@@ -20105,7 +22802,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                           <small>{message.createdLabel} · {message.statusLabel}</small>
                           <p>{message.body}</p>
                           <div className="lab-parent-message-actions">
-                            <button type="button" onClick={() => toggleParentMessageRead(message.id)}>{message.read ? "Mark Unread" : "Mark Read"}</button>
+                            <button type="button" onClick={() => toggleParentMessageRead(message.id)}>{message.read ? "Mark as unread" : "Mark as read"}</button>
                             <button type="button" onClick={() => resendParentMessage(message.id)}>Resend</button>
                             {message.draft && <button type="button" onClick={() => downloadReceipt(message.draft)}>Receipt</button>}
                             <button type="button" onClick={() => downloadParentMessage(message.id)}>Download</button>
@@ -20321,7 +23018,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             </div>
             <div className="lab-booking-range-row">
               {visibleBookingRangePresets.map((preset) => (
-                <button className={`${bookingMode === preset.mode ? "active" : ""} ${isLaunchMode ? `range-${preset.emphasis}` : ""}`} key={preset.mode} type="button" aria-pressed={bookingMode === preset.mode} onClick={() => applyBookingMode(preset.mode)}>
+                <button className={`${bookingMode === preset.mode ? "active" : ""} ${isLaunchMode ? `range-${preset.emphasis}` : ""}`} key={preset.mode} type="button" aria-pressed={bookingMode === preset.mode} disabled={preset.disabled} onClick={() => applyBookingMode(preset.mode)}>
                   <strong>{preset.title}</strong>
                   <span>{preset.label}</span>
                   <small>{preset.detail}</small>
@@ -20358,7 +23055,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               <div>
                 <p className="eyebrow">{isLaunchMode ? "Step 2" : "Sessions"}</p>
                 <h3>{isLaunchMode ? bookingMode === "Ad-hoc" ? `Pick ${activeLaunchMonth?.month || "this month"} dates.` : `Review ${bookingMode.toLowerCase()} dates.` : pickedDays.length ? `${selectedBlockCount || pickedDays.length} selected across ${selectedMonthCount || 1} month${selectedMonthCount === 1 ? "" : "s"}` : "Pick a day, then adjust sessions."}</h3>
-                <p>{isLaunchMode ? bookingMode === "Ad-hoc" ? "Tap a day to add every session. Untick any session you do not need." : "We have generated the recurring dates below. Remove exceptions or adjust sessions before checkout." : bookingMode === "Ad-hoc" ? "Start with the next few dates this month. Tap Add all, then remove any session you do not need." : "Same days weekly selected. You can still remove any day or session before checkout."}</p>
+                <p>{isLaunchMode ? bookingMode === "Ad-hoc" ? "Tap Add day, then choose the sessions you need." : "We have generated the recurring dates below. Remove exceptions or adjust sessions before checkout." : bookingMode === "Ad-hoc" ? "Start with the next few dates this month. Tap Add all, then remove any session you do not need." : "Same days weekly selected. You can still remove any day or session before checkout."}</p>
               </div>
               <div className="lab-date-picker-toggle" aria-label="Date picker view">
                 {["All", "Selected"].map((mode) => (
@@ -20368,13 +23065,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             </div>
             {parentGuidedBooking && datePickerMode === "All" && activeLaunchMonth && (
               <div className="lab-month-coach" aria-label="Month navigation">
-                <button type="button" disabled={boundedLaunchMonthIndex === 0} onClick={() => { setLaunchFocusedReviewMonth(""); setLaunchMonthIndex((index) => Math.max(0, index - 1)); }}>Previous month</button>
-                <div>
-                  <span>Showing</span>
-                  <strong>{activeLaunchMonth.month}</strong>
-                  <small>{activeLaunchMonth.rows.filter((row) => pickedDays.includes(row.day)).length}/{activeLaunchMonth.rows.length} days selected</small>
+                <button type="button" disabled={boundedLaunchMonthIndex === 0} onClick={() => { setLaunchFocusedReviewMonth(""); setLaunchMonthIndex((index) => Math.max(0, index - 1)); }}>← Previous</button>
+                <div className="lab-month-choice">
+                  <label htmlFor="launch-booking-month">Choose month</label>
+                  <select
+                    id="launch-booking-month"
+                    value={boundedLaunchMonthIndex}
+                    onChange={(event) => {
+                      setLaunchFocusedReviewMonth("");
+                      setLaunchExpandedDay("");
+                      setLaunchMonthIndex(Number(event.target.value));
+                    }}
+                  >
+                    {dateMonthGroups.map((group, index) => <option key={group.month} value={index}>{group.month}</option>)}
+                  </select>
                 </div>
-                <button type="button" disabled={boundedLaunchMonthIndex >= dateMonthGroups.length - 1} onClick={() => { setLaunchFocusedReviewMonth(""); setLaunchMonthIndex((index) => Math.min(dateMonthGroups.length - 1, index + 1)); }}>Next month</button>
+                <button type="button" disabled={boundedLaunchMonthIndex >= dateMonthGroups.length - 1} onClick={() => { setLaunchFocusedReviewMonth(""); setLaunchMonthIndex((index) => Math.min(dateMonthGroups.length - 1, index + 1)); }}>Next →</button>
+                <p className="lab-month-selection-count">{activeLaunchMonth.rows.filter((row) => pickedDays.includes(row.day)).length} of {activeLaunchMonth.rows.length} days selected</p>
               </div>
             )}
             {parentGuidedBooking && launchFocusedReviewMonth && (
@@ -20396,7 +23103,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 </div>
                 <div>
                   {bookingRangePresets.map((preset) => (
-                    <button className={bookingMode === preset.mode ? "active" : ""} key={preset.mode} type="button" aria-pressed={bookingMode === preset.mode} onClick={() => applyBookingMode(preset.mode)}>
+                    <button className={bookingMode === preset.mode ? "active" : ""} key={preset.mode} type="button" aria-pressed={bookingMode === preset.mode} disabled={preset.disabled} onClick={() => applyBookingMode(preset.mode)}>
                       <strong>{preset.title}</strong>
                       <span>{preset.mode === "Ad-hoc" ? "Manual" : "Weekly"}</span>
                       <small>{preset.detail}</small>
@@ -20459,15 +23166,40 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             )}
             <div className="lab-date-picker-summary">
               <article><span>Open days</span><strong>{bookableSessionDays.length}</strong><small>{launchDateImportStatus}</small></article>
-              <article><span>Selected blocks</span><strong>{selectedBlockCount || pickedDays.length}</strong><small>{pickedDaysSummary || "Nothing selected"}</small></article>
+              <article><span>Selected blocks</span><strong>{selectedBlockCount}</strong><small>{selectedBlockCount ? pickedDaysSummary : "Nothing selected"}</small></article>
               <article><span>Lowest spaces</span><strong>{pickedDays.length ? remainingSpaces : "-"}</strong><small>{pickedDays.length ? "Across selected sessions" : "Choose sessions"}</small></article>
             </div>
+            {isLaunchMode && (
+              <section className="lab-basket-child-chooser" aria-label="Choose children for this basket item">
+                <div>
+                  <span>1. Choose child</span>
+                  <strong>{selectedChildren.length ? selectedChildren.map((child) => child.name).join(", ") : "Who is this care for?"}</strong>
+                  <small>Select one or more children, then choose their dates and sessions.</small>
+                </div>
+                <div>
+                  {selectableChildProfiles.map((child) => {
+                    const selected = selectedChildIds.includes(child.id);
+                    return (
+                      <button className={selected ? "active" : ""} type="button" key={child.id} onClick={() => toggleChild(child.id)}>
+                        <span aria-hidden="true">{selected ? "✓" : "+"}</span>{child.name}
+                      </button>
+                    );
+                  })}
+                  <button type="button" onClick={() => openLaunchChildEditor("Basics")}>+ Add child</button>
+                </div>
+                {!hasSavedBookingChildren && (
+                  <p className="lab-basket-child-empty">
+                    No children are saved on this account yet. Add your child to continue with these selected sessions.
+                  </p>
+                )}
+              </section>
+            )}
             {parentGuidedBooking && (
               <div className={`lab-selected-session-tray ${pickedDays.length ? "has-picks" : ""}`}>
                 <div>
                   <span>{pickedDays.length ? "Your booking" : "Choose dates"}</span>
-                  <strong>{pickedDays.length ? money(total) : "Nothing selected yet"}</strong>
-                  <small>{pickedDays.length ? `${pickedDays.length} day${pickedDays.length === 1 ? "" : "s"} · ${selectedBlockCount || pickedDays.length} session${(selectedBlockCount || pickedDays.length) === 1 ? "" : "s"} selected` : "Tap a day below. You can choose more than one session on the same day."}</small>
+                  <strong>{pickedDays.length ? hasChosenBookingChildren ? money(total) : "Choose a child" : "Nothing selected yet"}</strong>
+                  <small>{pickedDays.length ? hasChosenBookingChildren ? `${pickedDays.length} day${pickedDays.length === 1 ? "" : "s"} · ${selectedBlockCount} session${selectedBlockCount === 1 ? "" : "s"} selected` : "Select who this care is for before adding it to your basket." : "Tap Add day, then choose each session you need."}</small>
                 </div>
                 {pickedDays.length ? (
                   <>
@@ -20482,9 +23214,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                       {pickedDayRows.length > launchSelectedSessionChips.length && <small>+ {pickedDayRows.length - launchSelectedSessionChips.length} more selected</small>}
                     </div>
                     <div className="lab-selected-session-actions">
-                      <button className="primary" type="button" onClick={() => { setParentCheckoutOpen(true); setCheckoutStep("Children"); isLaunchMode ? moveLaunchFlowStep("Checkout", ".lab-checkout") : scrollToFlowSection(".lab-checkout", "start"); }}>{isLaunchMode ? "Continue to checkout" : "Review and pay"}</button>
+                      <button className="primary" type="button" disabled={!bookableBookingItemCount} onClick={isLaunchMode ? addSelectionToBasket : () => { setParentCheckoutOpen(true); setCheckoutStep("Children"); scrollToFlowSection(".lab-checkout", "start"); }}>{isLaunchMode ? launchBookingActionLabel : bookableBookingItemCount ? "Review and pay" : selectedSessionsAreAlreadyBooked ? "Already booked" : hasChosenBookingChildren ? "Choose sessions" : "Choose a child"}</button>
                       {!isLaunchMode && <button type="button" onClick={() => setDatePickerMode("Selected")}>Review selected</button>}
-                      {!isLaunchMode && <button type="button" onClick={clearPickedSessions}>Clear</button>}
+                      <button className="clear-selection" type="button" onClick={clearPickedSessions}>Clear selection</button>
                     </div>
                   </>
                 ) : (
@@ -20512,38 +23244,44 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <div className="lab-day-grid">
                     {(expandedDateMonths[group.month] ? group.rows : group.rows.slice(0, launchVisibleDayLimit)).map((row) => {
                       const dayPicked = pickedDays.includes(row.day);
-                      const dayOpen = isLaunchMode ? (dayPicked && (launchExpandedDay ? launchExpandedDay === row.day : pickedDays[0] === row.day)) : dayPicked;
+                      const dayOpen = isLaunchMode ? launchExpandedDay === row.day : dayPicked;
                       const dayCapacity = capacitySnapshotForDay(row.day, row.capacity);
-                      const dayFull = isLaunchMode && dayCapacity.fullForSelection;
+                      const dayAlreadyBooked = Boolean(launchBookingChildren.length || selectedChildren.length) && row.blocks.every((block) => pickerBookingStateForBlock(row, block).allBooked);
+                      const dayHasPending = row.blocks.some((block) => pickerBookingStateForBlock(row, block).pending);
+                      const dayFull = isLaunchMode && (dayCapacity.fullForSelection || dayAlreadyBooked);
                       const canAddDay = !dayFull || dayPicked;
                       return (
                       <article id={`lab-day-${safeDomId(row.day)}`} className={`lab-day-card ${dayPicked ? "selected" : ""} ${dayOpen ? "active open" : ""} ${dayFull ? "full" : ""} ${launchExpandedDay === row.day ? "focused-review-day" : ""}`} key={row.day}>
                         <button className="lab-day-main" type="button" aria-pressed={dayPicked} disabled={!canAddDay} onClick={() => (isLaunchMode && dayPicked ? setLaunchExpandedDay(row.day) : toggleDay(row.day))}>
                           <strong>{isLaunchMode ? row.day.split(",")[0] : row.day}</strong>
                           {isLaunchMode && <span className="lab-day-date-tail">{row.day.includes(",") ? row.day.split(",").slice(1).join(",").trim() : row.day}</span>}
-                          <span className="lab-day-availability">{dayFull ? "Full" : `${dayCapacity.remaining} places left`}</span>
-                          {isLaunchMode && <span className="lab-day-main-action">{dayFull && !dayPicked ? "Full" : dayPicked ? dayOpen ? "Editing" : "Edit" : "Add day"}</span>}
+                          <span className="lab-day-availability">{dayAlreadyBooked ? (dayHasPending ? "Payment pending" : "Already booked") : dayFull ? "Full" : `${dayCapacity.remaining} places left`}</span>
+                          {isLaunchMode && <span className="lab-day-main-action">{dayAlreadyBooked && !dayPicked ? (dayHasPending ? "Pending" : "Booked") : dayFull && !dayPicked ? "Full" : dayPicked ? dayOpen ? "Editing" : "Edit" : dayOpen ? "Choose below" : "Add day"}</span>}
                           <small>{money(row.price)} · {row.blockSummary || row.time}</small>
                           <em>{row.paymentRoute}</em>
                           {row.note && <small>{row.note}</small>}
                         </button>
                         {isLaunchMode && (
                           <div className="lab-day-selection-state">
-                            <span>{dayPicked ? `${row.selectedBlocks.length} of ${row.blocks.length} sessions selected` : "Tap date to add all sessions"}</span>
+                            <span>{dayPicked ? `${row.selectedBlocks.length} of ${row.blocks.length} sessions selected` : dayOpen ? "Choose the sessions you need below" : "Tap Add day, then choose sessions"}</span>
                             {dayPicked && <button type="button" onClick={() => toggleDay(row.day)}>Remove</button>}
-                            <strong>{dayPicked ? money(row.price * childCount) : ""}</strong>
+                            <strong>{dayPicked ? money(row.selectedBlocks.reduce((sum, block) => sum + Number(block.price || 0) * bookingStateForBlock(row, block).availableChildren.length, 0)) : ""}</strong>
                           </div>
                         )}
                         <div className="lab-day-blocks" aria-label={`${row.day} session blocks`}>
                           {row.blocks.map((block, index) => {
-                            const blockSelected = dayPicked && row.selectedBlockKeys.includes(block.key);
-                            const blockDisabled = dayFull && !blockSelected;
+                            const existingState = bookingStateForBlock(row, block);
+                            const pickerState = pickerBookingStateForBlock(row, block);
+                            const blockSelected = dayPicked && row.selectedBlockKeys.includes(block.key) && !existingState.allBooked;
+                            const blockDisabled = pickerState.allBooked || (dayFull && !blockSelected);
+                            const existingNames = pickerState.conflicts.map(({ child }) => child.name).filter(Boolean).join(", ");
+                            const availableNames = pickerState.availableChildren.map((child) => child.name).filter(Boolean).join(", ");
                             return (
-                            <button className={`${blockSelected ? "active" : ""} ${blockDisabled ? "full" : ""}`} key={block.key} type="button" aria-pressed={blockSelected} disabled={blockDisabled} onClick={() => toggleDayBlock(row.day, block)}>
+                            <button className={`${blockSelected ? "active" : ""} ${blockDisabled ? "full" : ""} ${pickerState.conflicts.length ? "already-booked" : ""} ${pickerState.pending ? "payment-pending" : ""}`} key={block.key} type="button" aria-pressed={blockSelected} disabled={blockDisabled} onClick={() => toggleDayBlock(row.day, block)}>
                               <span>{`Session ${index + 1}`}</span>
                               <small>{isLaunchMode ? `${block.start}-${block.end}` : `${block.label} · ${block.start}-${block.end}`}</small>
                               <strong>{money(block.price)}</strong>
-                              {isLaunchMode && <em>{blockDisabled ? "Full" : blockSelected ? "Selected" : "Add"}</em>}
+                              {isLaunchMode && <em>{pickerState.allBooked ? (pickerState.pending ? "Payment pending for all children" : "Already booked for all children") : existingNames ? `${existingNames} booked · Available for ${availableNames}` : blockDisabled ? "Full" : blockSelected ? `Selected for ${bookingStateForBlock(row, block).availableChildren.map((child) => child.name).join(", ") || "chosen child"}` : availableNames ? `Available for ${availableNames}` : "Add"}</em>}
                             </button>
                           );
                           })}
@@ -20571,7 +23309,58 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </div>
             </section>
           )}
-          <section className="lab-basket-review" aria-label="Basket review">
+          {isLaunchMode && (
+            <section className="lab-draft-basket" aria-label="Draft booking basket">
+              <header>
+                <div>
+                  <p className="eyebrow">Draft booking basket</p>
+                  <h3>{draftBookingBasket.length ? `${draftBookingBasket.length} child session${draftBookingBasket.length === 1 ? "" : "s"}` : "Your basket is empty"}</h3>
+                  <p>{draftBookingBasket.length ? `${draftBasketChildNames.join(", ")} · One combined checkout` : "Choose a child, dates and sessions, then add them here."}</p>
+                </div>
+                <div>
+                  <span>Running total</span>
+                  <strong>{money(draftBasketTotal)}</strong>
+                  {draftBasketTotal !== basketSubtotal && <small>{money(basketSubtotal)} before discounts</small>}
+                </div>
+              </header>
+              {draftBookingBasket.length > 0 ? (
+                <>
+                  <div className="lab-draft-basket-table" role="table" aria-label="Basket bookings">
+                    <div className="lab-draft-basket-row head" role="row">
+                      <span>Child</span><span>Date</span><span>Session</span><span>Price</span><span>Remove</span>
+                    </div>
+                    {draftBasketGroups.map((group) => (
+                      <section className="lab-draft-basket-group" key={group.id}>
+                        {group.items.map((item) => (
+                          <div className="lab-draft-basket-row" role="row" key={item.id}>
+                            <span data-label="Child"><strong>{item.childName}</strong><small>{item.site}</small></span>
+                            <span data-label="Date"><strong>{item.day}</strong></span>
+                            <span data-label="Session"><strong>{item.sessionLabel}</strong><small>{item.start}-{item.end}</small></span>
+                            <span data-label="Price"><strong>{money(item.price)}</strong></span>
+                            <span data-label="Remove"><button type="button" onClick={() => removeBasketLine(item.id)} aria-label={`Remove ${item.childName}, ${item.day}, ${item.sessionLabel}`}>Remove</button></span>
+                          </div>
+                        ))}
+                        <footer>
+                          <button type="button" onClick={() => loadBasketGroup(group.id)}>Edit booking</button>
+                          <button type="button" onClick={() => loadBasketGroup(group.id, true)}>Duplicate booking</button>
+                        </footer>
+                      </section>
+                    ))}
+                  </div>
+                  <div className="lab-draft-basket-actions">
+                    <button type="button" onClick={clearDraftBasket}>Clear basket</button>
+                    <button className="primary" type="button" onClick={proceedBasketCheckout}>Proceed to checkout · {money(draftBasketTotal)}</button>
+                  </div>
+                </>
+              ) : (
+                <div className="lab-draft-basket-empty">
+                  <strong>Build one booking for the whole family.</strong>
+                  <span>Add different dates and sessions for each child, then pay once.</span>
+                </div>
+              )}
+            </section>
+          )}
+          {!isLaunchMode && <section className="lab-basket-review" aria-label="Basket review">
             <div className="lab-basket-review-head">
               <div>
                 <p className="eyebrow">Order summary</p>
@@ -20623,7 +23412,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 </div>
               </div>
             </div>
-          </section>
+          </section>}
           {!isLaunchMode && bookingComparisonOptions.length > 1 && (
             <section className="lab-booking-compare" aria-label="Compare booking options">
               <div className="lab-booking-compare-head">
@@ -20774,8 +23563,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <div className="lab-confirmation-grid">
                   <article><span>{confirmation.batch ? "Bookings" : "Sessions"}</span><strong>{confirmation.batch ? confirmationBookingCount : confirmationDayCount}</strong><small>{confirmationDaysSummary}</small></article>
                   <article><span>Invoice</span><strong>{confirmationInvoiceStatus}</strong><small>{confirmationParentEmail}</small></article>
-                  <article><span>Due today</span><strong>{money(confirmationDueToday)}</strong><small>{confirmation.paymentPlan === "Monthly" ? `${confirmationPaymentSchedule.length} instalments scheduled` : confirmationPaymentLabel}</small></article>
-                  <article><span>Total</span><strong>{money(confirmation.total)}</strong><small>{confirmationOutstanding > 0 ? `${money(confirmationOutstanding)} outstanding` : "Balance clear"}</small></article>
+                  <article><span>Due today</span><strong>{money(confirmationDisplayDueToday)}</strong><small>{confirmation.paymentPlan === "Monthly" ? `${confirmationPaymentSchedule.length} instalments scheduled` : confirmationDisplayPaymentLabel}</small></article>
+                  <article><span>Total</span><strong>{money(confirmation.total)}</strong><small>{confirmationDisplayOutstanding > 0 ? `${money(confirmationDisplayOutstanding)} outstanding` : "Balance clear"}</small></article>
                 </div>
                 <div className="lab-confirmation-receipt">
                   <article>
@@ -20785,7 +23574,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   </article>
                   <article>
                     <span>{isLaunchMode ? "Payment" : "Payment route"}</span>
-                    <strong>{isLaunchMode ? confirmationPaymentLabel : confirmation.paymentRoute || confirmationPaymentLabel}</strong>
+                    <strong>{isLaunchMode ? confirmationDisplayPaymentLabel : confirmation.paymentRoute || confirmationDisplayPaymentLabel}</strong>
                     <p>{confirmation.paymentPlan === "Monthly" ? (confirmationPaymentSchedule.map((item) => `${item.label} ${money(item.amount)}`).join(" · ") || "Monthly schedule pending") : confirmationPaymentStatus}</p>
                   </article>
                 </div>
@@ -20826,13 +23615,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   )}
                   <button type="button" onClick={() => downloadReceipt(confirmation)}>Download {confirmationDocumentLabel}</button>
                   {!isLaunchMode && <button type="button" onClick={() => sendParentInvoice(confirmation.id)}>{confirmation.status === "Prototype paid" ? "Send Receipt" : "Send Invoice"}</button>}
-                  <button type="button" onClick={() => { setLabView("Parent"); if (isLaunchMode) { setLaunchParentPortalOpen(true); window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 260); window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 620); } }}>View Parent Portal</button>
-                  {isLaunchMode && <button type="button" onClick={() => { setLaunchParentPortalOpen(false); setConfirmation(null); setCheckoutStep("Children"); setLaunchFlowStep("Choices"); scrollToFlowSection(".booking-lab-flow", "start"); }}>Make Another Booking</button>}
+                  <button type="button" onClick={() => { setLabView("Parent"); if (isLaunchMode) openLaunchParentPortal(); }}>{isLaunchMode ? "View family account" : "View Parent Portal"}</button>
+                  {isLaunchMode && <button type="button" onClick={openLaunchBookingFlow}>Make another booking</button>}
                   {!isLaunchMode && <button type="button" onClick={() => setLabView("Payments")}>View Payment Queue</button>}
                 </div>
               </div>
             )}
-            <section className={`lab-checkout-stage ${stageClass("Children")}`}>
+            {(!isLaunchMode || !draftBookingBasket.length) && <section className={`lab-checkout-stage ${stageClass("Children")}`}>
               <div className="lab-stage-heading">
                 <span>1</span>
                 <div>
@@ -20840,6 +23629,30 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <p>{isLaunchMode ? "Choose from saved children or add another child." : "Use saved profiles or add a guest child before continuing."}</p>
                 </div>
               </div>
+              <section className="lab-checkout-current-selection" aria-label="Current booking selection">
+                <header>
+                  <div>
+                    <span>Your current selection</span>
+                    <strong>{activeSession.title} · {activeSession.site}</strong>
+                  </div>
+                  <button type="button" onClick={() => moveLaunchFlowStep("Dates", ".lab-date-picker-panel")}>Edit dates</button>
+                </header>
+                <div className="lab-checkout-selected-children">
+                  <span>Booking for</span>
+                  <strong>{selectedChildren.length ? selectedChildren.map((child) => child.name).join(", ") : "Choose a child below"}</strong>
+                </div>
+                <div className="lab-checkout-selection-lines">
+                  {checkoutSelectionRows.map((row) => (
+                    <article key={row.key}>
+                      <div><strong>{row.day}</strong><span>{row.session}</span></div>
+                      <div>
+                        <strong>{row.selectedFor.length ? `For: ${row.selectedFor.join(", ")}` : "No child selected for this session"}</strong>
+                        {row.alreadyBookedFor.length > 0 && <small>Already booked: {row.alreadyBookedFor.join(", ")}</small>}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
               <div className="lab-child-picker">
               <div className="lab-child-picker-title">
                 <div>
@@ -20847,15 +23660,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <strong>{childCount ? `${childCount} selected` : "Select child"}</strong>
                 </div>
                 {isLaunchMode && (
-                  <button
-                    className="button light"
-                    type="button"
-                    onClick={() => {
-                      setLaunchChildSavedNotice("");
-                      setLaunchChildRegistrationOpen(true);
-                      window.setTimeout(() => scrollToFlowSection(".lab-launch-registration-gate", "start"), 80);
-                    }}
-                  >
+                  <button className="button light" type="button" onClick={() => openLaunchChildEditor("Basics")}>
                     Add child
                   </button>
                 )}
@@ -20872,8 +23677,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 {selectableChildProfiles.map((child) => {
                   const selected = selectedChildIds.includes(child.id);
                   const flags = Array.isArray(child.flags) ? child.flags.filter(Boolean) : [];
+                  const bookingEligibility = childBookingEligibilityById.get(child.id) || { total: 0, conflicts: [], available: [] };
+                  const unavailable = bookingEligibility.allBooked;
                   return (
-                    <label className={`lab-saved-child-row ${selected ? "active" : ""}`} key={child.id} role="row">
+                    <label className={`lab-saved-child-row ${selected ? "active" : ""} ${unavailable ? "unavailable" : ""} ${bookingEligibility.partiallyBooked ? "partial" : ""}`} key={child.id} role="row">
                       <span className="lab-saved-child-name">
                         <strong>{child.name}</strong>
                         <small>{child.dob ? `DOB ${child.dob}` : "DOB saved on profile"}</small>
@@ -20883,16 +23690,17 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         <small>{child.year || "Year group pending"}</small>
                       </span>
                       <span>
-                        <strong>{flags.length ? `${flags.length} note${flags.length === 1 ? "" : "s"}` : "No flags"}</strong>
-                        <small>{flags.slice(0, 2).join(" · ") || "Nothing urgent recorded"}</small>
+                        <strong>{unavailable ? (bookingEligibility.pending ? "Payment pending" : "Already booked") : bookingEligibility.partiallyBooked ? `${bookingEligibility.conflicts.length} already booked` : flags.length ? `${flags.length} note${flags.length === 1 ? "" : "s"}` : "No flags"}</strong>
+                        <small>{unavailable ? "Cannot be selected for these sessions" : bookingEligibility.partiallyBooked ? `${bookingEligibility.available.length} selected session${bookingEligibility.available.length === 1 ? "" : "s"} still available` : flags.slice(0, 2).join(" · ") || "Nothing urgent recorded"}</small>
                       </span>
                       <span className="lab-saved-child-select">
                         <input
                           checked={selected}
+                          disabled={unavailable}
                           onChange={() => toggleChild(child.id)}
                           type="checkbox"
                         />
-                        <em>{selected ? "Selected" : "Select"}</em>
+                        <em>{unavailable ? (bookingEligibility.pending ? "Pending" : "Booked") : selected ? "Selected" : "Select"}</em>
                       </span>
                     </label>
                   );
@@ -20913,7 +23721,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </div>
               </div>
               <div className="lab-stage-actions"><button type="button" onClick={() => moveCheckoutStep(1)}>{isLaunchMode ? "Continue to payment" : `Next: ${nextCheckoutStep}`}</button></div>
-            </section>
+            </section>}
             {!isLaunchMode && <section className={`lab-checkout-stage ${stageClass("Extras")}`}>
               <div className="lab-stage-heading">
                 <span>2</span>
@@ -20933,7 +23741,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 </div>
               </div>
               <div className="lab-stage-actions">
-                <button type="button" onClick={() => moveCheckoutStep(-1)}>Back</button>
+                <button type="button" onClick={() => {
+                  if (isLaunchMode && draftBookingBasket.length) {
+                    setParentCheckoutOpen(false);
+                    moveLaunchFlowStep("Dates", ".lab-draft-basket");
+                  } else moveCheckoutStep(-1);
+                }}>Back</button>
                 <button type="button" onClick={() => moveCheckoutStep(1)}>{`Next: ${nextCheckoutStep}`}</button>
               </div>
             </section>}
@@ -20969,14 +23782,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <span>{isLaunchMode ? "2" : "4"}</span>
                 <div>
                   <h3>{isLaunchMode ? checkoutPaymentHeading : "Payment route"}</h3>
-                  <p>{isLaunchMode ? "Choose the option that suits you." : `${activePaymentRoute}. Take card payment now, or reserve while TFC and vouchers are reconciled.`}</p>
+                  <p>{isLaunchMode ? "Choose the option that suits you. PonchoPay securely processes card payments and automatically matches Tax-Free Childcare or childcare voucher payments to your booking." : `${activePaymentRoute}. Take card payment now, or reserve while TFC and vouchers are reconciled.`}</p>
                 </div>
               </div>
               {isLaunchMode && (
                 <div className="lab-checkout-snapshot" aria-label="Checkout summary">
                   <article><span>Booking</span><strong>{activeSession.type}</strong><small>{selectedSchool}</small></article>
-                  <article><span>Sessions</span><strong>{selectedBlockCount || pickedDays.length}</strong><small>{pickedDays.length} day{pickedDays.length === 1 ? "" : "s"}</small></article>
-                  <article><span>Due today</span><strong>{money(dueTodayAmount)}</strong><small>{activePaymentPlan}</small></article>
+                  <article><span>Sessions</span><strong>{checkoutItemCount}</strong><small>{checkoutDayCount} day{checkoutDayCount === 1 ? "" : "s"} · {checkoutChildNames.length} child{checkoutChildNames.length === 1 ? "" : "ren"}</small></article>
+                  <article><span>Due today</span><strong>{money(payableTodayAmount)}</strong><small>{accountCreditPreview > 0 ? `${money(accountCreditPreview)} credit applied` : activePaymentPlan}</small></article>
                   <article><span>Total</span><strong>{money(total)}</strong><small>{selectedPaymentLabel}</small></article>
                 </div>
               )}
@@ -21017,7 +23830,28 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   ))}
                 </div>
               </section>
-              <div className="lab-payment-options">
+              {isLaunchMode && availableAccountCreditAmount > 0 && (
+                <section className={`lab-account-credit-choice ${useAccountCredit ? "active" : ""}`} aria-label="Account credit payment option">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={useAccountCredit}
+                      onChange={(event) => setUseAccountCredit(event.target.checked)}
+                    />
+                    <span className="lab-account-credit-check" aria-hidden="true">{useAccountCredit ? "✓" : ""}</span>
+                    <span>
+                      <strong>Use {money(availableAccountCreditAmount)} account credit</strong>
+                      <small>
+                        {availableAccountCreditAmount >= dueTodayAmount
+                          ? `This covers the full ${money(dueTodayAmount)} payment. No card payment is needed.`
+                          : `Apply your credit, then pay the remaining ${money(dueTodayAmount - availableAccountCreditAmount)} through PonchoPay.`}
+                      </small>
+                    </span>
+                    <em>{money(displayedFamilyCreditBalance)} available</em>
+                  </label>
+                </section>
+              )}
+              {accountCreditPreview < dueTodayAmount && <div className="lab-payment-options">
                 {parentPaymentOptions.map(([value, label, text]) => {
                   const [badge, today, followUp] = parentPaymentChoiceMeta[value] || ["Payment", activeRouteGuidance.reference, activeRouteGuidance.next];
                   const launchOption = parentPaymentOptionContent[value] || {
@@ -21035,7 +23869,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     </label>
                   );
                 })}
-              </div>
+              </div>}
               {isLaunchMode && (
                 <div className="lab-parent-payment-reassurance" aria-label="Payment summary">
                   {parentPaymentDecisionRows.map(([label, value, detail]) => (
@@ -21047,21 +23881,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   ))}
                 </div>
               )}
-              <div className="lab-payment-plan">
+              {accountCreditPreview < dueTodayAmount && <div className="lab-payment-plan">
                 <div>
-                  <span>Pay in full or monthly</span>
-                  <strong>{activePaymentPlan === "Monthly" ? monthlyScheduleSummary : "One payment"}</strong>
+                  <span>Payment schedule</span>
+                  <strong>Pay in full</strong>
                 </div>
                 <div className="lab-payment-options compact">
                   <label className={activePaymentPlan === "Pay now" ? "active" : ""}>
                     <input type="radio" name="paymentPlan" value="Pay now" checked={activePaymentPlan === "Pay now"} onChange={(event) => setPaymentPlan(event.target.value)} />
                     <strong>{isLaunchMode ? "Pay in full" : "Pay now"}</strong>
                     <span>{isLaunchMode ? "Settle this booking in one payment." : "Settle the booking when it is confirmed."}</span>
-                  </label>
-                  <label className={activePaymentPlan === "Monthly" ? "active" : monthlyPlanAvailable ? "" : "disabled"}>
-                    <input type="radio" name="paymentPlan" value="Monthly" checked={activePaymentPlan === "Monthly"} disabled={!monthlyPlanAvailable} onChange={(event) => setPaymentPlan(event.target.value)} />
-                    <strong>Pay monthly</strong>
-                    <span>{monthlyPlanAvailable ? isLaunchMode ? `Spread this across up to ${paymentPlanMaxInstallments} payments.` : `Split across up to ${paymentPlanMaxInstallments} dated PonchoPay instalments.` : isLaunchMode ? paymentPlanUnavailableReason : paymentPlanUnavailableReason}</span>
                   </label>
                 </div>
                 {activePaymentPlan === "Monthly" && (
@@ -21075,7 +23904,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     ))}
                   </div>
                 )}
-              </div>
+              </div>}
               {effectivePaymentMethod !== "card" && <label className="lab-payment-reference">{isLaunchMode ? "Reference, if you have it" : "Payment reference"}<input name="paymentReference" placeholder={isLaunchMode ? "Voucher provider, Tax-Free Childcare code or note" : "Voucher provider, TFC code or parent note"} /></label>}
               <label className="lab-payment-reference lab-promo-code">Promo code<input value={promoCode} onChange={(event) => setPromoCode(event.target.value)} placeholder="APRES10" /></label>
               <div className="lab-payment-assurance">
@@ -21084,7 +23913,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 ))}
               </div>
               <div className="lab-stage-actions">
-                <button type="button" onClick={() => moveCheckoutStep(-1)}>Back</button>
+                <button type="button" onClick={() => {
+                  if (isLaunchMode && draftBookingBasket.length) {
+                    setParentCheckoutOpen(false);
+                    moveLaunchFlowStep("Dates", ".lab-draft-basket");
+                  } else moveCheckoutStep(-1);
+                }}>Back</button>
                 <button type="button" onClick={() => moveCheckoutStep(1)}>{isLaunchMode ? "Review booking" : "Next: Review"}</button>
               </div>
             </section>
@@ -21096,12 +23930,26 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <p>{isLaunchMode ? "Check the child, sessions and payment before confirming." : "Check price, policies and required consents before saving the booking locally."}</p>
                 </div>
               </div>
+              {isLaunchMode && rulesBlocked && (
+                <section className="lab-parent-eligibility-alert" aria-label="Child details need updating" aria-live="polite">
+                  <div>
+                    <p className="eyebrow">Action needed</p>
+                    <h4>Update the child record before booking</h4>
+                    <p>{eligibilityIssues.join(" ")} Your dates and payment choices will be kept.</p>
+                  </div>
+                  {eligibilityIssueChild && (
+                    <button type="button" onClick={() => openLaunchChildEditor("Basics", eligibilityIssueChild)}>
+                      {eligibilityActionLabel}
+                    </button>
+                  )}
+                </section>
+              )}
               {isLaunchMode && (
                 <div className="lab-checkout-snapshot final" aria-label="Final booking summary">
-                  <article><span>Child</span><strong>{selectedChildren.map((child) => child.name).join(", ") || "Saved child"}</strong><small>{childCount} selected</small></article>
+                  <article><span>Children</span><strong>{checkoutChildNames.join(", ") || "Saved child"}</strong><small>{checkoutChildNames.length} included</small></article>
                   <article><span>Booking</span><strong>{parentActivityLabel(activeSession)}</strong><small>{activeSession.site}</small></article>
-                  <article><span>Payment</span><strong>{activePaymentPlan === "Monthly" ? "Monthly plan" : selectedPaymentLabel}</strong><small>{isLaunchMode ? "Shown in your portal" : activePaymentRoute}</small></article>
-                  <article><span>{effectivePaymentMethod === "card" ? "Receipt" : "Invoice"}</span><strong>{activePaymentPlan === "Monthly" ? "Plan created" : effectivePaymentMethod === "card" ? "Emailed after payment" : "Emailed after booking"}</strong><small>Parent portal updated</small></article>
+                  <article><span>Payment</span><strong>{accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Account credit" : activePaymentPlan === "Monthly" ? "Monthly plan" : selectedPaymentLabel}</strong><small>{accountCreditPreview > 0 ? `${money(accountCreditPreview)} credit applied` : isLaunchMode ? "Shown in your family account" : activePaymentRoute}</small></article>
+                  <article><span>{accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Confirmation" : effectivePaymentMethod === "card" ? "Receipt" : "Invoice"}</span><strong>{accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Immediate" : activePaymentPlan === "Monthly" ? "Plan created" : effectivePaymentMethod === "card" ? "Emailed after payment" : "Emailed after booking"}</strong><small>Family account updated</small></article>
                 </div>
               )}
               {isLaunchMode && (
@@ -21112,10 +23960,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                       <h4>{bookingMode === "Ad-hoc" ? "Selected dates" : `${bookingMode} weekly booking`}</h4>
                       <p>{bookingMode === "Ad-hoc" ? "Check each selected date before payment." : "We have applied your weekly pattern. Remove any dates you do not need."}</p>
                     </div>
-                    <button type="button" onClick={() => moveLaunchFlowStep("Dates", ".lab-date-picker-panel")}>Edit dates</button>
+                    <button type="button" onClick={() => {
+                      if (basketCheckoutActive) {
+                        setParentCheckoutOpen(false);
+                        moveLaunchFlowStep("Dates", ".lab-draft-basket");
+                      } else moveLaunchFlowStep("Dates", ".lab-date-picker-panel");
+                    }}>{basketCheckoutActive ? "Edit basket" : "Edit dates"}</button>
                   </header>
                   <div>
-                    {parentReviewMonthRows.map((month) => (
+                    {checkoutReviewMonthRows.map((month) => (
                       <article key={month.month}>
                         <div className="lab-parent-review-month-head">
                           <div>
@@ -21155,8 +24008,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <section className="lab-parent-review-panel">
                   <div>
                     <p className="eyebrow">Final check</p>
-                    <h4>{effectivePaymentMethod === "card" ? "Ready to pay and book" : "Ready to reserve your place"}</h4>
-                    <p>{effectivePaymentMethod === "card" ? "We will take payment securely, email the receipt and save it in your portal." : "We will reserve the place, email the invoice and update the payment status when PonchoPay matches it."}</p>
+                    <h4>{effectivePaymentMethod === "card" ? "Ready to pay and confirm" : "Ready to confirm your booking"}</h4>
+                    <p>{effectivePaymentMethod === "card" ? "You’ll pay securely through PonchoPay. Once payment is confirmed, your receipt and booking will appear in your account." : "We’ll confirm your booking and show the latest payment status in your account."}</p>
                   </div>
                   <div className="lab-parent-review-highlights">
                     {parentReviewHighlights.map(([label, value, detail]) => (
@@ -21185,7 +24038,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                       <p className="eyebrow">{isLaunchMode ? "Total" : "Cost breakdown"}</p>
                       <h4>{isLaunchMode ? (activePaymentPlan === "Monthly" ? "Monthly payment plan" : "Pay today") : activePaymentPlan === "Monthly" ? "Monthly plan preview" : "Booking total"}</h4>
                     </div>
-                    <strong>{money(total)}</strong>
+                    <strong>{money(isLaunchMode ? payableTodayAmount : total)}</strong>
                   </div>
                   <div className="lab-review-cost-cards">
                     {reviewCostCards.map(([label, value, detail]) => (
@@ -21278,9 +24131,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               {isLaunchMode && (
                 <section className="lab-launch-handoff" aria-label="After booking handoff">
                   <div>
-                    <p className="eyebrow">After you book</p>
-                    <h4>All saved.</h4>
-                    <p>Your portal updates straight away.</p>
+                    <p className="eyebrow">After confirmation</p>
+                    <h4>Everything in one place.</h4>
+                    <p>Your booking, receipt and account balance will appear in your family account.</p>
                   </div>
                   <div>
                     {launchHandoffRows.map(([label, value, detail]) => (
@@ -21309,11 +24162,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         }
                       }}
                     />
-                    <strong>I agree to book</strong>
-                    <small>Includes booking terms, emergency care consent and register details for these sessions.</small>
+                    <strong>I confirm the details above and accept the <a className="lab-terms-link" href={APRES_TERMS_URL} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Terms and Conditions</a></strong>
+                    <small>This includes emergency-care consent and permission to use your child’s details for attendance registers.</small>
                     {launchConsentAttempted && !launchConsentAccepted ? (
                       <small id="launch-consent-error" className="field-error">
-                        Tick this box to confirm the sessions and continue to secure payment.
+                        Confirm the booking details and Terms and Conditions to continue.
                       </small>
                     ) : null}
                   </label>
@@ -21344,18 +24197,18 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </div>
               <div className="lab-stage-actions final">
                 <button type="button" onClick={() => moveCheckoutStep(-1)}>Back</button>
-                <button className="button book large" type="submit">{primaryCheckoutLabel}</button>
+                <button className="button book large" type="submit" disabled={rulesBlocked}>{primaryCheckoutLabel}</button>
               </div>
             </section>
             {!confirmation && <div className="lab-mobile-checkout-bar" aria-label="Mobile checkout action">
               <div>
                 <span>{checkoutStep}</span>
                 <strong>{money(total)}</strong>
-                <small>{pickedDays.length} session{pickedDays.length === 1 ? "" : "s"} · {childCount} child{childCount === 1 ? "" : "ren"}</small>
+                <small>{checkoutItemCount} child session{checkoutItemCount === 1 ? "" : "s"} · {checkoutChildCount} child{checkoutChildCount === 1 ? "" : "ren"}</small>
               </div>
               <div>
                 {checkoutStepIndex > 0 && <button type="button" onClick={() => setCheckoutStep(previousCheckoutStep)}>Back</button>}
-                <button className="button book" type={checkoutStep === "Review" ? "submit" : "button"} onClick={checkoutStep === "Review" ? undefined : () => moveCheckoutStep(1)}>{primaryCheckoutLabel}</button>
+                <button className="button book" type={checkoutStep === "Review" ? "submit" : "button"} disabled={checkoutStep === "Review" && rulesBlocked} onClick={checkoutStep === "Review" ? undefined : () => moveCheckoutStep(1)}>{primaryCheckoutLabel}</button>
               </div>
             </div>}
           </form>

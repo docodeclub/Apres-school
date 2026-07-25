@@ -74,8 +74,8 @@ const report = {
   })),
   sharedWebhookUrl: `${siteUrl.replace(/\/$/, "")}/api/ponchopay/webhook`,
   redirectUrls: {
-    paymentCompleted: `${siteUrl.replace(/\/$/, "")}/booking/success?reference={bookingReference}`,
-    subscriptionSetUp: `${siteUrl.replace(/\/$/, "")}/booking/success?reference={bookingReference}`,
+    paymentCompleted: `${siteUrl.replace(/\/$/, "")}/api/ponchopay_redirect?payment=pending`,
+    subscriptionSetUp: `${siteUrl.replace(/\/$/, "")}/api/ponchopay_redirect?payment=pending`,
   },
   parentRehearsal: {
     enabled: parentRehearsalMode === "live",

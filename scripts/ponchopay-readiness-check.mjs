@@ -118,8 +118,8 @@ const report = {
   })),
   sharedWebhookUrl: `${publicSiteUrl.replace(/\/$/, "")}/api/ponchopay/webhook`,
   redirectUrls: {
-    paymentCompleted: `${publicSiteUrl.replace(/\/$/, "")}/booking/success?reference={bookingReference}`,
-    subscriptionSetUp: `${publicSiteUrl.replace(/\/$/, "")}/booking/success?reference={bookingReference}`,
+    paymentCompleted: `${publicSiteUrl.replace(/\/$/, "")}/api/ponchopay_redirect?payment=pending`,
+    subscriptionSetUp: `${publicSiteUrl.replace(/\/$/, "")}/api/ponchopay_redirect?payment=pending`,
   },
   deployPlan: {
     migrations: "supabase db push",

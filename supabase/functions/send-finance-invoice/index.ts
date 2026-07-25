@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { paragraphsToHtml } from "../_shared/booking-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -232,6 +233,10 @@ async function sendEmail(entry: {
       reply_to: resendReplyTo,
       subject: entry.subject,
       text: entry.body,
+      html: paragraphsToHtml(entry.body.split("\n"), {
+        title: entry.subject,
+        preheader: "Your Après School invoice is attached and ready to review.",
+      }),
       attachments: [
         {
           filename: entry.pdfFilename,

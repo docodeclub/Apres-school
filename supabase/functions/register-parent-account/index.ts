@@ -166,6 +166,10 @@ async function upsertParentAccount(userId: string, payload: ParentRegistrationPa
       emergency_contact: {
         primaryPhone: payload.primaryPhone,
         secondaryPhone: payload.secondaryPhone,
+        contacts: [
+          { type: "primary", name: payload.fullName, relationship: "Main account holder", email: payload.email, mobile: payload.primaryPhone },
+          { type: "secondary", name: "Second emergency contact", relationship: "Emergency contact", mobile: payload.secondaryPhone },
+        ],
       },
       marketing_preferences: payload.marketingPreferences,
       portal_status: "active",
@@ -329,12 +333,14 @@ function validatePayload(payload: ParentRegistrationPayload) {
     ["town", payload.billingAddress.town],
     ["postcode", payload.billingAddress.postcode],
     ["primary phone", payload.primaryPhone],
+    ["second emergency contact number", payload.secondaryPhone],
   ];
   const missing = required.find(([, value]) => !String(value || "").trim());
   if (missing) return `Parent ${missing[0]} is required.`;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return "Enter a valid parent email.";
   if (!isValidPhoneNumber(payload.primaryPhone, { required: true })) return "Enter a valid primary phone number.";
-  if (payload.secondaryPhone && !isValidPhoneNumber(payload.secondaryPhone)) return "Enter a valid secondary phone number.";
+  if (!isValidPhoneNumber(payload.secondaryPhone, { required: true })) return "Enter a valid second emergency contact number.";
+  if (compactPhoneNumber(payload.primaryPhone) === compactPhoneNumber(payload.secondaryPhone)) return "Use a different number for the second emergency contact.";
   if (
     payload.password.length < 6 ||
     !/[a-z]/.test(payload.password) ||

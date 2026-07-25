@@ -15,10 +15,14 @@
     "qa:launch": "node scripts/launch-qa.mjs",
     "validate:static": "node scripts/static-check.mjs",
     "check:booking-links": "node scripts/audit-public-booking-links.mjs",
+    "check:wraparound-ctas": "node scripts/wraparound-cta-contract-check.mjs",
     "check:dbs-disclosure": "node scripts/audit-dbs-disclosure-results.mjs",
     "validate:launch-data": "node scripts/validate-wraparound-2026.mjs",
+    "validate:school-calendars": "node scripts/validate-school-calendars.mjs",
     "validate:booking-map": "node scripts/validate-booking-backend-map.mjs",
     "check:booking-contract": "node scripts/booking-contract-check.mjs",
+    "check:booking-emails": "node scripts/booking-email-template-check.mjs",
+    "check:register-contract": "node scripts/register-contract-check.mjs",
     "check:booking-live": "node scripts/booking-live-readiness.mjs",
     "check:booking-live:strict": "node scripts/booking-live-readiness.mjs --strict",
     "booking:staging-bundle": "node scripts/booking-staging-bundle.mjs",
@@ -57,8 +61,10 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "pdfjs-dist": "5.4.296",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sharp": "^0.34.5",
     "vite": "^6.0.0"
   },
   "devDependencies": {

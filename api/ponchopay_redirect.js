@@ -1,19 +1,34 @@
+const placeholderValue = /^\s*(?:\{|%7b).*(?:\}|%7d)\s*$/i;
+
+function normaliseBody(body) {
+  if (!body) return {};
+  if (typeof body === "object" && !Buffer.isBuffer(body)) return body;
+  const raw = Buffer.isBuffer(body) ? body.toString("utf8") : String(body);
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch {
+    // PonchoPay may submit its return as a regular HTML form.
+  }
+  return Object.fromEntries(new URLSearchParams(raw));
+}
+
 export default function handler(request, response) {
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    response.setHeader("Allow", "GET, HEAD");
+  if (!["GET", "HEAD", "POST"].includes(request.method)) {
+    response.setHeader("Allow", "GET, HEAD, POST");
     response.status(405).json({ error: "Method not allowed" });
     return;
   }
 
-  const query = request.query || {};
+  const query = { ...normaliseBody(request.body), ...(request.query || {}) };
   const params = new URLSearchParams();
   const copyParam = (source, target = source) => {
     const value = query[source];
     if (Array.isArray(value)) {
-      value.filter(Boolean).forEach((item) => params.append(target, item));
+      value.filter((item) => item && !placeholderValue.test(String(item))).forEach((item) => params.append(target, item));
       return;
     }
-    if (typeof value === "string" && value.trim()) params.set(target, value.trim());
+    if (typeof value === "string" && value.trim() && !placeholderValue.test(value)) params.set(target, value.trim());
   };
 
   copyParam("reference");
@@ -37,9 +52,8 @@ export default function handler(request, response) {
         : "complete";
   params.set("payment", state);
 
-  const destination = state === "cancelled" || state === "failed" ? "/booking/cancel" : "/booking/success";
   const encodedParams = params.toString();
-  const location = `${destination}?${encodedParams}#${encodedParams}`;
+  const location = `/launch-booking?${encodedParams}`;
   response.setHeader("Cache-Control", "no-store");
-  response.redirect(302, location);
+  response.redirect(request.method === "POST" ? 303 : 302, location);
 }

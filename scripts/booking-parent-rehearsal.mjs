@@ -25,8 +25,8 @@ const payload = {
   paymentPlan: clean(process.env.APRES_REHEARSAL_PAYMENT_PLAN) || "pay_now",
   paymentRoute: "ponchopay_card_voucher",
   source: "hidden_staging_parent_rehearsal",
-  successUrl: `${publicSiteUrl.replace(/\/$/, "")}/booking/success?source=hidden-staging`,
-  cancelUrl: `${publicSiteUrl.replace(/\/$/, "")}/booking/cancel?source=hidden-staging`,
+  successUrl: `${publicSiteUrl.replace(/\/$/, "")}/api/ponchopay_redirect?payment=pending&source=hidden-staging`,
+  cancelUrl: `${publicSiteUrl.replace(/\/$/, "")}/api/ponchopay_redirect?payment=cancelled&source=hidden-staging`,
   metadata: {
     clientRequestId,
     rehearsal: true,

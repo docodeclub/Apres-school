@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { buildStaffEmailHtml } from "../_shared/staff-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,6 +22,7 @@ const resendReplyTo =
   Deno.env.get("APRES_REPLY_TO") ??
   Deno.env.get("RESEND_REPLY_TO") ??
   "hello@apres-school.co.uk";
+const staffInviteCc = (Deno.env.get("APRES_STAFF_INVITE_CC") ?? "").trim();
 const defaultLoginUrl = Deno.env.get("STAFF_LOGIN_URL") ?? "https://www.apres-school.co.uk/staff-login";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
@@ -69,7 +71,7 @@ serve(async (request) => {
           providerMessageId,
           sentBy: actor.id,
           staffRecordId: payload.staffRecordId,
-          metadata: { role: payload.role, loginUrl: payload.loginUrl || defaultLoginUrl },
+          metadata: accountEmailMetadata(payload),
         });
       } catch (error) {
         emailError = error instanceof Error ? error.message : "Email provider failed";
@@ -83,7 +85,7 @@ serve(async (request) => {
           errorMessage: emailError,
           sentBy: actor.id,
           staffRecordId: payload.staffRecordId,
-          metadata: { role: payload.role, loginUrl: payload.loginUrl || defaultLoginUrl },
+          metadata: accountEmailMetadata(payload),
         });
       }
     } else {
@@ -95,7 +97,7 @@ serve(async (request) => {
         status: "queued_without_provider",
         sentBy: actor.id,
         staffRecordId: payload.staffRecordId,
-        metadata: { role: payload.role, loginUrl: payload.loginUrl || defaultLoginUrl },
+        metadata: accountEmailMetadata(payload),
       });
     }
 
@@ -110,6 +112,7 @@ serve(async (request) => {
         emailProviderConfigured: Boolean(resendApiKey),
         emailSent: emailed,
         emailError,
+        cc: accountEmailCc(payload),
       },
     });
 
@@ -123,6 +126,9 @@ serve(async (request) => {
 async function getActor(authHeader: string) {
   if (!authHeader) return null;
   const token = authHeader.replace(/^Bearer\s+/i, "");
+  if (serviceRoleKey && token === serviceRoleKey) {
+    return { id: null, role: "superadmin", full_name: "Service automation", email: null };
+  }
   const { data: userData, error: userError } = await supabase.auth.getUser(token);
   if (userError || !userData.user) return null;
 
@@ -294,6 +300,8 @@ async function upsertProfile(userId: string, payload: StaffAccountPayload) {
 
 async function sendAccountEmail(payload: StaffAccountPayload, subject: string) {
   const text = buildEmailText(payload);
+  const html = buildAccountEmailHtml(payload);
+  const cc = accountEmailCc(payload);
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -304,9 +312,11 @@ async function sendAccountEmail(payload: StaffAccountPayload, subject: string) {
     body: JSON.stringify({
       from: resendFrom,
       to: [payload.email],
+      ...(cc ? { cc: [cc] } : {}),
       reply_to: resendReplyTo,
       subject,
       text,
+      html,
     }),
   });
 
@@ -319,6 +329,51 @@ async function sendAccountEmail(payload: StaffAccountPayload, subject: string) {
   return typeof result?.id === "string" ? result.id : "";
 }
 
+function buildAccountEmailHtml(payload: StaffAccountPayload) {
+  const greetingName = payload.name.split(" ")[0] || payload.name;
+  const isInvite = payload.action === "invite";
+  return buildStaffEmailHtml({
+    preheader: isInvite
+      ? "Your Après School staff account is ready."
+      : "Your staff platform password has been reset.",
+    eyebrow: "Après School Staff",
+    title: isInvite ? "Welcome to the staff platform" : "Your password has been reset",
+    greeting: `Hi ${greetingName},`,
+    paragraphs: [
+      isInvite
+        ? "Welcome to Après School. Your staff account has been created."
+        : "Your Après School staff platform password has been reset.",
+      "All of your HR information, including payslips, HR files, pay information and compliance documents, is only available securely through the staff platform.",
+      "The platform also includes your sessions, assigned locations, expenses and internal announcements.",
+    ],
+    details: [
+      {
+        label: "Temporary password",
+        value: payload.temporaryPassword,
+        monospace: true,
+      },
+    ],
+    action: {
+      label: "Open staff platform",
+      url: payload.loginUrl || defaultLoginUrl,
+    },
+    notice: "Please sign in and change your temporary password when prompted. Payslips and other HR documents will not be sent as email attachments.",
+  });
+}
+
+function accountEmailCc(payload: StaffAccountPayload) {
+  if (payload.action !== "invite" || !staffInviteCc) return "";
+  return staffInviteCc.toLowerCase() === payload.email.toLowerCase() ? "" : staffInviteCc;
+}
+
+function accountEmailMetadata(payload: StaffAccountPayload) {
+  return {
+    role: payload.role,
+    loginUrl: payload.loginUrl || defaultLoginUrl,
+    cc: accountEmailCc(payload) || null,
+  };
+}
+
 async function logEmail(entry: {
   recipientEmail: string;
   recipientName?: string;
@@ -327,7 +382,7 @@ async function logEmail(entry: {
   status: string;
   providerMessageId?: string;
   errorMessage?: string;
-  sentBy?: string;
+  sentBy?: string | null;
   staffRecordId?: string;
   metadata?: Record<string, unknown>;
 }) {
@@ -371,11 +426,11 @@ function buildEmailText(payload: StaffAccountPayload) {
     `Login link: ${payload.loginUrl || defaultLoginUrl}`,
     `Temporary password: ${payload.temporaryPassword}`,
     "",
-    "This platform is for staff-only features, including your sessions, assigned locations, policy documents, compliance evidence requests, HR files, pay information, expenses and internal announcements.",
+    "Please log in to the staff platform and change your temporary password when prompted.",
     "",
-    "It also helps Après School stay compliant across our sites and remain Ofsted ready, so we can provide evidence of documents, checks and operational records whenever Ofsted or a partner school requires it.",
+    "All of your HR information, including payslips, HR files, pay information and compliance documents, is only available securely through the staff platform. Payslips and other HR documents will not be sent by email.",
     "",
-    "Please log in and change your password when prompted.",
+    "The platform also includes your sessions, assigned locations, expenses and internal announcements. It helps Après School stay compliant across our sites and remain Ofsted ready.",
     "",
     "Thank you,",
     "Après School",

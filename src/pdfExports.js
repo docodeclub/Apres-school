@@ -242,6 +242,82 @@ function downloadPdf(filename, doc) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+export function exportBookingInvoicePdf(invoice = {}) {
+  const reference = invoice.reference || invoice.id || "Booking";
+  const rows = Array.isArray(invoice.lines) && invoice.lines.length ? invoice.lines : [];
+  const total = Number(invoice.total || rows.reduce((sum, row) => sum + Number(row.total || 0), 0));
+  const paid = Number(invoice.paid ?? Math.max(0, total - Number(invoice.balance || 0)));
+  const balance = Number(invoice.balance ?? Math.max(0, total - paid));
+  const doc = new PdfDoc(`Apres School invoice ${reference}`);
+  const tableWidths = [92, 72, 98, 185, 64];
+  const tableWidth = tableWidths.reduce((sum, width) => sum + width, 0);
+
+  const addHeader = (continued = false) => {
+    doc.addPage();
+    doc.rect(0, 0, PAGE.width, 78, BLUE, null);
+    doc.textBold("Apres School", PAGE.margin, 34, 20, WHITE);
+    doc.text("Let's Learn and Play", PAGE.margin, 53, 8.5, AMBER);
+    doc.textBold("INVOICE", 430, 34, 20, WHITE);
+    doc.text(reference, 430, 54, 9, WHITE);
+    if (continued) doc.text("Continued", 430, 68, 8, WHITE);
+  };
+  const tableHeader = (y) => {
+    doc.rect(PAGE.margin, y, tableWidth, 28, SOFT, LINE);
+    let x = PAGE.margin;
+    ["Date", "Time", "Child", "Session", "Amount"].forEach((label, index) => {
+      doc.textBold(label.toUpperCase(), x + 7, y + 18, 7, MUTED);
+      x += tableWidths[index];
+    });
+    return y + 28;
+  };
+  const tableRow = (row, y) => {
+    const values = [row.date || "-", row.time || "-", row.child || "Child", row.description || "Care session", money(row.total)];
+    const height = Math.max(38, Math.max(...values.map((value, index) => doc.measureLines(value, tableWidths[index] - 14, 8).length)) * 10 + 18);
+    doc.rect(PAGE.margin, y, tableWidth, height, WHITE, LINE);
+    let x = PAGE.margin;
+    values.forEach((value, index) => {
+      doc.wrap(value, x + 7, y + 16, tableWidths[index] - 14, 8, index === 4 ? BLUE : INK, 10, index === 4 ? "F2" : "F1");
+      x += tableWidths[index];
+    });
+    return y + height;
+  };
+
+  addHeader(false);
+  doc.textBold("Billed to", PAGE.margin, 112, 10, BLUE);
+  doc.textBold(invoice.parentName || "Parent or carer", PAGE.margin, 133, 11, INK);
+  doc.text(invoice.parentEmail || "", PAGE.margin, 151, 8.5, MUTED);
+  doc.textBold("Invoice details", 340, 112, 10, BLUE);
+  doc.text(`Issued: ${formatDate(invoice.issueDate || new Date().toISOString())}`, 340, 133, 8.5, MUTED);
+  doc.text(`Booking reference: ${reference}`, 340, 151, 8.5, MUTED);
+  doc.rect(PAGE.margin, 178, tableWidth, 96, PALE_GREEN, LINE);
+  [["TOTAL", money(total)], ["PAID", money(paid)], ["BALANCE", money(balance)], ["STATUS", invoice.status || (balance <= 0 ? "Paid" : "Payment arranged")]].forEach(([label, value], index) => {
+    const x = PAGE.margin + 16 + index * 124;
+    doc.text(label, x, 203, 7.2, MUTED);
+    doc.textBold(value, x, 232, index === 3 ? 11 : 16, index === 2 && balance > 0 ? AMBER : GREEN);
+  });
+  doc.text(`Payment: ${invoice.paymentMethod || "PonchoPay"}`, PAGE.margin + 16, 257, 8, MUTED);
+  doc.textBold("Booked care", PAGE.margin, 306, 12, BLUE);
+  let y = tableHeader(322);
+  (rows.length ? rows : [{ description: "Booking details are available in the parent portal", total }]).forEach((row) => {
+    const values = [row.date || "-", row.time || "-", row.child || "Child", row.description || "Care session", money(row.total)];
+    const height = Math.max(38, Math.max(...values.map((value, index) => doc.measureLines(value, tableWidths[index] - 14, 8).length)) * 10 + 18);
+    if (y + height > 748) {
+      addHeader(true);
+      y = tableHeader(110);
+    }
+    y = tableRow(row, y);
+  });
+  doc.pages.forEach((page, index) => {
+    const previous = doc.current;
+    doc.current = page;
+    doc.line(PAGE.margin, 786, PAGE.width - PAGE.margin, 786, LINE);
+    doc.text("Apres School | hello@apres-school.co.uk | www.apres-school.co.uk", PAGE.margin, 808, 8, MUTED);
+    doc.text(`Page ${index + 1} of ${doc.pages.length}`, 500, 808, 8, MUTED);
+    doc.current = previous;
+  });
+  downloadPdf(`apres-school-invoice-${slug(reference)}.pdf`, doc);
+}
+
 function complianceCounts(staff) {
   const total = staff.length;
   const complete = staff.filter((person) => person.compliance === "Compliant").length;
@@ -977,8 +1053,8 @@ export function exportPayrollSummary(rows = [], period = "", run = {}, options =
   const totalGross = payrollRows.reduce((sum, row) => sum + Number(row.gross || 0), 0);
   const totalExpenses = payrollRows.reduce((sum, row) => sum + Number(row.expenses || 0), 0);
   const totalDeductions = payrollRows.reduce((sum, row) => sum + Number(row.deductions || 0), 0);
-  const totalNet = totalGross + totalExpenses - totalDeductions;
-  const staffToPay = payrollRows.filter((row) => Number(row.hours || 0) > 0 || Number(row.monthlySalary || 0) > 0);
+  const totalNet = payrollRows.reduce((sum, row) => sum + Number(row.net ?? (Number(row.gross || 0) + Number(row.expenses || 0) - Number(row.deductions || 0))), 0);
+  const staffToPay = payrollRows.filter((row) => Number(row.hours || 0) > 0 || Number(row.monthlySalary || 0) > 0 || (row.payslips || []).length > 0);
   const payslipsUploaded = staffToPay.filter((row) => (row.payslips || []).length > 0).length;
   const doc = new PdfDoc(`${periodLabel} Payroll Summary`).addPage();
   doc.pageHeader("Payroll Summary", `Period: ${periodLabel}`);
@@ -1020,9 +1096,9 @@ export function exportPayrollSummary(rows = [], period = "", run = {}, options =
   );
 
   const exportRows = payrollRows
-    .filter((row) => options.includeAllStaff || Number(row.hours || 0) > 0 || Number(row.monthlySalary || 0) > 0)
+    .filter((row) => options.includeAllStaff || Number(row.hours || 0) > 0 || Number(row.monthlySalary || 0) > 0 || (row.payslips || []).length > 0)
     .map((row) => {
-      const net = Number(row.gross || 0) + Number(row.expenses || 0) - Number(row.deductions || 0);
+      const net = Number(row.net ?? (Number(row.gross || 0) + Number(row.expenses || 0) - Number(row.deductions || 0)));
       const schools = Array.from(new Set((row.payrollEntries || []).map((entry) => entry.schoolName).filter(Boolean))).join(", ");
       return [
         row.name || "Staff",

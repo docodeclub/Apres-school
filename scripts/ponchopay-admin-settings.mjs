@@ -26,8 +26,8 @@ const settings = {
     ["Recurring payment cancelled URL", `${base}/api/ponchopay/recurring-cancelled`],
   ],
   redirects: [
-    ["Payment completed redirect", `${base}/booking/success?reference={bookingReference}`],
-    ["Subscription set up redirect", `${base}/booking/success?reference={bookingReference}`],
+    ["Payment completed redirect", `${base}/api/ponchopay_redirect?payment=pending`],
+    ["Subscription set up redirect", `${base}/api/ponchopay_redirect?payment=pending`],
   ],
   sharedWebhookAlternative: `${base}/api/ponchopay/webhook`,
   notes: [
@@ -84,4 +84,3 @@ function loadLocalEnvFiles(files) {
     });
   }
 }
-

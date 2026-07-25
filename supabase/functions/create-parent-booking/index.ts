@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { paragraphsToHtml, sendBookingEmail } from "../_shared/booking-email.ts";
+import {
+  bookingInvoiceFilename,
+  buildBookingInvoicePdf,
+  bytesToBase64,
+} from "../_shared/booking-invoice-pdf.js";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,6 +53,7 @@ type BookingRequest = {
   paymentMethod?: string;
   paymentPlan?: string;
   paymentRoute?: string;
+  applyAccountCredit?: boolean;
   depositAmount?: number;
   cancellationHours?: number;
   amendmentHours?: number;
@@ -79,6 +85,23 @@ serve(async (request) => {
       accountHolderRole: bookingActor.accountHolderRole,
     });
 
+    const { data: financeGate, error: financeGateError } = await supabase.rpc("parent_booking_finance_gate", {
+      p_parent_id: bookingActor.id,
+      p_parent_email: bookingActor.email,
+    });
+    if (financeGateError) throw financeGateError;
+    if (financeGate?.blocked === true) {
+      const outstanding = moneyValue(financeGate.outstandingBalance);
+      return json({
+        error: outstanding > 0
+          ? `Please clear the £${outstanding.toFixed(2)} outstanding balance on your family account before making another booking.`
+          : "Please clear the negative balance on your family account before making another booking.",
+        code: "OUTSTANDING_ACCOUNT_BALANCE",
+        outstandingBalance: outstanding,
+        creditBalance: moneyValue(financeGate.creditBalance),
+      }, 409);
+    }
+
     const { data: reservation, error: reservationError } = await supabase.rpc("create_parent_booking_reservation", {
       p_parent_id: bookingActor.id,
       p_parent_email: bookingActor.email,
@@ -93,9 +116,27 @@ serve(async (request) => {
     const booking = reservationResult.booking;
     const savedItems = reservationResult.items || [];
 
+    let credit: Record<string, unknown> = {
+      applied: 0,
+      dueToday: moneyValue(booking.dueToday),
+      fullyCovered: false,
+    };
+    if (body.applyAccountCredit === true) {
+      const { data: creditData, error: creditError } = await supabase.rpc("apply_parent_account_credit_to_booking", {
+        p_parent_id: bookingActor.id,
+        p_booking_id: stringValue(booking.id),
+      });
+      if (creditError) throw creditError;
+      credit = isObject(creditData) ? creditData : credit;
+      booking.dueToday = moneyValue(credit.dueToday ?? booking.dueToday);
+      if (stringValue(credit.invoiceId)) booking.invoiceId = stringValue(credit.invoiceId);
+      if (credit.fullyCovered === true) booking.status = "confirmed";
+    }
+
     let checkout: Record<string, unknown> | null = null;
     if (moneyValue(booking?.dueToday) > 0 && savedItems.some((item) => item.status !== "waitlist")) {
-      checkout = await createCheckout({
+      try {
+        checkout = await createCheckout({
         bookingId: stringValue(booking.id),
         invoiceId: stringValue(booking.invoiceId),
         parentId: actor.id,
@@ -103,6 +144,7 @@ serve(async (request) => {
         parentName,
         paymentMethod: stringValue(booking.paymentMethod) || stringValue(bookingPayload.paymentMethod) || "card",
         paymentPlan: stringValue(booking.paymentPlan) || stringValue(bookingPayload.paymentPlan) || "pay_now",
+        amount: moneyValue(booking.dueToday),
         successUrl: withReturnParams(stringValue(body.successUrl), {
           payment: "pending",
           invoice: stringValue(booking.invoiceId),
@@ -133,9 +175,35 @@ serve(async (request) => {
           ...(isObject(bookingPayload.metadata) ? bookingPayload.metadata : {}),
           bookingReference: stringValue(booking.bookingReference),
           source: stringValue(bookingPayload.source) || "parent_portal",
+          grossBookingTotal: moneyValue(booking.totalAmount),
+          accountCreditApplied: moneyValue(credit.applied),
+          accountCreditEntryId: stringValue(credit.entryId) || null,
           ...(isObject(body.metadata) ? body.metadata : {}),
         },
-      });
+        });
+      } catch (checkoutError) {
+        if (moneyValue(credit.applied) > 0) {
+          await supabase.rpc("release_parent_account_credit_from_booking", {
+            p_parent_id: bookingActor.id,
+            p_booking_id: stringValue(booking.id),
+            p_reason: checkoutError instanceof Error ? checkoutError.message : "Checkout creation failed",
+          });
+        }
+        throw checkoutError;
+      }
+
+      if (!stringValue(checkout?.checkoutUrl) && moneyValue(credit.applied) > 0) {
+        const { data: releasedCredit, error: releaseError } = await supabase.rpc("release_parent_account_credit_from_booking", {
+          p_parent_id: bookingActor.id,
+          p_booking_id: stringValue(booking.id),
+          p_reason: stringValue(checkout?.errorMessage) || stringValue(checkout?.message) || "PonchoPay did not return a payment link",
+        });
+        if (releaseError) throw releaseError;
+        if (isObject(releasedCredit)) {
+          booking.dueToday = moneyValue(releasedCredit.dueToday ?? booking.dueToday);
+          credit = { ...credit, applied: 0, fullyCovered: false, released: releasedCredit.released };
+        }
+      }
 
       const nextStatus = await updateBookingAfterCheckout(stringValue(booking.id), checkout, booking);
       if (nextStatus) booking.status = nextStatus;
@@ -175,6 +243,7 @@ serve(async (request) => {
       parent: reservationResult.parent,
       items: savedItems,
       checkout,
+      credit,
       email: bookingEmail,
     });
   } catch (error) {
@@ -288,14 +357,19 @@ async function sendBookingRequestEmail({
   const totalAmount = moneyValue(booking.totalAmount);
   const checkoutUrl = stringValue(checkout?.checkoutUrl) || stringValue(checkout?.providerCheckoutUrl);
   const bookingReference = stringValue(booking.bookingReference) || stringValue(booking.id);
+  const confirmedWithoutBalance = dueToday <= 0 && stringValue(booking.status).toLowerCase() === "confirmed";
   const subject = dueToday > 0
     ? `Complete secure checkout for ${bookingReference}`
-    : `Booking received ${bookingReference}`;
+    : confirmedWithoutBalance
+      ? `Your Après School booking is confirmed`
+      : `Booking received ${bookingReference}`;
   const itemSummary = summariseItems(items);
   const firstName = firstNameFrom(parentName || actor.full_name || actor.email);
   const statusLine = dueToday > 0
     ? "Your selected place is available. Complete secure checkout through PonchoPay and we will confirm the booking automatically."
-    : "Your booking has been received and no payment is due today.";
+    : confirmedWithoutBalance
+      ? "Your booking is confirmed and there is no balance to pay."
+      : "Your booking has been received and no payment is due today.";
   const paymentLine = checkoutUrl
     ? `Secure payment link: ${checkoutUrl}`
     : dueToday > 0
@@ -304,7 +378,11 @@ async function sendBookingRequestEmail({
   const lines = [
     `Hi ${firstName},`,
     "",
-    existing ? "We found your existing booking request." : "We have received your booking.",
+    confirmedWithoutBalance
+      ? "Your Après School booking is confirmed."
+      : existing
+        ? "We found your existing booking request."
+        : "We have received your booking.",
     statusLine,
     "",
     `Reference: ${bookingReference}`,
@@ -312,6 +390,7 @@ async function sendBookingRequestEmail({
     `Due today: ${formatMoney(dueToday)}`,
     itemSummary ? `Sessions: ${itemSummary}` : "",
     paymentLine,
+    confirmedWithoutBalance ? "A branded PDF invoice is attached for your records." : "",
     "",
     dueToday > 0
       ? "Once secure checkout is complete, your confirmation and receipt will be sent automatically."
@@ -321,18 +400,53 @@ async function sendBookingRequestEmail({
     "Après School",
   ].filter((line) => line !== "");
 
+  const invoiceAttachment = confirmedWithoutBalance
+    ? (() => {
+      const bytes = buildBookingInvoicePdf({
+        invoiceNumber: bookingReference,
+        bookingReference,
+        issueDate: new Date().toISOString(),
+        parentName,
+        parentEmail: recipientEmail,
+        currency: "GBP",
+        total: totalAmount,
+        paid: totalAmount,
+        balance: 0,
+        statusLabel: "Paid with account credit",
+        paymentMethod: "Account credit",
+        lines: items.map((item) => ({
+          childName: item.child_name,
+          siteName: item.site_name,
+          careType: item.programme_name,
+          sessionName: item.session_label,
+          date: item.starts_at,
+          startTime: item.starts_at,
+          endTime: item.ends_at,
+          quantity: item.quantity,
+          unitAmount: item.unit_amount,
+          total: item.line_total,
+        })),
+      });
+      return {
+        filename: bookingInvoiceFilename({ invoiceNumber: bookingReference, bookingReference }),
+        content: bytesToBase64(bytes),
+      };
+    })()
+    : null;
+
   return sendBookingEmail(supabase, {
     recipientEmail,
     recipientName: parentName,
-    emailType: dueToday > 0 ? "booking_payment_pending" : "booking_request_received",
+    emailType: dueToday > 0 ? "booking_payment_pending" : confirmedWithoutBalance ? "booking_confirmation_receipt" : "booking_request_received",
     subject,
     text: lines.join("\n"),
     html: paragraphsToHtml(lines, {
-      title: dueToday > 0 ? "Complete secure checkout" : "Booking received",
+      title: dueToday > 0 ? "Complete secure checkout" : confirmedWithoutBalance ? "Booking confirmed" : "Booking received",
       preheader: dueToday > 0
         ? "Your selected place is available. Complete checkout through PonchoPay and we will confirm automatically."
         : "Your Après School booking has been received.",
     }),
+    attachments: invoiceAttachment ? [invoiceAttachment] : [],
     sentBy: actor.id,
     metadata: {
       bookingId: stringValue(booking.id),
@@ -344,6 +458,7 @@ async function sendBookingRequestEmail({
       dueToday,
       itemCount: items.length,
       source: "create-parent-booking",
+      invoiceAttachment: invoiceAttachment?.filename || null,
     },
   });
 }

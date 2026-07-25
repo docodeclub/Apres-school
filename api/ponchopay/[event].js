@@ -25,7 +25,8 @@ export default async function handler(request, response) {
   }
 
   const functionsUrl = clean(process.env.SUPABASE_FUNCTIONS_URL) ||
-    (clean(process.env.SUPABASE_PROJECT_REF) ? `https://${clean(process.env.SUPABASE_PROJECT_REF)}.functions.supabase.co` : "");
+    (clean(process.env.SUPABASE_PROJECT_REF) ? `https://${clean(process.env.SUPABASE_PROJECT_REF)}.functions.supabase.co` : "") ||
+    functionsUrlFromSupabaseUrl(process.env.VITE_SUPABASE_URL);
 
   if (!functionsUrl) {
     response.status(500).json({ error: "Supabase functions URL is not configured" });
@@ -71,3 +72,15 @@ function clean(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function functionsUrlFromSupabaseUrl(value) {
+  const supabaseUrl = clean(value);
+  if (!supabaseUrl) return "";
+  try {
+    const url = new URL(supabaseUrl);
+    if (!url.hostname.endsWith(".supabase.co")) return "";
+    url.hostname = url.hostname.replace(/\.supabase\.co$/, ".functions.supabase.co");
+    return url.origin;
+  } catch {
+    return "";
+  }
+}

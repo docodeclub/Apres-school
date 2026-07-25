@@ -13,6 +13,8 @@ const amendmentSql = readFileSync(join(root, "supabase/migrations/0033_amend_par
 const amendmentAddSql = readFileSync(join(root, "supabase/migrations/0034_amend_parent_booking_add_items.sql"), "utf8");
 const edgeFunction = readFileSync(join(root, "supabase/functions/create-parent-booking/index.ts"), "utf8");
 const updateFunction = readFileSync(join(root, "supabase/functions/update-parent-booking/index.ts"), "utf8");
+const bookingLabSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
+const termsUrl = "https://docs.google.com/document/d/1ursh4YbP1e8cLG7fiUy0z3JezZWBUBG2_-7eG8wA0u0/edit?usp=sharing";
 
 const launchSession = labSessions.find((session) => session.id === "lab-willington-after") || labSessions.find((session) => session.type === "Wraparound");
 if (!launchSession) failures.push("No launch wraparound session found.");
@@ -45,6 +47,9 @@ if (request) validateRequestShape(request);
   ["add-session amendment RPC checks capacity", amendmentAddSql.includes("booking_capacity_holds") && amendmentAddSql.includes("availableBeforeAmendment")],
   ["add-session amendment RPC updates invoice balance", amendmentAddSql.includes("amended_balance_due") && amendmentAddSql.includes("balance = balance + v_added_total")],
   ["booking update function calls add-session amendment RPC", updateFunction.includes("amend_parent_booking_add_items")],
+  ["parent terms URL is canonical", bookingLabSource.includes(`const APRES_TERMS_URL = "${termsUrl}"`)],
+  ["terms link is used at account creation and booking review", (bookingLabSource.match(/href=\{APRES_TERMS_URL\}/g) || []).length >= 2],
+  ["technical ledger diagnostics are hidden from launch parents", bookingLabSource.includes("realBookingServiceReady && !isLaunchMode")],
 ].forEach(([label, ok]) => {
   if (!ok) failures.push(label);
 });

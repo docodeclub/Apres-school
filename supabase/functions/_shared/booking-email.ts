@@ -15,8 +15,13 @@ type BookingEmailInput = {
   subject: string;
   text: string;
   html?: string;
+  from?: string;
   sentBy?: string | null;
   metadata?: Record<string, unknown>;
+  attachments?: Array<{
+    filename: string;
+    content: string;
+  }>;
 };
 
 type BookingEmailHtmlOptions = {
@@ -34,17 +39,15 @@ const resendReplyTo =
   Deno.env.get("APRES_REPLY_TO") ??
   Deno.env.get("RESEND_REPLY_TO") ??
   "hello@apres-school.co.uk";
-const brandLogoUrl =
-  Deno.env.get("APRES_BRAND_LOGO_URL") ??
-  "https://www.apres-school.co.uk/assets/apres-school-text.png";
 const brandBlue = "#314bb8";
 const brandNavy = "#25304f";
 const brandOrange = "#f4aa3d";
-const brandGreen = "#2f7d4b";
+const actionBlue = "#4f6de8";
 
 export async function sendBookingEmail(supabase: SupabaseLike, input: BookingEmailInput) {
   const recipientEmail = stringValue(input.recipientEmail).toLowerCase();
   if (!recipientEmail) throw new Error("Email recipient is required.");
+  const emailFrom = stringValue(input.from) || resendFrom;
 
   let status = "queued_without_provider";
   let providerMessageId = "";
@@ -59,12 +62,13 @@ export async function sendBookingEmail(supabase: SupabaseLike, input: BookingEma
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: resendFrom,
+          from: emailFrom,
           to: [recipientEmail],
           reply_to: resendReplyTo,
           subject: input.subject,
           text: input.text,
           ...(input.html ? { html: input.html } : {}),
+          ...(input.attachments?.length ? { attachments: input.attachments } : {}),
         }),
       });
 
@@ -98,8 +102,9 @@ export async function sendBookingEmail(supabase: SupabaseLike, input: BookingEma
       metadata: {
         ...(input.metadata || {}),
         body: input.text,
-        from: resendFrom,
+        from: emailFrom,
         replyTo: resendReplyTo,
+        attachments: (input.attachments || []).map((attachment) => attachment.filename),
       },
       sent_at: status === "sent" ? new Date().toISOString() : null,
     })
@@ -139,22 +144,24 @@ export function paragraphsToHtml(lines: string[], options: BookingEmailHtmlOptio
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="x-apple-disable-message-reformatting">
+    <meta name="color-scheme" content="light only">
   </head>
   <body style="margin:0;padding:0;background:#eef3ff;font-family:Arial,Helvetica,sans-serif;color:${brandNavy};-webkit-text-size-adjust:100%;text-size-adjust:100%;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preheader)}</div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#eef3ff;padding:26px 10px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;background:#eef3ff;padding:26px 10px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #dbe5ff;border-radius:24px;overflow:hidden;box-shadow:0 18px 48px rgba(37,48,79,0.14);">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:620px;background:#ffffff;border:1px solid #dbe5ff;border-radius:24px;overflow:hidden;box-shadow:0 18px 48px rgba(37,48,79,0.14);">
             <tr>
-              <td style="background:${brandBlue};padding:24px 24px 20px;">
+              <td style="background:#ffffff;padding:22px 24px 18px;">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                   <tr>
-                    <td valign="middle" style="width:170px;">
-                      <img src="${escapeHtml(brandLogoUrl)}" alt="Après School" width="142" style="display:block;border:0;background:#ffffff;border-radius:16px;padding:10px;max-width:142px;height:auto;">
+                    <td valign="middle">
+                      <span style="display:block;color:${brandBlue};font-size:23px;line-height:1.05;font-weight:900;">Après School</span>
+                      <span style="display:block;margin-top:5px;color:#c47708;font-size:12px;line-height:1.2;letter-spacing:1.1px;font-weight:900;">Let's Learn and Play</span>
                     </td>
-                    <td valign="middle" align="right" style="font-size:13px;line-height:1.4;color:#ffffff;font-weight:800;">
-                      Let's Learn and Play
+                    <td valign="middle" align="right">
+                      <span style="display:inline-block;padding:9px 13px;background:#f4f6ff;border-radius:999px;color:${brandNavy};font-size:13px;line-height:1.2;font-weight:800;">Family booking</span>
                     </td>
                   </tr>
                 </table>
@@ -164,9 +171,9 @@ export function paragraphsToHtml(lines: string[], options: BookingEmailHtmlOptio
               <td style="height:6px;background:${brandOrange};font-size:0;line-height:0;">&nbsp;</td>
             </tr>
             <tr>
-              <td style="padding:28px 24px 8px;">
-                <p style="margin:0 0 8px;font-size:12px;line-height:1.35;letter-spacing:1px;text-transform:uppercase;color:${brandOrange};font-weight:900;">Après School Bookings</p>
-                <h1 style="margin:0 0 18px;font-size:24px;line-height:1.2;color:${brandNavy};font-weight:900;">${escapeHtml(title)}</h1>
+              <td style="padding:30px 24px 8px;">
+                <p style="margin:0 0 9px;font-size:12px;line-height:1.35;letter-spacing:1px;text-transform:uppercase;color:#b96e00;font-weight:900;">Après School Bookings</p>
+                <h1 style="margin:0 0 20px;font-size:27px;line-height:1.2;color:${brandNavy};font-weight:900;">${escapeHtml(title)}</h1>
                 ${content}
               </td>
             </tr>
@@ -183,7 +190,7 @@ export function paragraphsToHtml(lines: string[], options: BookingEmailHtmlOptio
               </td>
             </tr>
             <tr>
-              <td style="background:${brandNavy};padding:20px 24px;border-top:1px solid #e8edff;">
+              <td style="background:${brandNavy};padding:20px 24px;">
                 <p style="margin:0 0 5px;font-size:15px;line-height:1.45;color:#ffffff;font-weight:900;">Après School</p>
                 <p style="margin:0;font-size:13px;line-height:1.5;color:#dce5ff;">Wraparound care, holiday clubs and school partnerships.</p>
               </td>
@@ -213,7 +220,7 @@ function lineToEmailHtml(line: string, index: number, actionUrl: string) {
     const isPayment = /^Secure payment link:/i.test(line);
     const label = isPayment ? "Complete secure payment" : "Open parent portal";
     const prefix = line.split(":")[0] || (isPayment ? "Secure payment link" : "Parent portal");
-    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 20px;"><tr><td align="center" style="border-radius:999px;background:${brandGreen};"><a href="${escapeHtml(actionUrl)}" style="display:block;padding:15px 22px;color:#ffffff;text-decoration:none;font-size:17px;font-weight:900;border-radius:999px;">${escapeHtml(label)}</a></td></tr></table><p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#66708a;word-break:break-word;">${escapeHtml(prefix)}: <a href="${escapeHtml(actionUrl)}" style="color:${brandBlue};font-weight:800;">${escapeHtml(actionUrl)}</a></p>`;
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 20px;"><tr><td align="center" style="border-radius:999px;background:${actionBlue};"><a href="${escapeHtml(actionUrl)}" style="display:block;padding:15px 22px;color:#ffffff;text-decoration:none;font-size:17px;line-height:1.35;font-weight:900;border-radius:999px;">${escapeHtml(label)}</a></td></tr></table><p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#66708a;word-break:break-word;">If the button does not work, use this secure link:<br><a href="${escapeHtml(actionUrl)}" style="color:${brandBlue};font-weight:800;">${escapeHtml(actionUrl)}</a></p>`;
   }
   if (/^Important:/i.test(line)) {
     return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:20px 0 16px;background:#fff7ed;border:1px solid #f7d7a2;border-radius:16px;"><tr><td style="padding:14px 16px;"><p style="margin:0;font-size:14px;line-height:1.55;color:${brandNavy};"><strong>Important:</strong>${escaped.replace(/^Important:/i, "")}</p></td></tr></table>`;

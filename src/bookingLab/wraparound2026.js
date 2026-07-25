@@ -1,3 +1,9 @@
+import {
+  blockingPeriods,
+  calendarForSchool,
+  teachingWindows,
+} from "./schoolCalendars2026.js";
+
 const weekdays = new Set([1, 2, 3, 4, 5]);
 
 export function formatWraparoundDay(date) {
@@ -48,109 +54,25 @@ export function generateTermDays(windows, exclusions = []) {
   return days;
 }
 
-export const wraparound2026Configs = {
-  ripley: {
-    site: "Ripley Court",
-    area: "Surrey",
-    windows: [
-      { start: "2026-09-04", end: "2026-12-11" },
-      { start: "2027-01-06", end: "2027-03-19" },
-      { start: "2027-04-13", end: "2027-07-07" },
-    ],
-    exclusions: [
-      "2026-09-02",
-      "2026-09-03",
-      { start: "2026-10-19", end: "2026-10-30" },
-      { start: "2026-12-14", end: "2027-01-05" },
-      "2027-01-05",
-      { start: "2027-02-15", end: "2027-02-19" },
-      { start: "2027-03-21", end: "2027-04-12" },
-      "2027-04-12",
-      { start: "2027-05-31", end: "2027-06-04" },
-    ],
-    blockedLabels: [
-      "INSET: 2-3 Sept 2026, 5 Jan 2027, 12 Apr 2027",
-      "Half terms: 19-30 Oct 2026, 15-19 Feb 2027, 31 May-4 Jun 2027",
-      "Winter and spring holidays excluded",
-    ],
-  },
-  willington: {
-    site: "Willington Prep",
-    area: "Wimbledon",
-    windows: [
-      { start: "2026-09-03", end: "2026-12-11" },
-      { start: "2027-01-04", end: "2027-03-25" },
-      { start: "2027-04-12", end: "2027-07-07" },
-    ],
-    exclusions: [
-      "2026-08-28",
-      "2026-08-31",
-      "2026-09-01",
-      "2026-09-02",
-      { start: "2026-10-19", end: "2026-10-30" },
-      "2026-12-14",
-      { start: "2027-02-15", end: "2027-02-19" },
-      "2027-05-03",
-      "2027-05-31",
-      { start: "2027-06-01", end: "2027-06-04" },
-      "2027-07-08",
-    ],
-    blockedLabels: [
-      "INSET/bank holidays: 28 Aug, 31 Aug, 1-2 Sept, 14 Dec 2026; 3 May, 31 May, 8 Jul 2027",
-      "Half terms: 19-30 Oct 2026, 15-19 Feb 2027, 1-4 Jun 2027",
-    ],
-  },
-  shrewsbury: {
-    site: "Shrewsbury House School",
-    area: "Surbiton",
-    windows: [
-      { start: "2026-09-03", end: "2026-12-09" },
-      { start: "2027-01-06", end: "2027-03-24" },
-      { start: "2027-04-20", end: "2027-07-09" },
-    ],
-    exclusions: [
-      { start: "2026-10-19", end: "2026-10-30" },
-      { start: "2027-02-15", end: "2027-02-19" },
-      { start: "2027-05-31", end: "2027-06-04" },
-    ],
-    blockedLabels: [
-      "Half terms: 19-30 Oct 2026, 15-19 Feb 2027, 31 May-4 Jun 2027",
-      "Assumption: normal wraparound starts 3 Sept 2026 for whole school",
-      "Autumn/Spring 2pm finishes are flagged only; no 2pm sessions created",
-    ],
-  },
-  kings: {
-    site: "King's House School",
-    area: "Richmond",
-    windows: [
-      { start: "2026-09-03", end: "2026-12-10" },
-      { start: "2027-01-06", end: "2027-03-23" },
-      { start: "2027-04-14", end: "2027-07-06" },
-    ],
-    exclusions: [
-      "2026-08-28",
-      "2026-08-31",
-      "2026-09-01",
-      "2026-09-02",
-      { start: "2026-10-19", end: "2026-10-30" },
-      "2026-12-11",
-      "2027-01-05",
-      "2027-02-12",
-      { start: "2027-02-15", end: "2027-02-19" },
-      "2027-03-24",
-      "2027-04-12",
-      "2027-04-13",
-      "2027-05-03",
-      { start: "2027-05-31", end: "2027-06-04" },
-      "2027-07-07",
-    ],
-    blockedLabels: [
-      "KHS last days excluded: 11 Dec 2026, 24 Mar 2027, 7 Jul 2027",
-      "Training/bank holidays: 28 Aug, 31 Aug, 1-2 Sept 2026; 5 Jan, 12 Feb, 12-13 Apr, 3 May 2027",
-      "Half terms: 19-30 Oct 2026, 15-19 Feb 2027, 31 May-4 Jun 2027",
-    ],
-  },
-};
+export const wraparound2026Configs = Object.fromEntries(
+  ["ripley", "willington", "shrewsbury", "kings"].map((key) => {
+    const calendar = calendarForSchool(key);
+    const blocked = blockingPeriods(key);
+    return [key, {
+      site: calendar.site,
+      area: calendar.area,
+      windows: teachingWindows(key),
+      exclusions: blocked
+        .filter((period) => period.end)
+        .map((period) => period.start === period.end
+          ? period.start
+          : { start: period.start, end: period.end }),
+      blockedLabels: blocked.map((period) =>
+        `${period.label}: ${period.start}${period.end && period.end !== period.start ? ` to ${period.end}` : ""}`
+      ),
+    }];
+  })
+);
 
 export function daysForWraparoundConfig(key) {
   const config = wraparound2026Configs[key];

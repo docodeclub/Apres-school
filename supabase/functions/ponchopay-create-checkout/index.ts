@@ -25,6 +25,10 @@ const publicSiteUrl = Deno.env.get("PUBLIC_SITE_URL") ?? "https://www.apres-scho
 const ponchoPayLocationUrns: Record<string, string> = {
   "King's House School": "2801558",
   "Rosemead Preparatory School": "2824761",
+  "Ripley Court": "IUcCfoT4",
+  "Ripley Court School": "IUcCfoT4",
+  "Shrewsbury House School": "IUYmDzCq",
+  "Willington": "2764313",
   "Willington Prep": "2764313",
 };
 
@@ -60,6 +64,7 @@ type CheckoutRequest = {
   paymentMethod?: string;
   paymentPlan?: string;
   currency?: string;
+  amount?: number;
   successUrl?: string;
   cancelUrl?: string;
   items?: CheckoutItem[];
@@ -77,7 +82,7 @@ serve(async (request) => {
     if (validationError || !body) return json({ error: validationError || "Checkout payload is required" }, 400);
 
     const invoiceId = stableInvoiceId(body);
-    const amount = checkoutTotal(body.items || []);
+    const amount = moneyValue(body.amount) > 0 ? moneyValue(body.amount) : checkoutTotal(body.items || []);
     const currency = stringValue(body.currency) || "GBP";
     const paymentMethod = normalisePaymentMethod(body.paymentMethod);
     const paymentPlan = normalisePaymentPlan(body.paymentPlan);
@@ -169,7 +174,7 @@ function validateCheckoutRequest(body: CheckoutRequest | null) {
   if (!body || typeof body !== "object") return "Checkout payload is required";
   if (!stringValue(body.parentEmail) && !stringValue(body.parentId)) return "Parent id or email is required";
   if (!Array.isArray(body.items) || !body.items.length) return "At least one booking item is required";
-  const total = checkoutTotal(body.items);
+  const total = moneyValue(body.amount) > 0 ? moneyValue(body.amount) : checkoutTotal(body.items);
   if (total <= 0) return "Checkout total must be greater than zero";
   const invalidItem = body.items.find((item) => !stringValue(item.date) || !stringValue(item.sessionName) || moneyValue(item.unitAmount) <= 0);
   if (invalidItem) return "Each item needs a date, session name and positive unit amount";
@@ -224,8 +229,8 @@ function buildPonchoPayPayload(body: CheckoutRequest, payment: {
   paymentPlan: string;
   providerReference: string;
 }) {
-  const successUrl = stringValue(body.successUrl) || `${publicSiteUrl}/booking/success?reference=${encodeURIComponent(payment.providerReference)}`;
-  const cancelUrl = stringValue(body.cancelUrl) || `${publicSiteUrl}/booking/cancel?reference=${encodeURIComponent(payment.providerReference)}`;
+  const successUrl = stringValue(body.successUrl) || `${publicSiteUrl}/api/ponchopay_redirect?payment=pending&reference=${encodeURIComponent(payment.providerReference)}`;
+  const cancelUrl = stringValue(body.cancelUrl) || `${publicSiteUrl}/api/ponchopay_redirect?payment=cancelled&reference=${encodeURIComponent(payment.providerReference)}`;
   const webhookUrl = `${publicSiteUrl}/api/ponchopay/webhook`;
   const capturedUrl = `${publicSiteUrl}/api/ponchopay/captured`;
   const completedUrl = `${publicSiteUrl}/api/ponchopay/completed`;
@@ -247,6 +252,18 @@ function buildPonchoPayPayload(body: CheckoutRequest, payment: {
   const childName = childNames[0] || "";
   const additionalInfo = buildPonchoAdditionalInfo(childNames, payment.providerReference);
   const amountInPence = Math.round(payment.amount * 100);
+  const accountCreditApplied = moneyValue(body.metadata?.accountCreditApplied);
+  const providerLineItems = accountCreditApplied > 0
+    ? [{
+        description: "Après School booking after account credit",
+        amount: amountInPence,
+        quantity: 1,
+      }]
+    : (body.items || []).map((item) => ({
+        description: `${stringValue(item.sessionName)} - ${stringValue(item.childName) || "Child"}`,
+        amount: Math.round(moneyValue(item.unitAmount) * Math.max(1, Number(item.quantity || 1)) * 100),
+        quantity: Math.max(1, Number(item.quantity || 1)),
+      }));
   const metadata = JSON.stringify({
     source: "apres_school_booking",
     invoiceId: payment.invoiceId,
@@ -293,11 +310,7 @@ function buildPonchoPayPayload(body: CheckoutRequest, payment: {
     additionalFields: additionalInfo.fields,
     additional_fields: additionalInfo.fields,
     metadata,
-    line_items: (body.items || []).map((item) => ({
-      description: `${stringValue(item.sessionName)} - ${stringValue(item.childName) || "Child"}`,
-      amount: Math.round(moneyValue(item.unitAmount) * Math.max(1, Number(item.quantity || 1)) * 100),
-      quantity: Math.max(1, Number(item.quantity || 1)),
-    })),
+    line_items: providerLineItems,
     merchantContext: "apres_school",
     providerId: ponchoPayProviderId || null,
     locationUrn: locationUrn || null,

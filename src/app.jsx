@@ -126,6 +126,7 @@ const Platform = lazy(() => import("./PlatformModule.jsx"));
 const BookingLab = lazy(() => import("./BookingLab.jsx"));
 
 const MAGICBOOKING_URL = "https://apres-school.magicbooking.co.uk/Identity/Account/Login";
+const launchBookingPath = (school) => `/launch-booking?school=${encodeURIComponent(school)}`;
 const PEBBLE_SUPPLIER_URL = "https://activities.bookpebble.co.uk/supplier/apres-school-1a30ba07-ffae-4d56-a896-2187e4f0a4b5";
 const PEBBLE_KINGS_URL = "https://activities.bookpebble.co.uk/activity/apres-school-apres-school-holiday-camp-richmond-richmond-dc0775cd-5399-4810-b271-d03f7ccc81ba";
 const PEBBLE_ROWANS_URL = "https://activities.bookpebble.co.uk/activity/apres-school-apres-school-holiday-camp-wimbledon-the-rowans-school-london-b1b01598-0d9a-49a2-9100-d4cb1ed322a5";
@@ -162,11 +163,14 @@ const APRES_IMG = {
 };
 
 const nav = ["Home", "Bookings", "Holiday Clubs", "Wraparound", "Schools", "Contact"];
-const platformTabs = ["Staff", "Admin", "Bookings", "Users", "HR", "HR Files", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabStorageKey = "apres-platform-active-tab";
+const platformTabSlugs = Object.fromEntries(platformTabs.map((item) => [item, item.toLowerCase().replace(/[^a-z0-9]+/g, "-")]));
+const platformTabsBySlug = Object.fromEntries(Object.entries(platformTabSlugs).map(([item, slug]) => [slug, item]));
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
-  ["People", ["Users", "SCR", "HR", "HR Files"]],
-  ["Sites", ["Bookings", "Rota", "Hours", "Sessions", "Ofsted"]],
+  ["People", ["Customer Profiles", "Users", "SCR", "HR", "HR Files"]],
+  ["Sites", ["Bookings", "Registers", "Incidents", "Safeguarding", "Rota", "Hours", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
   ["Finance", ["Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
@@ -192,6 +196,19 @@ const bookingPreviewToken = String(import.meta.env.VITE_BOOKING_PREVIEW_TOKEN ||
 
 function isPlatformPath() {
   return window.location.pathname === "/staff-login" || window.location.pathname === "/tutor";
+}
+
+function getInitialPlatformTab() {
+  const requestedSlug = new URLSearchParams(window.location.search).get("section");
+  const requestedTab = platformTabsBySlug[requestedSlug];
+  if (requestedTab) return requestedTab;
+  try {
+    const savedTab = localStorage.getItem(platformTabStorageKey);
+    if (platformTabs.includes(savedTab)) return savedTab;
+  } catch {
+    // A usable URL still provides a deterministic fallback when storage is unavailable.
+  }
+  return "Admin";
 }
 
 function hasBookingPreviewAccess() {
@@ -337,7 +354,7 @@ const pageMeta = {
   Payments: ["Payments & Vouchers | Après School", "Payment options, childcare vouchers and booking-platform guidance."],
   Cancellations: ["Cancellations & Amendments | Après School", "Guidance for amending or cancelling Après School bookings."],
   Policies: ["Policies | Après School", "Safeguarding, behaviour, health and safety, privacy and complaints policy summaries."],
-  "Launch Booking": ["Beta Booking System | Après School", "Private beta booking flow for Après School wraparound care and holiday camp testing."],
+  "Launch Booking": ["Family Booking | Après School", "Book Après School wraparound care and holiday clubs securely online."],
   "Booking Lab": ["Booking Lab | Après School", "Private booking system lab for Après School testing."],
 };
 const pageKeywords = {
@@ -598,14 +615,14 @@ const bookingSites = [
     category: "Wraparound",
     area: "Wimbledon",
     description: "After-school care from the end of the school day to 18:00.",
-    provider: "Magicbooking",
-    url: MAGICBOOKING_URL,
+    provider: "Après School",
+    url: launchBookingPath("Willington Prep"),
     image: APRES_IMG.willingtonTile,
     imagePosition: "center",
     schedule: "After-school care, 15:30-18:00.",
     ages: "Willington Prep families.",
-    bookingNote: "Use Magicbooking and select the Willington Prep centre.",
-    beforeBooking: "Check that Willington Prep is selected before choosing dates.",
+    bookingNote: "Sign in to your family account, then choose the care and dates you need.",
+    beforeBooking: "Willington Prep will already be selected when the booking journey opens.",
   },
   {
     title: "King's House School",
@@ -613,14 +630,14 @@ const bookingSites = [
     category: "Wraparound",
     area: "Richmond",
     description: "After-school care with a friendly team and calm collection routines.",
-    provider: "Magicbooking",
-    url: MAGICBOOKING_URL,
+    provider: "Après School",
+    url: launchBookingPath("King's House School"),
     image: APRES_IMG.kingsHouseTile,
     imagePosition: "center",
     schedule: "After-school care, 15:15-18:00.",
     ages: "King's House School families.",
-    bookingNote: "Use Magicbooking and select the King's House School centre.",
-    beforeBooking: "Check that King's House School is selected before choosing dates.",
+    bookingNote: "Sign in to your family account, then choose the care and dates you need.",
+    beforeBooking: "King's House School will already be selected when the booking journey opens.",
   },
   {
     title: "Shrewsbury House School",
@@ -628,14 +645,14 @@ const bookingSites = [
     category: "Wraparound",
     area: "Surbiton",
     description: "Breakfast club and after-school care at the same school location.",
-    provider: "Magicbooking",
-    url: MAGICBOOKING_URL,
+    provider: "Après School",
+    url: launchBookingPath("Shrewsbury House School"),
     image: APRES_IMG.shrewsburyHouseTile,
     imagePosition: "center",
     schedule: "Breakfast 07:30-08:00 and after-school 15:00-18:00.",
     ages: "Shrewsbury House School families.",
-    bookingNote: "Use Magicbooking and select the Shrewsbury House School centre.",
-    beforeBooking: "Breakfast and after-school sessions sit under the same school route.",
+    bookingNote: "Sign in to your family account, then choose breakfast or after-school care and the dates you need.",
+    beforeBooking: "Shrewsbury House School will already be selected; breakfast and after-school care use the same family account.",
   },
   {
     title: "Ripley Court School",
@@ -643,14 +660,14 @@ const bookingSites = [
     category: "Wraparound",
     area: "Surrey",
     description: "After-school care shaped around the school day and family collection times.",
-    provider: "Magicbooking",
-    url: MAGICBOOKING_URL,
+    provider: "Après School",
+    url: launchBookingPath("Ripley Court"),
     image: APRES_IMG.ripleyCourtTile,
     imagePosition: "center",
     schedule: "After-school care, 15:00-18:00.",
     ages: "Ripley Court School families.",
-    bookingNote: "Use Magicbooking and select the Ripley Court School centre.",
-    beforeBooking: "Check that Ripley Court School is selected before choosing dates.",
+    bookingNote: "Sign in to your family account, then choose the care and dates you need.",
+    beforeBooking: "Ripley Court will already be selected when the booking journey opens.",
   },
   {
     title: "Holiday Camp at King's House School",
@@ -737,10 +754,10 @@ const activityZones = [
 ];
 
 const parentFaqs = [
-  ["How do I book?", "Choose your school or camp on the Bookings page. Most wraparound care uses Magicbooking, while some holiday camps use Book Pebble."],
-  ["Do I need a Magicbooking account?", "Yes for Magicbooking sites. Create or log into your account, add your child, select your centre, then book the relevant activity."],
-  ["Can I amend or cancel bookings?", "Magicbooking allows parents to view bookings, payments and permitted amendments from their account. Cancellation rules depend on the activity."],
-  ["Can I pay with childcare vouchers?", "Yes, where supported by the booking platform and your chosen site. The full payment options should be confirmed during booking."],
+  ["How do I book?", "Choose your school or camp on the Bookings page. Wraparound care opens the Après School family booking system with your school selected; holiday camps use the route shown on their card."],
+  ["Do I need an account?", "Yes for wraparound care. Sign in or create your Après School family account, keep each child's details up to date, then choose the sessions you need."],
+  ["Can I amend or cancel bookings?", "Open the Bookings section of your family account to review upcoming wraparound sessions and the actions available. Holiday-camp rules are shown by the route used for that camp."],
+  ["Can I pay with childcare vouchers?", "Supported payment options are shown during checkout. Wraparound bookings use secure PonchoPay checkout and your family account also shows available account credit."],
   ["What ages do you support?", "Age ranges vary by site and programme. The relevant booking page will show which children can attend each club or camp."],
   ["Are staff checked?", "Staff are recruited through safer recruitment processes, DBS checks and training expectations appropriate to their role."],
   ["What should children bring?", "Comfortable clothes, a water bottle, weather-appropriate layers and any required packed lunch or medication for the session."],
@@ -748,7 +765,8 @@ const parentFaqs = [
 ];
 
 const bookingRoutes = [
-  ["Magicbooking", "Wraparound care and selected school-specific holiday programmes.", "Best for parents booking regular or ad-hoc school provision.", MAGICBOOKING_URL],
+  ["Après School family booking", "Breakfast and after-school care at our wraparound schools.", "Best for parents booking regular or ad-hoc term-time care.", "/launch-booking"],
+  ["Magicbooking", "Selected legacy school-specific holiday programmes only.", "Use only when the holiday-camp card directs you there.", MAGICBOOKING_URL],
   ["Book Pebble", "Selected holiday camps where the camp listing, dates and checkout are handled separately.", "Best for open-access holiday camp places at listed sites.", PEBBLE_SUPPLIER_URL],
   ["Need help choosing?", "Use the site cards below first. If your school or camp is not obvious, contact the team before booking.", "Best when you are unsure which platform applies.", null],
 ];
@@ -766,8 +784,9 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authUser, setAuthUser] = useState(null);
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [platformAccessMessage, setPlatformAccessMessage] = useState("");
   const [role, setRole] = useState("Admin");
-  const [tab, setTab] = useState("Admin");
+  const [tab, setTab] = useState(getInitialPlatformTab);
   const [menu, setMenu] = useState(false);
   const [platformData, setPlatformData] = useState(mockPlatformData);
   const authUserIdRef = useRef(null);
@@ -810,6 +829,19 @@ export default function App() {
     if (!keepPaymentReturnPath && window.location.pathname !== nextPath) window.history.pushState({ page }, "", nextPath);
     if (!keepPaymentReturnPath) window.scrollTo({ top: 0, behavior: "auto" });
   }, [page, platform, passwordRecovery]);
+
+  useEffect(() => {
+    if (!platform || !platformUnlocked || !platformTabs.includes(tab)) return;
+    try {
+      localStorage.setItem(platformTabStorageKey, tab);
+    } catch {
+      // The URL remains the source of truth if browser storage is unavailable.
+    }
+    const url = new URL(window.location.href);
+    url.pathname = "/staff-login";
+    url.searchParams.set("section", platformTabSlugs[tab]);
+    window.history.replaceState({ page: "Staff Login", platformTab: tab }, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [platform, platformUnlocked, tab]);
 
   useEffect(() => {
     function handlePopState() {
@@ -866,26 +898,46 @@ export default function App() {
       authUserIdRef.current = null;
       setAuthUser(null);
       setMustChangePassword(false);
+      setPlatformAccessMessage("");
       setPlatformUnlocked(false);
       setRole("Staff");
       setTab("Staff");
-      return;
+      return false;
     }
 
     authUserIdRef.current = user.id;
     setAuthUser(user);
-    setPlatformUnlocked(true);
 
     try {
       const { getProfileAccess } = await loadSupabaseModule();
       const nextAccess = await getProfileAccess(user.id);
+
+      if (!nextAccess.active || !nextAccess.staffAccess) {
+        setPlatformUnlocked(false);
+        setMustChangePassword(false);
+        setRole("Staff");
+        setTab("Staff");
+        setPlatformAccessMessage(
+          nextAccess.role === "Parent"
+            ? `You are signed in with the family account ${user.email || ""}. Staff and admin access requires your separate Après School work account.`
+            : "This account does not have active staff access. Please use your Après School work account.",
+        );
+        return false;
+      }
+
       setRole(nextAccess.role);
       setMustChangePassword(nextAccess.mustChangePassword);
-      setTab(nextAccess.role === "Staff" ? "Staff" : "Admin");
+      setTab(["Admin", "Superadmin"].includes(nextAccess.role) ? getInitialPlatformTab() : "Staff");
+      setPlatformAccessMessage("");
+      setPlatformUnlocked(true);
+      return true;
     } catch {
+      setPlatformUnlocked(false);
       setRole("Staff");
       setMustChangePassword(false);
       setTab("Staff");
+      setPlatformAccessMessage("We could not verify staff access for this account. Please sign in with your Après School work account.");
+      return false;
     }
   }
 
@@ -895,10 +947,9 @@ export default function App() {
   }
 
   async function handleAuthenticated(user) {
-    await applySession({ user });
-    setPlatformUnlocked(true);
+    const staffAccessGranted = await applySession({ user });
     setPasswordRecovery(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (staffAccessGranted) window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function handleDemoAuthenticated(demoUser) {
@@ -923,6 +974,7 @@ export default function App() {
     }
     setAuthUser(null);
     setMustChangePassword(false);
+    setPlatformAccessMessage("");
     setPlatformUnlocked(false);
     setRole("Staff");
     setTab("Staff");
@@ -1007,7 +1059,7 @@ export default function App() {
                 <Platform role={role} tab={tab} setTab={setTab} userEmail={authUser?.email} onSignOut={handleSignOut} data={platformData} />
               </Suspense>
             )
-          : <PlatformLogin authLoading={authLoading} setPlatform={setPlatform} onAuthenticated={handleAuthenticated} onDemoAuthenticated={handleDemoAuthenticated} />
+          : <PlatformLogin authLoading={authLoading} accessMessage={platformAccessMessage} setPlatform={setPlatform} onAuthenticated={handleAuthenticated} onDemoAuthenticated={handleDemoAuthenticated} />
         : passwordRecovery
           ? <PasswordReset onAuthenticated={handleAuthenticated} setPlatformMode={setPlatform} setPasswordRecovery={setPasswordRecovery} />
           : <PublicSite page={page} setPage={setPage} />}
@@ -1069,7 +1121,7 @@ function ForcedPasswordChange({ userEmail, onChanged, onSignOut }) {
 
 function Header({ page, setPage, platform, setPlatform, platformUnlocked, menu, setMenu }) {
   return (
-    <header className="site-header">
+    <header className={`site-header ${page === "Launch Booking" ? "launch-booking-header" : ""}`}>
       <a className="brand" href="#home" onClick={() => { setPlatform(false); setPage("Home"); }}>
         <img src="/assets/apres-school-text.png" alt="Après School" />
         <strong>Après School</strong>
@@ -1254,15 +1306,14 @@ function Home({ setPage, setPlatform }) {
       Icon: ShieldCheck,
     },
   ];
-  const homeBookingRoutes = [
-    { category: "Wraparound", title: "Willington Prep", area: "Wimbledon", ages: "15:30-18:00", provider: "Magicbooking", url: MAGICBOOKING_URL },
-    { category: "Wraparound", title: "King's House School", area: "Richmond", ages: "15:15-18:00", provider: "Magicbooking", url: MAGICBOOKING_URL },
-    { category: "Wraparound", title: "Shrewsbury House School", area: "Surbiton", ages: "Breakfast 07:30-08:00 · After-school 15:00-18:00", provider: "Magicbooking", url: MAGICBOOKING_URL },
-    { category: "Wraparound", title: "Ripley Court School", area: "Surrey", ages: "15:00-18:00", provider: "Magicbooking", url: MAGICBOOKING_URL },
-    ...bookingSites
-      .filter((site) => site.category === "Holiday Camps")
-      .map((site) => ({ category: site.category, title: site.title, area: site.area, ages: site.ages, provider: site.provider, url: site.url })),
-  ];
+  const homeBookingRoutes = bookingSites.map((site) => ({
+    category: site.category,
+    title: site.title,
+    area: site.area,
+    ages: site.ages,
+    provider: site.provider,
+    url: site.url,
+  }));
   const [homeSiteTitle, setHomeSiteTitle] = useState(homeBookingRoutes[0].title);
   const homeSites = homeBookingRoutes.filter((site) => site.category === homeType);
   const selectedHomeSite = homeSites.find((site) => site.title === homeSiteTitle) || homeSites[0];
@@ -1308,7 +1359,9 @@ function Home({ setPage, setPlatform }) {
             {homeSites.map((site) => <option key={site.title} value={site.title}>{site.title}</option>)}
           </select>
           {selectedHomeSite
-            ? <a className="button book" href={selectedHomeSite.url} target="_blank" rel="noreferrer">Open {selectedHomeSite.provider === "Book Pebble" ? "Pebble" : selectedHomeSite.provider}</a>
+            ? selectedHomeSite.provider === "Après School"
+              ? <a className="button book" href={selectedHomeSite.url} aria-label={`Start an Après School booking for ${selectedHomeSite.title}`}>Start booking</a>
+              : <a className="button book" href={selectedHomeSite.url} target="_blank" rel="noreferrer" aria-label={`Open ${selectedHomeSite.provider === "Book Pebble" ? "Pebble" : selectedHomeSite.provider} booking route for ${selectedHomeSite.title}`}>Open {selectedHomeSite.provider === "Book Pebble" ? "Pebble" : selectedHomeSite.provider}</a>
             : <button className="button book" type="button" onClick={() => setPage("Bookings")}>View Sites</button>}
         </form>
       </section>
@@ -1464,7 +1517,7 @@ function PasswordReset({ onAuthenticated, setPlatformMode, setPasswordRecovery }
   );
 }
 
-function PlatformLogin({ authLoading, setPlatform, onAuthenticated, onDemoAuthenticated }) {
+function PlatformLogin({ authLoading, accessMessage, setPlatform, onAuthenticated, onDemoAuthenticated }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState(null);
@@ -1497,6 +1550,7 @@ function PlatformLogin({ authLoading, setPlatform, onAuthenticated, onDemoAuthen
         <p>
           Internal dashboards, compliance records and operational tools stay protected behind staff accounts.
         </p>
+        {accessMessage && <p className="login-status warn">{accessMessage}</p>}
         <form className="compact-form" onSubmit={submit}>
           <label>Email<input required type="email" inputMode="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@apres-school.co.uk" /></label>
           <label>Password<input required type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" /></label>
@@ -1548,19 +1602,19 @@ function Bookings({ setPage }) {
     return matchesFilter && text.includes(query.toLowerCase());
   });
   const bookingSteps = [
-    ["1", "Choose the care type", "Term-time care and holiday camps can use different systems."],
-    ["2", "Select your school", "Each card below shows the exact school or camp location."],
-    ["3", "Use that card's button", "The button opens the correct platform for that site."],
+    ["1", "Choose the care type", "Select term-time care or a holiday camp."],
+    ["2", "Select your school", "Each card shows exactly where the care takes place."],
+    ["3", "Start your booking", "Wraparound care opens our family booking system with your school selected."],
   ];
 
   return (
     <PageShell eyebrow="Bookings" title="Find your school or camp. Then book in the right place.">
       <section className="booking-intro">
         <div>
-          <h2>Start with the location, not the platform.</h2>
+          <h2>Start with your school or camp.</h2>
           <p>
-            Pick the school or camp first. We will then point you to Magicbooking or Pebble,
-            depending on how that site is currently managed.
+            Choose the location below. Wraparound care now opens the Après School family booking system;
+            holiday-camp cards will take you to the booking route currently used for that camp.
           </p>
           <div className="booking-quick-actions">
             <button className="button book large" type="button" onClick={() => setFilter("Wraparound")}>Term-Time Care</button>
@@ -1568,9 +1622,9 @@ function Bookings({ setPage }) {
           </div>
         </div>
         <div className="booking-platform-card">
-          <span>Current booking route</span>
-          <strong>One directory. Two booking systems.</strong>
-          <p>Use the site card below and you will land in the right place.</p>
+          <span>Simple booking</span>
+          <strong>Choose the location. We handle the route.</strong>
+          <p>Your school is carried into the wraparound booking journey automatically.</p>
           <div className="booking-route-mini">
             <span>{wraparoundCount} wraparound sites</span>
             <span>{campCount} camp routes</span>
@@ -1593,12 +1647,12 @@ function Bookings({ setPage }) {
           <p className="eyebrow">Site directory</p>
           <h2>Choose the card for your school or camp.</h2>
         </div>
-        <p>Filter by care type or platform. Each card shows who it is for, when it runs and which booking system to open.</p>
+        <p>Filter by care type or booking route. Each card shows who it is for, when it runs and where to book.</p>
         <span className="booking-count">Showing {filteredSites.length} of {bookingSites.length}</span>
       </section>
       <section className="booking-filters">
         <div className="filter-pills">
-          {["All", "Wraparound", "Holiday Camps", "Magicbooking", "Book Pebble"].map((item) => (
+          {["All", "Wraparound", "Holiday Camps", "Après School", "Magicbooking", "Book Pebble"].map((item) => (
             <button type="button" className={filter === item ? "active" : ""} key={item} onClick={() => setFilter(item)}>{item}</button>
           ))}
         </div>
@@ -1610,7 +1664,7 @@ function Bookings({ setPage }) {
             <div className="booking-image" style={{ backgroundImage: `url("${site.image}")`, backgroundPosition: site.imagePosition }} />
             <div className="booking-card-top">
               <span>{site.type}</span>
-              <strong className={site.provider === "Magicbooking" ? "magicbooking" : "pebble"}>Book via {site.provider === "Book Pebble" ? "Pebble" : site.provider}</strong>
+              <strong className={site.provider === "Après School" ? "apres" : site.provider === "Magicbooking" ? "magicbooking" : "pebble"}>Book via {site.provider === "Book Pebble" ? "Pebble" : site.provider}</strong>
             </div>
             <div className="booking-card-body">
               <h3>{site.title}</h3>
@@ -1621,7 +1675,9 @@ function Bookings({ setPage }) {
               <span>{site.ages}</span>
             </div>
             <div className="booking-card-actions">
-              <a className="button book" href={site.url} target="_blank" rel="noreferrer" aria-label={`Open ${site.provider === "Book Pebble" ? "Pebble" : site.provider} booking route for ${site.title}`}>Open {site.provider === "Book Pebble" ? "Pebble" : site.provider}</a>
+              {site.provider === "Après School"
+                ? <a className="button book" href={site.url} aria-label={`Start an Après School booking for ${site.title}`}>Start booking</a>
+                : <a className="button book" href={site.url} target="_blank" rel="noreferrer" aria-label={`Open ${site.provider === "Book Pebble" ? "Pebble" : site.provider} booking route for ${site.title}`}>Open {site.provider === "Book Pebble" ? "Pebble" : site.provider}</a>}
             </div>
             <details className="site-detail">
               <summary>Before you book</summary>
@@ -1640,9 +1696,9 @@ function Bookings({ setPage }) {
         </section>
       )}
       <section className="booking-help-grid">
-        <InfoPanel title="Need Magicbooking help?" text="Create or log into your account, add your child, choose your centre and select the activity you need." action="Magicbooking guide" onClick={() => setPage("Magicbooking")} />
-        <InfoPanel title="Need Book Pebble help?" text="Some holiday camps use Book Pebble. Check the camp listing, dates, age range and booking conditions before paying." action="Book Pebble guide" onClick={() => setPage("Book Pebble")} />
-        <InfoPanel title="Payments and vouchers" text="Payment methods and childcare voucher handling depend on the booking platform and activity selected." action="Payment options" onClick={() => setPage("Payments")} />
+        <InfoPanel title="Need help booking wraparound care?" text="Choose your school, then sign in to your family account to select children, sessions and dates." action="Choose your school" onClick={() => setFilter("Wraparound")} />
+        <InfoPanel title="Booking a holiday camp?" text="Holiday-camp cards show the current external booking route, published dates, age guidance and location." action="View holiday camps" onClick={() => setFilter("Holiday Camps")} />
+        <InfoPanel title="Payments and account credit" text="Wraparound checkout shows card, voucher and account-credit options before you confirm." action="Payment options" onClick={() => setPage("Payments")} />
       </section>
     </PageShell>
   );
@@ -1804,7 +1860,7 @@ function Wraparound({ setPage }) {
           <div className="wraparound-hero-proof">
             <span><strong>Breakfast</strong> where offered</span>
             <span><strong>After school</strong> to 18:00</span>
-            <span><strong>Bookings</strong> via Magicbooking</span>
+            <span><strong>Bookings</strong> in your family account</span>
           </div>
         </div>
         <div className="wraparound-hero-media" aria-hidden="true">
@@ -1892,7 +1948,7 @@ function Wraparound({ setPage }) {
         <div>
           <p className="eyebrow">Current booking route</p>
           <h2>Choose your school before you book.</h2>
-          <p>Wraparound care currently books through Magicbooking. Start on the Bookings page so you can select the correct school centre first.</p>
+          <p>Wraparound care now books through the Après School family booking system. Start on the Bookings page and choose your school; we will carry it into the booking journey for you.</p>
           <button className="button book" type="button" onClick={() => setPage("Bookings")}>View Booking Sites</button>
         </div>
         <div className="wraparound-booking-list">
@@ -1916,23 +1972,23 @@ function MagicbookingGuide({ setPage }) {
   return (
     <GuidePage
       eyebrow="Magicbooking"
-      title="Magicbooking is used for most term-time care."
-      intro="Use this route for breakfast club, after-school care and selected school-linked holiday provision."
-      heroTitle="Book regular care without guessing the centre."
+      title="Magicbooking remains available for selected legacy holiday programmes."
+      intro="Wraparound care now uses the Après School family booking system. Open Magicbooking only when a holiday-camp card specifically directs you there."
+      heroTitle="Use the route shown on your holiday-camp card."
       platform="Magicbooking"
-      routeLabel="Regular care"
+      routeLabel="Selected holiday programmes"
       summary={[
-        ["Used for", "Breakfast club, after-school care and selected school-specific holiday programmes."],
-        ["Before you click", "Know your school centre and the sessions you want to book."],
-        ["Good to check", "Child details, collection contacts, medical notes and payment method."],
+        ["Used for", "Selected school-specific holiday programmes while those routes remain active."],
+        ["Not used for", "Breakfast club or after-school care in the new family booking system."],
+        ["Good to check", "Camp location, published dates, eligibility and payment terms."],
       ]}
       steps={[
-        ["Create or log in", "Use the Après School Magicbooking link and sign in or create a parent account."],
-        ["Add your child", "Complete child details, emergency contacts and any required medical or collection information."],
-        ["Choose your centre", "Select the relevant school or activity centre, then choose the sessions you need."],
-        ["Review and pay", "Check dates, fees, terms and payment options before confirming your booking."],
+        ["Start with the camp card", "Use the Après School Bookings page and choose the holiday-camp location you need."],
+        ["Follow the displayed route", "Open Magicbooking only when that specific camp card names it as the booking route."],
+        ["Check the programme", "Confirm the camp, location, dates and eligibility before selecting places."],
+        ["Review and pay", "Check fees, terms and payment options before confirming your camp booking."],
       ]}
-      checklist={["Willington Prep", "King's House School", "Shrewsbury House School", "Ripley Court School"]}
+      checklist={["Holiday Enrichment at Willington Prep", "Holiday Camp at Ripley Court School"]}
       cta="Open Magicbooking"
       href={MAGICBOOKING_URL}
       secondary="View Booking Sites"
@@ -2023,11 +2079,11 @@ function GuidePage({ eyebrow, title, intro, heroTitle, platform, routeLabel, sum
 
 function Payments({ setPage }) {
   return (
-    <PageShell eyebrow="Payments" title="Payments happen inside the booking platform.">
+    <PageShell eyebrow="Payments" title="Clear, secure payments with records in your family account.">
       <SupportHero
         label="Parent payments"
-        title="Check payment options before confirming your place."
-        text="Magicbooking and Pebble show the live payment options during checkout. Voucher support, receipts and payment records depend on the platform and activity selected."
+        title="Review the total and payment method before confirming."
+        text="Wraparound bookings use secure PonchoPay checkout, with receipts, invoices and account credit visible in your family account. Holiday camps show the payment route on their location card."
         primary="Find Your Booking Route"
         secondary="Ask a Question"
         onPrimary={() => setPage("Bookings")}
@@ -2035,9 +2091,9 @@ function Payments({ setPage }) {
       />
       <SupportRouteCards
         cards={[
-          ["Magicbooking", "Term-time care and selected school-linked holiday provision.", "Payments, receipts and booking records sit inside your Magicbooking account."],
+          ["Après School family account", "Breakfast club and after-school care.", "View invoices, receipts, account credit and confirmed bookings together."],
+          ["PonchoPay", "Secure wraparound checkout.", "Card and supported childcare-payment options are authorised securely before the booking confirms."],
           ["Pebble", "Selected open-access holiday camps.", "Pebble shows the camp fee, checkout options and confirmation details before you pay."],
-          ["Childcare vouchers", "Where supported by the activity.", "Check the payment section during checkout and contact us if your provider is not shown."],
         ]}
       />
       <section className="support-process">
@@ -2071,9 +2127,9 @@ function Cancellations({ setPage }) {
       />
       <SupportRouteCards
         cards={[
-          ["Magicbooking", "Breakfast club, after-school care and selected school-linked provision.", "Log into Magicbooking to view permitted amendments and cancellation options for your centre."],
+          ["Après School family account", "Breakfast club and after-school care.", "Open Bookings to review upcoming sessions and use the available cancellation action."],
+          ["Account credit", "Eligible wraparound cancellations.", "Any credit issued is shown in Payments & credit and can be used toward a future booking."],
           ["Pebble", "Selected holiday camps.", "Use your Pebble booking confirmation or account area to review camp change and cancellation rules."],
-          ["Site-specific terms", "Some rules vary by activity.", "Cut-off times, refunds and credits can differ, so always check the booking terms shown for that place."],
         ]}
       />
       <section className="support-process warning">
@@ -2153,12 +2209,12 @@ function Parents() {
     <PageShell eyebrow="For Parents" title="A friendly place for children before, after and during school holidays.">
       <section className="simple-band">
         <h2>Start by finding your school or camp.</h2>
-        <p>Each booking card tells you whether to use Magicbooking or Book Pebble, so you can get to the right checkout quickly.</p>
+        <p>Wraparound care opens the Après School family booking system with your school selected. Holiday-camp cards show the current route for each location.</p>
       </section>
       <div className="split-content">
         <div className="parent-points">
           <TextBlock title="What children do" text="Creative activities, active games, homework space, outdoor play and calmer options for children who need to decompress." />
-          <TextBlock title="How booking works" text="Use the Bookings page first, then complete the booking through the platform shown on your site card." />
+          <TextBlock title="How booking works" text="Choose your school, sign in to your family account, select the children and sessions you need, then pay securely to confirm." />
         </div>
         <FAQ />
       </div>
@@ -2353,8 +2409,8 @@ function FAQs({ setPage }) {
   const bookingFaqs = parentFaqs.slice(0, 5);
   const careFaqs = parentFaqs.slice(5);
   const supportRoutes = [
-    ["Find your site", "Pick the school or camp first. The card then sends you to Magicbooking or Pebble.", "View Sites", () => setPage("Bookings")],
-    ["Payment help", "Voucher and payment options are confirmed on the booking platform before checkout.", "Payment Options", () => setPage("Payments")],
+    ["Find your site", "Pick the school or camp first. Wraparound care opens with your school selected; camp cards show their current route.", "View Sites", () => setPage("Bookings")],
+    ["Payment help", "Review secure payment, account-credit and voucher options before confirming your booking.", "Payment Options", () => setPage("Payments")],
     ["Ask the team", "For collection, site or partnership questions, send us the details and we will route it.", "Contact Après", () => setPage("Contact")],
   ];
   return (
@@ -2362,7 +2418,7 @@ function FAQs({ setPage }) {
       <section className="faq-hero">
         <div>
           <h2>Start with your school or camp.</h2>
-          <p>The fastest route is usually to choose the site first. We will show the correct booking platform before you leave the Après School website.</p>
+          <p>Choose the site first. Wraparound care stays in the Après School family booking system, while holiday-camp cards clearly show any external route.</p>
         </div>
         <div className="faq-actions">
           <button className="button book" type="button" onClick={() => setPage("Bookings")}>Find My Site</button>
@@ -2724,7 +2780,7 @@ function Badge({ value }) {
 function Footer({ setPage }) {
   const columns = [
     ["Clubs", ["Bookings", "Holiday Clubs", "Wraparound"]],
-    ["Parents", ["Magicbooking", "Book Pebble", "Payments", "Cancellations"]],
+    ["Parents", ["Bookings", "Payments", "Cancellations", "Contact"]],
     ["Schools", ["Schools", "Policies", "Contact"]],
     ["Staff", ["Staff Application", "Contact"]],
   ];
@@ -2737,22 +2793,22 @@ function Footer({ setPage }) {
         <div className="footer-badges">
           <span>Safer recruitment</span>
           <span>School partnerships</span>
-          <span>Clear booking routes</span>
+          <span>Simple online booking</span>
         </div>
       </div>
       {columns.map(([heading, links]) => (
         <div className="footer-column" key={heading}>
           <h3>{heading}</h3>
           {links.map((link) => <button key={link} type="button" onClick={() => setPage(link)}>{link}</button>)}
-          {heading === "Parents" && <a className="footer-beta-link" href="/launch-booking">Beta Booking System</a>}
+          {heading === "Parents" && <a className="footer-beta-link" href="/launch-booking">Family booking system</a>}
         </div>
       ))}
       <div className="footer-contact">
         <h3>Get in touch</h3>
         <a href="mailto:hello@apres-school.co.uk">hello@apres-school.co.uk</a>
-        <small>Bookings currently open through Magicbooking or Book Pebble.</small>
+        <small>Book care securely online, or contact us if you need any help.</small>
         <div className="footer-actions">
-          <button className="button book" type="button" onClick={() => setPage("Bookings")}>Book Now</button>
+          <button className="button book" type="button" onClick={() => setPage("Bookings")}>Book now</button>
           <button className="button light" type="button" onClick={() => setPage("Contact")}>Contact</button>
         </div>
       </div>

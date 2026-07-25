@@ -6,6 +6,16 @@ const assetDir = path.join(distDir, "assets");
 const referencedExtensions = new Set([".html", ".js", ".css", ".json", ".webmanifest", ".xml", ".txt"]);
 const prunableExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"]);
 const junkFileNames = new Set([".DS_Store", "Thumbs.db"]);
+const alwaysKeepPublicPaths = new Set([
+  // Used by the server-side first-aid email template, so it does not appear
+  // in the browser bundle scanned below.
+  "/assets/apres-first-aid-body-map.png",
+]);
+const alwaysKeepPublicPrefixes = [
+  // Email-safe highlighted maps generated from the same selectable regions as
+  // the register body map. Each selected injury area has its own public image.
+  "/assets/first-aid-body-maps/",
+];
 
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -53,6 +63,8 @@ for (const file of files) {
   if (!prunableExtensions.has(extension)) continue;
 
   const publicPath = `/${path.relative(distDir, file).split(path.sep).join("/")}`;
+  if (alwaysKeepPublicPaths.has(publicPath)) continue;
+  if (alwaysKeepPublicPrefixes.some((prefix) => publicPath.startsWith(prefix))) continue;
   if (referenceText.includes(publicPath)) continue;
 
   const details = await stat(file);

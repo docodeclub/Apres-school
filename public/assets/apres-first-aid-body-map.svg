@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="455" viewBox="0 0 720 455" role="img" aria-labelledby="title description">
+  <title id="title">First aid body map</title>
+  <description id="description">Recognisable front and back human silhouettes used to record affected areas.</description>
+  <rect width="720" height="455" rx="34" fill="#f4fbf7"/>
+  <text x="190" y="48" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#314bb8">FRONT</text>
+  <text x="530" y="48" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#314bb8">BACK</text>
+  <g fill="#dce5ff" stroke="#365bb5" stroke-width="5" stroke-linejoin="round">
+    <g transform="translate(90 60)">
+      <circle cx="100" cy="42" r="34"/>
+      <path d="M77 78 C61 96 56 126 60 164 C64 198 75 223 80 239 L70 331 C68 349 78 360 91 360 C103 360 109 349 110 334 L113 253 L126 334 C128 349 134 360 147 360 C160 360 169 349 166 331 L157 239 C163 220 174 195 179 162 C183 126 177 96 160 78 C141 69 96 69 77 78 Z"/>
+      <path d="M64 101 C48 117 37 142 29 172 L10 239 C6 253 13 263 25 266 C37 268 44 259 48 247 L70 184 Z"/>
+      <path d="M175 101 C191 117 202 142 210 172 L229 239 C233 253 226 263 214 266 C202 268 195 259 191 247 L169 184 Z"/>
+      <circle cx="21" cy="276" r="16"/>
+      <circle cx="218" cy="276" r="16"/>
+    </g>
+    <g transform="translate(430 60)">
+      <circle cx="100" cy="42" r="34"/>
+      <path d="M77 78 C61 96 56 126 60 164 C64 198 75 223 80 239 L70 331 C68 349 78 360 91 360 C103 360 109 349 110 334 L113 253 L126 334 C128 349 134 360 147 360 C160 360 169 349 166 331 L157 239 C163 220 174 195 179 162 C183 126 177 96 160 78 C141 69 96 69 77 78 Z"/>
+      <path d="M64 101 C48 117 37 142 29 172 L10 239 C6 253 13 263 25 266 C37 268 44 259 48 247 L70 184 Z"/>
+      <path d="M175 101 C191 117 202 142 210 172 L229 239 C233 253 226 263 214 266 C202 268 195 259 191 247 L169 184 Z"/>
+      <circle cx="21" cy="276" r="16"/>
+      <circle cx="218" cy="276" r="16"/>
+      <path d="M82 112 C102 125 137 125 157 112" fill="none"/>
+      <path d="M81 207 C104 222 135 222 158 207" fill="none"/>
+    </g>
+  </g>
+</svg>

@@ -5,7 +5,10 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const enquiryFunctionName = import.meta.env.VITE_ENQUIRY_FUNCTION_NAME || "notify-public-enquiry";
 const coverMoveFunctionName = import.meta.env.VITE_COVER_MOVE_FUNCTION_NAME || "notify-cover-move";
 const staffAccountFunctionName = import.meta.env.VITE_STAFF_ACCOUNT_FUNCTION_NAME || "manage-staff-account";
+const payslipNotificationFunctionName = import.meta.env.VITE_PAYSLIP_NOTIFICATION_FUNCTION_NAME || "notify-payslip-available";
+const staffPayPinFunctionName = import.meta.env.VITE_STAFF_PAY_PIN_FUNCTION_NAME || "manage-staff-pay-pin";
 const financeInvoiceFunctionName = import.meta.env.VITE_FINANCE_INVOICE_FUNCTION_NAME || "send-finance-invoice";
+const adminParentCreditFunctionName = import.meta.env.VITE_ADMIN_PARENT_CREDIT_FUNCTION_NAME || "admin-adjust-parent-credit";
 const staffPhotoBucket = "staff-profile-photos";
 const staffHrFilesBucket = "staff-hr-files";
 
@@ -31,6 +34,41 @@ export async function signOutStaff() {
   if (!supabase) return;
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
+}
+
+async function manageStaffPayPin(body) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.functions.invoke(staffPayPinFunctionName, { body });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Unable to manage Pay privacy");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data || {};
+}
+
+export function getStaffPayPinStatus() {
+  return manageStaffPayPin({ action: "status" });
+}
+
+export function setStaffPayPin(pin) {
+  return manageStaffPayPin({ action: "set", pin });
+}
+
+export function verifyStaffPayPin(pin) {
+  return manageStaffPayPin({ action: "verify", pin });
+}
+
+export function changeStaffPayPin(currentPin, newPin) {
+  return manageStaffPayPin({ action: "change", currentPin, newPin });
+}
+
+export function resetStaffPayPin(password, newPin) {
+  return manageStaffPayPin({ action: "reset", password, newPin });
+}
+
+export function removeStaffPayPin(password) {
+  return manageStaffPayPin({ action: "remove", password });
 }
 
 export async function updateStaffPassword(password) {
@@ -66,7 +104,7 @@ export async function getProfileRole(userId) {
 }
 
 export async function getProfileAccess(userId) {
-  if (!supabase || !userId) return { role: "Staff", mustChangePassword: false, active: false };
+  if (!supabase || !userId) return { role: "Staff", mustChangePassword: false, active: false, staffAccess: false };
   const { data, error } = await supabase
     .from("profiles")
     .select("role, active, must_change_password")
@@ -74,12 +112,16 @@ export async function getProfileAccess(userId) {
     .maybeSingle();
 
   if (error) throw error;
-  if (!data?.active) return { role: "Staff", mustChangePassword: false, active: false };
+  if (!data?.active) return { role: "Staff", mustChangePassword: false, active: false, staffAccess: false };
+
+  const storedRole = String(data.role || "").toLowerCase();
+  const staffAccess = ["staff", "manager", "admin", "superadmin"].includes(storedRole);
 
   return {
-    role: normalizeRole(data.role),
+    role: storedRole === "parent" ? "Parent" : normalizeRole(data.role),
     mustChangePassword: Boolean(data.must_change_password),
     active: true,
+    staffAccess,
   };
 }
 
@@ -89,6 +131,116 @@ export function normalizeRole(role) {
   if (value === "admin") return "Admin";
   if (value === "manager") return "Manager";
   return "Staff";
+}
+
+export async function fetchMigrationReviewFamilies() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+
+  const { data, error } = await supabase
+    .from("parent_accounts")
+    .select(`
+      id,
+      profile_id,
+      full_name,
+      email,
+      phone,
+      billing_address,
+      emergency_contact,
+      marketing_preferences,
+      portal_status,
+      external_source,
+      external_id,
+      registered_centres,
+      migration_metadata,
+      created_at,
+      updated_at,
+      parent_account_credit_entries(
+        id,
+        entry_type,
+        amount,
+        currency,
+        status,
+        description,
+        metadata,
+        created_at,
+        updated_at
+      ),
+      child_profiles(
+        id,
+        full_name,
+        preferred_name,
+        date_of_birth,
+        school_name,
+        year_group,
+        medical_notes,
+        allergy_notes,
+        dietary_notes,
+        authorised_collectors,
+        consents,
+        flags,
+        active,
+        external_source,
+        external_id,
+        migration_metadata,
+        created_at,
+        updated_at
+      )
+    `)
+    .is("archived_at", null)
+    .order("full_name", { ascending: true });
+
+  if (error) throw error;
+  return (data || []).map((family) => ({
+    ...family,
+    parent_account_credit_entries: [...(family.parent_account_credit_entries || [])].sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))),
+    child_profiles: [...(family.child_profiles || [])].sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || ""))),
+  }));
+}
+
+export async function adjustParentAccountCredit({ parentAccountId, amount, reason, note }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.functions.invoke(adminParentCreditFunctionName, {
+    body: { parentAccountId, amount, reason, note },
+  });
+  if (error) {
+    let message = error.message || "The credit adjustment could not be saved.";
+    try {
+      const detail = await error.context?.json?.();
+      if (detail?.error) message = detail.error;
+    } catch {
+      // Keep the function error when its response body is unavailable.
+    }
+    throw new Error(message);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+export async function fetchMigrationHealthReviewItems() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+
+  const { data, error } = await supabase
+    .from("migration_health_review_items")
+    .select("id,external_parent_id,external_child_id,parent_name,parent_email,child_name,item_type,item_name,expiry_date,status,detail,recommended_action,imported_child_profile_id,updated_at")
+    .order("expiry_date", { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function resolveMigrationHealthReviewItem({ itemId, itemName, expiryDate, confirmationMethod, notes = "" }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+
+  const { data, error } = await supabase.rpc("resolve_migration_health_review", {
+    p_item_id: itemId,
+    p_item_name: itemName,
+    p_expiry_date: expiryDate,
+    p_confirmation_method: confirmationMethod,
+    p_notes: notes || null,
+  });
+
+  if (error) throw error;
+  return data;
 }
 
 export async function fetchPlatformData({ userId, role }) {
@@ -189,6 +341,11 @@ export async function fetchPlatformData({ userId, role }) {
       expiry_date,
       status,
       notes,
+      payslip_gross_pay,
+      payslip_net_pay,
+      payslip_process_date,
+      payslip_pay_source,
+      payslip_pay_verified_at,
       uploaded_at,
       hr_file_categories(id, name, sensitivity),
       staff_records!staff_hr_files_staff_record_id_fkey(preferred_name, profiles!staff_records_profile_id_fkey(full_name, email))
@@ -681,6 +838,11 @@ function mapHrFiles(records) {
       expiryDate: record.expiry_date || "",
       status: record.status || "active",
       notes: record.notes || "",
+      payslipGrossPay: record.payslip_gross_pay == null ? null : Number(record.payslip_gross_pay),
+      payslipNetPay: record.payslip_net_pay == null ? null : Number(record.payslip_net_pay),
+      payslipProcessDate: record.payslip_process_date || "",
+      payslipPaySource: record.payslip_pay_source || "",
+      payslipPayVerifiedAt: record.payslip_pay_verified_at || "",
       uploadedAt: record.uploaded_at || "",
     };
   });
@@ -1132,6 +1294,11 @@ export async function createHrFile(payload) {
       expiry_date: payload.expiryDate || null,
       status: payload.status || "active",
       notes: payload.notes || null,
+      payslip_gross_pay: payload.payslipGrossPay ?? null,
+      payslip_net_pay: payload.payslipNetPay ?? null,
+      payslip_process_date: payload.payslipProcessDate || null,
+      payslip_pay_source: payload.payslipPaySource || null,
+      payslip_pay_verified_at: payload.payslipPayVerifiedAt || null,
     })
     .select(`
       id,
@@ -1143,6 +1310,11 @@ export async function createHrFile(payload) {
       expiry_date,
       status,
       notes,
+      payslip_gross_pay,
+      payslip_net_pay,
+      payslip_process_date,
+      payslip_pay_source,
+      payslip_pay_verified_at,
       uploaded_at,
       hr_file_categories(id, name, sensitivity),
       staff_records!staff_hr_files_staff_record_id_fkey(preferred_name, profiles!staff_records_profile_id_fkey(full_name, email))
@@ -1155,12 +1327,77 @@ export async function createHrFile(payload) {
   return file;
 }
 
+async function extractPayslipPayData(file) {
+  const [{ getDocument, GlobalWorkerOptions }, workerModule] = await Promise.all([
+    import("pdfjs-dist/legacy/build/pdf.mjs"),
+    import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+  ]);
+  GlobalWorkerOptions.workerSrc = workerModule.default;
+
+  const document = await getDocument({ data: new Uint8Array(await file.arrayBuffer()), verbosity: 0 }).promise;
+  const lines = [];
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const page = await document.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const rows = new Map();
+    for (const item of content.items || []) {
+      const text = String(item.str || "").trim();
+      if (!text) continue;
+      const y = Math.round(Number(item.transform?.[5] || 0));
+      if (!rows.has(y)) rows.set(y, []);
+      rows.get(y).push(item);
+    }
+    for (const [, items] of Array.from(rows.entries()).sort((left, right) => right[0] - left[0])) {
+      lines.push(items
+        .sort((left, right) => Number(left.transform?.[4] || 0) - Number(right.transform?.[4] || 0))
+        .map((item) => String(item.str || "").trim())
+        .filter(Boolean)
+        .join(" "));
+    }
+  }
+
+  const text = lines.join("\n");
+  const grossMatch = text.match(/Total\s+Gross\s+Pay\s+(-?[\d,]+\.\d{2})/i);
+  let netMatch = text.match(/Net\s+Pay\s+(-?[\d,]+\.\d{2})/i);
+  if (!netMatch) {
+    const netLineIndex = lines.findIndex((line) => /Net\s+Pay/i.test(line));
+    const nearbyValues = netLineIndex >= 0
+      ? [lines[netLineIndex], lines[netLineIndex - 1], lines[netLineIndex + 1]]
+          .filter(Boolean)
+          .join(" ")
+          .match(/-?[\d,]+\.\d{2}/g) || []
+      : [];
+    if (nearbyValues.length) netMatch = [nearbyValues.at(-1), nearbyValues.at(-1)];
+  }
+  const processDateMatch = text.match(/\b(\d{2})\/(\d{2})\/(20\d{2})\b/);
+  if (!grossMatch || !netMatch) {
+    throw new Error("The payslip was not uploaded because its Total Gross Pay and Net Pay could not be read. Check that this is a standard payroll payslip PDF.");
+  }
+
+  return {
+    payslipGrossPay: Number(grossMatch[1].replace(/,/g, "")),
+    payslipNetPay: Number(netMatch[1].replace(/,/g, "")),
+    payslipProcessDate: processDateMatch
+      ? `${processDateMatch[3]}-${processDateMatch[2]}-${processDateMatch[1]}`
+      : "",
+    payslipPaySource: "pdf_text",
+    payslipPayVerifiedAt: new Date().toISOString(),
+  };
+}
+
 export async function uploadHrFile(payload, file) {
   if (!supabase) throw new Error("Supabase is not configured.");
   if (!payload?.staffRecordId || !file) throw new Error("Choose a staff member and file.");
 
   const extension = file.name?.split(".").pop()?.toLowerCase() || "pdf";
   const safeExtension = ["pdf", "doc", "docx", "jpg", "jpeg", "png", "webp"].includes(extension) ? extension : "pdf";
+  const isPayslip = /payslip/i.test(String(payload.category || ""));
+  const payslipPayData = isPayslip ? await extractPayslipPayData(file) : {};
+  const expectedPeriod = String(payload.issueDate || "").slice(0, 7);
+  const processPeriod = String(payslipPayData.payslipProcessDate || "").slice(0, 7);
+  if (isPayslip && expectedPeriod && processPeriod && expectedPeriod !== processPeriod) {
+    throw new Error(`This payslip is dated ${processPeriod}, not ${expectedPeriod}. Choose the matching payroll month before uploading it.`);
+  }
   const contentTypes = {
     pdf: "application/pdf",
     doc: "application/msword",
@@ -1181,9 +1418,11 @@ export async function uploadHrFile(payload, file) {
     });
   if (uploadError) throw uploadError;
 
+  let saved;
   try {
-    return await createHrFile({
+    saved = await createHrFile({
       ...payload,
+      ...payslipPayData,
       storagePath,
       fileUrl: "",
     });
@@ -1191,6 +1430,32 @@ export async function uploadHrFile(payload, file) {
     await supabase.storage.from(staffHrFilesBucket).remove([storagePath]);
     throw error;
   }
+
+  if (isPayslip) {
+    try {
+      saved.payslipNotification = await notifyPayslipAvailable(saved.id);
+    } catch (error) {
+      saved.payslipNotification = {
+        emailed: false,
+        emailError: error.message || "Payslip notification failed.",
+      };
+    }
+  }
+  return saved;
+}
+
+export async function notifyPayslipAvailable(hrFileId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!hrFileId) throw new Error("Choose a payslip.");
+
+  const { data, error } = await supabase.functions.invoke(payslipNotificationFunctionName, {
+    body: { hrFileId },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Payslip notification failed.");
+  }
+  return data;
 }
 
 export async function checkHrFileStorageHealth() {

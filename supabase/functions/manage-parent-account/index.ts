@@ -38,20 +38,40 @@ serve(async (request) => {
     const action = stringValue(rawPayload.action);
     if (action === "invite-holder") return inviteLinkedAccountHolder(actor, rawPayload);
     if (action === "remove-holder") return removeLinkedAccountHolder(actor, rawPayload);
+    if (action === "update-own-contact") return updateOwnContact(actor, rawPayload);
+    if (action === "update-own-password") return updateOwnPassword(actor, rawPayload);
 
     if (!["admin", "superadmin"].includes(String(actor.role || "").toLowerCase())) {
       return json({ error: "Not authorised to manage parent accounts" }, 403);
+    }
+
+    if (action === "preview-migration-invite") {
+      return sendMigrationInvitePreview(actor, rawPayload);
     }
 
     const payload = normalizePayload(rawPayload);
     const validationError = validatePayload(payload);
     if (validationError) return json({ error: validationError }, 400);
 
+    if (payload.action === "invite") {
+      const safetyBlockers = await getMigrationInvitationSafetyBlockers(payload);
+      if (safetyBlockers.length) {
+        return json({
+          error: "This invitation is blocked until the expired auto-injector record has been updated.",
+          code: "migration_safety_review_required",
+          blockers: safetyBlockers,
+        }, 409);
+      }
+    }
+
     const user = await createOrUpdateUser(payload);
     await upsertParentProfile(user.id, payload);
     const parentAccount = await upsertParentAccount(user.id, payload);
-    const emailSubject = payload.action === "invite"
-      ? "Your Après School parent account"
+    const migrationInvite = isMagicbookingMigrationInvite(payload);
+    const emailSubject = migrationInvite
+      ? "Welcome to the new Après School booking system"
+      : payload.action === "invite"
+        ? "Your Après School parent account"
       : "Your Après School parent account password has been reset";
 
     let emailed = false;
@@ -60,15 +80,15 @@ serve(async (request) => {
     const emailLog = await sendBookingEmail(supabase, {
       recipientEmail: payload.email,
       recipientName: payload.name,
-      emailType: payload.action === "invite" ? "parent_invite" : "parent_password_reset",
+      emailType: migrationInvite ? "parent_migration_invite" : payload.action === "invite" ? "parent_invite" : "parent_password_reset",
       subject: emailSubject,
       text: emailLines.join("\n"),
       html: paragraphsToHtml(emailLines, {
-        title: payload.action === "invite" ? "Your parent account is ready" : "Password reset",
-        preheader: "Access your Après School parent portal.",
+        title: migrationInvite ? "Your family account has moved to Après School" : payload.action === "invite" ? "Your parent account is ready" : "Password reset",
+        preheader: migrationInvite ? "Your Magicbooking family details are ready to review." : "Access your Après School parent portal.",
       }),
       sentBy: actor.id,
-      metadata: { loginUrl: payload.loginUrl, parentAccountId: parentAccount.id },
+      metadata: { loginUrl: payload.loginUrl, parentAccountId: parentAccount.id, migrationInvite },
     });
     emailed = emailLog?.status === "sent";
     emailError = typeof emailLog?.error_message === "string" ? emailLog.error_message : "";
@@ -101,6 +121,43 @@ serve(async (request) => {
     return json({ error: error instanceof Error ? error.message : "Unable to manage parent account" }, 500);
   }
 });
+
+async function sendMigrationInvitePreview(actor: ActorProfile, rawPayload: Record<string, unknown>) {
+  const recipientEmail = stringValue(rawPayload.email).toLowerCase();
+  const recipientName = stringValue(rawPayload.name) || "Parent";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+    return json({ error: "Enter a valid preview email address." }, 400);
+  }
+
+  const payload = normalizePayload({
+    action: "invite",
+    name: recipientName,
+    email: recipientEmail,
+    temporaryPassword: "EXAMPLE-ONLY-NOT-A-REAL-PASSWORD",
+    loginUrl: stringValue(rawPayload.loginUrl) || defaultLoginUrl,
+    marketingPreferences: { imported: true, source: "magicbooking", preview: true },
+  });
+  const emailLines = buildEmailLines(payload);
+  const emailLog = await sendBookingEmail(supabase, {
+    recipientEmail,
+    recipientName,
+    emailType: "parent_migration_invite_preview",
+    subject: "[Preview] Welcome to the new Après School booking system",
+    text: emailLines.join("\n"),
+    html: paragraphsToHtml(emailLines, {
+      title: "Your family account has moved to Après School",
+      preheader: "Your Magicbooking family details are ready to review.",
+    }),
+    sentBy: actor.id,
+    metadata: { preview: true, migrationSource: "magicbooking" },
+  });
+
+  return json({
+    sent: emailLog?.status === "sent",
+    status: emailLog?.status || "unknown",
+    error: typeof emailLog?.error_message === "string" ? emailLog.error_message : "",
+  });
+}
 
 async function inviteLinkedAccountHolder(actor: ActorProfile, payload: Record<string, unknown>) {
   const parentAccountId = stringValue(payload.parentAccountId);
@@ -246,6 +303,110 @@ async function getPrimaryParentAccount(actor: ActorProfile, parentAccountId: str
   return null;
 }
 
+async function updateOwnContact(actor: ActorProfile, payload: Record<string, unknown>) {
+  const fullName = stringValue(payload.fullName);
+  const email = stringValue(payload.email).toLowerCase();
+  const phone = stringValue(payload.phone);
+  if (!fullName) return json({ error: "Your name is required." }, 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "Enter a valid email address." }, 400);
+  if (phone && !isValidPhoneNumber(phone)) return json({ error: "Enter a valid phone number." }, 400);
+
+  const { data: primaryAccount, error: primaryError } = await supabase
+    .from("parent_accounts")
+    .select("id, profile_id, email, full_name, phone")
+    .eq("profile_id", actor.id)
+    .maybeSingle();
+  if (primaryError) throw primaryError;
+
+  let linkedHolder = null;
+  if (!primaryAccount) {
+    const { data, error } = await supabase
+      .from("parent_account_holders")
+      .select("id, parent_account_id, profile_id, email, full_name, status")
+      .or(`profile_id.eq.${actor.id},email.eq.${actor.email || ""}`)
+      .neq("status", "removed")
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    linkedHolder = data;
+  }
+  if (!primaryAccount && !linkedHolder) return json({ error: "No parent account is attached to this login." }, 404);
+
+  const { error: authError } = await supabase.auth.admin.updateUserById(actor.id, {
+    email,
+    email_confirm: true,
+    user_metadata: { full_name: fullName, role: "parent" },
+  });
+  if (authError) throw authError;
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({ email, full_name: fullName })
+    .eq("id", actor.id);
+  if (profileError) throw profileError;
+
+  if (primaryAccount) {
+    const { error } = await supabase
+      .from("parent_accounts")
+      .update({ email, full_name: fullName, phone: phone || null, updated_at: new Date().toISOString() })
+      .eq("id", primaryAccount.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from("parent_account_holders")
+      .update({ email, full_name: fullName, updated_at: new Date().toISOString() })
+      .eq("id", linkedHolder.id);
+    if (error) throw error;
+  }
+
+  await supabase.from("audit_log").insert({
+    actor_id: actor.id,
+    action: "parent_contact_updated",
+    table_name: primaryAccount ? "parent_accounts" : "parent_account_holders",
+    record_id: primaryAccount?.id || linkedHolder.id,
+    metadata: {
+      previousEmail: actor.email,
+      email,
+      phoneChanged: Boolean(primaryAccount && String(primaryAccount.phone || "") !== phone),
+      accountRole: primaryAccount ? "primary" : "secondary",
+    },
+  });
+
+  return json({ ok: true, email, fullName, phone: primaryAccount ? phone : undefined, role: primaryAccount ? "primary" : "secondary" });
+}
+
+async function updateOwnPassword(actor: ActorProfile, payload: Record<string, unknown>) {
+  const newPassword = stringValue(payload.newPassword);
+  const passwordError = parentPasswordError(newPassword);
+  if (passwordError) return json({ error: passwordError }, 400);
+
+  const { error: authError } = await supabase.auth.admin.updateUserById(actor.id, { password: newPassword });
+  if (authError) throw authError;
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({ must_change_password: false, password_changed_at: new Date().toISOString() })
+    .eq("id", actor.id);
+  if (profileError) throw profileError;
+
+  await supabase.from("audit_log").insert({
+    actor_id: actor.id,
+    action: "parent_password_changed",
+    table_name: "profiles",
+    record_id: actor.id,
+    metadata: { selfService: true },
+  });
+  return json({ ok: true });
+}
+
+function parentPasswordError(password: string) {
+  if (password.length < 10) return "Use at least 10 characters for your new password.";
+  if (!/[A-Z]/.test(password)) return "Add at least one capital letter.";
+  if (!/[a-z]/.test(password)) return "Add at least one lowercase letter.";
+  if (!/\d/.test(password)) return "Add at least one number.";
+  if (!/[^A-Za-z0-9]/.test(password)) return "Add at least one symbol.";
+  return "";
+}
+
 async function getActor(authHeader: string) {
   if (!authHeader) return null;
   const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -289,13 +450,23 @@ async function findAuthUserByEmail(email: string) {
   let page = 1;
   while (page <= 20) {
     const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
-    if (error) throw error;
+    if (error) return findAuthUserByEmailFromDatabase(email, error.message);
     const found = data.users.find((user) => user.email?.toLowerCase() === targetEmail);
     if (found) return found;
     if (data.users.length < 1000) break;
     page += 1;
   }
   return null;
+}
+
+async function findAuthUserByEmailFromDatabase(email: string, adminApiError: string) {
+  const { data, error } = await supabase
+    .rpc("find_auth_user_id_by_email", { p_email: email })
+    .maybeSingle();
+
+  if (error) throw new Error(`Supabase Auth could not inspect existing users: ${adminApiError}`);
+  if (!data?.id) return null;
+  return { id: data.id, email: data.email, user_metadata: {} };
 }
 
 async function upsertParentProfile(userId: string, payload: ParentAccountPayload) {
@@ -332,6 +503,34 @@ async function upsertParentAccount(userId: string, payload: ParentAccountPayload
 
 function buildEmailLines(payload: ParentAccountPayload) {
   const firstName = payload.name.split(" ")[0] || payload.name;
+  if (isMagicbookingMigrationInvite(payload)) {
+    return [
+      `Hi ${firstName},`,
+      "",
+      "We are moving our family booking experience from Magicbooking to the new Après School booking system.",
+      "",
+      "Your existing family account and child records have been securely migrated, so you do not need to enter everything again.",
+      "",
+      "What to do next",
+      "1. Open the parent portal using the link below.",
+      "2. Sign in with your email address and the temporary password in this email.",
+      "3. Enter the emailed security passcode and choose your own password when prompted.",
+      "4. Review your family details and complete any items marked as needing attention.",
+      "5. Book the September sessions you need.",
+      "",
+      `Parent portal: ${payload.loginUrl}`,
+      `Temporary password: ${payload.temporaryPassword}`,
+      "",
+      "We may have imported contact details, child information, care notes, medical information and consent records from Magicbooking. Please check these carefully before making a booking so our team has the latest information.",
+      "",
+      "New September bookings are now available through the Après School parent portal.",
+      "",
+      "If you need help, reply to this email and our team will be happy to assist.",
+      "",
+      "Thank you,",
+      "Après School",
+    ];
+  }
   const intro = payload.action === "invite"
     ? "Your Après School parent account has been created."
     : "Your Après School parent account password has been reset.";
@@ -351,6 +550,47 @@ function buildEmailLines(payload: ParentAccountPayload) {
     "Thank you,",
     "Après School",
   ];
+}
+
+function isMagicbookingMigrationInvite(payload: ParentAccountPayload) {
+  if (payload.action !== "invite") return false;
+  const preferences = payload.marketingPreferences;
+  return preferences.imported === true || stringValue(preferences.source).toLowerCase() === "magicbooking";
+}
+
+async function getMigrationInvitationSafetyBlockers(payload: ParentAccountPayload) {
+  const externalParentId = stringValue(payload.marketingPreferences.externalParentId);
+  let query = supabase
+    .from("migration_health_review_items")
+    .select("id,external_parent_id,child_name,item_type,item_name,expiry_date,status,recommended_action")
+    .neq("status", "resolved");
+
+  if (externalParentId) {
+    query = query.eq("external_parent_id", externalParentId);
+  } else {
+    const { data: parentAccount, error: parentError } = await supabase
+      .from("parent_accounts")
+      .select("external_id")
+      .eq("email", payload.email)
+      .eq("external_source", "magicbooking")
+      .maybeSingle();
+    if (parentError) throw parentError;
+    const matchedExternalParentId = stringValue(parentAccount?.external_id);
+    if (!matchedExternalParentId) return [];
+    query = query.eq("external_parent_id", matchedExternalParentId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map((item) => ({
+    id: item.id,
+    childName: item.child_name,
+    itemType: item.item_type,
+    itemName: item.item_name,
+    expiryDate: item.expiry_date,
+    status: item.status,
+    action: item.recommended_action || "Record a current device and expiry date before invitation.",
+  }));
 }
 
 type ParentAccountPayload = ReturnType<typeof normalizePayload>;

@@ -2,6 +2,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const PROJECT_REF = "djkfuftbtfthjpezvjuu";
 const BUCKET = "staff-hr-files";
@@ -19,6 +20,7 @@ const serviceKey = process.env.APRES_SERVICE_ROLE_KEY || process.env.SUPABASE_SE
 const anonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 const adminEmail = process.env.APRES_ADMIN_EMAIL;
 const adminPassword = process.env.APRES_ADMIN_PASSWORD;
+const payslipNotificationUrl = `${supabaseUrl}/functions/v1/notify-payslip-available`;
 
 const expectedFilesFromEnv = process.env.PAYSLIP_FILES
   ? process.env.PAYSLIP_FILES.split(",").map((file) => file.trim()).filter(Boolean)
@@ -32,6 +34,7 @@ const fileHints = {
   "C Hastoy.pdf": ["catherine", "hastoy"],
   "I Bailey.pdf": ["imogen", "bailey"],
   "J Azebaze-Ayanam.pdf": ["joelle", "azebaze", "ayanam"],
+  "J Azebaze-Ayanama.pdf": ["joelle", "azebaze", "ayanama"],
   "J Dixon.pdf": ["jeremy", "dixon"],
   "J Jackson.pdf": ["jackson"],
   "J Marsden.pdf": ["marsden"],
@@ -52,12 +55,14 @@ const fileHints = {
   "Jeremy.pdf": ["jeremy", "dixon"],
   "Joelle.pdf": ["joelle", "azebaze", "ayanam"],
   "Josephine.pdf": ["maisie", "marsden"],
+  "Jose.pdf": ["josie", "jackson"],
   "Josie.pdf": ["josie", "jackson"],
   "Julie.pdf": ["julie", "rose"],
   "Kelly.pdf": ["kelly", "foley"],
   "Rama.pdf": ["rama", "singh"],
   "Sadie.pdf": ["sadie", "woodley"],
   "Sadie(1).pdf": ["sadie", "woodley"],
+  "Sade.pdf": ["sadie", "woodley"],
   "Siu.pdf": ["siu", "fung", "au", "idy"],
   "Wendy.pdf": ["wendy", "pfeiffer", "pheiffer"],
 };
@@ -113,6 +118,63 @@ function payslipTitle(fileName) {
   return `${PERIOD_LABEL} payslip`;
 }
 
+async function extractPayslipPayData(fileBytes) {
+  const document = await getDocument({ data: new Uint8Array(fileBytes), disableWorker: true, verbosity: 0 }).promise;
+  const lines = [];
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const page = await document.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const rows = new Map();
+    for (const item of content.items || []) {
+      const text = String(item.str || "").trim();
+      if (!text) continue;
+      const y = Math.round(Number(item.transform?.[5] || 0));
+      if (!rows.has(y)) rows.set(y, []);
+      rows.get(y).push(item);
+    }
+    for (const [, items] of Array.from(rows.entries()).sort((left, right) => right[0] - left[0])) {
+      lines.push(items
+        .sort((left, right) => Number(left.transform?.[4] || 0) - Number(right.transform?.[4] || 0))
+        .map((item) => String(item.str || "").trim())
+        .filter(Boolean)
+        .join(" "));
+    }
+  }
+
+  const text = lines.join("\n");
+  let grossMatch = text.match(/Total\s+Gross\s+Pay\s+(-?[\d,]+\.\d{2})/i);
+  let netMatch = text.match(/Net\s+Pay\s+(-?[\d,]+\.\d{2})/i);
+  if (!netMatch) {
+    const netLineIndex = lines.findIndex((line) => /Net\s+Pay/i.test(line));
+    const nearbyValues = netLineIndex >= 0
+      ? [lines[netLineIndex], lines[netLineIndex - 1], lines[netLineIndex + 1]]
+          .filter(Boolean)
+          .join(" ")
+          .match(/-?[\d,]+\.\d{2}/g) || []
+      : [];
+    if (nearbyValues.length) netMatch = [nearbyValues.at(-1), nearbyValues.at(-1)];
+  }
+  if ((!grossMatch || !netMatch) && /Payment\s+Summary/i.test(text)) {
+    const employeeLine = lines.find((line) => /^\d+\s+(?!Employees\b)/i.test(line) && (line.match(/-?[\d,]+\.\d{2}/g) || []).length >= 2);
+    const values = employeeLine?.match(/-?[\d,]+\.\d{2}/g) || [];
+    if (values.length >= 2) {
+      grossMatch = [values[0], values[0]];
+      netMatch = [values.at(-1), values.at(-1)];
+    }
+  }
+  const processDateMatch = text.match(/\b(\d{2})\/(\d{2})\/(20\d{2})\b/);
+  if (!grossMatch || !netMatch) {
+    throw new Error("Total Gross Pay and Net Pay could not be read from the PDF.");
+  }
+  return {
+    grossPay: Number(grossMatch[1].replace(/,/g, "")),
+    netPay: Number(netMatch[1].replace(/,/g, "")),
+    processDate: processDateMatch
+      ? `${processDateMatch[3]}-${processDateMatch[2]}-${processDateMatch[1]}`
+      : ISSUE_DATE,
+  };
+}
+
 function resolveMapping(fileName, staff) {
   const scores = staff
     .map((person) => ({ person, score: scoreStaff(fileName, person) }))
@@ -141,12 +203,14 @@ const supabase = createClient(supabaseUrl, serviceKey || anonKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+let notificationToken = serviceKey || "";
 if (!serviceKey) {
-  const { error: signInError } = await supabase.auth.signInWithPassword({
+  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
     email: adminEmail,
     password: adminPassword,
   });
   if (signInError) fail(`Could not sign in admin user: ${signInError.message}`);
+  notificationToken = signInData.session?.access_token || "";
 }
 
 const foundFiles = await readdir(payslipDir);
@@ -158,7 +222,7 @@ if (missingFiles.length) fail(`Missing expected payslip PDFs:\n${missingFiles.ma
 
 const { data: staff, error: staffError } = await supabase
   .from("staff_records")
-  .select("id, preferred_name, job_role, employment_type, primary_site, profiles(full_name, email)")
+  .select("id, preferred_name, job_role, employment_type, primary_site, profiles!staff_records_profile_id_fkey(full_name, email)")
   .is("archived_at", null)
   .order("preferred_name", { ascending: true });
 if (staffError) fail(`Could not load staff records: ${staffError.message}`);
@@ -200,6 +264,8 @@ if (!confirm) {
 
 let uploaded = 0;
 let skipped = 0;
+let notified = 0;
+const notificationFailures = [];
 
 for (const mapping of mappings) {
   const { data: existing, error: existingError } = await supabase
@@ -227,6 +293,15 @@ for (const mapping of mappings) {
 
   const filePath = path.join(payslipDir, mapping.fileName);
   const fileBytes = await readFile(filePath);
+  let payData;
+  try {
+    payData = await extractPayslipPayData(fileBytes);
+  } catch (error) {
+    fail(`Pay figures could not be read for ${mapping.fileName}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (payData.processDate.slice(0, 7) !== PERIOD) {
+    fail(`${mapping.fileName} is dated ${payData.processDate.slice(0, 7)}, not ${PERIOD}.`);
+  }
   const storagePath = `${mapping.staff.id}/${PERIOD}-payslip-${slug(mapping.fileName)}-${Date.now()}.pdf`;
   const { error: uploadError } = await supabase.storage.from(BUCKET).upload(storagePath, fileBytes, {
     cacheControl: "3600",
@@ -235,24 +310,65 @@ for (const mapping of mappings) {
   });
   if (uploadError) fail(`Upload failed for ${mapping.fileName}: ${uploadError.message}`);
 
-  const { error: insertError } = await supabase.from("staff_hr_files").insert({
-    staff_record_id: mapping.staff.id,
-    category_id: payslipCategory.id,
-    title: payslipTitle(mapping.fileName),
-    storage_path: storagePath,
-    file_url: null,
-    issue_date: ISSUE_DATE,
-    expiry_date: null,
-    status: "active",
-    notes: `Payslip for ${PERIOD_LABEL} payroll run.`,
-  });
+  const { data: insertedFile, error: insertError } = await supabase
+    .from("staff_hr_files")
+    .insert({
+      staff_record_id: mapping.staff.id,
+      category_id: payslipCategory.id,
+      title: payslipTitle(mapping.fileName),
+      storage_path: storagePath,
+      file_url: null,
+      issue_date: ISSUE_DATE,
+      expiry_date: null,
+      status: "active",
+      notes: `Payslip for ${PERIOD_LABEL} payroll run.`,
+      payslip_gross_pay: payData.grossPay,
+      payslip_net_pay: payData.netPay,
+      payslip_process_date: payData.processDate,
+      payslip_pay_source: "pdf_text",
+      payslip_pay_verified_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
   if (insertError) {
     await supabase.storage.from(BUCKET).remove([storagePath]);
     fail(`Metadata insert failed for ${mapping.fileName}: ${insertError.message}`);
   }
 
-  console.log(`DONE ${mapping.fileName} -> ${displayStaff(mapping.staff)}`);
+  let notificationSent = false;
+  try {
+    const response = await fetch(payslipNotificationUrl, {
+      method: "POST",
+      headers: {
+        apikey: serviceKey || anonKey,
+        Authorization: `Bearer ${notificationToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ hrFileId: insertedFile.id }),
+    });
+    const notification = await response.json().catch(() => ({}));
+    if (!response.ok || notification.emailed !== true) {
+      throw new Error(notification.error || notification.emailError || `notification returned ${response.status}`);
+    }
+    notificationSent = true;
+    notified += 1;
+  } catch (error) {
+    notificationFailures.push({
+      fileName: mapping.fileName,
+      staff: displayStaff(mapping.staff),
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  console.log(`${notificationSent ? "DONE" : "WARN"} ${mapping.fileName} -> ${displayStaff(mapping.staff)}${notificationSent ? " · notification sent" : " · uploaded but notification failed"}`);
   uploaded += 1;
 }
 
-console.log(`\nPayslip import complete. Uploaded: ${uploaded}. Skipped existing: ${skipped}.`);
+console.log(`\nPayslip import complete. Uploaded: ${uploaded}. Notifications sent: ${notified}. Skipped existing: ${skipped}.`);
+if (notificationFailures.length) {
+  console.error("\nNotification failures:");
+  for (const item of notificationFailures) {
+    console.error(`- ${item.fileName} -> ${item.staff}: ${item.error}`);
+  }
+  process.exitCode = 2;
+}

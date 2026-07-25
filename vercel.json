@@ -1,6 +1,38 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
+  "redirects": [
+    {
+      "source": "/booking/success",
+      "destination": "/launch-booking?payment=pending",
+      "permanent": false
+    },
+    {
+      "source": "/booking/cancel",
+      "destination": "/launch-booking?payment=cancelled",
+      "permanent": false
+    },
+    {
+      "source": "/booking/cancelled",
+      "destination": "/launch-booking?payment=cancelled",
+      "permanent": false
+    },
+    {
+      "source": "/booking/payment",
+      "destination": "/launch-booking?payment=pending",
+      "permanent": false
+    },
+    {
+      "source": "/booking/return",
+      "destination": "/launch-booking?payment=pending",
+      "permanent": false
+    },
+    {
+      "source": "/ponchopay/return",
+      "destination": "/launch-booking?payment=pending",
+      "permanent": false
+    }
+  ],
   "headers": [
     {
       "source": "/booking-lab",
@@ -81,6 +113,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/api/ponchopay/:event",
+      "destination": "/api/ponchopay_event?event=:event"
+    },
     {
       "source": "/:path*",
       "destination": "/index.html"

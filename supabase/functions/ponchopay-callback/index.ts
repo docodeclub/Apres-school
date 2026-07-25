@@ -180,9 +180,11 @@ function normalisePonchoPayEvent(payload: Record<string, unknown>, sourcePath: s
   const data = objectValue(payload.data);
   const payment = objectValue(payload.payment) || objectValue(data.payment);
   const invoice = objectValue(payload.invoice) || objectValue(data.invoice);
+  const providerRequest = objectValue(payload.request) || objectValue(data.request);
   const metadata =
     metadataObject(payload.metadata) ||
     metadataObject(data.metadata) ||
+    metadataObject(providerRequest.metadata) ||
     metadataObject(payment.metadata) ||
     {};
   const eventType =
@@ -293,6 +295,10 @@ function metadataObject(value: unknown) {
   } catch {
     return null;
   }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function validateEvent(event: ReturnType<typeof normalisePonchoPayEvent>) {

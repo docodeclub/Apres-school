@@ -80,6 +80,26 @@ serve(async (request) => {
 
     if (!bookingId) return json({ error: "Booking id is required." }, 400);
 
+    if (action === "cancel_staff_adhoc" || action === "cancel_adhoc") {
+      const { data, error } = await supabase.rpc("cancel_parent_staff_adhoc_booking", {
+        p_parent_id: actor.id,
+        p_booking_id: bookingId,
+        p_reason: stringValue(body.reason),
+      });
+      if (error) throw error;
+      const email = await sendBookingChangeEmail({
+        actor,
+        action: "cancel",
+        result: data as Record<string, unknown>,
+        reason: stringValue(body.reason),
+      });
+      return json({
+        action: "cancel_staff_adhoc",
+        email,
+        ...(data as Record<string, unknown>),
+      });
+    }
+
     if (action === "cancel" || action === "cancel_booking") {
       const { data, error } = await supabase.rpc("cancel_parent_booking", {
         p_parent_id: actor.id,
@@ -443,12 +463,74 @@ async function sendBookingChangeEmail({
   const booking = isObject(result.booking) ? result.booking : {};
   const bookingReference = stringValue(booking.bookingReference) || stringValue(booking.id) || "booking";
   const firstName = firstNameFrom(actor.full_name || actor.email);
+  const isStaffAdHocCancellation = action === "cancel" && result.staffAdHoc === true;
+  const creditRestored = moneyValue(result.creditRestored);
+  const adHocItems = Array.isArray(result.items)
+    ? result.items.filter(isObject)
+    : [];
+  const childName = stringValue(adHocItems[0]?.childName) || "Your child";
+  const sessionSummary = adHocItems
+    .map((item) => {
+      const label = stringValue(item.sessionLabel) || "Care session";
+      const startsAt = stringValue(item.startsAt);
+      if (!startsAt) return label;
+      const date = new Date(startsAt);
+      return Number.isNaN(date.getTime())
+        ? label
+        : `${label} on ${new Intl.DateTimeFormat("en-GB", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "Europe/London",
+        }).format(date)}`;
+    })
+    .join("\n");
   const emailType = action === "cancel"
     ? "booking_cancellation_confirmation"
     : "booking_amendment_confirmation";
-  const subject = action === "cancel"
+  const subject = isStaffAdHocCancellation
+    ? `Ad-hoc care cancelled · ${bookingReference}`
+    : action === "cancel"
     ? `Booking cancelled ${bookingReference}`
     : `Booking updated ${bookingReference}`;
+  if (isStaffAdHocCancellation) {
+    const lines = [
+      `Hi ${firstName},`,
+      "",
+      `${childName}'s ad-hoc care has been cancelled.`,
+      sessionSummary,
+      "",
+      "No further action is needed.",
+      creditRestored > 0
+        ? `${formatMoney(creditRestored)} of account credit has been returned to your family account.`
+        : "The ad-hoc charge has been removed from your family account.",
+      `Reference: ${bookingReference}`,
+      "",
+      "Thank you,",
+      "Après School",
+    ].filter((line) => line !== "");
+
+    return sendBookingEmail(supabase, {
+      recipientEmail: actor.email,
+      recipientName: actor.full_name,
+      emailType: "staff_adhoc_cancellation_confirmation",
+      subject,
+      text: lines.join("\n"),
+      html: paragraphsToHtml(lines, { title: subject }),
+      sentBy: actor.id,
+      metadata: {
+        bookingId: stringValue(booking.id),
+        bookingReference,
+        invoiceId: stringValue(booking.invoiceId),
+        action: "cancel_staff_adhoc",
+        creditRestored,
+        source: "update-parent-booking",
+      },
+    });
+  }
   const amountLine = action === "add_items"
     ? `Additional amount: ${formatMoney(moneyValue(result.addedTotal))}`
     : action === "remove_items"

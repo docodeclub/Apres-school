@@ -36,7 +36,7 @@ export const faqs = [
   ["Are staff checked?", "Staff checks are managed through safer recruitment workflows, identity checks, DBS expectations and role-appropriate training records."],
   ["Can schools request assurance documents?", "Yes. School partners can request policy summaries, insurance information and safer recruitment assurance through the appropriate channel."],
   ["Is first aid mandatory for every staff member?", "First aid is recorded and planned by role, site and programme need rather than assumed as a universal requirement for every person."],
-  ["Which booking platform should I use?", "Start on the Bookings page and choose your site. Each site card explains whether to use Magicbooking or Book Pebble."],
+  ["Where should I book?", "Start on the Bookings page and choose your site. Wraparound care opens the Après School family booking system; holiday-camp cards show the current route for that location."],
   ["Can my child attend a holiday camp if they do not go to that school?", "Some holiday camps are open to children from all schools, while others are school-specific. Check the site card before booking."],
   ["What happens if I cannot find my site?", "Contact Après School with the school, area and dates you need. The team can point you to the correct route."],
   ["Do you work with schools directly?", "Yes. Après School supports schools with wraparound care, holiday clubs, enrichment provision and staffing conversations."],

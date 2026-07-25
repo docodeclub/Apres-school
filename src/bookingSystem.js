@@ -19,11 +19,567 @@ export async function fetchCurrentProfile() {
   if (!userId) return null;
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, active")
+    .select("id, email, full_name, role, active, must_change_password")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+export async function fetchStaffRegister({ registerDate, siteName = null, programmeName = null } = {}) {
+  assertSupabase();
+  if (!registerDate) throw new Error("Choose a register date.");
+  const [registerResult, rewardResult, reportResult] = await Promise.allSettled([
+    supabase.rpc("staff_register_for_day", {
+      p_register_date: registerDate,
+      p_site_name: siteName || null,
+      p_programme_name: programmeName || null,
+    }),
+    supabase.rpc("staff_register_rewards_for_day", {
+      p_register_date: registerDate,
+    }),
+    supabase.rpc("staff_register_report_markers_for_day", {
+      p_register_date: registerDate,
+    }),
+  ]);
+  if (registerResult.status === "rejected") throw registerResult.reason;
+  const { data, error } = registerResult.value;
+  if (error) throw error;
+  const rewardRows = rewardResult.status === "fulfilled" && !rewardResult.value.error
+    ? rewardResult.value.data || []
+    : [];
+  const rewardsByChild = rewardRows.reduce((map, reward) => {
+    const childId = reward.child_id;
+    if (!childId) return map;
+    if (!map.has(childId)) map.set(childId, []);
+    map.get(childId).push({
+      id: reward.reward_id,
+      badgeType: reward.badge_type,
+      reason: reward.reason,
+      staffName: reward.awarded_by_name,
+      clubName: reward.club_name,
+      siteName: reward.site_name,
+      sessionLabel: reward.session_label,
+      awardedAt: reward.awarded_at,
+    });
+    return map;
+  }, new Map());
+  const reportRows = reportResult.status === "fulfilled" && !reportResult.value.error
+    ? reportResult.value.data || []
+    : [];
+  const reportsByChild = reportRows.reduce((map, report) => {
+    const childId = report.child_id;
+    if (!childId) return map;
+    if (!map.has(childId)) map.set(childId, []);
+    map.get(childId).push({
+      id: report.report_id,
+      reportType: report.report_type,
+      category: report.incident_category || "",
+      severity: report.incident_severity || "",
+      occurredAt: report.occurred_at,
+    });
+    return map;
+  }, new Map());
+  return (data || []).map((row) => ({
+    bookingItemId: row.booking_item_id,
+    bookingId: row.booking_id,
+    bookingReference: row.booking_reference,
+    bookingSource: row.booking_source || "",
+    bookingMetadata: row.booking_metadata || {},
+    staffAdHoc: row.booking_source === "staff_adhoc"
+      || row.booking_metadata?.staffAdHoc === true,
+    sessionId: row.session_id,
+    sessionBlockId: row.session_block_id,
+    childId: row.child_id,
+    childName: row.child_name,
+    childDateOfBirth: row.child_date_of_birth,
+    childSchoolName: row.child_school_name,
+    childYearGroup: row.child_year_group,
+    parentName: row.parent_name,
+    parentPhone: row.parent_phone,
+    emergencyContact: row.emergency_contact || {},
+    siteName: row.site_name,
+    programmeName: row.programme_name,
+    sessionLabel: row.session_label,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    attendanceStatus: row.attendance_status,
+    attendanceNote: row.attendance_note,
+    attendanceTime: row.attendance_time,
+    checkedInAt: row.checked_in_at,
+    checkedOutAt: row.checked_out_at,
+    medicalNotes: row.medical_notes,
+    allergyNotes: row.allergy_notes,
+    dietaryNotes: row.dietary_notes,
+    flags: Array.isArray(row.care_flags) ? row.care_flags : [],
+    authorisedCollectors: Array.isArray(row.authorised_collectors) ? row.authorised_collectors : [],
+    consents: row.consents || {},
+    rewardsToday: rewardsByChild.get(row.child_id) || [],
+    reportsToday: reportsByChild.get(row.child_id) || [],
+  }));
+}
+
+export async function fetchStaffChildActivityTimeline({ childId, limit = 50 } = {}) {
+  assertSupabase();
+  if (!childId) return [];
+  const { data, error } = await supabase.rpc("staff_child_activity_timeline", {
+    p_child_id: childId,
+    p_limit: limit,
+  });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchStaffRegisterTimetable({ from = new Date(), limit = 500 } = {}) {
+  assertSupabase();
+  const fromIso = from instanceof Date ? from.toISOString() : new Date(from).toISOString();
+  const { data, error } = await supabase
+    .from("sessions")
+    .select(`
+      id,
+      booking_label,
+      starts_at,
+      status,
+      parent_bookable,
+      programmes!inner(
+        id,
+        name,
+        active,
+        locations!inner(id, name, active)
+      ),
+      session_blocks(
+        id,
+        label,
+        starts_at,
+        ends_at,
+        parent_bookable,
+        sort_order
+      )
+    `)
+    .eq("parent_bookable", true)
+    .eq("programmes.active", true)
+    .eq("programmes.locations.active", true)
+    .gte("starts_at", fromIso)
+    .order("starts_at", { ascending: true })
+    .limit(limit);
+
+  if (error) throw error;
+
+  const options = [];
+  (data || []).forEach((row) => {
+    if (["cancelled", "closed"].includes(String(row.status || "").toLowerCase())) return;
+    const programme = row.programmes || {};
+    const location = programme.locations || {};
+    const blocks = (row.session_blocks || [])
+      .filter((block) => block.parent_bookable !== false)
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+
+    if (!blocks.length) {
+      options.push({
+        siteName: location.name || "",
+        programmeName: programme.name || row.booking_label || "Activity",
+        sessionLabel: row.booking_label || programme.name || "Session",
+      });
+      return;
+    }
+
+    blocks.forEach((block) => {
+      options.push({
+        siteName: location.name || "",
+        programmeName: programme.name || row.booking_label || "Activity",
+        sessionLabel: block.label || row.booking_label || "Session",
+      });
+    });
+  });
+
+  return [...new Map(options
+    .filter((option) => option.siteName && option.programmeName && option.sessionLabel)
+    .map((option) => [`${option.siteName}\u0000${option.programmeName}\u0000${option.sessionLabel}`, option]))
+    .values()];
+}
+
+export async function updateStaffRegisterEntry({ bookingItemId, status, note = "" } = {}) {
+  assertSupabase();
+  if (!bookingItemId) throw new Error("Choose a child on the register.");
+  const { data, error } = await supabase.rpc("update_staff_register_entry", {
+    p_booking_item_id: bookingItemId,
+    p_attendance_status: status,
+    p_note: note || "",
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function createStaffRegisterReport({
+  bookingItemId,
+  reportType,
+  summary,
+  details = {},
+  emailPrimaryContact = false,
+} = {}) {
+  assertSupabase();
+  if (!bookingItemId) throw new Error("Choose a pupil on the register.");
+  if (!["incident", "first_aid", "safeguarding"].includes(reportType)) {
+    throw new Error("Choose a report type.");
+  }
+  if (!String(summary || "").trim()) throw new Error("Add a clear factual account.");
+  const { data, error } = await supabase.rpc("create_register_pupil_report", {
+    p_booking_item_id: bookingItemId,
+    p_report_type: reportType,
+    p_summary: String(summary).trim(),
+    p_details: details || {},
+  });
+  if (error) throw error;
+  if (!emailPrimaryContact) return data;
+  try {
+    const notification = await notifyRegisterParent({
+      kind: "report",
+      recordId: data?.reportId,
+    });
+    return { ...data, ...notification };
+  } catch (notificationError) {
+    return {
+      ...data,
+      emailSent: false,
+      emailError: notificationError?.message || "The parent email could not be sent.",
+    };
+  }
+}
+
+export async function createSafeguardingConcern({
+  bookingItemId,
+  childSafeNow,
+  concernSource,
+  categories = [],
+  factualAccount,
+  immediateAction,
+  witnesses = {},
+  dslInformed = false,
+  dslInformedWho = "",
+  dslInformedAt = null,
+  occurredAt = null,
+} = {}) {
+  assertSupabase();
+  if (!bookingItemId) throw new Error("Choose a pupil on the register.");
+  const { data, error } = await supabase.rpc("create_safeguarding_concern", {
+    p_booking_item_id: bookingItemId,
+    p_child_safe_now: childSafeNow,
+    p_concern_source: concernSource,
+    p_categories: categories,
+    p_factual_account: String(factualAccount || "").trim(),
+    p_immediate_action: String(immediateAction || "").trim(),
+    p_witnesses: witnesses || {},
+    p_dsl_informed: Boolean(dslInformed),
+    p_dsl_informed_who: String(dslInformedWho || "").trim() || null,
+    p_dsl_informed_at: dslInformedAt || null,
+    p_occurred_at: occurredAt || new Date().toISOString(),
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function saveSafeguardingDraft({ bookingItemId, content } = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("save_safeguarding_draft", {
+    p_booking_item_id: bookingItemId,
+    p_content: content || {},
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function readSafeguardingDraft({ bookingItemId } = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("read_safeguarding_draft", {
+    p_booking_item_id: bookingItemId,
+  });
+  if (error) throw error;
+  return data || {};
+}
+
+export async function fetchSafeguardingCases({ limit = 200 } = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("list_safeguarding_cases", { p_limit: limit });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchSafeguardingCase({ caseId } = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("get_safeguarding_case", { p_case_id: caseId });
+  if (error) throw error;
+  return data || null;
+}
+
+export async function appendSafeguardingCaseEntry({
+  caseId,
+  entryType = "Case note",
+  content,
+  occurredAt = null,
+} = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("append_safeguarding_case_entry", {
+    p_case_id: caseId,
+    p_entry_type: entryType,
+    p_content: String(content || "").trim(),
+    p_occurred_at: occurredAt || new Date().toISOString(),
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function updateSafeguardingCase({
+  caseId,
+  status,
+  priority,
+  assignedDslId = null,
+} = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("update_safeguarding_case", {
+    p_case_id: caseId,
+    p_status: status,
+    p_priority: priority,
+    p_assigned_dsl_id: assignedDslId || null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function createSafeguardingCaseTask({
+  caseId,
+  title,
+  details = "",
+  assignedTo = null,
+  dueAt = null,
+} = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("create_safeguarding_case_task", {
+    p_case_id: caseId,
+    p_title: String(title || "").trim(),
+    p_details: String(details || "").trim(),
+    p_assigned_to: assignedTo || null,
+    p_due_at: dueAt || null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function completeSafeguardingCaseTask({ taskId } = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("complete_safeguarding_case_task", {
+    p_task_id: taskId,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function uploadSafeguardingAttachments({ caseId, files = [] } = {}) {
+  assertSupabase();
+  const uploaded = [];
+  for (const file of files) {
+    const safeName = String(file.name || "attachment")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(-120) || "attachment";
+    const path = `${caseId}/${crypto.randomUUID()}-${safeName}`;
+    const { error: uploadError } = await supabase.storage
+      .from("safeguarding-private")
+      .upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
+    if (uploadError) throw uploadError;
+    const { data, error } = await supabase.rpc("record_safeguarding_attachment", {
+      p_case_id: caseId,
+      p_storage_path: path,
+      p_file_name: file.name || safeName,
+      p_media_type: file.type || null,
+      p_byte_size: file.size || null,
+    });
+    if (error) throw error;
+    uploaded.push(data);
+  }
+  return uploaded;
+}
+
+export async function createStaffRegisterReward({
+  bookingItemId,
+  badgeType,
+  reason,
+  emailPrimaryContact = false,
+} = {}) {
+  assertSupabase();
+  if (!bookingItemId) throw new Error("Choose a pupil on the register.");
+  if (!badgeType) throw new Error("Choose a reward badge.");
+  if (!String(reason || "").trim()) throw new Error("Add a short reason for the reward.");
+  const { data, error } = await supabase.rpc("create_register_child_reward", {
+    p_booking_item_id: bookingItemId,
+    p_badge_type: badgeType,
+    p_reason: String(reason).trim(),
+  });
+  if (error) throw error;
+  if (!emailPrimaryContact) return data;
+  try {
+    const notification = await notifyRegisterParent({
+      kind: "reward",
+      recordId: data?.rewardId,
+    });
+    return { ...data, ...notification };
+  } catch (notificationError) {
+    return {
+      ...data,
+      emailSent: false,
+      emailError: notificationError?.message || "The parent email could not be sent.",
+    };
+  }
+}
+
+export async function fetchParentBadgeBook() {
+  assertSupabase();
+  await currentUser();
+  const { data, error } = await supabase.rpc("parent_badge_book");
+  if (error) throw error;
+  return {
+    rewards: Array.isArray(data?.rewards) ? data.rewards : [],
+    total: Number(data?.total || 0),
+    fetchedAt: data?.fetchedAt || new Date().toISOString(),
+  };
+}
+
+export async function fetchAdminRewardsDashboard({ limit = 12 } = {}) {
+  assertSupabase();
+  await currentUser();
+  const { data, error } = await supabase.rpc("admin_rewards_dashboard", {
+    p_limit: limit,
+  });
+  if (error) throw error;
+  return {
+    today: Number(data?.today || 0),
+    week: Number(data?.week || 0),
+    month: Number(data?.month || 0),
+    topBadges: (Array.isArray(data?.topBadges) ? data.topBadges : []).map((item) => ({
+      ...item,
+      total: Number(item.total ?? item.count ?? 0),
+    })),
+    topStaff: (Array.isArray(data?.topStaff) ? data.topStaff : []).map((item) => ({
+      ...item,
+      total: Number(item.total ?? item.count ?? 0),
+    })),
+    recent: Array.isArray(data?.recent) ? data.recent : [],
+    fetchedAt: data?.fetchedAt || new Date().toISOString(),
+  };
+}
+
+async function notifyRegisterParent({ kind, recordId } = {}) {
+  if (!recordId) throw new Error("The record was saved, but its parent email could not be prepared.");
+  const { data, error } = await supabase.functions.invoke("notify-register-parent", {
+    body: { kind, recordId },
+  });
+  if (error) throw new Error(error.message || "The parent email could not be sent.");
+  if (data?.error) throw new Error(data.error);
+  return data || {};
+}
+
+export async function fetchRegisterPupilReports({ limit = 200 } = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("list_register_pupil_reports", {
+    p_limit: limit,
+  });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function updateRegisterPupilReport({
+  reportId,
+  status,
+  followUpNote = "",
+} = {}) {
+  assertSupabase();
+  if (!reportId) throw new Error("Choose a report.");
+  if (!status) throw new Error("Choose a review status.");
+  const { data, error } = await supabase.rpc("update_register_pupil_report", {
+    p_report_id: reportId,
+    p_status: status,
+    p_follow_up_note: String(followUpNote || "").trim(),
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchStaffAdHocBookingOptions({
+  registerDate,
+  siteName = null,
+  programmeName = null,
+  childQuery = "",
+  limit = 20,
+} = {}) {
+  assertSupabase();
+  if (!registerDate) throw new Error("Choose a register date.");
+  const { data, error } = await supabase.rpc("staff_adhoc_booking_options", {
+    p_register_date: registerDate,
+    p_site_name: siteName || null,
+    p_programme_name: programmeName || null,
+    p_child_query: String(childQuery || "").trim(),
+    p_limit: limit,
+  });
+  if (error) throw error;
+  return {
+    children: (data?.children || []).map((child) => ({
+      id: child.child_id,
+      name: child.child_name,
+      schoolName: child.school_name || "",
+      yearGroup: child.year_group || "",
+      parentAccountId: child.parent_account_id,
+      parentName: child.parent_name || "",
+      parentEmail: child.parent_email || "",
+    })),
+    sessions: (data?.sessions || []).map((session) => ({
+      id: session.session_block_id,
+      sessionId: session.session_id,
+      siteName: session.site_name || "",
+      programmeName: session.programme_name || "",
+      label: session.session_label || "Session",
+      startsAt: session.starts_at,
+      endsAt: session.ends_at,
+      price: Number(session.price || 0),
+      capacity: Number(session.capacity || 0),
+      placesLeft: Number(session.places_left || 0),
+    })),
+  };
+}
+
+export async function createStaffAdHocBooking({
+  childId,
+  registerDate,
+  sessionBlockIds = [],
+  applyNonBookingFee = false,
+} = {}) {
+  assertSupabase();
+  if (!childId) throw new Error("Choose a pupil.");
+  if (!registerDate) throw new Error("Choose a register date.");
+  if (!sessionBlockIds.length) throw new Error("Choose at least one session.");
+  const { data, error } = await supabase.functions.invoke("create-staff-adhoc-booking", {
+    body: {
+      childId,
+      registerDate,
+      sessionBlockIds: [...new Set(sessionBlockIds)],
+      applyNonBookingFee: Boolean(applyNonBookingFee),
+    },
+  });
+  if (error) throw new Error(data?.error || error.message || "The ad-hoc booking could not be created.");
+  if (!data?.ok) throw new Error(data?.message || "The ad-hoc booking could not be created.");
+  return data;
+}
+
+export async function cancelStaffAdHocBooking({ bookingId, reason = "" } = {}) {
+  assertSupabase();
+  if (!bookingId) throw new Error("Choose an ad-hoc booking to cancel.");
+  const { data, error } = await supabase.functions.invoke("cancel-staff-adhoc-booking", {
+    body: {
+      bookingId,
+      reason: String(reason || "").trim(),
+    },
+  });
+  if (error) throw new Error(data?.error || error.message || "The ad-hoc booking could not be cancelled.");
+  if (!data?.ok) throw new Error(data?.message || "The ad-hoc booking could not be cancelled.");
+  return data;
 }
 
 export async function signInParentAccount({ email, password } = {}) {
@@ -39,10 +595,34 @@ export async function signInParentAccount({ email, password } = {}) {
   return data;
 }
 
+export async function activateSignedInParentAccount() {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("activate_current_parent_account");
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.message || "The parent account could not be activated.");
+  return data;
+}
+
 export async function signOutParentAccount() {
   if (!supabase) return;
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
+}
+
+export async function graduateParentChild(childId) {
+  assertSupabase();
+  if (!childId) throw new Error("Choose a child to graduate.");
+  const { data, error } = await supabase.rpc("graduate_parent_child", { p_child_id: childId });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.message || "The child record could not be archived.");
+  return data;
+}
+
+export async function archiveOwnParentAccount() {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("archive_own_parent_account");
+  if (error) throw error;
+  return data || { ok: false, message: "The account could not be archived." };
 }
 
 export async function manageParentAccountAccess(payload = {}) {
@@ -146,6 +726,64 @@ export async function removeParentAccountHolder(holderId) {
   return data?.holder || data;
 }
 
+export async function updateOwnParentContact({ fullName, email, phone, currentPassword = "" } = {}) {
+  assertSupabase();
+  const user = await currentUser();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) throw new Error("Email address is required.");
+  if (normalizedEmail !== String(user.email || "").trim().toLowerCase()) {
+    if (!currentPassword) throw new Error("Enter your current password to change your login email.");
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: String(user.email || "").trim().toLowerCase(),
+      password: currentPassword,
+    });
+    if (signInError) throw new Error("Your current password is not correct.");
+  }
+
+  const { data, error } = await supabase.functions.invoke("manage-parent-account", {
+    body: {
+      action: "update-own-contact",
+      fullName: String(fullName || "").trim(),
+      email: normalizedEmail,
+      phone: String(phone || "").trim(),
+    },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Contact details could not be updated.");
+  }
+  if (data?.error) throw new Error(data.error);
+  if (normalizedEmail !== String(user.email || "").trim().toLowerCase()) {
+    await supabase.auth.refreshSession();
+  }
+  return data;
+}
+
+export async function updateOwnParentPassword({ currentPassword, newPassword } = {}) {
+  assertSupabase();
+  const user = await currentUser();
+  if (!currentPassword) throw new Error("Enter your current password.");
+  if (!newPassword) throw new Error("Enter a new password.");
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: String(user.email || "").trim().toLowerCase(),
+    password: currentPassword,
+  });
+  if (signInError) throw new Error("Your current password is not correct.");
+
+  const { data, error } = await supabase.functions.invoke("manage-parent-account", {
+    body: {
+      action: "update-own-password",
+      newPassword,
+    },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Password could not be updated.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
 export async function fetchBookableSessions({ from = new Date(), limit = 120 } = {}) {
   assertSupabase();
   const fromIso = from instanceof Date ? from.toISOString() : new Date(from).toISOString();
@@ -203,6 +841,14 @@ export async function fetchParentAccount() {
     phone,
     billing_address,
     emergency_contact,
+    marketing_preferences,
+    portal_status,
+    archived_at,
+    archive_reason,
+    external_source,
+    external_id,
+    registered_centres,
+    migration_metadata,
     child_profiles(
       id,
       full_name,
@@ -216,7 +862,12 @@ export async function fetchParentAccount() {
       authorised_collectors,
       consents,
       flags,
-      active
+      active,
+      archived_at,
+      archive_reason,
+      external_source,
+      external_id,
+      migration_metadata
     )
   `;
   const parentAccountSelect = `
@@ -236,6 +887,7 @@ export async function fetchParentAccount() {
     .from("parent_accounts")
     .select(parentAccountSelect)
     .or(`profile_id.eq.${user.id},email.eq.${user.email}`)
+    .is("archived_at", null)
     .maybeSingle();
 
   if (error && missingLinkedHolderTableCodes.includes(error.code)) {
@@ -243,6 +895,7 @@ export async function fetchParentAccount() {
       .from("parent_accounts")
       .select(parentAccountBaseSelect)
       .or(`profile_id.eq.${user.id},email.eq.${user.email}`)
+      .is("archived_at", null)
       .maybeSingle();
     data = fallback.data;
     error = fallback.error;
@@ -282,118 +935,44 @@ export async function fetchParentBookingLedger({ limit = 80 } = {}) {
   assertSupabase();
   await currentUser();
 
-  const { data: invoices, error: invoiceError } = await supabase
-    .from("booking_invoices")
-    .select(`
-      id,
-      booking_id,
-      parent_id,
-      parent_email,
-      provider_payment_id,
-      provider_reference,
-      total_amount,
-      paid_amount,
-      refunded_amount,
-      balance,
-      currency,
-      payment_status,
-      parent_portal_status,
-      receipt_status,
-      finance_status,
-      last_provider_event_id,
-      metadata,
-      created_at,
-      updated_at,
-      booking_receipts(
-        id,
-        receipt_number,
-        amount,
-        currency,
-        delivery_status,
-        issued_at,
-        payment_id,
-        provider_reference,
-        provider_event_id,
-        metadata
-      ),
-      booking_payment_admin_actions(
-        id,
-        action,
-        status,
-        actor_email,
-        actor_role,
-        parent_email,
-        provider_reference,
-        message_log_id,
-        note,
-        metadata,
-        created_at
-      ),
-      ponchopay_checkout_sessions(
-        id,
-        provider_payment_id,
-        provider_checkout_url,
-        provider_reference,
-        amount,
-        currency,
-        payment_method,
-        payment_plan,
-        status,
-        error_message,
-        expires_at,
-        created_at,
-        updated_at
-      )
-    `)
-    .order("updated_at", { ascending: false })
-    .limit(limit);
+  const { data: ledger, error } = await supabase
+    .rpc("parent_booking_ledger", { p_limit: limit });
 
-  if (invoiceError) throw invoiceError;
-
-  const { data: bookings, error: bookingError } = await supabase
-    .from("bookings")
-    .select(`
-      id,
-      booking_reference,
-      invoice_id,
-      parent_email,
-      parent_name,
-      status,
-      payment_method,
-      payment_plan,
-      payment_route,
-      total_amount,
-      due_today,
-      outstanding_balance,
-      cancellation_deadline,
-      amendment_deadline,
-      metadata,
-      created_at,
-      updated_at,
-      booking_items(
-        id,
-        child_name,
-        site_name,
-        programme_name,
-        session_label,
-        starts_at,
-        ends_at,
-        quantity,
-        unit_amount,
-        line_total,
-        status,
-        metadata
-      )
-    `)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (bookingError) throw bookingError;
+  if (error) throw error;
+  const mappedCreditEntries = (Array.isArray(ledger?.creditEntries) ? ledger.creditEntries : [])
+    .map(mapParentCreditEntry);
 
   return {
-    invoices: (invoices || []).map(mapParentInvoice),
-    bookings: (bookings || []).map(mapParentLedgerBooking),
-    fetchedAt: new Date().toISOString(),
+    invoices: (Array.isArray(ledger?.invoices) ? ledger.invoices : []).map(mapParentInvoice),
+    bookings: (Array.isArray(ledger?.bookings) ? ledger.bookings : []).map(mapParentLedgerBooking),
+    creditEntries: mappedCreditEntries,
+    creditBalance: Number(ledger?.creditBalance ?? mappedCreditEntries
+      .filter((entry) => entry.status === "posted")
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0)),
+    fetchedAt: ledger?.fetchedAt || new Date().toISOString(),
+  };
+}
+
+export async function fetchAdminBookingLedger({ limit = 120 } = {}) {
+  assertSupabase();
+  await currentUser();
+
+  const { data, error } = await supabase.rpc("admin_booking_ledger", {
+    p_limit: limit,
+  });
+  if (error) throw error;
+
+  const mappedCreditEntries = (Array.isArray(data?.creditEntries) ? data.creditEntries : [])
+    .map(mapParentCreditEntry);
+
+  return {
+    invoices: (Array.isArray(data?.invoices) ? data.invoices : []).map(mapParentInvoice),
+    bookings: (Array.isArray(data?.bookings) ? data.bookings : []).map(mapParentLedgerBooking),
+    creditEntries: mappedCreditEntries,
+    creditBalance: mappedCreditEntries
+      .filter((entry) => entry.status === "posted")
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+    fetchedAt: data?.fetchedAt || new Date().toISOString(),
   };
 }
 
@@ -412,11 +991,12 @@ export async function upsertParentAccount(parent) {
     emergency_contact: parent?.emergencyContact || parent?.emergency_contact || {},
     marketing_preferences: parent?.marketingPreferences || parent?.marketing_preferences || {},
   };
+  if (parent?.migrationMetadata || parent?.migration_metadata) payload.migration_metadata = parent.migrationMetadata || parent.migration_metadata;
 
   const { data, error } = await supabase
     .from("parent_accounts")
     .upsert(payload, { onConflict: "email" })
-    .select("id, profile_id, full_name, email, phone, billing_address, emergency_contact")
+    .select("id, profile_id, full_name, email, phone, billing_address, emergency_contact, marketing_preferences, portal_status, external_source, external_id, registered_centres, migration_metadata")
     .single();
 
   if (error) throw error;
@@ -443,6 +1023,7 @@ export async function createChildProfile(child = {}) {
     flags: child.flags || [],
     active: child.active !== false,
   };
+  if (child.migrationMetadata || child.migration_metadata) payload.migration_metadata = child.migrationMetadata || child.migration_metadata;
 
   const { data, error } = await supabase
     .from("child_profiles")
@@ -460,10 +1041,58 @@ export async function createChildProfile(child = {}) {
       authorised_collectors,
       consents,
       flags,
-      active
+      active,
+      external_source,
+      external_id,
+      migration_metadata
     `)
     .single();
 
+  if (error) throw error;
+  return mapChildProfile(data);
+}
+
+export async function updateChildProfile(childId, child = {}) {
+  assertSupabase();
+  if (!childId) throw new Error("Choose a child profile to update.");
+  const payload = {
+    full_name: child.fullName || child.full_name || child.name || "Child",
+    preferred_name: child.preferredName || child.preferred_name || child.firstName || null,
+    date_of_birth: child.dateOfBirth || child.date_of_birth || child.dob || null,
+    school_name: child.schoolName || child.school_name || child.school || null,
+    year_group: child.yearGroup || child.year_group || child.classroom || child.year || null,
+    medical_notes: child.medicalNotes || child.medical_notes || "",
+    allergy_notes: child.allergyNotes || child.allergy_notes || "",
+    dietary_notes: child.dietaryNotes || child.dietary_notes || "",
+    authorised_collectors: child.authorisedCollectors || child.authorised_collectors || [],
+    consents: child.consents || {},
+    flags: child.flags || [],
+    active: child.active !== false,
+  };
+  if (child.migrationMetadata || child.migration_metadata) payload.migration_metadata = child.migrationMetadata || child.migration_metadata;
+  const { data, error } = await supabase
+    .from("child_profiles")
+    .update(payload)
+    .eq("id", childId)
+    .select(`
+      id,
+      full_name,
+      preferred_name,
+      date_of_birth,
+      school_name,
+      year_group,
+      medical_notes,
+      allergy_notes,
+      dietary_notes,
+      authorised_collectors,
+      consents,
+      flags,
+      active,
+      external_source,
+      external_id,
+      migration_metadata
+    `)
+    .single();
   if (error) throw error;
   return mapChildProfile(data);
 }
@@ -482,6 +1111,7 @@ export async function createParentBooking(request) {
       paymentMethod: request.paymentMethod || "card",
       paymentPlan: request.paymentPlan || "pay_now",
       paymentRoute: request.paymentRoute || items[0]?.paymentRoute || "ponchopay_card_voucher",
+      applyAccountCredit: request.applyAccountCredit === true,
       depositAmount: request.depositAmount || 0,
       cancellationHours: request.cancellationHours ?? 24,
       amendmentHours: request.amendmentHours ?? 24,
@@ -520,6 +1150,19 @@ export async function createPonchoPayCheckout(payload) {
   return data;
 }
 
+export async function createParentCreditTopUp({ amount, siteName } = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.functions.invoke("create-parent-credit-topup", {
+    body: { amount, siteName },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Unable to start credit top-up.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
 export async function cancelParentBooking({ bookingId, reason = "" } = {}) {
   assertSupabase();
   if (!bookingId) throw new Error("Choose a booking to cancel.");
@@ -531,6 +1174,24 @@ export async function cancelParentBooking({ bookingId, reason = "" } = {}) {
     },
   });
   if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+export async function cancelParentStaffAdHocBooking({ bookingId, reason = "" } = {}) {
+  assertSupabase();
+  if (!bookingId) throw new Error("Choose an ad-hoc booking to cancel.");
+  const { data, error } = await supabase.functions.invoke("update-parent-booking", {
+    body: {
+      action: "cancel_staff_adhoc",
+      bookingId,
+      reason,
+    },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Unable to cancel the ad-hoc booking.");
+  }
   if (data?.error) throw new Error(data.error);
   return data;
 }
@@ -702,6 +1363,14 @@ function mapParentAccount(row) {
     phone: row.phone,
     billingAddress: row.billing_address || {},
     emergencyContact: row.emergency_contact || {},
+    marketingPreferences: row.marketing_preferences || {},
+    portalStatus: row.portal_status || "",
+    archivedAt: row.archived_at || "",
+    archiveReason: row.archive_reason || "",
+    externalSource: row.external_source || "",
+    externalId: row.external_id || "",
+    registeredCentres: row.registered_centres || [],
+    migrationMetadata: row.migration_metadata || {},
     linkedAccountHolders: (row.parent_account_holders || []).map((holder) => ({
       id: holder.id,
       email: holder.email,
@@ -712,7 +1381,7 @@ function mapParentAccount(row) {
       acceptedAt: holder.accepted_at,
       permissions: holder.permissions || {},
     })),
-    children: (row.child_profiles || []).map(mapChildProfile),
+    children: (row.child_profiles || []).filter((child) => child.active !== false && !child.archived_at).map(mapChildProfile),
   };
 }
 
@@ -731,6 +1400,11 @@ function mapChildProfile(child) {
     consents: child.consents || {},
     flags: child.flags || [],
     active: child.active,
+    archivedAt: child.archived_at || "",
+    archiveReason: child.archive_reason || "",
+    externalSource: child.external_source || "",
+    externalId: child.external_id || "",
+    migrationMetadata: child.migration_metadata || child.consents?.registration?.migration || {},
   };
 }
 
@@ -798,6 +1472,24 @@ function mapParentInvoice(row) {
   };
 }
 
+function mapParentCreditEntry(row) {
+  return {
+    id: row.id,
+    parentAccountId: row.parent_account_id,
+    parentId: row.parent_id,
+    bookingId: row.booking_id,
+    invoiceId: row.invoice_id,
+    entryType: row.entry_type,
+    amount: Number(row.amount || 0),
+    currency: row.currency || "GBP",
+    status: row.status || "posted",
+    description: row.description || "Account credit adjustment",
+    metadata: row.metadata || {},
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function mapParentLedgerBooking(row) {
   return {
     id: row.id,
@@ -806,6 +1498,7 @@ function mapParentLedgerBooking(row) {
     parentEmail: row.parent_email,
     parentName: row.parent_name,
     status: row.status,
+    source: row.source || "",
     paymentMethod: row.payment_method,
     paymentPlan: row.payment_plan,
     paymentRoute: row.payment_route,
@@ -819,6 +1512,9 @@ function mapParentLedgerBooking(row) {
     updatedAt: row.updated_at,
     items: asArray(row.booking_items).map((item) => ({
       id: item.id,
+      childId: item.child_id,
+      sessionId: item.session_id,
+      sessionBlockId: item.session_block_id,
       childName: item.child_name,
       siteName: item.site_name,
       programmeName: item.programme_name,
