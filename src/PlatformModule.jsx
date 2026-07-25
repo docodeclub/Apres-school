@@ -2450,10 +2450,10 @@ function Registers({ access }) {
       </div>
 
       {selectedChild && (
-        <div className={`register-drawer-layer ${registerReportType === "safeguarding" ? "is-safeguarding" : ""}`} role="presentation" onMouseDown={(event) => {
+        <div className={`register-drawer-layer ${registerReportType === "safeguarding" ? "is-safeguarding" : registerReportType === "incident" ? "is-incident" : ""}`} role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setSelectedChildId("");
         }}>
-          <aside className={`register-child-drawer ${registerReportType === "safeguarding" ? "is-safeguarding" : ""}`} role="dialog" aria-modal="true" aria-labelledby="register-child-drawer-title">
+          <aside className={`register-child-drawer ${registerReportType === "safeguarding" ? "is-safeguarding" : registerReportType === "incident" ? "is-incident" : ""}`} role="dialog" aria-modal="true" aria-labelledby="register-child-drawer-title">
             <header>
               <div>
                 <p className="eyebrow">Pupil details</p>
@@ -2550,6 +2550,13 @@ function Registers({ access }) {
                     <button type="button" onClick={() => setRegisterReportType("")} disabled={registerReportSaving}>Close form</button>
                   </div>
 
+                  {registerReportType === "incident" && (
+                    <div className="register-report-guidance incident">
+                      <span aria-hidden="true">⚠️</span>
+                      <div><strong>Incident record</strong><small>Record what happened clearly, factually and proportionately. The child, session, site and reporting staff member are linked automatically.</small></div>
+                    </div>
+                  )}
+
                   {registerReportType === "safeguarding" && (
                     <div className="register-report-guidance safeguarding">
                       <strong>Safeguarding Concern · Confidential</strong>
@@ -2620,12 +2627,14 @@ function Registers({ access }) {
                     </label>
 
                     {registerReportType === "safeguarding" && <div className="safeguarding-auto-context"><strong>Automatically recorded</strong><span>Current user · site · club · session · submission time</span></div>}
+                    {registerReportType === "incident" && <div className="incident-auto-context"><strong>Linked automatically</strong><span>{selectedChild.siteName} · {selectedChild.sessionLabel} · reporting staff</span></div>}
                   </div>
 
                   {registerReportType === "incident" && (
                     <>
                       <fieldset className="register-incident-fieldset">
-                        <legend>Choose an incident type</legend>
+                        <legend><span>1</span> Incident type</legend>
+                        <p>Choose the category that best describes the event.</p>
                         <div className="register-incident-card-grid">
                           {REGISTER_INCIDENT_CATEGORIES.map((category) => (
                             <button
@@ -2647,7 +2656,8 @@ function Registers({ access }) {
                       </fieldset>
 
                       <fieldset className="register-incident-fieldset">
-                        <legend>How serious was it?</legend>
+                        <legend><span>2</span> Level of concern</legend>
+                        <p>Select the level based on impact and the follow-up required.</p>
                         <div className="register-incident-severity-grid">
                           {REGISTER_INCIDENT_SEVERITIES.map((severity) => (
                             <button
@@ -2669,9 +2679,10 @@ function Registers({ access }) {
                     </>
                   )}
 
-                  <label className={registerReportType === "safeguarding" ? "safeguarding-facts" : ""}>
-                    <span>{registerReportType === "first_aid" ? "What happened?" : registerReportType === "safeguarding" ? "4 · What happened?" : "What happened?"}</span>
+                  <label className={registerReportType === "safeguarding" ? "safeguarding-facts" : registerReportType === "incident" ? "incident-facts" : ""}>
+                    <span>{registerReportType === "first_aid" ? "What happened?" : registerReportType === "safeguarding" ? "4 · What happened?" : registerReportType === "incident" ? "3 · What happened?" : "What happened?"}</span>
                     {registerReportType === "safeguarding" && <small>Record only factual observations. Use the child’s exact words where possible. Do not include opinions, assumptions or conclusions.</small>}
+                    {registerReportType === "incident" && <small>Describe what was seen, heard or reported. Include relevant people and times; avoid assumptions.</small>}
                     <textarea
                       rows={registerReportType === "safeguarding" ? "9" : "5"}
                       value={registerReportDraft.summary}
@@ -2794,8 +2805,9 @@ function Registers({ access }) {
                   </label>
                 </>
               ) : (
-                    <label>
-                      <span>{registerReportType === "safeguarding" ? "5 · What did you do immediately?" : "Action taken"}</span>
+                    <label className={registerReportType === "incident" ? "incident-action" : ""}>
+                      <span>{registerReportType === "safeguarding" ? "5 · What did you do immediately?" : registerReportType === "incident" ? "4 · Immediate action" : "Action taken"}</span>
+                      {registerReportType === "incident" && <small>Record the calm, proportionate action taken immediately after the event.</small>}
                       <textarea
                         rows="3"
                         value={registerReportDraft.actionTaken}
@@ -2813,7 +2825,8 @@ function Registers({ access }) {
                   {registerReportType === "incident" && (
                     <>
                       <fieldset className="register-incident-fieldset">
-                        <legend>Who was informed?</legend>
+                        <legend><span>5</span> Who was informed?</legend>
+                        <p>Select everyone who was told about the incident.</p>
                         <div className="register-incident-check-grid">
                           {REGISTER_INCIDENT_PEOPLE.map((person) => (
                             <label key={person} className={registerReportDraft.peopleInformed.includes(person) ? "is-selected" : ""}>
@@ -2839,38 +2852,43 @@ function Registers({ access }) {
                         )}
                       </fieldset>
 
-                      <label>
-                        <span>Parent notification</span>
-                        <select value={registerReportDraft.parentNotified} onChange={(event) => updateRegisterReportDraft("parentNotified", event.target.value)}>
-                          <option value="not_required">Not required</option>
-                          <option value="not_yet">Not yet</option>
-                          <option value="spoken_in_person">Spoken to in person</option>
-                          <option value="contacted_by_phone">Contacted by phone</option>
-                          <option value="email_sent">Email sent</option>
-                          <option value="follow_up_required">Follow-up required</option>
-                        </select>
-                      </label>
+                      <fieldset className="register-incident-fieldset follow-up">
+                        <legend><span>6</span> Outcome and follow-up</legend>
+                        <div className="register-incident-followup-grid">
+                          <label>
+                            <span>Parent notification</span>
+                            <select value={registerReportDraft.parentNotified} onChange={(event) => updateRegisterReportDraft("parentNotified", event.target.value)}>
+                              <option value="not_required">Not required</option>
+                              <option value="not_yet">Not yet</option>
+                              <option value="spoken_in_person">Spoken to in person</option>
+                              <option value="contacted_by_phone">Contacted by phone</option>
+                              <option value="email_sent">Email sent</option>
+                              <option value="follow_up_required">Follow-up required</option>
+                            </select>
+                          </label>
 
-                      <label>
-                        <span>Outcome</span>
-                        <select value={registerReportDraft.outcome} onChange={(event) => updateRegisterReportDraft("outcome", event.target.value)} required>
-                          <option value="">Choose an outcome</option>
-                          {REGISTER_INCIDENT_OUTCOMES.map((outcome) => <option key={outcome}>{outcome}</option>)}
-                        </select>
-                      </label>
+                          <label>
+                            <span>Outcome</span>
+                            <select value={registerReportDraft.outcome} onChange={(event) => updateRegisterReportDraft("outcome", event.target.value)} required>
+                              <option value="">Choose an outcome</option>
+                              {REGISTER_INCIDENT_OUTCOMES.map((outcome) => <option key={outcome}>{outcome}</option>)}
+                            </select>
+                          </label>
 
-                      {incidentNeedsFollowUp(registerReportDraft.outcome) && (
-                        <label>
-                          <span>Follow-up notes</span>
-                          <textarea
-                            rows="3"
-                            value={registerReportDraft.followUpNotes}
-                            onChange={(event) => updateRegisterReportDraft("followUpNotes", event.target.value)}
-                            placeholder="Record what needs to happen next, who is responsible and any agreed timescale."
-                            required
-                          />
-                        </label>
-                      )}
+                          {incidentNeedsFollowUp(registerReportDraft.outcome) && (
+                            <label className="full-width">
+                              <span>Follow-up notes</span>
+                              <textarea
+                                rows="3"
+                                value={registerReportDraft.followUpNotes}
+                                onChange={(event) => updateRegisterReportDraft("followUpNotes", event.target.value)}
+                                placeholder="Record what needs to happen next, who is responsible and any agreed timescale."
+                                required
+                              />
+                            </label>
+                          )}
+                        </div>
+                      </fieldset>
                     </>
                   )}
 

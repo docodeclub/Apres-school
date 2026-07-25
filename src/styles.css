@@ -4880,6 +4880,11 @@ label {
   backdrop-filter: blur(4px);
 }
 
+.register-drawer-layer.is-incident {
+  background: rgba(20, 29, 55, 0.42);
+  backdrop-filter: blur(3px);
+}
+
 .register-child-drawer {
   box-sizing: border-box;
   width: min(470px, 94vw);
@@ -4898,6 +4903,13 @@ label {
   border-left: 4px solid #6c3b8a;
   background: #fdfbfe;
   box-shadow: -24px 0 64px rgba(27, 18, 48, 0.3);
+}
+
+.register-child-drawer.is-incident {
+  width: min(640px, 96vw);
+  border-left: 4px solid #dc8d32;
+  background: #fffcf8;
+  box-shadow: -22px 0 60px rgba(58, 39, 18, 0.25);
 }
 
 @keyframes register-drawer-in {
@@ -5063,7 +5075,13 @@ label {
 }
 
 .register-report-form.report-incident {
+  gap: 18px;
   border-top: 5px solid #dc8d32;
+  border-color: #edc68f;
+  background:
+    radial-gradient(circle at 96% 0%, rgba(244, 170, 61, 0.13), transparent 28%),
+    linear-gradient(180deg, #fffaf3, #fff 30%);
+  padding: 20px;
 }
 
 .register-report-form.report-first_aid {
@@ -5645,25 +5663,48 @@ label {
 }
 
 .register-incident-fieldset {
+  display: grid;
+  gap: 11px;
   min-width: 0;
   margin: 0;
-  border: 1px solid #e0e6f1;
-  border-radius: 14px;
-  padding: 12px;
+  border: 1px solid #ead8bd;
+  border-radius: 16px;
+  background: rgba(255, 253, 249, 0.92);
+  padding: 15px;
 }
 
 .register-incident-fieldset legend {
-  padding: 0 5px;
-  color: var(--royal-dark);
-  font-size: 0.86rem;
+  padding: 0 7px;
+  color: #75430e;
+  font-size: 0.9rem;
   font-weight: 950;
+}
+
+.register-incident-fieldset legend > span {
+  display: inline-grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #d88417;
+  color: #fff;
+  font-size: 0.76rem;
+}
+
+.register-incident-fieldset > p {
+  margin: 0;
+  color: #7b6a59;
+  font-size: 0.78rem;
+  font-weight: 720;
+  line-height: 1.4;
 }
 
 .register-incident-card-grid,
 .register-incident-severity-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 
 .register-incident-card-grid button,
@@ -5672,33 +5713,41 @@ label {
   grid-template-columns: 34px minmax(0, 1fr);
   grid-template-rows: auto auto;
   align-items: center;
-  gap: 2px 9px;
+  gap: 4px 11px;
   min-width: 0;
-  min-height: 80px;
-  border: 2px solid #dce4f2;
-  border-radius: 13px;
+  min-height: 98px;
+  border: 2px solid #e0e5ef;
+  border-radius: 15px;
   background: #fff;
-  padding: 10px;
+  padding: 13px;
   color: var(--ink);
   text-align: left;
   cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.register-incident-card-grid button:hover,
+.register-incident-severity-grid button:hover {
+  transform: translateY(-1px);
+  border-color: #dfb170;
+  box-shadow: 0 7px 18px rgba(121, 78, 25, 0.09);
 }
 
 .register-incident-card-grid button > span {
   grid-row: 1 / 3;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   background: #fff5e9;
-  font-size: 1.12rem;
+  font-size: 1.25rem;
 }
 
 .register-incident-card-grid strong,
-.register-incident-severity-grid strong { color: var(--royal-dark); font-size: 0.8rem; line-height: 1.2; }
+.register-incident-severity-grid strong { color: var(--royal-dark); font-size: 0.84rem; line-height: 1.2; }
 .register-incident-card-grid small,
-.register-incident-severity-grid small { color: var(--muted); font-size: 0.68rem; line-height: 1.3; }
+.register-incident-severity-grid small { color: var(--muted); font-size: 0.72rem; font-weight: 720; line-height: 1.35; }
 .register-incident-card-grid button.is-selected,
 .register-incident-severity-grid button.is-selected {
   border-color: #dc8d32;
@@ -5708,8 +5757,19 @@ label {
 
 .register-incident-severity-grid button {
   grid-template-columns: 1fr;
-  min-height: 70px;
+  align-content: center;
+  min-height: 82px;
+  border-left-width: 5px;
 }
+
+.register-incident-severity-grid button.information { border-left-color: #5b82d6; }
+.register-incident-severity-grid button.minor { border-left-color: #54a576; }
+.register-incident-severity-grid button.moderate { border-left-color: #df9a32; }
+.register-incident-severity-grid button.serious { border-left-color: #c64c4c; }
+.register-incident-severity-grid button.information.is-selected { background: #f0f5ff; border-color: #5b82d6; }
+.register-incident-severity-grid button.minor.is-selected { background: #eff9f3; border-color: #54a576; }
+.register-incident-severity-grid button.moderate.is-selected { background: #fff7e8; border-color: #df9a32; }
+.register-incident-severity-grid button.serious.is-selected { background: #fff0f0; border-color: #c64c4c; }
 
 .register-incident-check-grid {
   display: grid;
@@ -5722,18 +5782,79 @@ label {
   grid-template-columns: none;
   align-items: center;
   gap: 8px;
-  border: 1px solid #dce4f2;
-  border-radius: 11px;
-  padding: 9px;
+  min-height: 44px;
+  border: 1px solid #dde3ed;
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px 11px;
+}
+
+.register-incident-check-grid label.is-selected {
+  border-color: #d88417;
+  background: #fff7e9;
 }
 
 .register-incident-check-grid input { width: auto; }
 
+.incident-facts,
+.incident-action {
+  border: 1px solid #ead8bd;
+  border-radius: 16px;
+  background: #fffdfa;
+  padding: 15px;
+}
+
+.incident-facts > span,
+.incident-action > span {
+  color: #75430e !important;
+  font-size: 0.9rem !important;
+}
+
+.incident-facts > small,
+.incident-action > small {
+  color: #7b6a59;
+  font-size: 0.77rem;
+  font-weight: 720;
+  line-height: 1.4;
+}
+
+.incident-facts textarea {
+  min-height: 150px;
+}
+
+.incident-action textarea {
+  min-height: 105px;
+}
+
+.register-incident-followup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+}
+
+.register-incident-followup-grid .full-width {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 620px) {
+  .register-child-drawer.is-incident {
+    width: 100vw;
+    padding: 18px;
+  }
+
+  .register-report-form.report-incident {
+    padding: 15px;
+  }
+
   .register-incident-card-grid,
   .register-incident-severity-grid,
-  .register-incident-check-grid {
+  .register-incident-check-grid,
+  .register-incident-followup-grid {
     grid-template-columns: 1fr;
+  }
+
+  .register-incident-followup-grid .full-width {
+    grid-column: auto;
   }
 }
 
@@ -5903,6 +6024,60 @@ label {
   border: 1px solid #d5b5e8;
   background: #f8f2fc;
   color: #5c2f78;
+}
+
+.register-report-guidance.incident {
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  border: 1px solid #edc78f;
+  background: linear-gradient(135deg, #fff4e3, #fffaf2);
+  color: #7a4711;
+  padding: 13px 14px;
+}
+
+.register-report-guidance.incident > span {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: #fff;
+  font-size: 1.18rem;
+  box-shadow: 0 5px 14px rgba(188, 112, 27, 0.12);
+}
+
+.register-report-guidance.incident > div {
+  display: grid;
+  gap: 3px;
+}
+
+.register-report-guidance.incident strong {
+  font-size: 0.94rem;
+}
+
+.register-report-guidance.incident small {
+  color: #7b6a59;
+  font-size: 0.78rem;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.incident-auto-context {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  border: 1px dashed #e2b675;
+  border-radius: 11px;
+  background: rgba(255, 249, 239, 0.82);
+  padding: 10px 12px;
+  color: #7a4711;
+}
+
+.incident-auto-context span {
+  color: #7b6a59;
+  font-size: 0.74rem;
+  font-weight: 750;
 }
 
 .register-report-guidance span {
@@ -6259,6 +6434,11 @@ label {
   background: #fff9ec;
 }
 
+.report-incident .register-email-copy-option {
+  border-color: #edcf9f;
+  background: #fff8ec;
+}
+
 .report-reward .register-report-submit > button:last-child {
   background: #d88417;
 }
@@ -6357,6 +6537,11 @@ label {
 
 .report-safeguarding .register-report-submit > button:last-child {
   background: #713c92;
+}
+
+.report-incident .register-report-submit > button:last-child {
+  background: #c87313;
+  box-shadow: 0 8px 18px rgba(200, 115, 19, 0.2);
 }
 
 .register-report-form button:disabled {
