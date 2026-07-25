@@ -163,14 +163,18 @@ const APRES_IMG = {
 };
 
 const nav = ["Home", "Bookings", "Holiday Clubs", "Wraparound", "Schools", "Contact"];
-const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformTabStorageKey = "apres-platform-active-tab";
 const platformTabSlugs = Object.fromEntries(platformTabs.map((item) => [item, item.toLowerCase().replace(/[^a-z0-9]+/g, "-")]));
-const platformTabsBySlug = Object.fromEntries(Object.entries(platformTabSlugs).map(([item, slug]) => [slug, item]));
+const platformTabsBySlug = {
+  ...Object.fromEntries(Object.entries(platformTabSlugs).map(([item, slug]) => [slug, item])),
+  rota: "Staffing",
+  hours: "Staffing",
+};
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
   ["People", ["Customer Profiles", "Users", "SCR", "HR", "HR Files"]],
-  ["Sites", ["Bookings", "Registers", "Incidents", "Safeguarding", "Rota", "Hours", "Sessions", "Ofsted"]],
+  ["Sites", ["Bookings", "Registers", "Incidents", "Safeguarding", "Staffing", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
   ["Finance", ["Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],

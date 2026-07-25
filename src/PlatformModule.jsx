@@ -32,6 +32,7 @@ import {
   upsertLiveBookingSessionSetup,
 } from "./bookingSystem.js";
 import { REWARD_BADGES, rewardBadge } from "./rewardBadges.js";
+import { MyShifts, Staffing } from "./StaffingModule.jsx";
 import {
   blockingPeriods,
   bookingGroups,
@@ -193,11 +194,11 @@ const SendNeeds = makeIcon("SN");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Schools", "Rota", "Hours", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
   ["People", ["Customer Profiles", "Users", "SCR", "HR", "HR Files"]],
-  ["Sites", ["Schools", "Bookings", "Registers", "Incidents", "Safeguarding", "Rota", "Hours", "Sessions", "Ofsted"]],
+  ["Sites", ["Schools", "Bookings", "Registers", "Incidents", "Safeguarding", "Staffing", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
   ["Finance", ["Finance", "Booking Payments", "Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
@@ -217,8 +218,7 @@ const platformTabHints = {
   "HR Files": "Contracts, payslips and staff documents",
   Schools: "School sites, provision and operational notes",
   SCR: "Single Central Register and safer recruitment",
-  Rota: "Site rota, cover and staffing requirements",
-  Hours: "Approved hours, setup, session and clean-up time",
+  Staffing: "Today's cover, weekly planning, shifts and scheduled hours",
   Sessions: "Programmes, locations and assignments",
   Ofsted: "Inspection windows and site evidence",
   Documents: "Policies, acknowledgements and staff links",
@@ -973,7 +973,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const visibleTabs = effectiveRole === "Staff"
     ? ["Staff", "Registers", "Documents", "Pay", "Rewards", "Sessions"]
     : effectiveRole === "Manager"
-      ? ["Staff", "Registers", "Safeguarding", "Rota", "SCR", "Ofsted", "Documents", "Sessions"]
+      ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Ofsted", "Documents", "Sessions"]
       : platformTabs;
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item))])
@@ -1140,6 +1140,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
           access={access}
         />
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
+        {tab === "Staff" && effectiveRole === "Staff" && <MyShifts access={access} />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
         {tab === "Customer Profiles" && <FamilyImportReview access={access} />}
         {tab === "Bookings" && <BookingAdmin data={enrichedData} access={access} initialFocus={bookingAdminFocus} onClearInitialFocus={() => setBookingAdminFocus("")} />}
@@ -1163,8 +1164,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         )}
         {tab === "Schools" && <SchoolsOperations data={enrichedData} />}
         {tab === "HR Files" && <HRFiles data={targetedEnrichedData} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} />}
-        {tab === "Rota" && <Rota data={scopedData} allData={enrichedData} access={access} />}
-        {tab === "Hours" && <HoursTracker data={scopedData} access={access} />}
+        {tab === "Staffing" && <Staffing access={access} legacyHours={["Admin", "Superadmin"].includes(effectiveRole) ? <HoursTracker data={scopedData} access={access} /> : null} />}
         {tab === "SCR" && <SCR data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} inspectionSchoolTarget={scrInspectionTarget} onInspectionTargetHandled={() => setScrInspectionTarget("")} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} onOpenHrFiles={(staffId) => { setStaffProfileTargetId(staffId); setTab("HR Files"); }} onOpenPay={(staffId) => { setStaffProfileTargetId(staffId); setTab("Pay"); }} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
         {tab === "Documents" && <Documents data={scopedData} access={access} />}
@@ -3845,7 +3845,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
     [submittedEvidence.length, "Review submitted evidence", "Approve or send back staff evidence waiting for admin review.", "SCR"],
     [expiredRenewals, "Expired SCR evidence", "Request updated evidence and keep assurance records current.", "SCR"],
     [suitabilityActions, "Annual suitability declarations", "Chase missing, overdue or nearly due suitability declarations.", "SCR"],
-    [pendingCoverMoves, "Cover notices pending", "Confirm rota cover emails when staff are moved between sites.", "Rota"],
+    [pendingCoverMoves, "Cover notices pending", "Confirm staffing cover notifications when staff are moved between sites.", "Staffing"],
     [pendingDocs, "Unread policy acknowledgements", "Chase missing reads from the document library.", "Documents"],
   ];
   const staffActionRows = staffWithScrState
@@ -3854,9 +3854,8 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
   const quickActions = [
     ["Enquiries", `${newWebsiteEnquiries || websiteEnquiries.length} website contact response${(newWebsiteEnquiries || websiteEnquiries.length) === 1 ? "" : "s"}`, "CRM"],
     ["Site SCR", "Open site-scoped compliance and evidence tools", "Inspection"],
-    ["Rota", "Cover, first aid and EYFS cover", "Rota"],
+    ["Staffing", "Planning, cover, qualifications and paid windows", "Staffing"],
     ["Ofsted", "Site readiness and inspection window", "Ofsted"],
-    ["Hours", "Paid windows and approvals", "Hours"],
   ];
   const bookingRows = hasLiveBookingLedger && !dashboardLedgerError
     ? normaliseBookingLedgerRows({
@@ -12508,14 +12507,14 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
       text: submittedSites ? `${submittedSites} site${submittedSites === 1 ? "" : "s"} submitted for ${formatPayrollPeriod(period)}.` : "Enter and submit hours for each active school.",
       done: submittedSites > 0,
       action: "Open Hours",
-      onClick: () => onOpenTab?.("Hours"),
+      onClick: () => onOpenTab?.("Staffing"),
     },
     {
       title: "Site hours approved",
       text: approvedSites ? `${approvedSites} site${approvedSites === 1 ? "" : "s"} approved.` : "Approve school hours before final payroll approval.",
       done: approvedSites > 0 && approvedSites >= submittedSites,
       action: "Review Hours",
-      onClick: () => onOpenTab?.("Hours"),
+      onClick: () => onOpenTab?.("Staffing"),
     },
     {
       title: "Payroll reviewed",
@@ -12568,7 +12567,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
       title: "Unapproved hours",
       text: `${unapprovedHourSites.length} site hour record${unapprovedHourSites.length === 1 ? "" : "s"} must be approved before payroll is paid.`,
       action: "Review Hours",
-      onClick: () => onOpenTab?.("Hours"),
+      onClick: () => onOpenTab?.("Staffing"),
     } : null,
     adjustmentRows.length ? {
       type: "review",
@@ -14612,7 +14611,7 @@ function AuditLog({ data = {} }) {
     if (action.includes("scr") || action.includes("evidence")) return "SCR";
     if (action.includes("hr") || action.includes("former staff") || action.includes("staff photo") || action.includes("profile notes")) return "HR";
     if (action.includes("user") || action.includes("password") || action.includes("account") || action.includes("invite")) return "Users";
-    if (action.includes("rota") || action.includes("cover")) return "Rota";
+    if (action.includes("rota") || action.includes("cover") || action.includes("staffing")) return "Staffing";
     if (action.includes("crm") || action.includes("enquiry")) return "CRM";
     if (action.includes("ofsted")) return "Ofsted";
     if (action.includes("document") || action.includes("policy")) return "Documents";
@@ -17263,7 +17262,7 @@ function inferAuditMetadata(action, detail = "") {
     metadata.module = "Users";
     metadata.tableName = "profiles";
   } else if (lower.includes("rota") || lower.includes("cover")) {
-    metadata.module = "Rota";
+    metadata.module = "Staffing";
     metadata.tableName = lower.includes("cover") ? "cover_moves" : "rota_requirements";
   } else if (lower.includes("crm") || lower.includes("enquiry")) {
     metadata.module = "CRM";
@@ -17392,8 +17391,7 @@ function iconFor(item) {
     "Booking Payments": <PoundSterling />,
     Rewards: <Award />,
     Sessions: <Clock />,
-    Rota: <CalendarDays />,
-    Hours: <Clock />,
+    Staffing: <CalendarDays />,
     Bookings: <BookOpen />,
     Registers: <ClipboardCheck />,
     Incidents: <Bell />,

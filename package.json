@@ -23,6 +23,7 @@
     "check:booking-contract": "node scripts/booking-contract-check.mjs",
     "check:booking-emails": "node scripts/booking-email-template-check.mjs",
     "check:register-contract": "node scripts/register-contract-check.mjs",
+    "check:staffing": "node scripts/staffing-contract-check.mjs",
     "check:booking-live": "node scripts/booking-live-readiness.mjs",
     "check:booking-live:strict": "node scripts/booking-live-readiness.mjs --strict",
     "booking:staging-bundle": "node scripts/booking-staging-bundle.mjs",

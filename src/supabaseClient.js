@@ -36,6 +36,168 @@ export async function signOutStaff() {
   if (error) throw error;
 }
 
+export async function fetchStaffingPlanner(dateFrom, dateTo) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("staffing_planner_for_range", {
+    p_date_from: dateFrom,
+    p_date_to: dateTo,
+  });
+  if (error) throw error;
+  const payload = data || {};
+  return {
+    sessions: payload.sessions || [],
+    staff: payload.staff || [],
+    availability: (payload.availability || []).map((row) => ({
+      id: row.id,
+      staffRecordId: row.staff_record_id,
+      weekday: row.weekday,
+      availableFrom: row.available_from,
+      availableUntil: row.available_until,
+      specificDate: row.specific_date,
+      status: row.availability_status,
+      preferredLocationIds: row.preferred_location_ids || [],
+      maximumWeeklyMinutes: row.maximum_weekly_minutes,
+      note: row.note || "",
+      approvedAt: row.approved_at || "",
+    })),
+    absences: (payload.absences || []).map((row) => ({
+      id: row.id,
+      staffRecordId: row.staff_record_id,
+      type: row.absence_type,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      status: row.status,
+      note: row.note || "",
+    })),
+    publications: (payload.publications || []).map((row) => ({
+      id: row.id,
+      periodStart: row.period_start,
+      periodEnd: row.period_end,
+      version: row.version,
+      status: row.status,
+      warnings: row.warning_snapshot || [],
+      overrideReason: row.override_reason || "",
+      publishedAt: row.published_at || "",
+      publishedBy: row.published_by || "",
+    })),
+    coverRequests: (payload.coverRequests || []).map((row) => ({
+      id: row.id,
+      sessionId: row.session_id,
+      assignmentId: row.assignment_id,
+      vacancies: Number(row.vacancies || 1),
+      requiredRole: row.required_role || "assistant",
+      requiredQualifications: row.required_qualifications || [],
+      reason: row.reason || "Cover required",
+      notes: row.notes || "",
+      status: row.status || "open",
+      requestedStaffIds: row.requested_staff_ids || [],
+      viewedStaffIds: row.viewed_staff_ids || [],
+      declinedStaffIds: row.declined_staff_ids || [],
+      acceptedByStaffId: row.accepted_by_staff_id || "",
+      createdAt: row.created_at || "",
+    })),
+    role: normalizeRole(payload.role),
+    currentStaffId: payload.currentStaffId || "",
+  };
+}
+
+export async function saveStaffingAssignment({
+  sessionId,
+  staffRecordId,
+  sessionRole = "assistant",
+  actingManager = false,
+  actingDsl = false,
+  actingSendco = false,
+  overrideReason = "",
+}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("staffing_save_assignment", {
+    p_session_id: sessionId,
+    p_staff_record_id: staffRecordId,
+    p_session_role: sessionRole,
+    p_acting_manager: actingManager,
+    p_acting_dsl: actingDsl,
+    p_acting_sendco: actingSendco,
+    p_override_reason: overrideReason || null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function removeStaffingAssignment(assignmentId, reason = "") {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("staffing_remove_assignment", {
+    p_assignment_id: assignmentId,
+    p_reason: reason || null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function publishStaffingRota({ dateFrom, dateTo, warnings = [], overrideReason = "" }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("staffing_publish_rota", {
+    p_date_from: dateFrom,
+    p_date_to: dateTo,
+    p_warnings: warnings,
+    p_override_reason: overrideReason || null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function acknowledgeStaffingAssignment(assignmentId, status = "acknowledged") {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("staffing_acknowledge_assignment", {
+    p_assignment_id: assignmentId,
+    p_status: status,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function saveStaffingSiteSettings(settings) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const payload = {
+    location_id: settings.locationId,
+    default_manager_staff_id: settings.defaultManagerStaffId || null,
+    default_dsl_staff_id: settings.defaultDslStaffId || null,
+    default_sendco_staff_id: settings.defaultSendcoStaffId || null,
+    setup_minutes: Number(settings.setupMinutes ?? 15),
+    closing_minutes: Number(settings.closingMinutes ?? 15),
+    minimum_staff: Number(settings.minimumStaff ?? 2),
+    children_per_staff: Number(settings.childrenPerStaff ?? 8),
+    first_aider_required: settings.firstAiderRequired !== false,
+    level3_required: settings.level3Required !== false,
+    sendco_required: Boolean(settings.sendcoRequired),
+    operational_notes: settings.operationalNotes || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from("staffing_site_settings").upsert(payload).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function createStaffingCoverRequest(request) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data: userData } = await supabase.auth.getUser();
+  const payload = {
+    session_id: request.sessionId,
+    assignment_id: request.assignmentId || null,
+    vacancies: Number(request.vacancies || 1),
+    required_role: request.requiredRole || "assistant",
+    required_qualifications: request.requiredQualifications || [],
+    reason: request.reason || "Cover required",
+    notes: request.notes || null,
+    status: request.requestedStaffIds?.length ? "requested" : "open",
+    requested_staff_ids: request.requestedStaffIds || [],
+    created_by: userData?.user?.id || null,
+  };
+  const { data, error } = await supabase.from("staffing_cover_requests").insert(payload).select().single();
+  if (error) throw error;
+  return data;
+}
+
 async function manageStaffPayPin(body) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.functions.invoke(staffPayPinFunctionName, { body });
