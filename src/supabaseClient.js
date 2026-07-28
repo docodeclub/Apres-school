@@ -10,6 +10,7 @@ const staffPayPinFunctionName = import.meta.env.VITE_STAFF_PAY_PIN_FUNCTION_NAME
 const financeInvoiceFunctionName = import.meta.env.VITE_FINANCE_INVOICE_FUNCTION_NAME || "send-finance-invoice";
 const adminParentCreditFunctionName = import.meta.env.VITE_ADMIN_PARENT_CREDIT_FUNCTION_NAME || "admin-adjust-parent-credit";
 const staffingNotificationFunctionName = import.meta.env.VITE_STAFFING_NOTIFICATION_FUNCTION_NAME || "notify-staffing-publication";
+const employeeDocumentFunctionName = import.meta.env.VITE_EMPLOYEE_DOCUMENT_FUNCTION_NAME || "manage-employee-document";
 const staffPhotoBucket = "staff-profile-photos";
 const staffHrFilesBucket = "staff-hr-files";
 
@@ -1663,6 +1664,159 @@ export async function checkHrFileStorageHealth() {
   if (listError) throw listError;
 
   return { ok: true, bucket: staffHrFilesBucket };
+}
+
+async function manageEmployeeDocument(body) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.functions.invoke(employeeDocumentFunctionName, { body });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Employee document request failed.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data || {};
+}
+
+export async function fetchEmployeeDocuments(staffRecordId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!staffRecordId) throw new Error("Choose an employee.");
+  const [documentsResult, typesResult, templatesResult, termsResult] = await Promise.all([
+    supabase.from("employee_documents").select(`
+      id,staff_record_id,document_type_id,template_id,lineage_id,version,title,status,source_kind,
+      effective_date,issue_date,expiry_date,reminder_days,rendered_body,merge_data,storage_path,
+      signed_storage_path,original_filename,mime_type,file_size,requires_signature,is_active_version,
+      sent_at,viewed_at,signed_at,declined_at,archived_at,created_at,updated_at,
+      employee_document_types(id,key,name,category,sensitivity,requires_signature,supports_expiry),
+      employee_document_signatures(id,signature_method,legal_name,signer_email,device_summary,evidence_hash,signed_at),
+      employee_document_events(id,actor_email,action,notes,metadata,created_at,profiles!employee_document_events_actor_id_fkey(full_name,email))
+    `).eq("staff_record_id", staffRecordId).is("deleted_at", null).order("created_at", { ascending: false }),
+    supabase.from("employee_document_types").select("id,key,name,category,sensitivity,requires_signature,supports_expiry,sort_order").eq("active", true).order("sort_order"),
+    supabase.from("employee_document_templates").select("id,document_type_id,name,description,subject,body_template,version,updated_at").eq("active", true).order("name"),
+    supabase.from("employment_terms_history").select("id,source_document_id,term_key,current_value,new_value,effective_date,reason,status,applied_at,created_at").eq("staff_record_id", staffRecordId).order("effective_date", { ascending: false }),
+  ]);
+  if (documentsResult.error) throw documentsResult.error;
+  if (typesResult.error) throw typesResult.error;
+  if (templatesResult.error) throw templatesResult.error;
+  if (termsResult.error) throw termsResult.error;
+  return {
+    documents: (documentsResult.data || []).map(mapEmployeeDocument),
+    types: typesResult.data || [],
+    templates: templatesResult.data || [],
+    terms: (termsResult.data || []).map((row) => ({
+      id: row.id,
+      documentId: row.source_document_id || "",
+      termKey: row.term_key,
+      currentValue: row.current_value?.value ?? "",
+      newValue: row.new_value?.value ?? "",
+      effectiveDate: row.effective_date,
+      reason: row.reason || "",
+      status: row.status,
+      appliedAt: row.applied_at || "",
+      createdAt: row.created_at,
+    })),
+  };
+}
+
+function mapEmployeeDocument(row) {
+  const type = Array.isArray(row.employee_document_types) ? row.employee_document_types[0] : row.employee_document_types;
+  const signature = Array.isArray(row.employee_document_signatures) ? row.employee_document_signatures[0] : row.employee_document_signatures;
+  return {
+    id: row.id,
+    staffRecordId: row.staff_record_id,
+    documentTypeId: row.document_type_id,
+    templateId: row.template_id || "",
+    lineageId: row.lineage_id,
+    version: Number(row.version || 1),
+    title: row.title,
+    status: row.status,
+    sourceKind: row.source_kind,
+    effectiveDate: row.effective_date || "",
+    issueDate: row.issue_date || "",
+    expiryDate: row.expiry_date || "",
+    reminderDays: row.reminder_days || [],
+    renderedBody: row.rendered_body || "",
+    mergeData: row.merge_data || {},
+    storagePath: row.storage_path || "",
+    signedStoragePath: row.signed_storage_path || "",
+    originalFilename: row.original_filename || "",
+    mimeType: row.mime_type || "",
+    fileSize: Number(row.file_size || 0),
+    requiresSignature: Boolean(row.requires_signature),
+    activeVersion: Boolean(row.is_active_version),
+    sentAt: row.sent_at || "",
+    viewedAt: row.viewed_at || "",
+    signedAt: row.signed_at || "",
+    declinedAt: row.declined_at || "",
+    archivedAt: row.archived_at || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    type: type || {},
+    signature: signature ? {
+      id: signature.id,
+      method: signature.signature_method,
+      legalName: signature.legal_name,
+      signerEmail: signature.signer_email || "",
+      device: signature.device_summary || "",
+      evidenceHash: signature.evidence_hash || "",
+      signedAt: signature.signed_at,
+    } : null,
+    events: (row.employee_document_events || []).map((event) => ({
+      id: event.id,
+      action: event.action,
+      notes: event.notes || "",
+      metadata: event.metadata || {},
+      actor: event.profiles?.full_name || event.actor_email || "System",
+      actorEmail: event.actor_email || event.profiles?.email || "",
+      createdAt: event.created_at,
+    })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+  };
+}
+
+export function createEmployeeDocument(payload) {
+  return manageEmployeeDocument({ action: "create", ...payload });
+}
+
+export function generateEmployeeDocument(documentId) {
+  return manageEmployeeDocument({ action: "generate", documentId });
+}
+
+export function sendEmployeeDocument(documentId) {
+  return manageEmployeeDocument({ action: "send", documentId });
+}
+
+export function signEmployeeDocument({ documentId, legalName, method = "typed", signatureData = "", confirmed = false }) {
+  return manageEmployeeDocument({ action: "sign", documentId, legalName, method, signatureData, confirmed, confirmationText: "I confirm I have read and understood this document." });
+}
+
+export function declineEmployeeDocument(documentId, reason) {
+  return manageEmployeeDocument({ action: "decline", documentId, reason });
+}
+
+export function archiveEmployeeDocument(documentId, reason = "") {
+  return manageEmployeeDocument({ action: "archive", documentId, reason });
+}
+
+export function getEmployeeDocumentUrl(documentId, { signed = true, download = false } = {}) {
+  return manageEmployeeDocument({ action: "url", documentId, signed, download });
+}
+
+export async function uploadEmployeeDocument(payload, file) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!payload?.staffRecordId || !payload?.documentTypeId || !file) throw new Error("Choose a document type and file.");
+  const extension = file.name?.split(".").pop()?.toLowerCase() || "bin";
+  const allowed = ["pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png"];
+  if (!allowed.includes(extension)) throw new Error("Upload a PDF, Word, Excel, JPEG or PNG file.");
+  const maximumBytes = Number(payload.maximumBytes || 15 * 1024 * 1024);
+  if (file.size > maximumBytes) throw new Error(`The maximum upload size is ${Math.round(maximumBytes / 1024 / 1024)}MB.`);
+  const storagePath = `${payload.staffRecordId}/employee-documents/uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
+  const { error: uploadError } = await supabase.storage.from(staffHrFilesBucket).upload(storagePath, file, { cacheControl: "3600", contentType: file.type || "application/octet-stream", upsert: false });
+  if (uploadError) throw uploadError;
+  try {
+    return await manageEmployeeDocument({ action: "register_upload", ...payload, storagePath, originalFilename: file.name, mimeType: file.type, fileSize: file.size });
+  } catch (error) {
+    await supabase.storage.from(staffHrFilesBucket).remove([storagePath]);
+    throw error;
+  }
 }
 
 export async function archiveHrFile(id) {

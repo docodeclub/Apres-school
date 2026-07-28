@@ -33,6 +33,7 @@ import {
 } from "./bookingSystem.js";
 import { REWARD_BADGES, rewardBadge } from "./rewardBadges.js";
 import { MyShifts, Staffing } from "./StaffingModule.jsx";
+import { EmployeeDocumentsPanel } from "./EmployeeDocumentsModule.jsx";
 import {
   blockingPeriods,
   bookingGroups,
@@ -1141,6 +1142,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         />
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
         {tab === "Staff" && effectiveRole === "Staff" && <MyShifts access={access} />}
+        {tab === "Staff" && effectiveRole === "Staff" && scopedData.staff?.[0] && <EmployeeDocumentsPanel person={scopedData.staff[0]} access={access} legacyFiles={scopedData.hrFiles || []} compact />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
         {tab === "Customer Profiles" && <FamilyImportReview access={access} />}
         {tab === "Bookings" && <BookingAdmin data={enrichedData} access={access} initialFocus={bookingAdminFocus} onClearInitialFocus={() => setBookingAdminFocus("")} />}
@@ -15340,7 +15342,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
     : person.payRate
       ? `${formatCurrency(person.payRate)}/hr`
       : "Pay basis missing";
-  const profileTabs = ["Overview", "SCR Evidence", "Annual Suitability Declaration", "HR Files", "Pay", "Sites", "Notes"];
+  const profileTabs = ["Overview", "SCR Evidence", "Annual Suitability Declaration", "Documents", "Pay", "Sites", "Notes"];
   const staffCanCompleteSuitability = !isArchivedProfile && access?.role === "Staff" && [
     access?.currentUser?.staffRecordId,
     access?.currentUser?.id,
@@ -16095,38 +16097,7 @@ function StaffProfilePanel({ person, data, managerName, checkStatus, nextAction,
             onSaved={handleSuitabilityDeclarationSaved}
           />
         )}
-        {profileTab === "HR Files" && (
-          <section className="staff-profile-files" id={`staff-profile-files-${person.id}`}>
-            <h4>HR files</h4>
-            <div className="staff-hr-file-tabs" role="tablist" aria-label={`${person.name} HR file categories`}>
-              {hrFileTabs.map((tab) => (
-                <button
-                  key={tab.name}
-                  className={hrFileTab === tab.name ? "active" : ""}
-                  type="button"
-                  role="tab"
-                  aria-selected={hrFileTab === tab.name}
-                  onClick={() => setHrFileTab(tab.name)}
-                >
-                  {tab.name}<span>{tab.count}</span>
-                </button>
-              ))}
-            </div>
-            <div className="staff-profile-list">
-              {visibleHrFiles.slice(0, 6).map((file) => (
-                <div className="staff-profile-file-row" key={file.id}>
-                  <div>
-                    <strong>{file.title}</strong>
-                    <span>{file.category}{file.expiryDate ? ` · expires ${formatShortDate(file.expiryDate)}` : ""}</span>
-                  </div>
-                  {file.fileUrl && <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open</a>}
-                </div>
-              ))}
-              {!visibleHrFiles.length && <span className="muted-inline">No {hrFileTab === "All" ? "" : `${hrFileTab.toLowerCase()} `}HR files logged yet.</span>}
-              {visibleHrFiles.length > 6 && <span className="muted-inline">Showing latest 6 of {visibleHrFiles.length}. Open HR Files for the full document history.</span>}
-            </div>
-          </section>
-        )}
+        {profileTab === "Documents" && <EmployeeDocumentsPanel person={person} access={access} legacyFiles={hrFiles} />}
         {profileTab === "Pay" && (
           <section id={`staff-profile-pay-${person.id}`}>
             <h4>Pay & contract</h4>
