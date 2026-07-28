@@ -340,7 +340,9 @@ async function fullDocument(id: string) {
 
 async function actorCanRead(actor: any, document: any) {
   if (["admin", "superadmin"].includes(actor.role)) return true;
-  if (document.staff_records?.profile_id === actor.id) return true;
+  if (document.staff_records?.profile_id === actor.id) {
+    return ["awaiting_signature", "signed", "declined", "superseded", "expired"].includes(document.status);
+  }
   if (actor.role !== "manager" || ["restricted_hr", "confidential_payroll"].includes(document.employee_document_types?.sensitivity)) return false;
   const { data: managerStaff } = await supabase.from("staff_records").select("id").eq("profile_id", actor.id).maybeSingle();
   if (!managerStaff) return false;
