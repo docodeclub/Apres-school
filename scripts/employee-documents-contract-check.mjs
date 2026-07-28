@@ -12,7 +12,7 @@ assert.match(migration, /restricted_hr','confidential_payroll/);
 assert.match(migration, /Standard Contract Variation/);
 
 const service = fs.readFileSync(new URL("../supabase/functions/manage-employee-document/index.ts", import.meta.url), "utf8");
-for (const action of ["create", "register_upload", "generate", "send", "sign", "decline", "archive", "url"]) {
+for (const action of ["create", "register_upload", "generate", "new_version", "send", "sign", "decline", "archive", "url"]) {
   assert.ok(service.includes(`action === "${action}"`), `Missing server action ${action}`);
 }
 assert.match(service, /buildPdf/);
@@ -23,11 +23,12 @@ assert.match(service, /employee_document_ready/);
 assert.match(service, /signed_storage_path/);
 
 const moduleSource = fs.readFileSync(new URL("../src/EmployeeDocumentsModule.jsx", import.meta.url), "utf8");
-for (const label of ["Documents", "Create document", "New contract variation", "Audit history", "Review & sign", "Draw signature", "Employment terms history"]) {
+for (const label of ["Documents", "Create document", "New contract variation", "Create next version", "Audit history", "Review & sign", "Draw signature", "Employment terms history"]) {
   assert.ok(moduleSource.includes(label), `Missing employee document UI: ${label}`);
 }
 const clientSource = fs.readFileSync(new URL("../src/supabaseClient.js", import.meta.url), "utf8");
 assert.match(clientSource, /Upload a PDF, Word, Excel, JPEG or PNG/);
+assert.match(clientSource, /createEmployeeDocumentVersion/);
 
 const platform = fs.readFileSync(new URL("../src/PlatformModule.jsx", import.meta.url), "utf8");
 assert.match(platform, /EmployeeDocumentsPanel/);

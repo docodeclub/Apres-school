@@ -28,6 +28,7 @@ serve(async (request) => {
     if (action === "create") return json(await createDocument(actor, payload));
     if (action === "register_upload") return json(await registerUpload(actor, payload));
     if (action === "generate") return json(await generateDocument(actor, stringValue(payload.documentId)));
+    if (action === "new_version") return json(await createNewVersion(actor, payload));
     if (action === "send") return json(await sendDocument(actor, stringValue(payload.documentId)));
     if (action === "sign") return json(await signDocument(actor, payload, request));
     if (action === "decline") return json(await declineDocument(actor, payload, request));
@@ -167,6 +168,78 @@ async function generateDocument(actor: any, documentId: string) {
   if (error) throw error;
   await addEvent(documentId, actor, "generated", "PDF generated from the approved wording.");
   return { document: data };
+}
+
+async function createNewVersion(actor: any, payload: any) {
+  requireAdmin(actor);
+  const document = await fullDocument(stringValue(payload.documentId));
+  if (!document) throw new Error("Document not found.");
+  if (document.status === "archived") throw new Error("Archived documents cannot be versioned.");
+
+  const { data: versions, error: versionsError } = await supabase
+    .from("employee_documents")
+    .select("id,version,is_active_version,status")
+    .eq("staff_record_id", document.staff_record_id)
+    .eq("lineage_id", document.lineage_id)
+    .is("deleted_at", null)
+    .order("version", { ascending: false });
+  if (versionsError) throw versionsError;
+  const nextVersion = Number(versions?.[0]?.version || document.version || 0) + 1;
+  const now = new Date().toISOString();
+  const activeIds = (versions || []).filter((item) => item.is_active_version).map((item) => item.id);
+
+  const { data: next, error: insertError } = await supabase.from("employee_documents").insert({
+    staff_record_id: document.staff_record_id,
+    document_type_id: document.document_type_id,
+    template_id: document.template_id,
+    lineage_id: document.lineage_id,
+    version: nextVersion,
+    title: stringValue(payload.title) || document.title,
+    status: "draft",
+    source_kind: "generated",
+    effective_date: nullValue(payload.effectiveDate) || document.effective_date,
+    issue_date: new Date().toISOString().slice(0, 10),
+    expiry_date: nullValue(payload.expiryDate) || document.expiry_date,
+    reminder_days: document.reminder_days,
+    rendered_body: stringValue(payload.body) || document.rendered_body,
+    merge_data: document.merge_data || {},
+    requires_signature: document.requires_signature,
+    is_active_version: false,
+    created_by: actor.id,
+  }).select("*").single();
+  if (insertError) throw insertError;
+
+  if (activeIds.length) {
+    const { error: supersedeError } = await supabase
+      .from("employee_documents")
+      .update({ is_active_version: false, status: "superseded", updated_at: now })
+      .in("id", activeIds);
+    if (supersedeError) throw supersedeError;
+    for (const id of activeIds) await addEvent(id, actor, "superseded", `Superseded by version ${nextVersion}.`);
+  }
+  const { error: activateError } = await supabase.from("employee_documents").update({ is_active_version: true }).eq("id", next.id);
+  if (activateError) throw activateError;
+
+  const { data: pendingTerms, error: termsError } = await supabase
+    .from("employment_terms_history")
+    .select("staff_record_id,term_key,current_value,new_value,effective_date,reason")
+    .eq("source_document_id", document.id)
+    .eq("status", "pending");
+  if (termsError) throw termsError;
+  if (pendingTerms?.length) {
+    const { error: cancelTermsError } = await supabase.from("employment_terms_history").update({ status: "cancelled" }).eq("source_document_id", document.id).eq("status", "pending");
+    if (cancelTermsError) throw cancelTermsError;
+    const { error: copyTermsError } = await supabase.from("employment_terms_history").insert(pendingTerms.map((term) => ({
+      ...term,
+      source_document_id: next.id,
+      created_by: actor.id,
+      status: "pending",
+    })));
+    if (copyTermsError) throw copyTermsError;
+  }
+
+  await addEvent(next.id, actor, "created", `Created as version ${nextVersion} from version ${document.version}.`, { previousDocumentId: document.id });
+  return { document: next };
 }
 
 async function sendDocument(actor: any, documentId: string) {

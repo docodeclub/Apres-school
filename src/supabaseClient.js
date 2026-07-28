@@ -1780,6 +1780,10 @@ export function generateEmployeeDocument(documentId) {
   return manageEmployeeDocument({ action: "generate", documentId });
 }
 
+export function createEmployeeDocumentVersion(documentId) {
+  return manageEmployeeDocument({ action: "new_version", documentId });
+}
+
 export function sendEmployeeDocument(documentId) {
   return manageEmployeeDocument({ action: "send", documentId });
 }
