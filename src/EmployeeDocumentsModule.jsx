@@ -269,6 +269,32 @@ export function EmployeeDocumentsPanel({ person, access, legacyFiles = [], compa
   </section>;
 }
 
+export function EmployeeDocumentsDirectory({ data, access }) {
+  const staff = data?.staff || [];
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState(() => staff[0]?.id || "");
+  const matches = useMemo(() => staff.filter((person) => `${person.name || ""} ${person.role || ""} ${person.location || ""}`.toLowerCase().includes(query.trim().toLowerCase())), [staff, query]);
+  const selected = staff.find((person) => person.id === selectedId) || matches[0] || staff[0];
+
+  useEffect(() => {
+    if (!staff.some((person) => person.id === selectedId)) setSelectedId(staff[0]?.id || "");
+  }, [staff, selectedId]);
+
+  return <section className="employee-doc-directory">
+    <header>
+      <div><p className="eyebrow">People · secure HR records</p><h2>Employee Documents</h2><p>Choose a staff member to open their contracts, variations, signatures and permanent employment history.</p></div>
+      <label>Find an employee<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, role or site" /></label>
+    </header>
+    <div className="employee-doc-directory-layout">
+      <aside aria-label="Employee document profiles">
+        {matches.map((person) => <button className={selected?.id === person.id ? "active" : ""} type="button" key={person.id} onClick={() => setSelectedId(person.id)}><span>{String(person.name || "?").slice(0, 1)}</span><div><strong>{person.name}</strong><small>{person.role || "Staff"} · {person.location || "Site not assigned"}</small></div></button>)}
+        {!matches.length && <p>No staff match that search.</p>}
+      </aside>
+      <main>{selected ? <EmployeeDocumentsPanel person={selected} access={access} legacyFiles={data?.hrFiles || []} /> : <div className="employee-doc-empty"><strong>No employee profiles available</strong><span>Staff profiles will appear here when they are added.</span></div>}</main>
+    </div>
+  </section>;
+}
+
 function EmployeeDocumentSigning({ document, person, busy, onClose, onSubmit }) {
   const [method, setMethod] = useState("typed");
   const [legalName, setLegalName] = useState(person?.name || "");

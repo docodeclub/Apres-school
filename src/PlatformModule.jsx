@@ -33,7 +33,7 @@ import {
 } from "./bookingSystem.js";
 import { REWARD_BADGES, rewardBadge } from "./rewardBadges.js";
 import { MyShifts, Staffing } from "./StaffingModule.jsx";
-import { EmployeeDocumentsPanel } from "./EmployeeDocumentsModule.jsx";
+import { EmployeeDocumentsDirectory, EmployeeDocumentsPanel } from "./EmployeeDocumentsModule.jsx";
 import {
   blockingPeriods,
   bookingGroups,
@@ -195,10 +195,10 @@ const SendNeeds = makeIcon("SN");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
-  ["People", ["Customer Profiles", "Users", "SCR", "HR", "HR Files"]],
+  ["People", ["Customer Profiles", "Users", "SCR", "HR", "HR Files", "Employee Documents"]],
   ["Sites", ["Schools", "Bookings", "Registers", "Incidents", "Safeguarding", "Staffing", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
   ["Finance", ["Finance", "Booking Payments", "Pay", "Rewards"]],
@@ -217,6 +217,7 @@ const platformTabHints = {
   Users: "Invite staff and reset access",
   HR: "Reporting lines and manager structure",
   "HR Files": "Contracts, payslips and staff documents",
+  "Employee Documents": "Contracts, variations, signatures and employment history",
   Schools: "School sites, provision and operational notes",
   SCR: "Single Central Register and safer recruitment",
   Staffing: "Today's cover, weekly planning, shifts and scheduled hours",
@@ -974,7 +975,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const visibleTabs = effectiveRole === "Staff"
     ? ["Staff", "Registers", "Documents", "Pay", "Rewards", "Sessions"]
     : effectiveRole === "Manager"
-      ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Ofsted", "Documents", "Sessions"]
+      ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Employee Documents", "Ofsted", "Documents", "Sessions"]
       : platformTabs;
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item))])
@@ -1166,6 +1167,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         )}
         {tab === "Schools" && <SchoolsOperations data={enrichedData} />}
         {tab === "HR Files" && <HRFiles data={targetedEnrichedData} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} />}
+        {tab === "Employee Documents" && <EmployeeDocumentsDirectory data={scopedData} access={access} />}
         {tab === "Staffing" && <Staffing access={access} legacyHours={["Admin", "Superadmin"].includes(effectiveRole) ? <HoursTracker data={scopedData} access={access} /> : null} />}
         {tab === "SCR" && <SCR data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} inspectionSchoolTarget={scrInspectionTarget} onInspectionTargetHandled={() => setScrInspectionTarget("")} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} onOpenHrFiles={(staffId) => { setStaffProfileTargetId(staffId); setTab("HR Files"); }} onOpenPay={(staffId) => { setStaffProfileTargetId(staffId); setTab("Pay"); }} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
@@ -17372,6 +17374,7 @@ function iconFor(item) {
     Users: <Users />,
     HR: <Users />,
     "HR Files": <FileText />,
+    "Employee Documents": <FileText />,
     Schools: <LayoutDashboard />,
     Audit: <FileText />,
     Settings: <ShieldCheck />,

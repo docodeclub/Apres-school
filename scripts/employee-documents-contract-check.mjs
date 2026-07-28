@@ -30,12 +30,14 @@ const moduleSource = fs.readFileSync(new URL("../src/EmployeeDocumentsModule.jsx
 for (const label of ["Documents", "Create document", "New contract variation", "Create next version", "Audit history", "Review & sign", "Draw signature", "Employment terms history"]) {
   assert.ok(moduleSource.includes(label), `Missing employee document UI: ${label}`);
 }
+assert.match(moduleSource, /EmployeeDocumentsDirectory/);
 const clientSource = fs.readFileSync(new URL("../src/supabaseClient.js", import.meta.url), "utf8");
 assert.match(clientSource, /Upload a PDF, Word, Excel, JPEG or PNG/);
 assert.match(clientSource, /createEmployeeDocumentVersion/);
 
 const platform = fs.readFileSync(new URL("../src/PlatformModule.jsx", import.meta.url), "utf8");
 assert.match(platform, /EmployeeDocumentsPanel/);
+assert.match(platform, /"Employee Documents"/);
 assert.match(platform, /"Documents", "Pay", "Sites"/);
 
 console.log("Employee document contract checks passed.");
