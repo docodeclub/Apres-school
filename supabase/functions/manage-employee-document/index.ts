@@ -63,7 +63,7 @@ async function createDocument(actor: any, payload: any) {
   const documentTypeId = stringValue(payload.documentTypeId);
   if (!staffRecordId || !documentTypeId) throw new Error("Choose an employee and document type.");
   const [{ data: staff, error: staffError }, { data: type, error: typeError }] = await Promise.all([
-    supabase.from("staff_records").select("id,preferred_name,job_role,start_date,address,primary_site,annual_salary,pay_rate,contract_type,profiles!inner(full_name,email,active)").eq("id", staffRecordId).maybeSingle(),
+    supabase.from("staff_records").select("id,preferred_name,job_role,start_date,address,primary_site,annual_salary,pay_rate,contract_hours,contract_type,profiles!inner(full_name,email,active)").eq("id", staffRecordId).maybeSingle(),
     supabase.from("employee_document_types").select("id,key,name,category,sensitivity,requires_signature").eq("id", documentTypeId).eq("active", true).maybeSingle(),
   ]);
   if (staffError) throw staffError;
@@ -84,6 +84,7 @@ async function createDocument(actor: any, payload: any) {
     address: staff.address || "",
     salary: staff.annual_salary ? money(staff.annual_salary) : "",
     hourly_rate: staff.pay_rate ? `${money(staff.pay_rate)} per hour` : "",
+    contract_hours: staff.contract_hours == null ? "" : String(staff.contract_hours),
     start_date: displayDate(staff.start_date),
     effective_date: displayDate(payload.effectiveDate),
     manager_name: managerName || actor.full_name || "Après School management",
@@ -358,14 +359,21 @@ async function applyDueTerms(document: any, actor: any) {
   const { data: terms, error } = await supabase.from("employment_terms_history").select("*").eq("source_document_id", document.id).eq("status", "pending").lte("effective_date", today);
   if (error) throw error;
   for (const term of terms || []) {
-    const value = term.new_value?.value;
-    const field = term.term_key === "salary" ? "annual_salary" : term.term_key === "hourly_rate" ? "pay_rate" : term.term_key === "job_title" ? "job_role" : term.term_key === "workplace" ? "primary_site" : null;
+    const value = normalizedTermValue(term.term_key, term.new_value?.value);
+    const field = term.term_key === "salary" ? "annual_salary" : term.term_key === "hourly_rate" ? "pay_rate" : term.term_key === "contract_hours" ? "contract_hours" : term.term_key === "job_title" ? "job_role" : term.term_key === "workplace" ? "primary_site" : null;
     if (field) {
       const { error: updateError } = await supabase.from("staff_records").update({ [field]: value }).eq("id", term.staff_record_id);
       if (updateError) throw updateError;
     }
     await supabase.from("employment_terms_history").update({ status: "applied", applied_by: actor.id, applied_at: new Date().toISOString() }).eq("id", term.id);
   }
+}
+
+function normalizedTermValue(termKey: string, value: unknown) {
+  if (!["salary", "hourly_rate", "contract_hours"].includes(termKey)) return value;
+  const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+  if (!Number.isFinite(parsed)) throw new Error(`The ${termKey.replaceAll("_", " ")} value must be numeric.`);
+  return parsed;
 }
 
 async function buildPdf(document: any, signature: any = null) {
