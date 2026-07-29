@@ -1208,6 +1208,7 @@ async function createBookingInvoiceAttachment(
 ) {
   const metadata = isObject(invoice.metadata) ? invoice.metadata as Record<string, unknown> : {};
   let bookingReference = stringValue(metadata.bookingReference) || stringValue(metadata.booking_reference);
+  let pricingGroupName = stringValue(metadata.pricingGroupName) || "Standard";
   let items = Array.isArray(metadata.items)
     ? metadata.items.filter(isObject) as Array<Record<string, unknown>>
     : [];
@@ -1216,12 +1217,13 @@ async function createBookingInvoiceAttachment(
   if (isUuid(bookingId)) {
     const { data, error } = await supabase
       .from("bookings")
-      .select("booking_reference, booking_items(child_name, site_name, programme_name, session_label, starts_at, ends_at, quantity, unit_amount, line_total, status)")
+      .select("booking_reference, pricing_group_name, booking_items(child_name, site_name, programme_name, session_label, starts_at, ends_at, quantity, original_unit_amount, unit_amount, unit_discount_amount, pricing_label, line_total, status)")
       .eq("id", bookingId)
       .maybeSingle();
     if (error) console.error(`Unable to load booking invoice lines: ${error.message}`);
     if (data) {
       bookingReference = stringValue(data.booking_reference) || bookingReference;
+      pricingGroupName = stringValue(data.pricing_group_name) || pricingGroupName;
       if (Array.isArray(data.booking_items) && data.booking_items.length) {
         items = data.booking_items
           .filter((item: Record<string, unknown>) => stringValue(item.status).toLowerCase() !== "cancelled")
@@ -1234,7 +1236,10 @@ async function createBookingInvoiceAttachment(
             startTime: item.starts_at,
             endTime: item.ends_at,
             quantity: item.quantity,
+            originalUnitAmount: item.original_unit_amount,
             unitAmount: item.unit_amount,
+            discountAmount: item.unit_discount_amount,
+            pricingLabel: item.pricing_label,
             total: item.line_total,
           }));
       }
@@ -1260,6 +1265,7 @@ async function createBookingInvoiceAttachment(
     balance: moneyValue(invoice.balance),
     statusLabel,
     paymentMethod,
+    pricingGroupName,
     providerReference: stringValue(invoice.provider_reference),
     lines: items,
   });

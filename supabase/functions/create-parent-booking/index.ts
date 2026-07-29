@@ -113,8 +113,30 @@ serve(async (request) => {
 
     if (reservationError) throw reservationError;
     const reservationResult = reservation as ReservationResult;
-    const booking = reservationResult.booking;
-    const savedItems = reservationResult.items || [];
+    let booking = reservationResult.booking;
+    let savedItems = reservationResult.items || [];
+
+    if (!reservationResult.existing) {
+      const { data: pricingData, error: pricingError } = await supabase.rpc("apply_booking_pricing", {
+        p_booking_id: stringValue(booking.id),
+      });
+      if (pricingError) throw pricingError;
+      if (isObject(pricingData)) {
+        const pricedBooking = isObject(pricingData.booking) ? pricingData.booking : {};
+        booking = {
+          ...booking,
+          status: stringValue(pricedBooking.status) || stringValue(booking.status),
+          totalAmount: moneyValue(pricingData.totalAmount ?? pricedBooking.total_amount),
+          grossTotal: moneyValue(pricingData.grossTotal ?? pricedBooking.gross_total),
+          discountAmount: moneyValue(pricingData.discountTotal ?? pricedBooking.discount_amount),
+          dueToday: moneyValue(pricedBooking.due_today),
+          outstandingBalance: moneyValue(pricedBooking.outstanding_balance),
+          pricingGroupId: stringValue(pricingData.pricingGroupId || pricedBooking.pricing_group_id),
+          pricingGroupName: stringValue(pricingData.pricingGroupName || pricedBooking.pricing_group_name) || "Standard",
+        };
+        if (Array.isArray(pricingData.items)) savedItems = pricingData.items as Array<Record<string, unknown>>;
+      }
+    }
 
     let credit: Record<string, unknown> = {
       applied: 0,
@@ -176,6 +198,10 @@ serve(async (request) => {
           bookingReference: stringValue(booking.bookingReference),
           source: stringValue(bookingPayload.source) || "parent_portal",
           grossBookingTotal: moneyValue(booking.totalAmount),
+          originalBookingTotal: moneyValue(booking.grossTotal),
+          discountTotal: moneyValue(booking.discountAmount),
+          pricingGroupId: stringValue(booking.pricingGroupId) || null,
+          pricingGroupName: stringValue(booking.pricingGroupName) || "Standard",
           accountCreditApplied: moneyValue(credit.applied),
           accountCreditEntryId: stringValue(credit.entryId) || null,
           ...(isObject(body.metadata) ? body.metadata : {}),
@@ -217,6 +243,9 @@ serve(async (request) => {
       metadata: {
         bookingReference: stringValue(booking.bookingReference),
         totalAmount: moneyValue(booking.totalAmount),
+        grossTotal: moneyValue(booking.grossTotal),
+        discountAmount: moneyValue(booking.discountAmount),
+        pricingGroupName: stringValue(booking.pricingGroupName) || "Standard",
         dueToday: moneyValue(booking.dueToday),
         checkoutStatus: checkout?.status || "not_required",
         itemCount: savedItems.length,
@@ -386,6 +415,8 @@ async function sendBookingRequestEmail({
     statusLine,
     "",
     `Reference: ${bookingReference}`,
+    `Pricing group: ${stringValue(booking.pricingGroupName) || "Standard"}`,
+    moneyValue(booking.discountAmount) > 0 ? `Discount applied: -${formatMoney(moneyValue(booking.discountAmount))}` : "",
     `Total: ${formatMoney(totalAmount)}`,
     `Due today: ${formatMoney(dueToday)}`,
     itemSummary ? `Sessions: ${itemSummary}` : "",
@@ -424,6 +455,9 @@ async function sendBookingRequestEmail({
           endTime: item.ends_at,
           quantity: item.quantity,
           unitAmount: item.unit_amount,
+          originalUnitAmount: item.original_unit_amount,
+          discountAmount: item.unit_discount_amount,
+          pricingLabel: item.pricing_label,
           total: item.line_total,
         })),
       });
@@ -455,6 +489,9 @@ async function sendBookingRequestEmail({
       checkoutId: stringValue(checkout?.id),
       checkoutStatus: stringValue(checkout?.status),
       totalAmount,
+      grossTotal: moneyValue(booking.grossTotal),
+      discountAmount: moneyValue(booking.discountAmount),
+      pricingGroupName: stringValue(booking.pricingGroupName) || "Standard",
       dueToday,
       itemCount: items.length,
       source: "create-parent-booking",

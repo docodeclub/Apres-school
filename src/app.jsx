@@ -163,7 +163,7 @@ const APRES_IMG = {
 };
 
 const nav = ["Home", "Bookings", "Holiday Clubs", "Wraparound", "Schools", "Contact"];
-const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformTabStorageKey = "apres-platform-active-tab";
 const platformTabSlugs = Object.fromEntries(platformTabs.map((item) => [item, item.toLowerCase().replace(/[^a-z0-9]+/g, "-")]));
 const platformTabsBySlug = {

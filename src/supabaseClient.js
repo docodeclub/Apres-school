@@ -355,6 +355,27 @@ export async function fetchMigrationReviewFamilies() {
         created_at,
         updated_at
       ),
+      parent_pricing_assignments(
+        id,
+        pricing_group_id,
+        effective_from,
+        effective_to,
+        notes,
+        assigned_at,
+        pricing_groups(id,name),
+        profiles!parent_pricing_assignments_assigned_by_fkey(full_name,email)
+      ),
+      parent_pricing_overrides(
+        id,
+        name,
+        service_key,
+        discount_type,
+        discount_value,
+        starts_on,
+        ends_on,
+        enabled,
+        notes
+      ),
       child_profiles(
         id,
         full_name,
@@ -385,6 +406,124 @@ export async function fetchMigrationReviewFamilies() {
     parent_account_credit_entries: [...(family.parent_account_credit_entries || [])].sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))),
     child_profiles: [...(family.child_profiles || [])].sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || ""))),
   }));
+}
+
+async function pricingActorId() {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getUser();
+  return data?.user?.id || null;
+}
+
+async function recordPricingEvent({ pricingGroupId = null, parentAccountId = null, ruleId = null, action, notes = "", metadata = {} }) {
+  const actorId = await pricingActorId();
+  const { error } = await supabase.from("pricing_group_events").insert({ pricing_group_id: pricingGroupId, parent_account_id: parentAccountId, rule_id: ruleId, actor_id: actorId, action, notes: notes || null, metadata });
+  if (error) throw error;
+}
+
+export async function fetchPricingGroupsData() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const [groups, rules, assignments, overrides, events, parents, schools, programmes, adjustments] = await Promise.all([
+    supabase.from("pricing_groups").select("*").is("deleted_at", null).order("name"),
+    supabase.from("pricing_group_rules").select("*,locations(id,name),programmes(id,name,category)").is("deleted_at", null).order("priority", { ascending: false }),
+    supabase.from("parent_pricing_assignments").select("*,parent_accounts(id,full_name,email,registered_centres),pricing_groups(id,name)").is("deleted_at", null).order("effective_from", { ascending: false }),
+    supabase.from("parent_pricing_overrides").select("*,parent_accounts(id,full_name,email),locations(id,name),programmes(id,name,category)").is("deleted_at", null).order("priority", { ascending: false }),
+    supabase.from("pricing_group_events").select("*,profiles!pricing_group_events_actor_id_fkey(full_name,email)").order("created_at", { ascending: false }).limit(250),
+    supabase.from("parent_accounts").select("id,full_name,email,registered_centres,portal_status,created_at").is("archived_at", null).order("full_name"),
+    supabase.from("locations").select("id,name,active").eq("active", true).order("name"),
+    supabase.from("programmes").select("id,location_id,name,category,active").eq("active", true).order("name"),
+    supabase.from("booking_pricing_adjustments").select("*,bookings(booking_reference,status,created_at,gross_total,total_amount,outstanding_balance),parent_accounts(full_name,email),locations(name)").order("created_at", { ascending: false }).limit(1000),
+  ]);
+  for (const result of [groups,rules,assignments,overrides,events,parents,schools,programmes,adjustments]) if (result.error) throw result.error;
+  return { groups:groups.data||[],rules:rules.data||[],assignments:assignments.data||[],overrides:overrides.data||[],events:events.data||[],parents:parents.data||[],schools:schools.data||[],programmes:programmes.data||[],adjustments:adjustments.data||[] };
+}
+
+export async function fetchPricingGroupCatalogue() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const [groups, rules, schools, programmes] = await Promise.all([
+    supabase.from("pricing_groups").select("*").is("deleted_at", null).order("name"),
+    supabase.from("pricing_group_rules").select("*,locations(id,name),programmes(id,name,category)").is("deleted_at", null).order("priority", { ascending: false }),
+    supabase.from("locations").select("id,name,active").eq("active", true).order("name"),
+    supabase.from("programmes").select("id,location_id,name,category,active").eq("active", true).order("name"),
+  ]);
+  for (const result of [groups, rules, schools, programmes]) if (result.error) throw result.error;
+  return { groups: groups.data || [], rules: rules.data || [], schools: schools.data || [], programmes: programmes.data || [], assignments: [], overrides: [], events: [], parents: [], adjustments: [] };
+}
+
+export async function savePricingGroup(input) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const actorId = await pricingActorId();
+  const payload = { key:String(input.key||input.name||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""), name:String(input.name||"").trim(), description:String(input.description||"").trim()||null, status:input.status||"active", is_default:Boolean(input.isDefault), updated_at:new Date().toISOString() };
+  if (!payload.name || !payload.key) throw new Error("Enter a group name.");
+  let result;
+  if (input.id) result = await supabase.from("pricing_groups").update(payload).eq("id",input.id).select("*").single();
+  else result = await supabase.from("pricing_groups").insert({ ...payload, created_by:actorId }).select("*").single();
+  if (result.error) throw result.error;
+  await recordPricingEvent({ pricingGroupId:result.data.id, action:input.id?"group_edited":"group_created", notes:input.id?"Pricing group updated.":"Pricing group created." });
+  return result.data;
+}
+
+export async function duplicatePricingGroup(group, rules = []) {
+  const copy = await savePricingGroup({ name: `${group.name} copy`, description: group.description || "", status: "active", isDefault: false });
+  for (const rule of rules) {
+    await savePricingRule({
+      pricingGroupId: copy.id,
+      name: rule.name.replace(group.name, copy.name),
+      schoolId: rule.school_id,
+      serviceKey: rule.service_key,
+      programmeId: rule.programme_id,
+      discountType: rule.discount_type,
+      discountValue: rule.discount_value,
+      startsOn: rule.starts_on,
+      endsOn: rule.ends_on,
+      priority: rule.priority,
+      enabled: rule.enabled,
+      notes: rule.notes,
+    });
+  }
+  await recordPricingEvent({ pricingGroupId: copy.id, action: "group_duplicated", notes: `Duplicated from ${group.name}.` });
+  return copy;
+}
+
+export async function savePricingRule(input) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const actorId = await pricingActorId();
+  const payload = { pricing_group_id:input.pricingGroupId, name:String(input.name||"").trim(), school_id:input.schoolId||null, service_key:input.serviceKey||"all", programme_id:input.programmeId||null, discount_type:input.discountType||"percentage", discount_value:Number(input.discountValue||0), starts_on:input.startsOn||null, ends_on:input.endsOn||null, priority:Number(input.priority||100), enabled:input.enabled!==false, notes:String(input.notes||"").trim()||null, updated_at:new Date().toISOString() };
+  if (!payload.pricing_group_id || !payload.name) throw new Error("Choose a group and name the pricing rule.");
+  let result;
+  if (input.id) result=await supabase.from("pricing_group_rules").update(payload).eq("id",input.id).select("*").single();
+  else result=await supabase.from("pricing_group_rules").insert({ ...payload,created_by:actorId }).select("*").single();
+  if (result.error) throw result.error;
+  await recordPricingEvent({ pricingGroupId:payload.pricing_group_id, ruleId:result.data.id, action:input.id?"rule_edited":"rule_added", notes:payload.name });
+  return result.data;
+}
+
+export async function assignParentPricingGroup(input) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const payload={ parent_account_id:input.parentAccountId,pricing_group_id:input.pricingGroupId,effective_from:input.effectiveFrom||new Date().toISOString().slice(0,10),effective_to:input.effectiveTo||null,notes:String(input.notes||"").trim()||null };
+  const { data,error }=await supabase.rpc("assign_parent_pricing_group",{p_parent_account_id:payload.parent_account_id,p_pricing_group_id:payload.pricing_group_id,p_effective_from:payload.effective_from,p_effective_to:payload.effective_to,p_notes:payload.notes});
+  if (error) throw error;
+  await recordPricingEvent({ pricingGroupId:payload.pricing_group_id,parentAccountId:payload.parent_account_id,action:"parent_assigned",notes:payload.notes||`Effective ${payload.effective_from}` });
+  return data;
+}
+
+export async function saveParentPricingOverride(input) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const actorId=await pricingActorId();
+  const payload={ parent_account_id:input.parentAccountId,name:String(input.name||"Individual parent override").trim(),school_id:input.schoolId||null,service_key:input.serviceKey||"all",programme_id:input.programmeId||null,discount_type:input.discountType||"percentage",discount_value:Number(input.discountValue||0),starts_on:input.startsOn||null,ends_on:input.endsOn||null,priority:Number(input.priority||1000),enabled:input.enabled!==false,notes:String(input.notes||"").trim()||null,updated_at:new Date().toISOString() };
+  let result;
+  if(input.id) result=await supabase.from("parent_pricing_overrides").update(payload).eq("id",input.id).select("*").single();
+  else result=await supabase.from("parent_pricing_overrides").insert({...payload,created_by:actorId}).select("*").single();
+  if(result.error) throw result.error;
+  await recordPricingEvent({parentAccountId:payload.parent_account_id,action:input.id?"override_edited":"override_added",notes:payload.name,metadata:{overrideId:result.data.id}});
+  return result.data;
+}
+
+export async function archivePricingRecord(table,id,{groupId=null,parentAccountId=null,action="archived"}={}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const payload=table==="pricing_groups"?{status:"archived",archived_at:new Date().toISOString(),updated_at:new Date().toISOString()}:{enabled:false,archived_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  const {error}=await supabase.from(table).update(payload).eq("id",id);
+  if(error) throw error;
+  await recordPricingEvent({pricingGroupId:groupId,parentAccountId,action,metadata:{table,id}});
 }
 
 export async function adjustParentAccountCredit({ parentAccountId, amount, reason, note }) {

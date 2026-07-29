@@ -132,16 +132,19 @@ serve(async (request) => {
         p_actor_role: actor.role || "parent",
       });
       if (error) throw error;
+      const { data: pricing, error: pricingError } = await supabase.rpc("apply_booking_pricing", { p_booking_id: bookingId });
+      if (pricingError) throw pricingError;
+      const result = { ...(data as Record<string, unknown>), pricing, booking: isObject(pricing) && isObject(pricing.booking) ? pricing.booking : (data as Record<string, unknown>)?.booking };
       const email = await sendBookingChangeEmail({
         actor,
         action: "remove_items",
-        result: data as Record<string, unknown>,
+        result,
         reason: stringValue(body.reason),
       });
       return json({
         action: "remove_items",
         email,
-        ...(data as Record<string, unknown>),
+        ...result,
       });
     }
 
@@ -156,16 +159,19 @@ serve(async (request) => {
         p_actor_role: actor.role || "parent",
       });
       if (error) throw error;
+      const { data: pricing, error: pricingError } = await supabase.rpc("apply_booking_pricing", { p_booking_id: bookingId });
+      if (pricingError) throw pricingError;
+      const result = { ...(data as Record<string, unknown>), pricing, booking: isObject(pricing) && isObject(pricing.booking) ? pricing.booking : (data as Record<string, unknown>)?.booking };
       const email = await sendBookingChangeEmail({
         actor,
         action: "add_items",
-        result: data as Record<string, unknown>,
+        result,
         reason: stringValue(body.reason),
       });
       return json({
         action: "add_items",
         email,
-        ...(data as Record<string, unknown>),
+        ...result,
       });
     }
 

@@ -59,6 +59,7 @@ import {
   fetchParentAccount,
   fetchParentBadgeBook,
   fetchParentBookingLedger,
+  quoteParentBookingPricing,
   fetchStaffRegister,
   graduateParentChild,
   getParentAuthSession,
@@ -1277,6 +1278,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     bookings: [],
     creditEntries: [],
     creditBalance: 0,
+    pricing: { pricingGroupName: "Standard", benefits: [], overrides: [], academicYearSavings: 0 },
     fetchedAt: "",
     loading: false,
     error: "",
@@ -1285,6 +1287,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [creditTopUpAmount, setCreditTopUpAmount] = useState("50");
   const [creditTopUpBusy, setCreditTopUpBusy] = useState(false);
   const [creditTopUpError, setCreditTopUpError] = useState("");
+  const [pricingQuote, setPricingQuote] = useState(null);
   const [liveFinanceActions, setLiveFinanceActions] = useState(() => readJson("apres-booking-lab-live-finance-actions", {}));
   const [liveFinanceActionPending, setLiveFinanceActionPending] = useState({});
   const [launchParentPortalOpen, setLaunchParentPortalOpen] = useState(false);
@@ -1897,6 +1900,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const basketChildIds = [...new Set(draftBookingBasket.map((item) => item.childId))];
   const basketDays = [...new Set(draftBookingBasket.map((item) => item.day))];
   const subtotal = basketCheckoutActive ? basketSubtotal : currentSelectionSubtotal;
+  const basketPricingSignature = draftBookingBasket.map((item) => `${item.sessionBlockId}:${item.childId}`).sort().join("|");
+  const activePricingQuote = basketCheckoutActive && pricingQuote?.signature === basketPricingSignature ? pricingQuote : null;
   const selectedPaymentRoutes = [...new Set(pickedDayRows.map((row) => row.paymentRoute))];
   const activePaymentRoute = selectedPaymentRoutes.length === 1 ? selectedPaymentRoutes[0] : selectedPaymentRoutes.length ? "Mixed PonchoPay routes" : (activeSession.paymentRoute || "PonchoPay card + vouchers");
   const parentPaymentOptions = activePaymentRoute === "PonchoPay card only"
@@ -1955,16 +1960,19 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   };
   const pricingChildCount = basketCheckoutActive ? basketChildIds.length : childCount;
   const pricingDayCount = basketCheckoutActive ? basketDays.length : pickedDays.length;
-  const siblingDiscount = pricingChildCount > 1 ? subtotal * (Number(rules.siblingDiscountPercent || 0) / 100) : 0;
-  const weeklyDiscount = pricingDayCount >= 4 ? subtotal * (Number(rules.fullWeekDiscountPercent || 0) / 100) : 0;
-  const promoDiscount = promoCode.trim().toUpperCase() === String(rules.promoCode || "").toUpperCase() ? (subtotal + addOnTotal) * (Number(rules.promoDiscountPercent || 0) / 100) : 0;
-  const total = Math.max(0, subtotal + addOnTotal - siblingDiscount - weeklyDiscount - promoDiscount);
+  const siblingDiscount = activePricingQuote ? 0 : pricingChildCount > 1 ? subtotal * (Number(rules.siblingDiscountPercent || 0) / 100) : 0;
+  const weeklyDiscount = activePricingQuote ? 0 : pricingDayCount >= 4 ? subtotal * (Number(rules.fullWeekDiscountPercent || 0) / 100) : 0;
+  const promoDiscount = activePricingQuote ? 0 : promoCode.trim().toUpperCase() === String(rules.promoCode || "").toUpperCase() ? (subtotal + addOnTotal) * (Number(rules.promoDiscountPercent || 0) / 100) : 0;
+  const pricingGroupDiscount = Number(activePricingQuote?.discountTotal || 0);
+  const total = activePricingQuote ? Math.max(0, Number(activePricingQuote.totalAmount || 0) + addOnTotal) : Math.max(0, subtotal + addOnTotal - siblingDiscount - weeklyDiscount - promoDiscount);
   const draftBasketSiblingDiscount = basketChildIds.length > 1 ? basketSubtotal * (Number(rules.siblingDiscountPercent || 0) / 100) : 0;
   const draftBasketWeeklyDiscount = basketDays.length >= 4 ? basketSubtotal * (Number(rules.fullWeekDiscountPercent || 0) / 100) : 0;
   const draftBasketPromoDiscount = promoCode.trim().toUpperCase() === String(rules.promoCode || "").toUpperCase()
     ? basketSubtotal * (Number(rules.promoDiscountPercent || 0) / 100)
     : 0;
-  const draftBasketTotal = Math.max(0, basketSubtotal - draftBasketSiblingDiscount - draftBasketWeeklyDiscount - draftBasketPromoDiscount);
+  const draftBasketTotal = activePricingQuote
+    ? Math.max(0, Number(activePricingQuote.totalAmount || 0))
+    : Math.max(0, basketSubtotal - draftBasketSiblingDiscount - draftBasketWeeklyDiscount - draftBasketPromoDiscount);
   const paymentPlanMinimum = Math.max(0, Number(rules.paymentPlanMinTotal ?? defaultLabRules.paymentPlanMinTotal));
   const paymentPlanMaxInstallments = Math.max(2, Number(rules.paymentPlanMaxInstallments ?? defaultLabRules.paymentPlanMaxInstallments));
   const paymentPlanDepositPercent = Math.min(95, Math.max(0, Number(rules.paymentPlanDepositPercent ?? defaultLabRules.paymentPlanDepositPercent)));
@@ -5020,6 +5028,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         bookings: ledger.bookings || [],
         creditEntries: ledger.creditEntries || [],
         creditBalance: Number(ledger.creditBalance || 0),
+        pricing: ledger.pricing || { pricingGroupName: "Standard", benefits: [], overrides: [], academicYearSavings: 0 },
         fetchedAt: ledger.fetchedAt || new Date().toISOString(),
         loading: false,
         error: "",
@@ -5137,8 +5146,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         setLiveParentLedger({
           invoices: ledger.invoices || [],
           bookings: ledger.bookings || [],
-          creditEntries: ledger.creditEntries || [],
-          creditBalance: Number(ledger.creditBalance || 0),
+        creditEntries: ledger.creditEntries || [],
+        creditBalance: Number(ledger.creditBalance || 0),
+        pricing: ledger.pricing || { pricingGroupName: "Standard", benefits: [], overrides: [], academicYearSavings: 0 },
           fetchedAt: ledger.fetchedAt || new Date().toISOString(),
           loading: false,
           error: "",
@@ -5758,7 +5768,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ["Consents", "Completed at confirmation", selectedConsentNotes.length ? selectedConsentNotes.join(" · ") : "Terms, emergency care and child data consent required below"],
     ["Parent account", activeFamily.parentName || "Parent", `${activeFamily.email || "Email needed"} · ${activeFamily.phone || activeFamily.emergencyContact || "Phone needed"}`],
   ];
-  const discountTotal = siblingDiscount + weeklyDiscount + promoDiscount;
+  const discountTotal = pricingGroupDiscount + siblingDiscount + weeklyDiscount + promoDiscount;
   const draftBasketChildNames = [...new Set(draftBookingBasket.map((item) => item.childName))];
   const checkoutChildNames = basketCheckoutActive ? draftBasketChildNames : selectedChildren.map((child) => child.name);
   const checkoutItemCount = basketCheckoutActive ? draftBookingBasket.length : (selectedBlockCount || pickedDays.length);
@@ -5805,13 +5815,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const reviewCostCards = [
     ["Booking value", money(total), `${checkoutItemCount} child session${checkoutItemCount === 1 ? "" : "s"} · ${checkoutChildCount} child${checkoutChildCount === 1 ? "" : "ren"}`],
     ["Due today", money(payableTodayAmount), accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied first` : activePaymentPlan === "Monthly" ? `${remainingPlanBalance > 0 ? `${money(remainingPlanBalance)} scheduled` : "No remaining balance"}` : effectivePaymentMethod === "card" ? "Taken securely at booking" : "No card charge today"],
-    ["Discounts", discountTotal ? `-${money(discountTotal)}` : money(0), siblingDiscount ? "Sibling discount included" : weeklyDiscount ? "Full-week discount included" : promoDiscount ? "Promo applied" : "No discount applied"],
+    ["Discounts", discountTotal ? `-${money(discountTotal)}` : money(0), activePricingQuote ? `${activePricingQuote.pricingGroupName || "Standard"} pricing applied` : siblingDiscount ? "Sibling discount included" : weeklyDiscount ? "Full-week discount included" : promoDiscount ? "Promo applied" : "No discount applied"],
     [isLaunchMode ? "Invoice" : "Payment route", activePaymentPlan === "Monthly" ? "Payment plan" : effectivePaymentMethod === "card" ? "Receipt emailed" : "Invoice emailed", isLaunchMode ? "Saved in your parent portal" : activePaymentRoute],
   ];
   const reviewLedgerRows = [
     ["Session fees", `${checkoutItemCount} child session${checkoutItemCount === 1 ? "" : "s"} across ${checkoutDayCount} day${checkoutDayCount === 1 ? "" : "s"}`, money(subtotal)],
     ["Add-ons", `${selectedAddOns.length} selected`, money(addOnTotal)],
-    ["Discounts", "Applied before payment", `-${money(discountTotal)}`],
+    ["Discounts", activePricingQuote ? `${activePricingQuote.pricingGroupName || "Standard"} · applied automatically` : "Applied before payment", `-${money(discountTotal)}`],
     ...(accountCreditPreview > 0 ? [["Account credit", "Applied automatically", `-${money(accountCreditPreview)}`]] : []),
     ["Pay today", activePaymentPlan === "Monthly" ? monthlyScheduleSummary : accountCreditPreview >= dueTodayAmount ? "Covered by account credit" : "Pay at confirmation", money(payableTodayAmount)],
   ];
@@ -6186,6 +6196,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ["Booked", confirmationChildren, `${confirmation.site} · ${parentActivityLabel(confirmation)}`],
     ["When", `${confirmationDayCount} session${confirmationDayCount === 1 ? "" : "s"}`, confirmationDaysSummary],
     ["Payment", confirmationPaymentStatus, confirmation.paymentPlan === "Monthly" ? confirmationNextPaymentText : isLaunchMode ? confirmationDisplayPaymentLabel : confirmation.paymentRoute || confirmationDisplayPaymentLabel],
+    ["Pricing", confirmation.pricingGroupName || "Standard", Number(confirmation.pricingDiscount || 0) > 0 ? `${money(confirmation.grossTotal)} less ${money(confirmation.pricingDiscount)}` : "Standard price"],
     ["Email", confirmationParentEmail, confirmation.status === "Waitlist" ? "Waitlist request confirmation" : confirmationPaidWithCredit || confirmation.paymentMethod === "card" ? "Receipt and booking confirmation" : `${confirmationDocumentLabel} and booking confirmation`],
   ] : [];
   const confirmationAssuranceRows = confirmation ? [
@@ -8032,10 +8043,22 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setStatus("Basket cleared.");
   }
 
-  function proceedBasketCheckout() {
+  async function proceedBasketCheckout() {
     if (!draftBookingBasket.length) {
       setStatus("Add at least one child session to the basket first.");
       return;
+    }
+    setStatus("Checking your pricing benefits…");
+    if (isLaunchMode && realBookingServiceReady && parentAccountMode === "live") {
+      try {
+        const signature = draftBookingBasket.map((item) => `${item.sessionBlockId}:${item.childId}`).sort().join("|");
+        const quote = await quoteParentBookingPricing(draftBookingBasket.map((item) => ({ sessionBlockId: item.sessionBlockId, quantity: 1 })));
+        if (!quote) throw new Error("No bookable sessions were found in the basket.");
+        setPricingQuote({ ...quote, signature });
+      } catch (pricingError) {
+        setStatus(`We could not verify your booking price, so checkout has not opened. ${pricingError?.message || "Please try again."}`);
+        return;
+      }
     }
     setStatus("");
     setParentCheckoutOpen(true);
@@ -15479,13 +15502,17 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       : await createCheckoutSessionForBooking(booking);
     const bookingWithCheckout = {
       ...booking,
+      total: Number(realBookingResult?.booking?.totalAmount ?? booking.total),
+      grossTotal: Number(realBookingResult?.booking?.grossTotal ?? booking.total),
+      pricingDiscount: Number(realBookingResult?.booking?.discountAmount || 0),
+      pricingGroupName: realBookingResult?.booking?.pricingGroupName || "Standard",
       status: realBookingResult?.credit?.fullyCovered ? "Prototype paid" : booking.status,
       paymentStatus: realBookingResult?.credit?.fullyCovered ? "Paid with account credit" : booking.paymentStatus,
       invoiceStatus: realBookingResult?.credit?.fullyCovered ? "Paid" : booking.invoiceStatus,
       paymentMethod: realBookingResult?.credit?.fullyCovered ? "account_credit" : booking.paymentMethod,
       paymentLabel: realBookingResult?.credit?.fullyCovered ? "Account credit" : booking.paymentLabel,
-      dueToday: realBookingResult?.credit?.fullyCovered ? 0 : booking.dueToday,
-      outstandingBalance: realBookingResult?.credit?.fullyCovered ? 0 : booking.outstandingBalance,
+      dueToday: realBookingResult?.credit?.fullyCovered ? 0 : Number(realBookingResult?.booking?.dueToday ?? booking.dueToday),
+      outstandingBalance: realBookingResult?.credit?.fullyCovered ? 0 : Number(realBookingResult?.booking?.outstandingBalance ?? booking.outstandingBalance),
       id: realBookingResult?.booking?.id || booking.id,
       bookingReference: realBookingResult?.booking?.bookingReference || booking.bookingReference || "",
       realBookingStatus: realBookingResult?.booking ? "created" : realBookingResult?.status || "local_prototype",
@@ -21931,6 +21958,21 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 {!isLaunchMode && <button className="button light" type="button" onClick={() => setLabView("Family")}>Family details</button>}
               </div>
             </div>
+            {isLaunchMode && parentAccountSignedIn && liveParentLedger.pricing && (
+              <section className="lab-parent-credit-balance" aria-label="Your pricing benefits">
+                <div>
+                  <p className="eyebrow">Your pricing group</p>
+                  <strong>{liveParentLedger.pricing.pricingGroupName || "Standard"}</strong>
+                </div>
+                <div>
+                  <h3>{Number(liveParentLedger.pricing.academicYearSavings || 0) > 0 ? `${money(liveParentLedger.pricing.academicYearSavings)} saved this academic year` : "Your booking prices are applied automatically"}</h3>
+                  <p>{(liveParentLedger.pricing.benefits || []).length
+                    ? liveParentLedger.pricing.benefits.map((benefit) => benefit.name).join(" · ")
+                    : liveParentLedger.pricing.description || "Standard published prices apply to this account."}</p>
+                </div>
+                <span className="lab-parent-auth-state">Applied at checkout</span>
+              </section>
+            )}
             {isLaunchMode && parentAccountSignedIn && (
               <div className="lab-parent-account-navigation">
                 <button

@@ -56,6 +56,11 @@ serve(async (request) => {
     });
     if (bookingError) throw new Error(bookingError.message || "The ad-hoc booking could not be created.");
 
+    const { error: pricingError } = await serviceClient.rpc("apply_booking_pricing", {
+      p_booking_id: booking.bookingId,
+    });
+    if (pricingError) throw new Error(pricingError.message || "The family pricing could not be applied.");
+
     const { data: finance, error: financeError } = await callerClient.rpc("finalise_staff_adhoc_account_charge", {
       p_booking_id: booking.bookingId,
     });
@@ -64,12 +69,12 @@ serve(async (request) => {
     const [{ data: bookingRow, error: bookingRowError }, { data: items, error: itemsError }] = await Promise.all([
       serviceClient
         .from("bookings")
-        .select("id, booking_reference, parent_account_id, parent_email, parent_name, total_amount, due_today, invoice_id")
+        .select("id, booking_reference, parent_account_id, parent_email, parent_name, gross_total, discount_amount, pricing_group_name, total_amount, due_today, invoice_id")
         .eq("id", booking.bookingId)
         .single(),
       serviceClient
         .from("booking_items")
-        .select("child_name, site_name, programme_name, session_label, starts_at, ends_at, unit_amount")
+        .select("child_name, site_name, programme_name, session_label, starts_at, ends_at, original_unit_amount, unit_discount_amount, pricing_label, unit_amount")
         .eq("booking_id", booking.bookingId)
         .order("starts_at"),
     ]);
@@ -104,6 +109,8 @@ serve(async (request) => {
         `Hi ${firstName(parentName)},`,
         `${childName} has been added to the register for ad-hoc care by the Après School team.`,
         ...sessionLines,
+        `Pricing group: ${stringValue(bookingRow.pricing_group_name) || "Standard"}.`,
+        moneyValue(bookingRow.discount_amount) > 0 ? `Pricing benefit: -£${moneyValue(bookingRow.discount_amount).toFixed(2)}.` : "",
         `Ad-hoc care total: £${total.toFixed(2)}.`,
         creditApplied > 0 ? `£${creditApplied.toFixed(2)} of account credit has been used.` : "",
         outstanding > 0

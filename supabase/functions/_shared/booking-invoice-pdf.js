@@ -162,6 +162,11 @@ function normaliseLine(line = {}) {
   const end = formatTime(line.endTime || line.endsAt);
   const quantity = Math.max(1, Number(line.quantity || 1));
   const unitAmount = Number(line.unitAmount ?? line.unit_amount ?? line.price ?? 0);
+  const originalUnitAmount = Number(line.originalUnitAmount ?? line.original_unit_amount ?? unitAmount);
+  const total = Number(line.total ?? line.lineTotal ?? line.line_total ?? quantity * unitAmount);
+  const originalTotal = Number(line.originalTotal ?? line.original_line_total ?? quantity * originalUnitAmount);
+  const discountTotal = Math.max(0, Number(line.discountTotal ?? line.discount_amount ?? originalTotal - total));
+  const pricingLabel = clean(line.pricingLabel || line.pricing_label || "");
   return {
     date: formatDate(date),
     time: [start, end].filter(Boolean).join("-") || "Time recorded in portal",
@@ -169,8 +174,9 @@ function normaliseLine(line = {}) {
     description: clean([
       line.sessionName || line.sessionLabel || line.session_label || line.careType || "Care session",
       line.siteName || line.site_name,
+      pricingLabel && discountTotal > 0 ? `${pricingLabel}: ${money(originalTotal)} less ${money(discountTotal)}` : "",
     ].filter(Boolean).join(" · ")),
-    total: Number(line.total ?? line.lineTotal ?? line.line_total ?? quantity * unitAmount),
+    total,
   };
 }
 
@@ -239,6 +245,7 @@ export function buildBookingInvoicePdf(input = {}) {
   doc.bold("Invoice details", 340, 112, 10, BLUE);
   doc.text(`Issued: ${formatDate(input.issueDate || new Date().toISOString())}`, 340, 133, 8.5, MUTED);
   doc.text(`Booking reference: ${bookingReference}`, 340, 151, 8.5, MUTED);
+  if (input.pricingGroupName) doc.text(`Pricing group: ${clean(input.pricingGroupName)}`, 340, 166, 8.5, MUTED);
 
   doc.rect(PAGE.margin, 178, pageWidth, 96, PALE_GREEN, LINE);
   const summaries = [

@@ -25,6 +25,7 @@
     "check:register-contract": "node scripts/register-contract-check.mjs",
     "check:staffing": "node scripts/staffing-contract-check.mjs",
     "check:employee-documents": "node scripts/employee-documents-contract-check.mjs",
+    "check:pricing-groups": "node scripts/pricing-groups-contract-check.mjs",
     "check:booking-live": "node scripts/booking-live-readiness.mjs",
     "check:booking-live:strict": "node scripts/booking-live-readiness.mjs --strict",
     "booking:staging-bundle": "node scripts/booking-staging-bundle.mjs",

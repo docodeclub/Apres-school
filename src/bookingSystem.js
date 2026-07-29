@@ -1004,10 +1004,13 @@ export async function fetchParentBookingLedger({ limit = 80 } = {}) {
   assertSupabase();
   await currentUser();
 
-  const { data: ledger, error } = await supabase
-    .rpc("parent_booking_ledger", { p_limit: limit });
+  const [{ data: ledger, error }, { data: pricing, error: pricingError }] = await Promise.all([
+    supabase.rpc("parent_booking_ledger", { p_limit: limit }),
+    supabase.rpc("current_parent_pricing_summary"),
+  ]);
 
   if (error) throw error;
+  if (pricingError) throw pricingError;
   const mappedCreditEntries = (Array.isArray(ledger?.creditEntries) ? ledger.creditEntries : [])
     .map(mapParentCreditEntry);
 
@@ -1018,8 +1021,21 @@ export async function fetchParentBookingLedger({ limit = 80 } = {}) {
     creditBalance: Number(ledger?.creditBalance ?? mappedCreditEntries
       .filter((entry) => entry.status === "posted")
       .reduce((sum, entry) => sum + Number(entry.amount || 0), 0)),
+    pricing: pricing || { pricingGroupName: "Standard", benefits: [], overrides: [], academicYearSavings: 0 },
     fetchedAt: ledger?.fetchedAt || new Date().toISOString(),
   };
+}
+
+export async function quoteParentBookingPricing(items = []) {
+  assertSupabase();
+  await currentUser();
+  const pricingItems = items
+    .map((item) => ({ sessionBlockId: item.sessionBlockId || item.session_block_id, quantity: Number(item.quantity || 1) }))
+    .filter((item) => item.sessionBlockId);
+  if (!pricingItems.length) return null;
+  const { data, error } = await supabase.rpc("quote_current_parent_pricing", { p_items: pricingItems });
+  if (error) throw error;
+  return data;
 }
 
 export async function fetchAdminBookingLedger({ limit = 120 } = {}) {

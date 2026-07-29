@@ -34,6 +34,7 @@ import {
 import { REWARD_BADGES, rewardBadge } from "./rewardBadges.js";
 import { MyShifts, Staffing } from "./StaffingModule.jsx";
 import { EmployeeDocumentsDirectory, EmployeeDocumentsPanel } from "./EmployeeDocumentsModule.jsx";
+import PricingGroupsModule from "./PricingGroupsModule.jsx";
 import {
   blockingPeriods,
   bookingGroups,
@@ -195,13 +196,13 @@ const SendNeeds = makeIcon("SN");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Finance", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
   ["People", ["Customer Profiles", "Users", "SCR", "HR", "HR Files", "Employee Documents"]],
   ["Sites", ["Schools", "Bookings", "Registers", "Incidents", "Safeguarding", "Staffing", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
-  ["Finance", ["Finance", "Booking Payments", "Pay", "Rewards"]],
+  ["Finance", ["Finance", "Booking Payments", "Pricing Groups", "Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
 ];
 const platformTabHints = {
@@ -213,6 +214,7 @@ const platformTabHints = {
   Incidents: "Review incidents, first aid and restricted safeguarding reports",
   Safeguarding: "Restricted DSL case management and chronology",
   "Booking Payments": "Parent balances, PonchoPay reconciliation, vouchers and refunds",
+  "Pricing Groups": "Parent concessions, staff benefits and booking price rules",
   Finance: "School invoices, customers, payments and credit notes",
   Users: "Invite staff and reset access",
   HR: "Reporting lines and manager structure",
@@ -975,7 +977,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const visibleTabs = effectiveRole === "Staff"
     ? ["Staff", "Registers", "Documents", "Pay", "Rewards", "Sessions"]
     : effectiveRole === "Manager"
-      ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Employee Documents", "Ofsted", "Documents", "Sessions"]
+      ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Employee Documents", "Ofsted", "Documents", "Sessions", "Pricing Groups"]
       : platformTabs;
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item))])
@@ -1149,6 +1151,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Bookings" && <BookingAdmin data={enrichedData} access={access} initialFocus={bookingAdminFocus} onClearInitialFocus={() => setBookingAdminFocus("")} />}
         {tab === "Registers" && <Registers access={access} />}
         {tab === "Booking Payments" && <BookingFinance data={enrichedData} access={access} onOpenBookingFocus={openBookingAdminFocus} />}
+        {tab === "Pricing Groups" && ["Manager", "Admin", "Superadmin"].includes(effectiveRole) && <PricingGroupsModule access={access} />}
         {tab === "Finance" && <SchoolFinance data={enrichedData} access={access} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && (
@@ -3374,6 +3377,10 @@ function FamilyImportReview({ access }) {
   const [creditBusy, setCreditBusy] = useState(false);
   const [creditMessage, setCreditMessage] = useState("");
   const [creditMessageTone, setCreditMessageTone] = useState("success");
+  const [pricingGroups, setPricingGroups] = useState([]);
+  const [pricingDraft, setPricingDraft] = useState({ pricingGroupId: "", effectiveFrom: new Date().toISOString().slice(0, 10), notes: "" });
+  const [pricingBusy, setPricingBusy] = useState(false);
+  const [pricingMessage, setPricingMessage] = useState("");
   const canReview = ["Admin", "Superadmin"].includes(access?.role);
 
   useEffect(() => {
@@ -3384,14 +3391,16 @@ function FamilyImportReview({ access }) {
     }
     setLoading(true);
     loadSupabaseModule()
-      .then(({ fetchMigrationReviewFamilies, fetchMigrationHealthReviewItems }) => Promise.all([
+      .then(({ fetchMigrationReviewFamilies, fetchMigrationHealthReviewItems, fetchPricingGroupsData }) => Promise.all([
         fetchMigrationReviewFamilies(),
         fetchMigrationHealthReviewItems(),
+        fetchPricingGroupsData(),
       ]))
-      .then(([rows, reviewItems]) => {
+      .then(([rows, reviewItems, pricing]) => {
         if (cancelled) return;
         setFamilies(rows);
         setHealthReviewItems(reviewItems);
+        setPricingGroups(pricing.groups || []);
         setSelectedFamilyId((current) => current || rows[0]?.id || "");
         setLoading(false);
       })
@@ -3428,6 +3437,22 @@ function FamilyImportReview({ access }) {
   const linkedFamilies = families.filter((family) => family.profile_id).length;
   const unresolvedHealthItems = healthReviewItems.filter((item) => item.status !== "resolved");
   const parentUpdateHealthItems = unresolvedHealthItems.filter((item) => item.status === "parent_update_required").length;
+  const activePricingAssignment = [...(selectedFamily?.parent_pricing_assignments || [])]
+    .filter((item) => item.effective_from <= new Date().toISOString().slice(0, 10) && (!item.effective_to || item.effective_to >= new Date().toISOString().slice(0, 10)))
+    .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
+
+  async function submitParentPricing(event) {
+    event.preventDefault();
+    if (!selectedFamily || !pricingDraft.pricingGroupId || pricingBusy) return;
+    setPricingBusy(true); setPricingMessage("");
+    try {
+      const module = await loadSupabaseModule();
+      await module.assignParentPricingGroup({ parentAccountId: selectedFamily.id, ...pricingDraft });
+      setFamilies(await module.fetchMigrationReviewFamilies());
+      setPricingMessage("Pricing group assignment saved. New bookings will use it from the effective date; existing prices remain unchanged.");
+    } catch (pricingError) { setPricingMessage(pricingError?.message || "The pricing group could not be assigned."); }
+    finally { setPricingBusy(false); }
+  }
 
   function openHealthReviewItem(item) {
     const family = families.find((candidate) => (candidate.child_profiles || []).some((child) => child.external_id === item.external_child_id));
@@ -3666,6 +3691,16 @@ function FamilyImportReview({ access }) {
                 <article><span>Address</span><strong>{reviewValue([selectedFamily.billing_address?.line1, selectedFamily.billing_address?.town, selectedFamily.billing_address?.postcode], "Not recorded")}</strong></article>
                 <article className={missingParentFields.length ? "needs-review" : "complete"}><span>Parent review</span><strong>{missingParentFields.length ? `${missingParentFields.length} item${missingParentFields.length === 1 ? "" : "s"} missing` : "Source record complete"}</strong><small>{reviewValue(missingParentFields, "No missing fields")}</small></article>
               </div>
+              <section className="panel" aria-label="Parent pricing group">
+                <div className="family-import-family-head"><div><p className="eyebrow">Pricing</p><h3>{activePricingAssignment?.pricing_groups?.name || "Standard"}</h3><p>{activePricingAssignment ? `Effective ${formatShortDate(activePricingAssignment.effective_from)} · ${activePricingAssignment.notes || "No assignment note"}` : "Default public pricing applies."}</p></div></div>
+                <form className="family-credit-form" onSubmit={submitParentPricing}>
+                  <label><span>Change pricing group</span><select required value={pricingDraft.pricingGroupId} onChange={(event) => setPricingDraft((current) => ({ ...current, pricingGroupId: event.target.value }))}><option value="">Choose group</option>{pricingGroups.filter((group) => group.status === "active").map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
+                  <label><span>Effective from</span><input type="date" required value={pricingDraft.effectiveFrom} onChange={(event) => setPricingDraft((current) => ({ ...current, effectiveFrom: event.target.value }))} /></label>
+                  <label className="family-credit-note"><span>Reason / notes</span><textarea required value={pricingDraft.notes} onChange={(event) => setPricingDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Record why this pricing group applies." /></label>
+                  <div><button className="button book" disabled={pricingBusy || !pricingDraft.pricingGroupId || !pricingDraft.notes.trim()}>{pricingBusy ? "Saving…" : "Save pricing group"}</button></div>
+                </form>
+                {pricingMessage && <p className="family-credit-status success" role="status">{pricingMessage}</p>}
+              </section>
 
               <div className="family-import-child-picker" aria-label="Imported children">
                 {selectedChildren.map((child) => <button type="button" className={selectedChild?.id === child.id ? "active" : ""} key={child.id} onClick={() => { setSelectedChildId(child.id); setChildSection("Overview"); }}><span>{selectedChild?.id === child.id ? "Selected child" : "Saved child"}</span><strong>{child.full_name}</strong><small>{child.school_name || "School missing"} · {child.year_group || "Year group missing"}</small></button>)}
@@ -17362,6 +17397,7 @@ function iconFor(item) {
     Pay: <PoundSterling />,
     Finance: <PoundSterling />,
     "Booking Payments": <PoundSterling />,
+    "Pricing Groups": <PoundSterling />,
     Rewards: <Award />,
     Sessions: <Clock />,
     Staffing: <CalendarDays />,
