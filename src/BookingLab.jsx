@@ -15648,6 +15648,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       }
     }
     const realCheckout = realBookingResult?.checkout || null;
+    const confirmedWithoutPayment = Boolean(
+      realBookingResult?.booking
+      && Number(realBookingResult.booking.dueToday ?? realBookingResult.booking.totalAmount ?? 0) <= 0
+      && String(realBookingResult.booking.status || "").toLowerCase() === "confirmed"
+    );
     const creditCoveredCheckout = realBookingResult?.credit?.fullyCovered
       ? {
           mode: "supabase",
@@ -15659,6 +15664,19 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           requiresProviderConfig: false,
           response: realBookingResult.credit,
           message: `${money(Number(realBookingResult.credit.applied || 0))} account credit applied. Booking confirmed without a card payment.`,
+        }
+      : null;
+    const noPaymentRequiredCheckout = confirmedWithoutPayment && !creditCoveredCheckout
+      ? {
+          mode: "supabase",
+          status: "confirmed_without_payment",
+          invoiceId: realBookingResult.booking?.invoiceId || `inv_${booking.id}`,
+          providerPaymentId: null,
+          providerReference: realBookingResult.booking?.bookingReference || null,
+          checkoutUrl: null,
+          requiresProviderConfig: false,
+          response: realBookingResult.booking,
+          message: "Booking confirmed at £0.00. No payment link is required.",
         }
       : null;
     const ponchoCheckout = realCheckout
@@ -15675,6 +15693,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         }
       : creditCoveredCheckout
         ? creditCoveredCheckout
+      : noPaymentRequiredCheckout
+        ? noPaymentRequiredCheckout
       : await createCheckoutSessionForBooking(booking);
     const bookingWithCheckout = {
       ...booking,
@@ -15682,13 +15702,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       grossTotal: Number(realBookingResult?.booking?.grossTotal ?? booking.total),
       pricingDiscount: Number(realBookingResult?.booking?.discountAmount || 0),
       pricingGroupName: realBookingResult?.booking?.pricingGroupName || "Standard",
-      status: realBookingResult?.credit?.fullyCovered ? "Prototype paid" : booking.status,
-      paymentStatus: realBookingResult?.credit?.fullyCovered ? "Paid with account credit" : booking.paymentStatus,
-      invoiceStatus: realBookingResult?.credit?.fullyCovered ? "Paid" : booking.invoiceStatus,
-      paymentMethod: realBookingResult?.credit?.fullyCovered ? "account_credit" : booking.paymentMethod,
-      paymentLabel: realBookingResult?.credit?.fullyCovered ? "Account credit" : booking.paymentLabel,
-      dueToday: realBookingResult?.credit?.fullyCovered ? 0 : Number(realBookingResult?.booking?.dueToday ?? booking.dueToday),
-      outstandingBalance: realBookingResult?.credit?.fullyCovered ? 0 : Number(realBookingResult?.booking?.outstandingBalance ?? booking.outstandingBalance),
+      status: realBookingResult?.credit?.fullyCovered || confirmedWithoutPayment ? "Prototype paid" : booking.status,
+      paymentStatus: realBookingResult?.credit?.fullyCovered ? "Paid with account credit" : confirmedWithoutPayment ? "No payment due" : booking.paymentStatus,
+      invoiceStatus: realBookingResult?.credit?.fullyCovered || confirmedWithoutPayment ? "Paid" : booking.invoiceStatus,
+      paymentMethod: realBookingResult?.credit?.fullyCovered ? "account_credit" : confirmedWithoutPayment ? "pricing_benefit" : booking.paymentMethod,
+      paymentLabel: realBookingResult?.credit?.fullyCovered ? "Account credit" : confirmedWithoutPayment ? "Pricing benefit" : booking.paymentLabel,
+      dueToday: realBookingResult?.credit?.fullyCovered || confirmedWithoutPayment ? 0 : Number(realBookingResult?.booking?.dueToday ?? booking.dueToday),
+      outstandingBalance: realBookingResult?.credit?.fullyCovered || confirmedWithoutPayment ? 0 : Number(realBookingResult?.booking?.outstandingBalance ?? booking.outstandingBalance),
       id: realBookingResult?.booking?.id || booking.id,
       bookingReference: realBookingResult?.booking?.bookingReference || booking.bookingReference || "",
       realBookingStatus: realBookingResult?.booking ? "created" : realBookingResult?.status || "local_prototype",

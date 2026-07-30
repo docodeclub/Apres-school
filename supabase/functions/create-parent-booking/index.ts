@@ -285,14 +285,34 @@ serve(async (request) => {
       },
     });
 
-    const bookingEmail = await sendBookingRequestEmail({
-      actor,
-      parentName,
-      booking,
-      items: savedItems,
-      checkout,
-      existing: Boolean(reservationResult.existing),
-    });
+    let bookingEmail: unknown = null;
+    try {
+      bookingEmail = await sendBookingRequestEmail({
+        actor,
+        parentName,
+        booking,
+        items: savedItems,
+        checkout,
+        existing: Boolean(reservationResult.existing),
+      });
+    } catch (emailError) {
+      console.error("Booking saved but confirmation email failed", emailError);
+      bookingEmail = {
+        status: "failed",
+        error: emailError instanceof Error ? emailError.message : "Confirmation email could not be sent.",
+      };
+      await supabase.from("audit_log").insert({
+        actor_id: actor.id,
+        action: "parent_booking_email_failed",
+        table_name: "bookings",
+        record_id: stringValue(booking.id) || null,
+        metadata: {
+          bookingReference: stringValue(booking.bookingReference),
+          parentEmail: actor.email,
+          error: emailError instanceof Error ? emailError.message : "Confirmation email could not be sent.",
+        },
+      });
+    }
 
     return json({
       created: !reservationResult.existing,
