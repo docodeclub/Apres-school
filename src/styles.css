@@ -7175,6 +7175,42 @@ label {
   color: var(--muted);
 }
 
+.register-adhoc-pricing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid #b9dfc8;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #edf9f2, #f8fcfa);
+  color: var(--royal-dark);
+  padding: 14px 16px;
+}
+
+.register-adhoc-pricing > div {
+  display: grid;
+  gap: 3px;
+}
+
+.register-adhoc-pricing span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.register-adhoc-pricing-values {
+  justify-items: end;
+  text-align: right;
+}
+
+.register-adhoc-pricing-values .saving {
+  color: #237947;
+}
+
+.register-adhoc-pricing-values strong {
+  font-size: 1.05rem;
+}
+
 .register-adhoc-error {
   margin: 0;
   border: 1px solid #f0c0c0;

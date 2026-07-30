@@ -637,6 +637,22 @@ export async function createStaffAdHocBooking({
   return data;
 }
 
+export async function quoteStaffAdHocBookingPricing({
+  childId,
+  sessionBlockIds = [],
+  applyNonBookingFee = false,
+} = {}) {
+  assertSupabase();
+  if (!childId || !sessionBlockIds.length) return null;
+  const { data, error } = await supabase.rpc("quote_staff_adhoc_pricing", {
+    p_child_id: childId,
+    p_session_block_ids: [...new Set(sessionBlockIds)],
+    p_apply_non_booking_fee: Boolean(applyNonBookingFee),
+  });
+  if (error) throw error;
+  return data;
+}
+
 export async function cancelStaffAdHocBooking({ bookingId, reason = "" } = {}) {
   assertSupabase();
   if (!bookingId) throw new Error("Choose an ad-hoc booking to cancel.");

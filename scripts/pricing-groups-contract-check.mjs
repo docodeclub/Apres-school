@@ -5,6 +5,7 @@ const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const migration = read("supabase/migrations/0102_pricing_groups_engine.sql");
 const assignmentMigration = read("supabase/migrations/0104_enforce_single_parent_pricing_group.sql");
+const adHocPricingMigration = read("supabase/migrations/0106_staff_adhoc_pricing_quote.sql");
 const platform = read("src/PlatformModule.jsx");
 const bookingLab = read("src/BookingLab.jsx");
 const pricingUi = read("src/PricingGroupsModule.jsx");
@@ -30,6 +31,9 @@ const checks = [
   [createBooking.includes('rpc("apply_booking_pricing"'), "parent bookings priced server-side"],
   [amendBooking.match(/rpc\("apply_booking_pricing"/g)?.length === 2, "add/remove amendments refresh totals"],
   [adHoc.includes('rpc("apply_booking_pricing"'), "staff ad-hoc bookings use family pricing"],
+  [adHocPricingMigration.includes("quote_staff_adhoc_pricing") && adHocPricingMigration.includes("calculate_parent_price"), "staff ad-hoc drawer uses authoritative family quote"],
+  [adHoc.includes("invoiceBeforeCharge") && adHoc.includes("total_amount: pricedTotal") && adHoc.includes("finalise_staff_adhoc_account_charge"), "staff ad-hoc invoice is repriced before the family charge"],
+  [platform.includes("Family pricing") && platform.includes("Pricing benefit") && platform.includes("adHocQuotedTotal"), "staff ad-hoc drawer shows group savings and final charge"],
   [invoice.includes("Pricing group:") && invoice.includes("pricingLabel"), "invoice pricing transparency"],
   [bookingLab.includes("lab-active-pricing-benefit") && bookingLab.includes("Final price is confirmed after you choose dates and sessions"), "activity-level parent benefit preview"],
   [bookingLab.includes("pricingQuoteLoading") && bookingLab.includes("Checking your tier price") && bookingLab.includes("const basketPricingQuote = pricingQuote?.signature === basketPricingSignature"), "basket prices quote and display before checkout"],

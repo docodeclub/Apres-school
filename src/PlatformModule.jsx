@@ -20,6 +20,7 @@ import {
   fetchStaffChildProfileOverview,
   fetchStaffRegister,
   fetchStaffRegisterTimetable,
+  quoteStaffAdHocBookingPricing,
   readSafeguardingDraft,
   saveSafeguardingDraft,
   updateSafeguardingCase,
@@ -1513,6 +1514,8 @@ function Registers({ access }) {
   const [adHocChildId, setAdHocChildId] = useState("");
   const [adHocSessionIds, setAdHocSessionIds] = useState([]);
   const [adHocApplyFee, setAdHocApplyFee] = useState(false);
+  const [adHocPricingQuote, setAdHocPricingQuote] = useState(null);
+  const [adHocPricingLoading, setAdHocPricingLoading] = useState(false);
   const [adHocLoading, setAdHocLoading] = useState(false);
   const [adHocSaving, setAdHocSaving] = useState(false);
   const [adHocError, setAdHocError] = useState("");
@@ -1661,6 +1664,7 @@ function Registers({ access }) {
   const selectedAdHocSessions = adHocOptions.sessions.filter((option) => adHocSessionIds.includes(option.id));
   const adHocSessionSubtotal = selectedAdHocSessions.reduce((total, option) => total + option.price, 0);
   const adHocTotal = adHocSessionSubtotal + (adHocApplyFee ? 2.5 : 0);
+  const adHocQuotedTotal = Number(adHocPricingQuote?.totalAmount ?? adHocTotal);
   const adHocCancellationRows = adHocCancellationRow
     ? rows.filter((row) => row.bookingId === adHocCancellationRow.bookingId)
     : [];
@@ -2145,12 +2149,47 @@ function Registers({ access }) {
     };
   }, [adHocOpen, adHocSearch, registerDate, school, programme]);
 
+  useEffect(() => {
+    if (!adHocOpen || !adHocChildId || !adHocSessionIds.length) {
+      setAdHocPricingQuote(null);
+      setAdHocPricingLoading(false);
+      return undefined;
+    }
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setAdHocPricingLoading(true);
+      setAdHocPricingQuote(null);
+      setAdHocError("");
+      try {
+        const quote = await quoteStaffAdHocBookingPricing({
+          childId: adHocChildId,
+          sessionBlockIds: adHocSessionIds,
+          applyNonBookingFee: adHocApplyFee,
+        });
+        if (active) setAdHocPricingQuote(quote);
+      } catch (error) {
+        if (active) {
+          setAdHocPricingQuote(null);
+          setAdHocError(error?.message || "The family price could not be checked.");
+        }
+      } finally {
+        if (active) setAdHocPricingLoading(false);
+      }
+    }, 180);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [adHocOpen, adHocChildId, adHocSessionIds, adHocApplyFee]);
+
   function openAdHocBooking() {
     setAdHocSearch("");
     setAdHocOptions({ children: [], sessions: [] });
     setAdHocChildId("");
     setAdHocSessionIds([]);
     setAdHocApplyFee(false);
+    setAdHocPricingQuote(null);
+    setAdHocPricingLoading(false);
     setAdHocError("");
     setAdHocOpen(true);
   }
@@ -2190,7 +2229,7 @@ function Registers({ access }) {
       await refreshRegister();
       setMessage({
         tone: "good",
-        text: `${result.childName} added to ${result.sessionCount} ${result.sessionCount === 1 ? "session" : "sessions"}. £${Number(result.total || 0).toFixed(2)} charged to the family account${result.nonBookingFee ? ", including the £2.50 non-booking fee" : ""}.${Number(result.outstanding || 0) > 0 ? ` £${Number(result.outstanding).toFixed(2)} is now due and the parent has been notified.` : " Covered by account credit."}`,
+        text: `${result.childName} added to ${result.sessionCount} ${result.sessionCount === 1 ? "session" : "sessions"}. ${Number(result.discountAmount || 0) > 0 ? `${result.pricingGroupName || "Pricing group"} saved £${Number(result.discountAmount).toFixed(2)}. ` : ""}£${Number(result.total || 0).toFixed(2)} charged to the family account${result.nonBookingFee ? ", including the £2.50 non-booking fee" : ""}.${Number(result.outstanding || 0) > 0 ? ` £${Number(result.outstanding).toFixed(2)} is now due and the parent has been notified.` : " Covered by account credit."}`,
       });
     } catch (error) {
       setAdHocError(error?.message || "The ad-hoc booking could not be created.");
@@ -3156,6 +3195,7 @@ function Registers({ access }) {
                     onClick={() => {
                       setAdHocChildId(child.id);
                       setAdHocSessionIds([]);
+                      setAdHocPricingQuote(null);
                       setAdHocError("");
                     }}
                   >
@@ -3217,15 +3257,33 @@ function Registers({ access }) {
               <b>£2.50</b>
             </label>
 
+            {(adHocPricingLoading || adHocPricingQuote) && (
+              <aside className="register-adhoc-pricing" aria-live="polite">
+                <div>
+                  <span>Family pricing</span>
+                  <strong>{adHocPricingLoading ? "Checking pricing…" : adHocPricingQuote.pricingGroupName || "Standard"}</strong>
+                </div>
+                {!adHocPricingLoading && adHocPricingQuote && (
+                  <div className="register-adhoc-pricing-values">
+                    <span>Standard <s>£{Number(adHocPricingQuote.grossTotal || 0).toFixed(2)}</s></span>
+                    {Number(adHocPricingQuote.discountTotal || 0) > 0 && (
+                      <span className="saving">Pricing benefit −£{Number(adHocPricingQuote.discountTotal).toFixed(2)}</span>
+                    )}
+                    <strong>Family charge £{Number(adHocPricingQuote.totalAmount || 0).toFixed(2)}</strong>
+                  </div>
+                )}
+              </aside>
+            )}
+
             {adHocError && <p className="register-adhoc-error" role="alert">{adHocError}</p>}
 
             <footer>
               <div>
                 <span>{selectedAdHocSessions.length} {selectedAdHocSessions.length === 1 ? "session" : "sessions"}</span>
-                <strong>£{adHocTotal.toFixed(2)}</strong>
+                <strong>£{adHocQuotedTotal.toFixed(2)}</strong>
               </div>
               <button className="button light" type="button" onClick={() => setAdHocOpen(false)} disabled={adHocSaving}>Cancel</button>
-              <button className="button book" type="button" onClick={submitAdHocBooking} disabled={adHocSaving || !adHocChildId || !adHocSessionIds.length}>
+              <button className="button book" type="button" onClick={submitAdHocBooking} disabled={adHocSaving || adHocPricingLoading || !adHocChildId || !adHocSessionIds.length}>
                 {adHocSaving ? "Adding to register…" : "Add to register"}
               </button>
             </footer>

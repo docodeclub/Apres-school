@@ -56,10 +56,64 @@ serve(async (request) => {
     });
     if (bookingError) throw new Error(bookingError.message || "The ad-hoc booking could not be created.");
 
-    const { error: pricingError } = await serviceClient.rpc("apply_booking_pricing", {
+    const { data: pricing, error: pricingError } = await serviceClient.rpc("apply_booking_pricing", {
       p_booking_id: booking.bookingId,
     });
     if (pricingError) throw new Error(pricingError.message || "The family pricing could not be applied.");
+
+    // Pricing groups apply to the care sessions. The optional operational fee
+    // stays outside those rules, then the invoice is synchronised before any
+    // family credit or debit is posted.
+    const nonBookingFee = moneyValue(booking.nonBookingFee);
+    const grossTotal = moneyValue(pricing?.grossTotal) + nonBookingFee;
+    const discountAmount = moneyValue(pricing?.discountTotal);
+    const pricedTotal = moneyValue(pricing?.totalAmount) + nonBookingFee;
+    const pricingGroupName = stringValue(pricing?.pricingGroupName) || "Standard";
+
+    const { error: bookingPricingError } = await serviceClient
+      .from("bookings")
+      .update({
+        gross_total: grossTotal,
+        discount_amount: discountAmount,
+        total_amount: pricedTotal,
+        due_today: pricedTotal,
+        outstanding_balance: pricedTotal,
+        pricing_group_name: pricingGroupName,
+        metadata: {
+          ...(pricing?.booking?.metadata || {}),
+          staffAdHoc: true,
+          nonBookingFee,
+          pricingGroup: pricingGroupName,
+          grossTotal,
+          discountTotal: discountAmount,
+        },
+      })
+      .eq("id", booking.bookingId);
+    if (bookingPricingError) throw new Error(bookingPricingError.message || "The booking price could not be saved.");
+
+    const { data: invoiceBeforeCharge, error: invoiceReadError } = await serviceClient
+      .from("booking_invoices")
+      .select("id, metadata")
+      .eq("id", booking.invoiceId)
+      .single();
+    if (invoiceReadError) throw new Error(invoiceReadError.message || "The ad-hoc invoice could not be loaded.");
+
+    const { error: invoicePricingError } = await serviceClient
+      .from("booking_invoices")
+      .update({
+        total_amount: pricedTotal,
+        balance: pricedTotal,
+        metadata: {
+          ...(invoiceBeforeCharge.metadata || {}),
+          sessionGrossTotal: moneyValue(pricing?.grossTotal),
+          nonBookingFee,
+          pricingGroup: pricingGroupName,
+          grossTotal,
+          discountTotal: discountAmount,
+        },
+      })
+      .eq("id", booking.invoiceId);
+    if (invoicePricingError) throw new Error(invoicePricingError.message || "The family invoice price could not be saved.");
 
     const { data: finance, error: financeError } = await callerClient.rpc("finalise_staff_adhoc_account_charge", {
       p_booking_id: booking.bookingId,
@@ -163,6 +217,10 @@ serve(async (request) => {
     return json({
       ...booking,
       ...finance,
+      grossTotal: moneyValue(bookingRow.gross_total),
+      discountAmount: moneyValue(bookingRow.discount_amount),
+      pricingGroupName: stringValue(bookingRow.pricing_group_name) || "Standard",
+      total: moneyValue(bookingRow.total_amount),
       emailSent,
       emailError,
     });
