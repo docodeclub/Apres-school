@@ -2856,9 +2856,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const liveInvoiceForDraft = (draft) => liveInvoiceByBookingId.get(String(draft?.realBookingId || draft?.bookingId || draft?.id || ""))
     || liveInvoiceByInvoiceId.get(String(draft?.invoiceId || ""))
     || liveInvoiceByInvoiceId.get(String(draft?.invoiceNumber || ""))
-    || liveInvoiceByInvoiceId.get(String(draft?.ponchoCheckout?.invoiceId || ""));
+    || liveInvoiceByInvoiceId.get(String(draft?.ponchoCheckout?.invoiceId || ""))
+    || (liveParentLedger.invoices || []).find((invoice) => (
+      String(invoice.providerReference || invoice.metadata?.bookingReference || "") === String(draft?.bookingReference || "")
+    ));
   const liveBookingForDraft = (draft, invoice) => liveBookingById.get(String(draft?.realBookingId || draft?.bookingId || draft?.id || ""))
-    || liveBookingById.get(String(invoice?.bookingId || ""));
+    || liveBookingById.get(String(invoice?.bookingId || ""))
+    || (liveParentLedger.bookings || []).find((booking) => (
+      String(booking.bookingReference || "") === String(draft?.bookingReference || "")
+    ));
   const latestLiveCheckout = (invoice) => (invoice?.checkoutSessions || [])
     .slice()
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))[0] || null;
