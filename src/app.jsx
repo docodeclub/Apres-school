@@ -344,7 +344,7 @@ function hasRecoveryHash() {
 
 const pageMeta = {
   Home: ["Après School | Wraparound Care for Schools & Holiday Camps", "Wraparound care, holiday camps and extended school provision that helps schools strengthen their parent offer."],
-  "Holiday Clubs": ["Holiday Camps for Schools and Families | Après School", "Active, creative holiday camps at selected school sites with clear booking routes for families."],
+  "Holiday Clubs": ["Holiday Clubs Across Five Venues | Après School", "Active, creative holiday clubs for primary-age children across five school venues."],
   Wraparound: ["Wraparound Care for Schools | Après School", "Breakfast clubs and after-school care for schools that want reliable extended provision parents trust."],
   Schools: ["Wraparound Care for Schools & Extended Provision | Après School", "Partner with Après School for wraparound care, holiday camps and extended provision that helps parents choose your school."],
   Contact: ["Contact Après School | Wraparound Care & Holiday Camps", "Contact Après School about wraparound care for schools, holiday camps, school partnerships and staffing."],
@@ -1693,29 +1693,29 @@ function HolidayClubs({ setPage }) {
     .map((site) => ({ ...site, url: holidayCampBookingUrl(site) }));
 
   return (
-    <PageShell eyebrow="Holiday Camps" title="Holiday camps children are excited to come back to.">
+    <PageShell eyebrow="Holiday Clubs" title="Holiday clubs across five school venues.">
       <section className="image-copy-band holiday" style={{ backgroundImage: `linear-gradient(90deg, rgba(23, 23, 47, 0.82), rgba(23, 23, 47, 0.24)), url("${APRES_IMG.parachute}")` }}>
         <div>
-          <h2>Active, creative holiday camps with calm routines underneath.</h2>
+          <h2>Active, creative holiday clubs with calm routines underneath.</h2>
           <p>
-            Children can move, make, reset and belong through themed activities run by friendly staff at familiar school sites. For schools, holiday provision keeps families connected to your site outside term time.
+            During the school holidays, children can move, make, reset and belong through themed activities run by friendly staff at familiar school sites.
           </p>
           <div className="camp-hero-pills">
             <span>Primary-age children</span>
-            <span>Selected partner schools</span>
+            <span>Five venues</span>
             <span>Simple online booking</span>
           </div>
           <div className="hero-actions">
-            <button className="button book large" type="button" onClick={() => setPage("Launch Booking")}>View Holiday Camps</button>
+            <button className="button book large" type="button" onClick={() => setPage("Launch Booking")}>View Holiday Clubs</button>
             <button className="button white" type="button" onClick={() => setPage("Contact")}>Ask a Question</button>
           </div>
         </div>
       </section>
       <section className="camp-site-directory">
         <div className="section-kicker">
-          <p className="eyebrow">Where to book</p>
-          <h2>Book every camp in one place.</h2>
-          <p>Choose your location below, then use your Après School family account to select children, dates and sessions.</p>
+          <p className="eyebrow">Our five venues</p>
+          <h2>Five locations. One family booking system.</h2>
+          <p>Find us at King’s House School, Willington Prep, Ripley Court School, The Rowans School and Shrewsbury House School. Choose a venue below, then use your Après School family account to view availability.</p>
         </div>
         <div className="camp-booking-note">
           <article>
