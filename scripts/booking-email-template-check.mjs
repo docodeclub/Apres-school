@@ -17,6 +17,21 @@ expect("shared booking template uses the Family booking badge", sharedTemplate.i
 expect("shared booking template uses the payslip-style action colour", sharedTemplate.includes('const actionBlue = "#4f6de8"'));
 expect("shared booking template is light-mode safe", sharedTemplate.includes('name="color-scheme" content="light only"'));
 expect("shared booking template no longer relies on a remote header image", !sharedTemplate.includes("<img "));
+expect("shared booking template renders the account reminder opt-out link", sharedTemplate.includes("Stop account setup reminders"));
+expect("shared booking sender supports one-click unsubscribe headers", sharedTemplate.includes("headers?: Record<string, string>"));
+
+const parentAccountEmail = read("supabase/functions/manage-parent-account/index.ts");
+const bookingLab = read("src/BookingLab.jsx");
+const reminderBatch = read("scripts/send-magicbooking-account-reminders.mjs");
+expect("migration completion reminders are separate from essential emails", parentAccountEmail.includes('emailType: "parent_migration_completion_reminder"'));
+expect("migration reminders stop after the migrated review is complete", parentAccountEmail.includes('parent.portal_status === "active" && outstandingItems === 0'));
+expect("migration reminders respect the parent opt-out", parentAccountEmail.includes("preferences.migrationSetupReminders === false"));
+expect("migration reminders provide a signed opt-out link", parentAccountEmail.includes("migrationReminderToken") && parentAccountEmail.includes("constantTimeEqual"));
+expect("opt-out copy preserves essential communications", parentAccountEmail.includes("Essential booking, payment and safeguarding messages are unaffected"));
+expect("admins can send a migrated-account completion reminder", bookingLab.includes("Send completion reminder"));
+expect("bulk reminder runs are dry-run by default", reminderBatch.includes('const runLive = args.has("--run")') && reminderBatch.includes('mode: runLive ? "live" : "dry-run"'));
+expect("bulk reminders skip opted-out parents", reminderBatch.includes("preferences.migrationSetupReminders === false"));
+expect("bulk reminders use a seven-day default cooldown", reminderBatch.includes("Number(process.argv[daysArg + 1] || 7)"));
 
 const bookingFunctions = [
   "admin-adjust-parent-credit",

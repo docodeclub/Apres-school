@@ -15,6 +15,9 @@ const serviceRoleKey =
   "";
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
 const defaultLoginUrl = Deno.env.get("PARENT_PORTAL_URL") ?? "https://www.apres-school.co.uk/launch-booking";
+const functionsUrl = Deno.env.get("SUPABASE_FUNCTIONS_URL")
+  ?? supabaseUrl.replace(/\.supabase\.co\/?$/, ".functions.supabase.co");
+const reminderSigningSecret = Deno.env.get("MIGRATION_REMINDER_SIGNING_SECRET") ?? serviceRoleKey;
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
@@ -25,7 +28,11 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 
 serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
+  if (request.method === "GET") return handlePublicReminderPreference(request);
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (new URL(request.url).searchParams.get("action") === "unsubscribe-migration-reminders") {
+    return handlePublicReminderPreference(request);
+  }
   if (!supabaseUrl || !serviceRoleKey) return json({ error: "Supabase service role is not configured" }, 500);
 
   try {
@@ -47,6 +54,9 @@ serve(async (request) => {
 
     if (action === "preview-migration-invite") {
       return sendMigrationInvitePreview(actor, rawPayload);
+    }
+    if (action === "send-migration-reminder") {
+      return sendMigrationReminder(actor, rawPayload);
     }
 
     const payload = normalizePayload(rawPayload);
@@ -157,6 +167,229 @@ async function sendMigrationInvitePreview(actor: ActorProfile, rawPayload: Recor
     status: emailLog?.status || "unknown",
     error: typeof emailLog?.error_message === "string" ? emailLog.error_message : "",
   });
+}
+
+async function sendMigrationReminder(actor: ActorProfile, rawPayload: Record<string, unknown>) {
+  const parentAccountId = stringValue(rawPayload.parentAccountId);
+  if (!parentAccountId) return json({ error: "Choose a migrated parent account." }, 400);
+
+  const { data: parent, error } = await supabase
+    .from("parent_accounts")
+    .select("id,profile_id,full_name,email,portal_status,external_source,marketing_preferences,migration_metadata,archived_at,child_profiles(id,active,migration_metadata)")
+    .eq("id", parentAccountId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!parent || parent.archived_at) return json({ error: "The parent account could not be found." }, 404);
+  if (parent.external_source !== "magicbooking") {
+    return json({ error: "Completion reminders are only available for migrated parent accounts." }, 400);
+  }
+  const outstandingItems = migrationOutstandingItemCount(parent);
+  if (parent.portal_status === "active" && outstandingItems === 0) {
+    return json({ error: "This parent has completed their migrated account review.", code: "already_complete" }, 409);
+  }
+  if (!["invited", "active"].includes(parent.portal_status) || !parent.profile_id) {
+    return json({ error: "Send the initial account invitation before sending a reminder." }, 409);
+  }
+
+  const preferences = isObject(parent.marketing_preferences) ? parent.marketing_preferences : {};
+  if (preferences.migrationSetupReminders === false) {
+    return json({ error: "This parent has stopped account-setup reminders.", code: "reminders_opted_out" }, 409);
+  }
+
+  const email = stringValue(parent.email).toLowerCase();
+  const name = stringValue(parent.full_name) || "Parent";
+  const token = await migrationReminderToken(parent.id, email);
+  const unsubscribeUrl = `${functionsUrl.replace(/\/$/, "")}/manage-parent-account?action=unsubscribe-migration-reminders&account=${encodeURIComponent(parent.id)}&token=${encodeURIComponent(token)}`;
+  const firstName = name.split(" ")[0] || "there";
+  const emailLines = [
+    `Hi ${firstName},`,
+    "",
+    parent.portal_status === "active"
+      ? "This is a friendly reminder that some details in your migrated Après School family account still need your review."
+      : "This is a friendly reminder to finish setting up your new Après School family account.",
+    "",
+    "Your family and child records were securely migrated from Magicbooking. Please sign in, choose your own password and review any details marked as needing attention.",
+    "",
+    `Parent portal: ${defaultLoginUrl}`,
+    "",
+    "If you no longer have your temporary password, use the forgotten-password option on the sign-in screen.",
+    "",
+    "Completing the review helps our team hold the latest contact, care, medical and consent information before your child attends.",
+    "",
+    `Stop account setup reminders: ${unsubscribeUrl}`,
+    "",
+    "Stopping these reminders will not affect essential booking confirmations, invoices, payment notices or safeguarding communications.",
+    "",
+    "Thank you,",
+    "Après School",
+  ];
+  const emailLog = await sendBookingEmail(supabase, {
+    recipientEmail: email,
+    recipientName: name,
+    emailType: "parent_migration_completion_reminder",
+    subject: "Reminder: complete your Après School family account",
+    text: emailLines.join("\n"),
+    html: paragraphsToHtml(emailLines, {
+      title: "Please complete your family account",
+      preheader: "Review your migrated family details in the new Après School booking system.",
+    }),
+    headers: {
+      "List-Unsubscribe": `<${unsubscribeUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    },
+    sentBy: actor.id,
+    metadata: { parentAccountId: parent.id, migrationReminder: true },
+  });
+  if (emailLog?.status !== "sent") {
+    return json({
+      parentAccountId: parent.id,
+      email,
+      emailed: false,
+      emailError: typeof emailLog?.error_message === "string" ? emailLog.error_message : "The reminder email provider is not available.",
+    }, 502);
+  }
+
+  const sentAt = new Date().toISOString();
+  const nextPreferences = {
+    ...preferences,
+    migrationSetupReminders: true,
+    migrationSetupReminderLastSentAt: sentAt,
+    migrationSetupReminderCount: Number(preferences.migrationSetupReminderCount || 0) + 1,
+  };
+  const { error: updateError } = await supabase
+    .from("parent_accounts")
+    .update({ marketing_preferences: nextPreferences, updated_at: sentAt })
+    .eq("id", parent.id);
+  if (updateError) throw updateError;
+
+  await supabase.from("audit_log").insert({
+    actor_id: actor.id,
+    action: "parent_migration_completion_reminder_sent",
+    table_name: "parent_accounts",
+    record_id: parent.id,
+    metadata: { email, emailStatus: emailLog?.status || "unknown" },
+  });
+
+  return json({
+    parentAccountId: parent.id,
+    email,
+    emailed: emailLog?.status === "sent",
+    emailError: typeof emailLog?.error_message === "string" ? emailLog.error_message : "",
+    reminderCount: nextPreferences.migrationSetupReminderCount,
+    outstandingItems,
+    sentAt,
+    marketingPreferences: nextPreferences,
+  });
+}
+
+function migrationOutstandingItemCount(parent: Record<string, unknown>) {
+  const parentMetadata = isObject(parent.migration_metadata) ? parent.migration_metadata : {};
+  const parentMissing = Array.isArray(parentMetadata.missingFields) ? parentMetadata.missingFields.length : 0;
+  const children = Array.isArray(parent.child_profiles) ? parent.child_profiles : [];
+  const childMissing = children.reduce((total, child) => {
+      if (!isObject(child) || child.active === false) return total;
+      const metadata = isObject(child.migration_metadata) ? child.migration_metadata : {};
+      return total + (Array.isArray(metadata.missingFields) ? metadata.missingFields.length : 0);
+    }, 0);
+  return parentMissing + childMissing;
+}
+
+async function handlePublicReminderPreference(request: Request) {
+  const url = new URL(request.url);
+  if (url.searchParams.get("action") !== "unsubscribe-migration-reminders") {
+    return reminderPreferencePage("Link not recognised", "This reminder-preference link is not valid.", false, 404);
+  }
+  const parentAccountId = stringValue(url.searchParams.get("account"));
+  const token = stringValue(url.searchParams.get("token"));
+  if (!parentAccountId || !token) {
+    return reminderPreferencePage("Link incomplete", "This reminder-preference link is missing required information.", false, 400);
+  }
+
+  const { data: parent, error } = await supabase
+    .from("parent_accounts")
+    .select("id,email,full_name,external_source,marketing_preferences,archived_at")
+    .eq("id", parentAccountId)
+    .maybeSingle();
+  if (error || !parent || parent.archived_at || parent.external_source !== "magicbooking") {
+    return reminderPreferencePage("Account not found", "We could not match this reminder-preference link to an active migrated account.", false, 404);
+  }
+
+  const expectedToken = await migrationReminderToken(parent.id, stringValue(parent.email).toLowerCase());
+  if (!constantTimeEqual(token, expectedToken)) {
+    return reminderPreferencePage("Link not recognised", "This reminder-preference link is invalid or has been changed.", false, 403);
+  }
+
+  const preferences = isObject(parent.marketing_preferences) ? parent.marketing_preferences : {};
+  const optedOutAt = stringValue(preferences.migrationSetupRemindersOptedOutAt) || new Date().toISOString();
+  const nextPreferences = {
+    ...preferences,
+    migrationSetupReminders: false,
+    migrationSetupRemindersOptedOutAt: optedOutAt,
+  };
+  const { error: updateError } = await supabase
+    .from("parent_accounts")
+    .update({ marketing_preferences: nextPreferences, updated_at: new Date().toISOString() })
+    .eq("id", parent.id);
+  if (updateError) {
+    return reminderPreferencePage("Unable to save", "We could not update your reminder preference. Please reply to the email and our team will help.", false, 500);
+  }
+
+  await supabase.from("audit_log").insert({
+    actor_id: null,
+    action: "parent_migration_reminders_unsubscribed",
+    table_name: "parent_accounts",
+    record_id: parent.id,
+    metadata: { email: parent.email, optedOutAt },
+  });
+  return reminderPreferencePage(
+    "Account setup reminders stopped",
+    "We will no longer send reminders asking you to complete your migrated family account. Essential booking, payment and safeguarding messages are unaffected.",
+    true,
+  );
+}
+
+async function migrationReminderToken(parentAccountId: string, email: string) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(reminderSigningSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`migration-reminders:v1:${parentAccountId}:${email.toLowerCase()}`),
+  );
+  return toBase64Url(new Uint8Array(signature));
+}
+
+function toBase64Url(bytes: Uint8Array) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function constantTimeEqual(left: string, right: string) {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return difference === 0;
+}
+
+function reminderPreferencePage(title: string, message: string, success: boolean, status = 200) {
+  const safeTitle = escapeForPage(title);
+  const safeMessage = escapeForPage(message);
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle} | Après School</title></head><body style="margin:0;background:#eef3ff;font-family:Arial,Helvetica,sans-serif;color:#25304f"><main style="min-height:100vh;display:grid;place-items:center;padding:24px"><section style="width:min(560px,100%);box-sizing:border-box;background:#fff;border:1px solid #dbe5ff;border-radius:24px;padding:32px;box-shadow:0 18px 48px rgba(37,48,79,.14)"><p style="margin:0 0 8px;color:#c47708;font-weight:900;letter-spacing:1px;text-transform:uppercase;font-size:12px">Après School</p><h1 style="margin:0 0 16px;color:#314bb8;font-size:30px;line-height:1.2">${safeTitle}</h1><p style="margin:0 0 24px;color:#66708a;font-size:16px;line-height:1.6">${safeMessage}</p><a href="https://www.apres-school.co.uk/launch-booking" style="display:inline-block;background:${success ? "#4f6de8" : "#25304f"};color:#fff;padding:13px 18px;border-radius:999px;text-decoration:none;font-weight:900">Open family booking</a></section></main></body></html>`, {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
+function escapeForPage(value: string) {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
 
 async function inviteLinkedAccountHolder(actor: ActorProfile, payload: Record<string, unknown>) {

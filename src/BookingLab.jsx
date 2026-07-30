@@ -587,6 +587,15 @@ function clearMigrationMissingFields(metadata = {}, patterns = []) {
   };
 }
 
+function migrationOutstandingItemCount(family = {}) {
+  const parentMissing = Array.isArray(family.migrationMetadata?.missingFields) ? family.migrationMetadata.missingFields.length : 0;
+  const childMissing = (family.children || []).reduce((total, child) => {
+    const missing = child.migrationMetadata?.missingFields || child.consents?.registration?.migration?.missingFields || [];
+    return total + (Array.isArray(missing) ? missing.length : 0);
+  }, 0);
+  return parentMissing + childMissing;
+}
+
 function familyEmergencyContacts(family = {}) {
   const emergencyContact = family.emergencyContactRecord && typeof family.emergencyContactRecord === "object"
     ? family.emergencyContactRecord
@@ -9764,6 +9773,42 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       };
       persistParentInviteRuns([run, ...parentAccountInviteRuns].slice(0, 12));
       setStatus(`Parent invite failed: ${run.emailStatus}`);
+    } finally {
+      setParentAccountInviteBusy(false);
+    }
+  }
+
+  async function remindActiveMigratedParentAccount() {
+    if (!canManageParentAccounts) {
+      setStatus("Only Admin can send parent account reminders.");
+      return;
+    }
+    if (!activeFamily?.id || activeFamily.externalSource !== "magicbooking") {
+      setStatus("Completion reminders are only available for migrated parent accounts.");
+      return;
+    }
+    if (activeFamily.marketingPreferences?.migrationSetupReminders === false) {
+      setStatus("This parent has stopped account-setup reminders.");
+      return;
+    }
+    if (parentAccountInviteBusy) return;
+
+    setParentAccountInviteBusy(true);
+    setStatus("Sending account completion reminder...");
+    try {
+      const result = await manageParentAccountAccess({
+        action: "send-migration-reminder",
+        parentAccountId: activeFamily.id,
+      });
+      if (!result?.emailed) throw new Error(result?.emailError || "The reminder email was not sent.");
+      persistActiveFamily({
+        ...activeFamily,
+        marketingPreferences: result.marketingPreferences || activeFamily.marketingPreferences,
+      });
+      setStatus(`Account completion reminder sent to ${result.email}.`);
+      addAuditLog("Parent account completion reminder", `${result.email} · reminder ${result.reminderCount || 1}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "The account completion reminder could not be sent.");
     } finally {
       setParentAccountInviteBusy(false);
     }
@@ -22642,7 +22687,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               <div>
                 <p className="eyebrow">Parent login access</p>
                 <h3>{latestParentInviteRun ? `${latestParentInviteRun.status}: ${latestParentInviteRun.email}` : "Create parent login before launch."}</h3>
-                <p>Admin can create or reset the parent portal login, then parents use that account for bookings, invoices, payments and cancellations.</p>
+                <p>Admin can create or reset the parent portal login. Migrated families can also receive completion reminders until they finish reviewing their imported details or opt out of reminders.</p>
               </div>
               <div className="lab-parent-account-admin-grid">
                 {parentInviteRows.map(([label, value, detail]) => (
@@ -22660,6 +22705,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <button type="button" onClick={() => inviteActiveParentAccount("reset-password")} disabled={parentAccountInviteBusy || !activeFamily.email}>
                   Reset password
                 </button>
+                {activeFamily.externalSource === "magicbooking" && (activeFamily.portalStatus !== "active" || migrationOutstandingItemCount(activeFamily) > 0) && (
+                  <button type="button" onClick={remindActiveMigratedParentAccount} disabled={parentAccountInviteBusy || !activeFamily.id || activeFamily.marketingPreferences?.migrationSetupReminders === false}>
+                    {activeFamily.marketingPreferences?.migrationSetupReminders === false ? "Reminders stopped" : "Send completion reminder"}
+                  </button>
+                )}
               </div>
             </section>}
             <section className="lab-parent-session-manager">

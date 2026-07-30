@@ -17,6 +17,7 @@ type BookingEmailInput = {
   html?: string;
   from?: string;
   cc?: string[];
+  headers?: Record<string, string>;
   sentBy?: string | null;
   metadata?: Record<string, unknown>;
   attachments?: Array<{
@@ -67,6 +68,7 @@ export async function sendBookingEmail(supabase: SupabaseLike, input: BookingEma
           from: emailFrom,
           to: [recipientEmail],
           ...(cc.length ? { cc } : {}),
+          ...(input.headers && Object.keys(input.headers).length ? { headers: input.headers } : {}),
           reply_to: resendReplyTo,
           subject: input.subject,
           text: input.text,
@@ -107,6 +109,7 @@ export async function sendBookingEmail(supabase: SupabaseLike, input: BookingEma
         body: input.text,
         from: emailFrom,
         cc,
+        headers: input.headers || {},
         replyTo: resendReplyTo,
         attachments: (input.attachments || []).map((attachment) => attachment.filename),
       },
@@ -225,6 +228,11 @@ function lineToEmailHtml(line: string, index: number, actionUrl: string) {
     const label = isPayment ? "Complete secure payment" : "Open parent portal";
     const prefix = line.split(":")[0] || (isPayment ? "Secure payment link" : "Parent portal");
     return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 20px;"><tr><td align="center" style="border-radius:999px;background:${actionBlue};"><a href="${escapeHtml(actionUrl)}" style="display:block;padding:15px 22px;color:#ffffff;text-decoration:none;font-size:17px;line-height:1.35;font-weight:900;border-radius:999px;">${escapeHtml(label)}</a></td></tr></table><p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#66708a;word-break:break-word;">If the button does not work, use this secure link:<br><a href="${escapeHtml(actionUrl)}" style="color:${brandBlue};font-weight:800;">${escapeHtml(actionUrl)}</a></p>`;
+  }
+  if (/^Stop account setup reminders:/i.test(line)) {
+    const unsubscribeUrl = firstUrl(line);
+    if (!unsubscribeUrl) return "";
+    return `<p style="margin:22px 0 10px;padding-top:18px;border-top:1px solid #e3ebff;font-size:13px;line-height:1.55;color:#66708a;">You can stop these account-setup reminders at any time. <a href="${escapeHtml(unsubscribeUrl)}" style="color:${brandBlue};font-weight:800;">Stop account setup reminders</a>.</p>`;
   }
   if (/^Important:/i.test(line)) {
     return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:20px 0 16px;background:#fff7ed;border:1px solid #f7d7a2;border-radius:16px;"><tr><td style="padding:14px 16px;"><p style="margin:0;font-size:14px;line-height:1.55;color:${brandNavy};"><strong>Important:</strong>${escaped.replace(/^Important:/i, "")}</p></td></tr></table>`;

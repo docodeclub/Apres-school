@@ -38,6 +38,7 @@ const functionDeploys = [
   ["notify-public-enquiry", true],
   ["notify-cover-move", false],
   ["manage-staff-account", false],
+  ["manage-parent-account", true],
 ];
 
 const secretGroups = [

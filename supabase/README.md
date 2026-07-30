@@ -36,6 +36,21 @@ supabase functions deploy update-parent-booking
 supabase functions deploy ponchopay-create-checkout
 supabase functions deploy ponchopay-callback --no-verify-jwt
 supabase functions deploy ponchopay-process-events
+supabase functions deploy manage-parent-account --no-verify-jwt
+```
+
+`manage-parent-account` performs its own authentication for every privileged action. It is deployed without gateway JWT verification only so the signed, account-specific link in migration completion reminders can stop those reminders without requiring the parent to sign in. This preference does not suppress essential booking, payment or safeguarding messages.
+
+Preview the eligible migrated-parent reminder cohort without sending:
+
+```bash
+npm run parents:migration-reminders
+```
+
+Send to eligible invited accounts that have not received a reminder in the last seven days:
+
+```bash
+npm run parents:migration-reminders -- --run
 ```
 
 Local launch checks:

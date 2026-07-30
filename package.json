@@ -22,6 +22,7 @@
     "validate:booking-map": "node scripts/validate-booking-backend-map.mjs",
     "check:booking-contract": "node scripts/booking-contract-check.mjs",
     "check:booking-emails": "node scripts/booking-email-template-check.mjs",
+    "parents:migration-reminders": "node scripts/send-magicbooking-account-reminders.mjs",
     "check:register-contract": "node scripts/register-contract-check.mjs",
     "check:staffing": "node scripts/staffing-contract-check.mjs",
     "check:employee-documents": "node scripts/employee-documents-contract-check.mjs",
