@@ -22997,8 +22997,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     const bookingBlocks = bookingBlockRows(draft);
                     const liveInvoice = liveInvoiceForDraft(draft);
                     const liveBooking = liveBookingForDraft(draft, liveInvoice);
-                    const confirmedNoBalance = String(liveBooking?.status || "").toLowerCase() === "confirmed"
-                      && Number(liveInvoice?.balance ?? liveBooking?.outstandingBalance ?? draft.outstandingBalance ?? 0) <= 0;
+                    const zeroPriceBooking = Number(liveBooking?.totalAmount ?? draft.total ?? 0) <= 0
+                      && Number(liveInvoice?.balance ?? liveBooking?.outstandingBalance ?? draft.outstandingBalance ?? 0) <= 0
+                      && Boolean(liveBooking || draft.realBookingStatus === "created");
+                    const confirmedNoBalance = zeroPriceBooking || (
+                      String(liveBooking?.status || "").toLowerCase() === "confirmed"
+                      && Number(liveInvoice?.balance ?? liveBooking?.outstandingBalance ?? draft.outstandingBalance ?? 0) <= 0
+                    );
                     const bookingBalance = draft.status === "Prototype paid" || confirmedNoBalance ? 0 : Math.max(0, Number(draft.outstandingBalance ?? draft.total ?? 0));
                     const bookingStatusLabel = confirmedNoBalance ? "Confirmed" : parentSafeStatusLabel(draft.status);
                     const bookingPaymentLabel = confirmedNoBalance && Number(liveBooking?.totalAmount ?? draft.total ?? 0) <= 0
@@ -23021,7 +23026,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         <div>
                           <button type="button" onClick={() => amendParentBooking(draft.id)} disabled={!amendPolicy.allowed}>Amend</button>
                           <button type="button" onClick={() => cancelParentBooking(draft.id)} disabled={!cancelPolicy.allowed}>Cancel</button>
-                          {draft.status !== "Prototype paid" && <button type="button" onClick={() => openParentPaymentCheckout("single", draft.id, draft.paymentMethod || "card")}>Pay</button>}
+                          {draft.status !== "Prototype paid" && !confirmedNoBalance && <button type="button" onClick={() => openParentPaymentCheckout("single", draft.id, draft.paymentMethod || "card")}>Pay</button>}
                           <button type="button" onClick={() => downloadReceipt(draft)}>Receipt</button>
                         </div>
                       </div>
