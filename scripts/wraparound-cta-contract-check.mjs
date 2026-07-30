@@ -19,12 +19,16 @@ const checks = [
   ["login gate confirms the requested school", bookingLabSource.includes("is ready and will stay selected after you sign in")],
   ["homepage finder reuses the canonical booking routes", appSource.includes("const homeBookingRoutes = bookingSites.map")],
   ["homepage finder uses an internal Start booking CTA", appSource.includes('aria-label={`Start an Après School booking for ${selectedHomeSite.title}`}')],
-  ["parent FAQ directs wraparound families to the family booking system", appSource.includes("Wraparound care opens the Après School family booking system with your school selected")],
-  ["payments page describes secure PonchoPay checkout", appSource.includes("Wraparound bookings use secure PonchoPay checkout")],
-  ["cancellations page directs families to their Après account", appSource.includes('["Après School family account", "Breakfast club and after-school care."')],
+  ["parent FAQ directs every family to the family booking system", appSource.includes("Open the Après School family booking system, sign in, choose your school or camp")],
+  ["payments page covers wraparound care and holiday clubs", appSource.includes("Wraparound care and holiday clubs are booked through the Après School family system")],
+  ["cancellations page directs all families to their Après account", appSource.includes('["Après School family account", "All wraparound care and holiday clubs."')],
   ["legacy term-time Magicbooking claim is removed", !appSource.includes("Magicbooking is used for most term-time care")],
   ["legacy generic wraparound claim is removed", !appSource.includes("Most wraparound care uses Magicbooking")],
-  ["holiday-camp Pebble routes remain present", appSource.includes("PEBBLE_KINGS_URL") && appSource.includes("PEBBLE_ROWANS_URL") && appSource.includes("PEBBLE_SHREWSBURY_URL")],
+  ["public navigation hides the legacy Bookings directory", appSource.includes('const nav = ["Home", "Holiday Clubs", "Wraparound", "Schools", "Contact"]')],
+  ["legacy public paths redirect to family booking", appSource.includes('new Set(["/bookings", "/magicbooking", "/book-pebble"])') && appSource.includes('legacyBookingPaths.has(window.location.pathname)')],
+  ["no public CTA opens the legacy Bookings page", !appSource.includes('setPage("Bookings")')],
+  ["Magicbooking URLs are removed", !appSource.includes("https://apres-school.magicbooking.co.uk")],
+  ["Book Pebble URLs are removed", !appSource.includes("https://activities.bookpebble.co.uk")],
   ...wraparoundSchools.map((school) => [
     `${school} uses the family booking journey`,
     appSource.includes(`url: launchBookingPath("${school.replaceAll('"', '\\"')}")`),
@@ -38,4 +42,4 @@ if (failed.length) {
   process.exit(1);
 }
 
-console.log(`Wraparound CTA contract passed (${checks.length} checks)`);
+console.log(`Public booking CTA contract passed (${checks.length} checks)`);

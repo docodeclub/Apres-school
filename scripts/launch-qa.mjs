@@ -12,12 +12,12 @@ try {
 const baseUrl = process.env.QA_URL || "http://127.0.0.1:5173";
 const routes = [
   ["Home", "/"],
-  ["Bookings", "/bookings"],
+  ["Legacy Bookings redirect", "/bookings"],
   ["Holiday Clubs", "/holiday-clubs"],
   ["Wraparound", "/wraparound"],
   ["Schools", "/schools"],
-  ["Magicbooking", "/magicbooking"],
-  ["Book Pebble", "/book-pebble"],
+  ["Legacy Magicbooking redirect", "/magicbooking"],
+  ["Legacy Book Pebble redirect", "/book-pebble"],
   ["Payments", "/payments"],
   ["Cancellations", "/cancellations"],
   ["Policies", "/policies"],

@@ -125,12 +125,11 @@ const X = makeIcon("X");
 const Platform = lazy(() => import("./PlatformModule.jsx"));
 const BookingLab = lazy(() => import("./BookingLab.jsx"));
 
-const MAGICBOOKING_URL = "https://apres-school.magicbooking.co.uk/Identity/Account/Login";
+const FAMILY_BOOKING_URL = "/launch-booking";
 const launchBookingPath = (school) => `/launch-booking?school=${encodeURIComponent(school)}`;
-const PEBBLE_SUPPLIER_URL = "https://activities.bookpebble.co.uk/supplier/apres-school-1a30ba07-ffae-4d56-a896-2187e4f0a4b5";
-const PEBBLE_KINGS_URL = "https://activities.bookpebble.co.uk/activity/apres-school-apres-school-holiday-camp-richmond-richmond-dc0775cd-5399-4810-b271-d03f7ccc81ba";
-const PEBBLE_ROWANS_URL = "https://activities.bookpebble.co.uk/activity/apres-school-apres-school-holiday-camp-wimbledon-the-rowans-school-london-b1b01598-0d9a-49a2-9100-d4cb1ed322a5";
-const PEBBLE_SHREWSBURY_URL = "https://activities.bookpebble.co.uk/activity/apres-school-apres-school-holiday-camp-shrewsbury-house-school-surbiton-5803947a-423c-42d3-963e-736800789a68";
+const HOLIDAY_KINGS_URL = launchBookingPath("King's House School");
+const HOLIDAY_ROWANS_URL = launchBookingPath("The Rowans School");
+const HOLIDAY_SHREWSBURY_URL = launchBookingPath("Shrewsbury House School");
 const APRES_IMG = {
   groupTable: "/assets/apres-highlights/real-img_0014.jpg",
   outdoorBall: "/assets/apres-highlights/real-img_0030.jpg",
@@ -162,7 +161,7 @@ const APRES_IMG = {
   rowansTile: "/assets/school-tiles/rowans-booking-tile.jpg",
 };
 
-const nav = ["Home", "Bookings", "Holiday Clubs", "Wraparound", "Schools", "Contact"];
+const nav = ["Home", "Holiday Clubs", "Wraparound", "Schools", "Contact"];
 const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformTabStorageKey = "apres-platform-active-tab";
 const platformTabSlugs = Object.fromEntries(platformTabs.map((item) => [item, item.toLowerCase().replace(/[^a-z0-9]+/g, "-")]));
@@ -181,14 +180,11 @@ const platformGroups = [
 ];
 const pagePaths = {
   Home: "/",
-  Bookings: "/bookings",
   "Holiday Clubs": "/holiday-clubs",
   Wraparound: "/wraparound",
   Schools: "/schools",
   Contact: "/contact",
   "Staff Application": "/staff-application",
-  Magicbooking: "/magicbooking",
-  "Book Pebble": "/book-pebble",
   Payments: "/payments",
   Cancellations: "/cancellations",
   Policies: "/policies",
@@ -196,6 +192,7 @@ const pagePaths = {
   "Booking Lab": "/booking-lab",
 };
 const pathPages = Object.fromEntries(Object.entries(pagePaths).map(([page, path]) => [path, page]));
+const legacyBookingPaths = new Set(["/bookings", "/magicbooking", "/book-pebble"]);
 const bookingPreviewToken = String(import.meta.env.VITE_BOOKING_PREVIEW_TOKEN || "").trim();
 
 function isPlatformPath() {
@@ -347,15 +344,12 @@ function hasRecoveryHash() {
 
 const pageMeta = {
   Home: ["Après School | Wraparound Care for Schools & Holiday Camps", "Wraparound care, holiday camps and extended school provision that helps schools strengthen their parent offer."],
-  Bookings: ["Book Après School Clubs & Holiday Camps", "Find your school, wraparound care site or holiday camp and continue to the correct booking platform."],
   "Holiday Clubs": ["Holiday Camps for Schools and Families | Après School", "Active, creative holiday camps at selected school sites with clear booking routes for families."],
   Wraparound: ["Wraparound Care for Schools | Après School", "Breakfast clubs and after-school care for schools that want reliable extended provision parents trust."],
   Schools: ["Wraparound Care for Schools & Extended Provision | Après School", "Partner with Après School for wraparound care, holiday camps and extended provision that helps parents choose your school."],
   Contact: ["Contact Après School | Wraparound Care & Holiday Camps", "Contact Après School about wraparound care for schools, holiday camps, school partnerships and staffing."],
   "Staff Application": ["Staff Application | Après School", "Apply to work with Après School through the staff onboarding form."],
-  Magicbooking: ["Magicbooking Guide | Après School", "How parents can book Après School provision through Magicbooking."],
-  "Book Pebble": ["Book Pebble Guide | Après School", "How parents can book selected Après holiday camps through Book Pebble."],
-  Payments: ["Payments & Vouchers | Après School", "Payment options, childcare vouchers and booking-platform guidance."],
+  Payments: ["Payments & Vouchers | Après School", "Payment options, childcare vouchers and family-account guidance."],
   Cancellations: ["Cancellations & Amendments | Après School", "Guidance for amending or cancelling Après School bookings."],
   Policies: ["Policies | Après School", "Safeguarding, behaviour, health and safety, privacy and complaints policy summaries."],
   "Launch Booking": ["Family Booking | Après School", "Book Après School wraparound care and holiday clubs securely online."],
@@ -363,7 +357,6 @@ const pageMeta = {
 };
 const pageKeywords = {
   Home: "Après School, wraparound care for schools, holiday camps, extended school provision, after school club, breakfast club, school partnerships",
-  Bookings: "Après School bookings, book holiday camps, book after school club, Magicbooking, Book Pebble, school childcare bookings",
   "Holiday Clubs": "holiday camps, school holiday clubs, holiday childcare, activity camps, school holiday provision, Après School holiday camps",
   Wraparound: "wraparound care for schools, after school care, breakfast club, extended school day, school childcare, term-time childcare",
   Schools: "wraparound care for schools, extended school provision, school partnerships, holiday camps for schools, after school provision, parent offer",
@@ -601,7 +594,7 @@ const coverReasons = ["Illness cover", "Planned absence", "Training cover", "Rat
 const nextCamp = {
   title: "Summer Holiday Camps",
   dates: "13th-17th",
-  bookingUrl: pagePaths["Holiday Clubs"],
+  bookingUrl: FAMILY_BOOKING_URL,
   sites: ["Shrewsbury House", "King's House School", "The Rowans", "Willington Prep"],
   note: "Shrewsbury, King's House and The Rowans run 13th-17th. Willington Prep continues throughout the summer.",
   dailyThemes: [
@@ -679,14 +672,14 @@ const bookingSites = [
     category: "Holiday Camps",
     area: "Richmond",
     description: "Open-access holiday camp for children from all schools.",
-    provider: "Book Pebble",
-    url: PEBBLE_KINGS_URL,
+    provider: "Après School",
+    url: HOLIDAY_KINGS_URL,
     image: APRES_IMG.kingsHouseTile,
     imagePosition: "center",
     schedule: "School holiday dates published by camp.",
     ages: "Open to children from all schools.",
-    bookingNote: "Use Book Pebble for this camp and check published dates before booking.",
-    beforeBooking: "Confirm the camp location, date range and age guidance on the Book Pebble listing.",
+    bookingNote: "Sign in to your family account, then choose the camp and dates you need.",
+    beforeBooking: "King's House School will already be selected when the booking journey opens.",
   },
   {
     title: "Holiday Enrichment at Willington Prep",
@@ -694,14 +687,14 @@ const bookingSites = [
     category: "Holiday Camps",
     area: "Wimbledon",
     description: "Creative holiday enrichment at Willington Prep.",
-    provider: "Magicbooking",
-    url: MAGICBOOKING_URL,
+    provider: "Après School",
+    url: launchBookingPath("Willington Prep"),
     image: APRES_IMG.willingtonTile,
     imagePosition: "center",
     schedule: "Holiday enrichment dates published by programme.",
     ages: "Primary-age children.",
-    bookingNote: "Use Magicbooking and select the Willington Prep centre/activity.",
-    beforeBooking: "Confirm the correct Willington Prep activity and dates inside Magicbooking.",
+    bookingNote: "Sign in to your family account, then choose the camp and dates you need.",
+    beforeBooking: "Willington Prep will already be selected when the booking journey opens.",
   },
   {
     title: "Holiday Camp at Ripley Court School",
@@ -709,14 +702,14 @@ const bookingSites = [
     category: "Holiday Camps",
     area: "Surrey",
     description: "Holiday camp provision for Ripley Court School pupils.",
-    provider: "Magicbooking",
-    url: MAGICBOOKING_URL,
+    provider: "Après School",
+    url: launchBookingPath("Ripley Court"),
     image: APRES_IMG.ripleyCourtTile,
     imagePosition: "center",
     schedule: "Holiday camp dates published by school arrangement.",
     ages: "Exclusive to Ripley Court School pupils.",
-    bookingNote: "Use Magicbooking and select the Ripley Court activity.",
-    beforeBooking: "This provision is school-specific, so check eligibility before booking.",
+    bookingNote: "Sign in to your family account, then choose the camp and dates you need.",
+    beforeBooking: "Ripley Court will already be selected; check the programme eligibility before confirming.",
   },
   {
     title: "Holiday Camp at The Rowans School",
@@ -724,14 +717,14 @@ const bookingSites = [
     category: "Holiday Camps",
     area: "Wimbledon",
     description: "Open-access holiday camp at The Rowans School.",
-    provider: "Book Pebble",
-    url: PEBBLE_ROWANS_URL,
+    provider: "Après School",
+    url: HOLIDAY_ROWANS_URL,
     image: APRES_IMG.rowansTile,
     imagePosition: "center",
     schedule: "Holiday dates published by camp.",
     ages: "Open to children from all schools.",
-    bookingNote: "Use Book Pebble for this camp and check the activity listing.",
-    beforeBooking: "Review the Book Pebble listing for dates, age range and drop-off information.",
+    bookingNote: "Sign in to your family account, then choose the camp and dates you need.",
+    beforeBooking: "The Rowans School will already be selected when the booking journey opens.",
   },
   {
     title: "Holiday Camp at Shrewsbury House School",
@@ -739,14 +732,14 @@ const bookingSites = [
     category: "Holiday Camps",
     area: "Surbiton",
     description: "Open-access holiday camp at Shrewsbury House School.",
-    provider: "Book Pebble",
-    url: PEBBLE_SHREWSBURY_URL,
+    provider: "Après School",
+    url: HOLIDAY_SHREWSBURY_URL,
     image: APRES_IMG.shrewsburyHouseTile,
     imagePosition: "center",
     schedule: "Holiday dates published by camp.",
     ages: "Open to children from all schools.",
-    bookingNote: "Use Book Pebble for this camp and check the activity listing.",
-    beforeBooking: "Review the Book Pebble listing for dates, age range and drop-off information.",
+    bookingNote: "Sign in to your family account, then choose the camp and dates you need.",
+    beforeBooking: "Shrewsbury House School will already be selected when the booking journey opens.",
   },
 ];
 
@@ -758,25 +751,24 @@ const activityZones = [
 ];
 
 const parentFaqs = [
-  ["How do I book?", "Choose your school or camp on the Bookings page. Wraparound care opens the Après School family booking system with your school selected; holiday camps use the route shown on their card."],
-  ["Do I need an account?", "Yes for wraparound care. Sign in or create your Après School family account, keep each child's details up to date, then choose the sessions you need."],
-  ["Can I amend or cancel bookings?", "Open the Bookings section of your family account to review upcoming wraparound sessions and the actions available. Holiday-camp rules are shown by the route used for that camp."],
+  ["How do I book?", "Open the Après School family booking system, sign in, choose your school or camp, then select the children, sessions and dates you need."],
+  ["Do I need an account?", "Yes. Sign in or create your Après School family account, keep each child's details up to date, then choose the sessions you need."],
+  ["Can I amend or cancel bookings?", "Open the Bookings section of your family account to review upcoming sessions and the actions available."],
   ["Can I pay with childcare vouchers?", "Supported payment options are shown during checkout. Wraparound bookings use secure PonchoPay checkout and your family account also shows available account credit."],
   ["What ages do you support?", "Age ranges vary by site and programme. The relevant booking page will show which children can attend each club or camp."],
   ["Are staff checked?", "Staff are recruited through safer recruitment processes, DBS checks and training expectations appropriate to their role."],
   ["What should children bring?", "Comfortable clothes, a water bottle, weather-appropriate layers and any required packed lunch or medication for the session."],
-  ["Who do I contact about collection?", "Use your booking platform details for routine booking questions, or contact Après School directly for site-specific support."],
+  ["Who do I contact about collection?", "Use your Après School family account for routine booking questions, or contact us directly for site-specific support."],
 ];
 
 const bookingRoutes = [
-  ["Après School family booking", "Breakfast and after-school care at our wraparound schools.", "Best for parents booking regular or ad-hoc term-time care.", "/launch-booking"],
-  ["Magicbooking", "Selected legacy school-specific holiday programmes only.", "Use only when the holiday-camp card directs you there.", MAGICBOOKING_URL],
-  ["Book Pebble", "Selected holiday camps where the camp listing, dates and checkout are handled separately.", "Best for open-access holiday camp places at listed sites.", PEBBLE_SUPPLIER_URL],
-  ["Need help choosing?", "Use the site cards below first. If your school or camp is not obvious, contact the team before booking.", "Best when you are unsure which platform applies.", null],
+  ["Après School family booking", "Wraparound care and holiday camps in one secure account.", "Choose your children, school or camp, sessions and dates.", FAMILY_BOOKING_URL],
+  ["Need help choosing?", "If your school or camp is not obvious in the booking system, contact the team before confirming.", "We will help you find the correct provision.", null],
 ];
 
 function getInitialPage() {
   if (isBookingPaymentReturnPath(window.location.pathname)) return "Launch Booking";
+  if (legacyBookingPaths.has(window.location.pathname)) return "Launch Booking";
   return pathPages[window.location.pathname] || "Home";
 }
 
@@ -1143,7 +1135,7 @@ function Header({ page, setPage, platform, setPlatform, platformUnlocked, menu, 
         {!platform && <button className="nav-staff-login" type="button" onClick={() => { setPlatform(true); setMenu(false); }}>Staff Login</button>}
         {platform && platformUnlocked && <span className="secure-label">Signed in</span>}
       </nav>
-      <button className="button book" type="button" onClick={() => platform ? setPlatform(false) : setPage("Bookings")}>
+      <button className="button book" type="button" onClick={() => platform ? setPlatform(false) : setPage("Launch Booking")}>
         {platform ? "Public Website" : "Book Now"}
       </button>
       {!platform && <button className="button staff-login" type="button" onClick={() => setPlatform(true)}>Staff Login</button>}
@@ -1160,15 +1152,12 @@ function PublicSite({ page, setPage, setPlatform }) {
       {isPrivatePrototype && !previewAllowed && <BookingPreviewGate setPage={setPage} />}
       {page === "Home" && <CampAnnouncement setPage={setPage} />}
       {page === "Home" && <Home setPage={setPage} setPlatform={setPlatform} />}
-      {page === "Bookings" && <Bookings setPage={setPage} />}
       {page === "Holiday Clubs" && <HolidayClubs setPage={setPage} />}
       {page === "Wraparound" && <Wraparound setPage={setPage} />}
       {page === "About" && <About />}
       {page === "Services" && <Services />}
       {page === "Parents" && <Parents />}
       {page === "Schools" && <Schools setPage={setPage} />}
-      {page === "Magicbooking" && <MagicbookingGuide setPage={setPage} />}
-      {page === "Book Pebble" && <BookPebbleGuide setPage={setPage} />}
       {page === "Booking Lab" && previewAllowed && (
         <Suspense fallback={<div className="platform-loading">Loading booking lab...</div>}>
           <BookingLab setPage={setPage} />
@@ -1198,7 +1187,7 @@ function BookingPreviewGate({ setPage }) {
         <h1>Booking preview is protected.</h1>
         <p>This test journey is available only from an approved preview link while we prepare the booking launch.</p>
         <div>
-          <button className="button book" type="button" onClick={() => setPage("Bookings")}>Current booking routes</button>
+          <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Open family booking</button>
           <button className="button light" type="button" onClick={() => setPage("Contact")}>Contact the team</button>
         </div>
       </div>
@@ -1255,7 +1244,7 @@ function CampAnnouncement({ setPage }) {
           </div>
           <p>{nextCamp.note}</p>
           <div className="hero-actions">
-            <button className="button book" type="button" onClick={() => setPage("Holiday Clubs")}>Book Camp</button>
+            <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Book Camp</button>
             <button className="button light" type="button" onClick={() => setPage("Holiday Clubs")}>View Schedule</button>
           </div>
         </div>
@@ -1269,7 +1258,7 @@ function CampAnnouncement({ setPage }) {
               </article>
             ))}
           </div>
-          <p>Timings vary by site. Select your venue on the bookings page for the live details.</p>
+          <p>Timings vary by site. Select your venue in the family booking system for live details.</p>
         </div>
       </div>
     </aside>
@@ -1337,7 +1326,7 @@ function Home({ setPage, setPlatform }) {
               Breakfast clubs, after-school care and holiday camps with friendly teams, active days and simple booking routes for parents and schools.
             </p>
             <div className="hero-actions">
-              <button className="button book large" type="button" onClick={() => setPage("Bookings")}>Book Now</button>
+              <button className="button book large" type="button" onClick={() => setPage("Launch Booking")}>Book Now</button>
               <button className="button white" type="button" onClick={() => setPage("Holiday Clubs")}>Holiday Clubs</button>
               <button className="button ghost" type="button" onClick={() => setPage("Schools")}>For Schools</button>
             </div>
@@ -1363,10 +1352,8 @@ function Home({ setPage, setPlatform }) {
             {homeSites.map((site) => <option key={site.title} value={site.title}>{site.title}</option>)}
           </select>
           {selectedHomeSite
-            ? selectedHomeSite.provider === "Après School"
-              ? <a className="button book" href={selectedHomeSite.url} aria-label={`Start an Après School booking for ${selectedHomeSite.title}`}>Start booking</a>
-              : <a className="button book" href={selectedHomeSite.url} target="_blank" rel="noreferrer" aria-label={`Open ${selectedHomeSite.provider === "Book Pebble" ? "Pebble" : selectedHomeSite.provider} booking route for ${selectedHomeSite.title}`}>Open {selectedHomeSite.provider === "Book Pebble" ? "Pebble" : selectedHomeSite.provider}</a>
-            : <button className="button book" type="button" onClick={() => setPage("Bookings")}>View Sites</button>}
+            ? <a className="button book" href={selectedHomeSite.url} aria-label={`Start an Après School booking for ${selectedHomeSite.title}`}>Start booking</a>
+            : <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Start booking</button>}
         </form>
       </section>
       <section className="club-tabs">
@@ -1735,7 +1722,7 @@ function HolidayClubs({ setPage }) {
             <span>Simple online booking</span>
           </div>
           <div className="hero-actions">
-            <button className="button book large" type="button" onClick={() => setPage("Bookings")}>View Holiday Camps</button>
+            <button className="button book large" type="button" onClick={() => setPage("Launch Booking")}>View Holiday Camps</button>
             <button className="button white" type="button" onClick={() => setPage("Contact")}>Ask a Question</button>
           </div>
         </div>
@@ -1744,19 +1731,19 @@ function HolidayClubs({ setPage }) {
       <section className="camp-site-directory">
         <div className="section-kicker">
           <p className="eyebrow">Where to book</p>
-          <h2>Choose your camp location first.</h2>
-          <p>Camp booking depends on the school site. Pick the location card below and use the button shown there; it will take you to the correct platform.</p>
+          <h2>Book every camp in one place.</h2>
+          <p>Choose your location below, then use your Après School family account to select children, dates and sessions.</p>
         </div>
         <div className="camp-booking-note">
           <article>
-            <span>Magicbooking</span>
-            <strong>For selected school-linked holiday provision</strong>
-            <p>Used for Willington Prep and Ripley Court holiday provision.</p>
+            <span>One family account</span>
+            <strong>All Après School care together</strong>
+            <p>Use the same account for wraparound care and holiday camps.</p>
           </article>
           <article>
-            <span>Pebble</span>
-            <strong>For selected open-access holiday camps</strong>
-            <p>Used for King's House, The Rowans and Shrewsbury House camps.</p>
+            <span>One checkout</span>
+            <strong>Book directly with Après School</strong>
+            <p>Review availability, pricing and booking details before confirming.</p>
           </article>
         </div>
         <div className="camp-site-grid">
@@ -1764,16 +1751,14 @@ function HolidayClubs({ setPage }) {
             <article className="camp-site-card" key={site.title}>
               <div className="camp-site-image" style={{ backgroundImage: `url("${site.image}")`, backgroundPosition: site.imagePosition }} />
               <div className="camp-site-copy">
-                <span className={site.provider === "Magicbooking" ? "platform-badge magicbooking" : "platform-badge pebble"}>
-                  Book via {site.provider}
-                </span>
+                <span className="platform-badge apres">Après School booking</span>
                 <h3>{site.title}</h3>
                 <p>{site.description}</p>
                 <div className="camp-site-facts">
                   <span>{site.area}</span>
                   <span>{site.ages}</span>
                 </div>
-                <a className="button book" href={site.url} target="_blank" rel="noreferrer" aria-label={`Open ${site.provider === "Book Pebble" ? "Pebble" : site.provider} booking page for ${site.title}`}>Open {site.provider === "Book Pebble" ? "Pebble" : site.provider}</a>
+                <a className="button book" href={site.url} aria-label={`Start an Après School booking for ${site.title}`}>Start booking</a>
               </div>
             </article>
           ))}
@@ -1805,10 +1790,7 @@ function HolidayClubs({ setPage }) {
 }
 
 function holidayCampBookingUrl(site) {
-  const title = String(site?.title || "").toLowerCase();
-  if (title.includes("shrewsbury")) return PEBBLE_SHREWSBURY_URL;
-  if (title.includes("rowans")) return PEBBLE_ROWANS_URL;
-  return site?.url || MAGICBOOKING_URL;
+  return site?.url || FAMILY_BOOKING_URL;
 }
 
 function NextCampCard({ setPage }) {
@@ -1819,7 +1801,7 @@ function NextCampCard({ setPage }) {
       <div>
         <p className="eyebrow">Next camp</p>
         <h2>{nextCamp.title}</h2>
-        <p>{nextCamp.note} Choose the location below to book on the right platform.</p>
+        <p>{nextCamp.note} Continue to the Après School family booking system to choose your location and dates.</p>
         <div className="announcement-sites">
           {nextCamp.sites.map((site) => <span key={site}>{site}</span>)}
         </div>
@@ -1833,7 +1815,7 @@ function NextCampCard({ setPage }) {
             <strong>Willington Prep</strong>
           </article>
         </div>
-        <button className="button book large" type="button" onClick={() => setPage("Bookings")}>Choose Camp Location</button>
+        <button className="button book large" type="button" onClick={() => setPage("Launch Booking")}>Choose Camp Location</button>
       </div>
       <div className="camp-schedule">
         {nextCamp.dailyThemes.map(([day, title, text]) => (
@@ -1858,7 +1840,7 @@ function Wraparound({ setPage }) {
           <h2>Extended school provision parents can rely on.</h2>
           <p>Children get a warm welcome, a proper snack, space to play, quieter choices and a clear collection routine. Schools get wraparound care that feels organised, familiar and easy for families to trust.</p>
           <div className="wraparound-hero-actions">
-            <button className="button book large" type="button" onClick={() => setPage("Bookings")}>Book Wraparound Care</button>
+            <button className="button book large" type="button" onClick={() => setPage("Launch Booking")}>Book Wraparound Care</button>
             <button className="button light" type="button" onClick={() => setPage("Schools")}>For Schools</button>
           </div>
           <div className="wraparound-hero-proof">
@@ -1950,10 +1932,10 @@ function Wraparound({ setPage }) {
 
       <section className="wraparound-booking-panel">
         <div>
-          <p className="eyebrow">Current booking route</p>
-          <h2>Choose your school before you book.</h2>
-          <p>Wraparound care now books through the Après School family booking system. Start on the Bookings page and choose your school; we will carry it into the booking journey for you.</p>
-          <button className="button book" type="button" onClick={() => setPage("Bookings")}>View Booking Sites</button>
+          <p className="eyebrow">Family booking system</p>
+          <h2>Book wraparound care directly with Après School.</h2>
+          <p>Sign in to your family account, choose your school and select the sessions and dates you need.</p>
+          <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Open Booking System</button>
         </div>
         <div className="wraparound-booking-list">
           {wraparoundSites.map((site) => (
@@ -1994,9 +1976,9 @@ function MagicbookingGuide({ setPage }) {
       ]}
       checklist={["Holiday Enrichment at Willington Prep", "Holiday Camp at Ripley Court School"]}
       cta="Open Magicbooking"
-      href={MAGICBOOKING_URL}
+      href={FAMILY_BOOKING_URL}
       secondary="View Booking Sites"
-      onSecondary={() => setPage("Bookings")}
+      onSecondary={() => setPage("Launch Booking")}
       setPage={setPage}
     />
   );
@@ -2024,7 +2006,7 @@ function BookPebbleGuide({ setPage }) {
       ]}
       checklist={["King's House School", "The Rowans School", "Shrewsbury House School"]}
       cta="View booking sites"
-      onClick={() => setPage("Bookings")}
+      onClick={() => setPage("Launch Booking")}
       secondary="Contact Us"
       onSecondary={() => setPage("Contact")}
       setPage={setPage}
@@ -2048,7 +2030,7 @@ function GuidePage({ eyebrow, title, intro, heroTitle, platform, routeLabel, sum
         <aside className="guide-platform-card">
           <strong>{platform}</strong>
           <p>The booking platform opens in a new tab. Return here if you need to check which site route applies.</p>
-          <button className="text-link" type="button" onClick={() => setPage("Bookings")}>Back to all sites</button>
+          <button className="text-link" type="button" onClick={() => setPage("Launch Booking")}>Back to all sites</button>
         </aside>
       </section>
       <section className="guide-summary">
@@ -2073,7 +2055,7 @@ function GuidePage({ eyebrow, title, intro, heroTitle, platform, routeLabel, sum
           {checklist.map((item) => <span key={item}>{item}</span>)}
         </div>
         <div className="guide-note-actions">
-          <button className="button light" type="button" onClick={() => setPage("Bookings")}>View Booking Sites</button>
+          <button className="button light" type="button" onClick={() => setPage("Launch Booking")}>View Booking Sites</button>
           <button className="text-link" type="button" onClick={() => setPage("Contact")}>Ask for Help</button>
         </div>
       </section>
@@ -2087,24 +2069,24 @@ function Payments({ setPage }) {
       <SupportHero
         label="Parent payments"
         title="Review the total and payment method before confirming."
-        text="Wraparound bookings use secure PonchoPay checkout, with receipts, invoices and account credit visible in your family account. Holiday camps show the payment route on their location card."
-        primary="Find Your Booking Route"
+        text="Wraparound care and holiday clubs are booked through the Après School family system. Secure PonchoPay checkout, receipts, invoices and account credit are managed from the same account."
+        primary="Open Family Booking"
         secondary="Ask a Question"
-        onPrimary={() => setPage("Bookings")}
+        onPrimary={() => setPage("Launch Booking")}
         onSecondary={() => setPage("Contact")}
       />
       <SupportRouteCards
         cards={[
-          ["Après School family account", "Breakfast club and after-school care.", "View invoices, receipts, account credit and confirmed bookings together."],
-          ["PonchoPay", "Secure wraparound checkout.", "Card and supported childcare-payment options are authorised securely before the booking confirms."],
-          ["Pebble", "Selected open-access holiday camps.", "Pebble shows the camp fee, checkout options and confirmation details before you pay."],
+          ["Après School family account", "All wraparound care and holiday clubs.", "View confirmed bookings, invoices, receipts and account credit together."],
+          ["PonchoPay", "Secure checkout.", "Card and supported childcare-payment options are authorised securely before a paid booking confirms."],
+          ["Account credit", "Eligible future bookings.", "Any available balance is shown in your account and applied through the Après School checkout."],
         ]}
       />
       <section className="support-process">
         <div>
           <p className="eyebrow">Before paying</p>
           <h2>Do one final check at checkout.</h2>
-          <p>Before you confirm, check the school or camp name, dates, child details, fee, voucher options and any platform-specific terms.</p>
+          <p>Before you confirm, check the school or camp name, dates, child details, fee, voucher options and the terms for that programme.</p>
         </div>
         <ul>
           <li>Correct school, camp or activity selected.</li>
@@ -2122,31 +2104,31 @@ function Cancellations({ setPage }) {
     <PageShell eyebrow="Cancellations" title="Change requests start where you booked.">
       <SupportHero
         label="Changes and cancellations"
-        title="Your booking platform shows the live options."
-        text="Cancellation windows, credits and amendments vary by programme. Start where you booked so the rules match the specific session, camp or school centre."
-        primary="View Booking Sites"
+        title="Your family account shows the live options."
+        text="Cancellation windows, credits and amendments vary by programme. Open your Après School account so the rules and available actions match the specific session, camp or school centre."
+        primary="Open Family Booking"
         secondary="Contact Après School"
-        onPrimary={() => setPage("Bookings")}
+        onPrimary={() => setPage("Launch Booking")}
         onSecondary={() => setPage("Contact")}
       />
       <SupportRouteCards
         cards={[
-          ["Après School family account", "Breakfast club and after-school care.", "Open Bookings to review upcoming sessions and use the available cancellation action."],
-          ["Account credit", "Eligible wraparound cancellations.", "Any credit issued is shown in Payments & credit and can be used toward a future booking."],
-          ["Pebble", "Selected holiday camps.", "Use your Pebble booking confirmation or account area to review camp change and cancellation rules."],
+          ["Après School family account", "All wraparound care and holiday clubs.", "Open Bookings to review upcoming sessions and use any available cancellation action."],
+          ["Account credit", "Eligible cancellations.", "Any credit issued is shown in Payments & credit and can be used toward a future booking."],
+          ["Need help?", "A change is not available online.", "Send us the school, session date and booking reference so the team can review it."],
         ]}
       />
       <section className="support-process warning">
         <div>
           <p className="eyebrow">Best route</p>
-          <h2>Use the same platform you booked with.</h2>
-          <p>If you are unsure where a booking was made, use the Bookings page to identify the school or camp route first.</p>
+          <h2>Start in your Après School family account.</h2>
+          <p>All current bookings now sit in one place, with the relevant change or cancellation options shown against each session.</p>
         </div>
         <ul>
-          <li>Find the original confirmation email or platform account.</li>
+          <li>Find the original confirmation email or open your family account.</li>
           <li>Check the session, camp and date you want to change.</li>
           <li>Read the cancellation or amendment terms shown there.</li>
-          <li>Contact us if the platform does not answer your question.</li>
+          <li>Contact us if your account does not show the action you need.</li>
         </ul>
       </section>
     </PageShell>
@@ -2213,7 +2195,7 @@ function Parents() {
     <PageShell eyebrow="For Parents" title="A friendly place for children before, after and during school holidays.">
       <section className="simple-band">
         <h2>Start by finding your school or camp.</h2>
-        <p>Wraparound care opens the Après School family booking system with your school selected. Holiday-camp cards show the current route for each location.</p>
+        <p>Wraparound care and holiday clubs are booked through the Après School family system, with your chosen school or camp carried into the journey.</p>
       </section>
       <div className="split-content">
         <div className="parent-points">
@@ -2284,7 +2266,7 @@ function Schools({ setPage }) {
           </p>
           <div className="school-hero-actions">
             <button className="button book large" type="button" onClick={() => document.querySelector(".school-enquiry")?.scrollIntoView({ behavior: "smooth" })}>Start a Partnership</button>
-            <button className="button white" type="button" onClick={() => setPage("Bookings")}>View Current Sites</button>
+            <button className="button white" type="button" onClick={() => setPage("Launch Booking")}>View Current Sites</button>
           </div>
         </div>
         <div className="school-hero-card">
@@ -2413,7 +2395,7 @@ function FAQs({ setPage }) {
   const bookingFaqs = parentFaqs.slice(0, 5);
   const careFaqs = parentFaqs.slice(5);
   const supportRoutes = [
-    ["Find your site", "Pick the school or camp first. Wraparound care opens with your school selected; camp cards show their current route.", "View Sites", () => setPage("Bookings")],
+    ["Find your site", "Open the family booking system, then choose the school or camp that suits your child.", "Start Booking", () => setPage("Launch Booking")],
     ["Payment help", "Review secure payment, account-credit and voucher options before confirming your booking.", "Payment Options", () => setPage("Payments")],
     ["Ask the team", "For collection, site or partnership questions, send us the details and we will route it.", "Contact Après", () => setPage("Contact")],
   ];
@@ -2422,10 +2404,10 @@ function FAQs({ setPage }) {
       <section className="faq-hero">
         <div>
           <h2>Start with your school or camp.</h2>
-          <p>Choose the site first. Wraparound care stays in the Après School family booking system, while holiday-camp cards clearly show any external route.</p>
+          <p>Wraparound care and holiday clubs now use the same Après School family booking system.</p>
         </div>
         <div className="faq-actions">
-          <button className="button book" type="button" onClick={() => setPage("Bookings")}>Find My Site</button>
+          <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Find My Site</button>
           <button className="button light" type="button" onClick={() => setPage("Contact")}>Ask a Question</button>
         </div>
       </section>
@@ -2459,7 +2441,7 @@ function FAQs({ setPage }) {
         <div>
           <p className="eyebrow">Still unsure?</p>
           <h2>Tell us your school, camp or booking question.</h2>
-          <p>We can point you towards the correct site, platform or team member.</p>
+          <p>We can point you towards the correct site, booking option or team member.</p>
         </div>
         <button className="button book" type="button" onClick={() => setPage("Contact")}>Contact the Team</button>
       </section>
@@ -2474,7 +2456,7 @@ function Policies({ setPage }) {
     ["Health and Safety", "Site routines", "Site routines, risk awareness, collection arrangements and activity planning are managed with school-friendly discipline."],
     ["Complaints", "Clear follow-up", "Families and schools can raise concerns clearly, with follow-up recorded and handled by the appropriate lead."],
     ["Privacy", "Data care", "Personal information is handled only for legitimate childcare, staffing and operational purposes, with GDPR-ready workflows planned."],
-    ["Terms", "Booking terms", "Booking terms depend on the activity and booking platform. Parents should review the terms shown before confirming payment."],
+    ["Terms", "Booking terms", "Booking terms depend on the activity and programme. Parents should review the terms shown before confirming payment."],
     ["First Aid", "Planned cover", "First aid provision is planned by programme, site and staffing model, with qualifications tracked where required."],
     ["Code of Conduct", "Staff expectations", "Staff are expected to model warm, professional behaviour and follow clear boundaries in every setting."],
   ];
@@ -2577,7 +2559,7 @@ function Contact({ setPage }) {
         <aside>
           <Mail />
           <strong>hello@apres-school.co.uk</strong>
-          <p>For urgent booking changes, check the platform you booked through first so you see the live options for that booking.</p>
+          <p>For urgent booking changes, check your Après School family account first so you see the live options for that booking.</p>
         </aside>
       </section>
       <section className="contact-route-grid">
@@ -2597,9 +2579,9 @@ function Contact({ setPage }) {
       <section className="contact-layout">
         <div className="contact-card">
           <h2>We’ll route your message to the right person.</h2>
-          <p>For live booking changes, start with your booking platform. For site questions, partnerships or staff enquiries, send us the details here.</p>
+          <p>For live booking changes, start with your family account. For site questions, partnerships or staff enquiries, send us the details here.</p>
           <div className="contact-response-list">
-            <span>Booking platform questions</span>
+            <span>Family booking questions</span>
             <span>School partnership conversations</span>
             <span>Staff applications and onboarding</span>
           </div>
@@ -2612,7 +2594,7 @@ function Contact({ setPage }) {
         <form className="contact-form" onSubmit={submit}>
           <div className="contact-form-head full">
             <span>Send an enquiry</span>
-            <p>Add the school, site, booking platform or staff context if you have it. That helps us respond with less back-and-forth.</p>
+            <p>Add the school, site, booking reference or staff context if you have it. That helps us respond with less back-and-forth.</p>
           </div>
           <label>Name<input required name="name" autoComplete="name" placeholder="Your name" /></label>
           <label>Email<input required type="email" inputMode="email" name="email" autoComplete="email" placeholder="you@example.com" /></label>
@@ -2738,10 +2720,10 @@ function readJson(key, fallback) {
 }
 
 function MobileCTA({ page, setPage }) {
-  const hiddenPages = ["Home", "Bookings", "Holiday Clubs", "Schools", "Contact"];
+  const hiddenPages = ["Home", "Holiday Clubs", "Schools", "Contact"];
   return (
     <div className={hiddenPages.includes(page) ? "mobile-cta home-hidden" : "mobile-cta"}>
-      <button className="button book" type="button" onClick={() => setPage("Bookings")}>Book Now</button>
+      <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Book Now</button>
       <button className="button light" type="button" onClick={() => setPage("Contact")}>Contact</button>
     </div>
   );
@@ -2783,8 +2765,8 @@ function Badge({ value }) {
 
 function Footer({ setPage }) {
   const columns = [
-    ["Clubs", ["Bookings", "Holiday Clubs", "Wraparound"]],
-    ["Parents", ["Bookings", "Payments", "Cancellations", "Contact"]],
+    ["Clubs", ["Holiday Clubs", "Wraparound"]],
+    ["Parents", ["Payments", "Cancellations", "Contact"]],
     ["Schools", ["Schools", "Policies", "Contact"]],
     ["Staff", ["Staff Application", "Contact"]],
   ];
@@ -2804,7 +2786,7 @@ function Footer({ setPage }) {
         <div className="footer-column" key={heading}>
           <h3>{heading}</h3>
           {links.map((link) => <button key={link} type="button" onClick={() => setPage(link)}>{link}</button>)}
-          {heading === "Parents" && <a className="footer-beta-link" href="/launch-booking">Family booking system</a>}
+          {heading === "Parents" && <a className="footer-beta-link" href="/launch-booking">Book care</a>}
         </div>
       ))}
       <div className="footer-contact">
@@ -2812,7 +2794,7 @@ function Footer({ setPage }) {
         <a href="mailto:hello@apres-school.co.uk">hello@apres-school.co.uk</a>
         <small>Book care securely online, or contact us if you need any help.</small>
         <div className="footer-actions">
-          <button className="button book" type="button" onClick={() => setPage("Bookings")}>Book now</button>
+          <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Book now</button>
           <button className="button light" type="button" onClick={() => setPage("Contact")}>Contact</button>
         </div>
       </div>

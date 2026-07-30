@@ -16719,7 +16719,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           <p>Parents find the right place first, then choose sessions, add child details, review availability and complete checkout without bouncing between systems.</p>
           <div className="lab-hero-actions">
             <button className="button book large" type="button" onClick={() => document.getElementById("booking-lab-flow")?.scrollIntoView({ behavior: "smooth" })}>Build a Booking</button>
-            <button className="button light" type="button" onClick={() => setPage("Bookings")}>Back to Live Routes</button>
+            <button className="button light" type="button" onClick={() => setPage("Launch Booking")}>Open Family Booking</button>
           </div>
           <div className="lab-hero-kpis" aria-label="Booking lab snapshot">
             <span><strong>{sessions.length}</strong>Activities</span>
