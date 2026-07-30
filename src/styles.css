@@ -23096,6 +23096,55 @@ th {
   gap: 6px;
 }
 
+.lab-parent-pathway .lab-activity-benefit {
+  width: fit-content;
+  border-radius: 999px;
+  background: #e7f7ee;
+  color: #17623c;
+  padding: 3px 7px;
+  font-size: 0.66rem;
+  font-weight: 950;
+}
+
+.lab-parent-pathway .lab-activity-choice s {
+  color: #8991a2;
+  margin-right: 4px;
+}
+
+.lab-parent-pathway .lab-activity-choice small b {
+  color: #17623c;
+}
+
+.lab-active-pricing-benefit {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  gap: 3px 10px !important;
+  align-items: center;
+  border: 1px solid #afe0c2;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #effbf4, #f9fffb);
+  padding: 10px 12px;
+}
+
+.lab-active-pricing-benefit > span {
+  grid-row: 1 / span 2;
+  border-radius: 999px;
+  background: #217849;
+  color: #fff !important;
+  padding: 6px 9px;
+  font-size: 0.68rem !important;
+  font-weight: 950;
+}
+
+.lab-active-pricing-benefit strong {
+  color: #154b2d;
+}
+
+.lab-active-pricing-benefit small {
+  color: #4e6458;
+  line-height: 1.35;
+}
+
 .lab-view-parent .lab-search-panel {
   top: 132px;
   gap: 10px;

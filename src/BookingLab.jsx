@@ -814,6 +814,52 @@ function parentActivityLabel(session) {
   return title || "Care";
 }
 
+function pricingServiceKeyForSession(session) {
+  const label = `${session?.type || ""} ${session?.title || ""} ${parentActivityLabel(session)}`.toLowerCase();
+  if (label.includes("breakfast")) return "breakfast_club";
+  if (label.includes("after school") || label.includes("after-school")) return "after_school_club";
+  if (label.includes("holiday") || label.includes("camp")) return "holiday_club";
+  if (label.includes("activity")) return "activity_club";
+  return label.replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "other";
+}
+
+function pricingBenefitForSession(session, pricing) {
+  if (!pricing || !session) return null;
+  const normalisePlace = (value) => String(value || "").toLowerCase().replace(/school|prep|the|[^a-z0-9]/g, "");
+  const serviceKey = pricingServiceKeyForSession(session);
+  const siteKey = normalisePlace(session.site);
+  const normaliseActivity = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const activityName = normaliseActivity(session.title || parentActivityLabel(session));
+  const candidates = [...(pricing.overrides || []), ...(pricing.benefits || [])];
+  return candidates.find((benefit) => {
+    const schoolKey = normalisePlace(benefit.school);
+    const serviceMatches = !benefit.serviceKey || benefit.serviceKey === "all" || benefit.serviceKey === serviceKey;
+    const schoolMatches = !schoolKey || siteKey.includes(schoolKey) || schoolKey.includes(siteKey);
+    const benefitActivity = normaliseActivity(benefit.activity);
+    const activityMatches = !benefitActivity || activityName.includes(benefitActivity) || benefitActivity.includes(activityName);
+    return serviceMatches && schoolMatches && activityMatches && benefit.discountType !== "no_discount" && Number(benefit.discountValue || 0) >= 0;
+  }) || null;
+}
+
+function priceAfterBenefit(price, benefit) {
+  const base = Number(price || 0);
+  if (!benefit) return base;
+  if (benefit.discountType === "free_session") return 0;
+  if (benefit.discountType === "percentage") return Math.max(0, base * (1 - Number(benefit.discountValue || 0) / 100));
+  if (benefit.discountType === "fixed_amount") return Math.max(0, base - Number(benefit.discountValue || 0));
+  if (benefit.discountType === "fixed_price") return Math.max(0, Number(benefit.discountValue || 0));
+  return base;
+}
+
+function pricingBenefitLabel(benefit) {
+  if (!benefit) return "";
+  if (benefit.discountType === "free_session") return "Free";
+  if (benefit.discountType === "percentage") return `${Number(benefit.discountValue || 0)}% off`;
+  if (benefit.discountType === "fixed_amount") return `${money(benefit.discountValue)} off`;
+  if (benefit.discountType === "fixed_price") return `${money(benefit.discountValue)} fixed price`;
+  return benefit.name || "Pricing benefit";
+}
+
 function parentActivityRank(session) {
   const label = parentActivityLabel(session);
   if (label === "After school") return 1;
@@ -1502,6 +1548,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const pilotSession = sessions.find((session) => session.id === pilotSessionId) || activeSession;
   const staffingSession = sessions.find((session) => session.id === staffingSessionId) || activeSession;
   const capacitySession = sessions.find((session) => session.id === capacitySessionId) || activeSession;
+  const activePricingBenefit = isLaunchMode && parentAccountSignedIn
+    ? pricingBenefitForSession(activeSession, liveParentLedger.pricing)
+    : null;
   const activeSessionBlocks = normaliseSessionBlocks(activeSession);
   const activeBlockKeys = activeSessionBlocks.map((block) => block.key);
   const selectedBlockKeysForDay = (day, session = activeSession, blocks = activeSessionBlocks) => {
@@ -21798,13 +21847,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     <div className="lab-activity-choice" aria-label="Choose activity">
                       <span>Activity</span>
                       <div>
-                        {activityOptionsForCare.map((session) => (
-                          <button className={activeSession.id === session.id ? "active" : ""} key={session.id} type="button" aria-pressed={activeSession.id === session.id} onClick={() => chooseSession(session, { advance: false })}>
+                        {activityOptionsForCare.map((session) => {
+                          const benefit = parentAccountSignedIn ? pricingBenefitForSession(session, liveParentLedger.pricing) : null;
+                          const benefitPrice = priceAfterBenefit(session.price, benefit);
+                          return <button className={activeSession.id === session.id ? "active" : ""} key={session.id} type="button" aria-pressed={activeSession.id === session.id} onClick={() => chooseSession(session, { advance: false })}>
+                            {benefit && <span className="lab-activity-benefit">{pricingBenefitLabel(benefit)}</span>}
                             <strong>{parentActivityLabel(session)}</strong>
-                            <small>{session.time} · {money(session.price)}</small>
-                          </button>
-                        ))}
+                            <small>{session.time} · {benefit ? <><s>{money(session.price)}</s> <b>{money(benefitPrice)}</b></> : money(session.price)}</small>
+                          </button>;
+                        })}
                       </div>
+                    </div>
+                  )}
+                  {activePricingBenefit && (
+                    <div className="lab-active-pricing-benefit" role="status">
+                      <span>{liveParentLedger.pricing?.pricingGroupName || "Your pricing group"}</span>
+                      <strong>{pricingBenefitLabel(activePricingBenefit)} {parentActivityLabel(activeSession)}</strong>
+                      <small>Standard {money(activeSession.price)} · your price from {money(priceAfterBenefit(activeSession.price, activePricingBenefit))}. Final price is confirmed after you choose dates and sessions.</small>
                     </div>
                   )}
                 </>

@@ -6,6 +6,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const migration = read("supabase/migrations/0102_pricing_groups_engine.sql");
 const assignmentMigration = read("supabase/migrations/0104_enforce_single_parent_pricing_group.sql");
 const platform = read("src/PlatformModule.jsx");
+const bookingLab = read("src/BookingLab.jsx");
 const pricingUi = read("src/PricingGroupsModule.jsx");
 const createBooking = read("supabase/functions/create-parent-booking/index.ts");
 const amendBooking = read("supabase/functions/update-parent-booking/index.ts");
@@ -28,6 +29,7 @@ const checks = [
   [amendBooking.match(/rpc\("apply_booking_pricing"/g)?.length === 2, "add/remove amendments refresh totals"],
   [adHoc.includes('rpc("apply_booking_pricing"'), "staff ad-hoc bookings use family pricing"],
   [invoice.includes("Pricing group:") && invoice.includes("pricingLabel"), "invoice pricing transparency"],
+  [bookingLab.includes("lab-active-pricing-benefit") && bookingLab.includes("Final price is confirmed after you choose dates and sessions"), "activity-level parent benefit preview"],
 ];
 
 const failures = checks.filter(([pass]) => !pass);
