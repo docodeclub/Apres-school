@@ -13,6 +13,10 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("APRES_SERVICE_ROLE_KEY") ?? "";
 const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const parentPortalUrl = Deno.env.get("PARENT_PORTAL_URL") ?? "https://www.apres-school.co.uk/launch-booking";
+const pricingEmailCc = (Deno.env.get("APRES_PRICING_EMAIL_CC") ?? "luke@apres-school.co.uk")
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
 const serviceClient = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
 serve(async (request) => {
@@ -77,8 +81,9 @@ serve(async (request) => {
         subject,
         text: textLines.join("\n"),
         html: buildPricingEmailHtml(recipientName, stringValue(group.name), benefits, effectiveFrom, effectiveTo),
+        cc: pricingEmailCc,
         sentBy: actor.id,
-        metadata: { parentAccountId, pricingGroupId, pricingGroupName: group.name, effectiveFrom, effectiveTo, benefitCount: benefits.length },
+        metadata: { parentAccountId, pricingGroupId, pricingGroupName: group.name, effectiveFrom, effectiveTo, benefitCount: benefits.length, monitoringCc: pricingEmailCc },
       });
       emailed = emailLog?.status === "sent";
       emailError = stringValue(emailLog?.error_message);

@@ -500,6 +500,8 @@ export async function savePricingRule(input) {
 
 export async function assignParentPricingGroup(input) {
   if (!supabase) throw new Error("Supabase is not configured.");
+  const { error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError) throw new Error("Your staff session has expired. Please sign in again before changing a pricing tier.");
   const payload={ parentAccountId:input.parentAccountId,pricingGroupId:input.pricingGroupId,effectiveFrom:input.effectiveFrom||new Date().toISOString().slice(0,10),effectiveTo:input.effectiveTo||null,notes:String(input.notes||"").trim()||null };
   const { data,error }=await supabase.functions.invoke(parentPricingGroupFunctionName,{body:payload});
   if (error) {

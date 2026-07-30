@@ -16,6 +16,7 @@ type BookingEmailInput = {
   text: string;
   html?: string;
   from?: string;
+  cc?: string[];
   sentBy?: string | null;
   metadata?: Record<string, unknown>;
   attachments?: Array<{
@@ -48,6 +49,7 @@ export async function sendBookingEmail(supabase: SupabaseLike, input: BookingEma
   const recipientEmail = stringValue(input.recipientEmail).toLowerCase();
   if (!recipientEmail) throw new Error("Email recipient is required.");
   const emailFrom = stringValue(input.from) || resendFrom;
+  const cc = [...new Set((input.cc || []).map((email) => stringValue(email).toLowerCase()).filter((email) => email.includes("@") && email !== recipientEmail))];
 
   let status = "queued_without_provider";
   let providerMessageId = "";
@@ -64,6 +66,7 @@ export async function sendBookingEmail(supabase: SupabaseLike, input: BookingEma
         body: JSON.stringify({
           from: emailFrom,
           to: [recipientEmail],
+          ...(cc.length ? { cc } : {}),
           reply_to: resendReplyTo,
           subject: input.subject,
           text: input.text,
@@ -103,6 +106,7 @@ export async function sendBookingEmail(supabase: SupabaseLike, input: BookingEma
         ...(input.metadata || {}),
         body: input.text,
         from: emailFrom,
+        cc,
         replyTo: resendReplyTo,
         attachments: (input.attachments || []).map((attachment) => attachment.filename),
       },
