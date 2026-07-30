@@ -55,6 +55,7 @@ import {
   createChildProfile,
   createParentCreditTopUp,
   createParentBooking,
+  fetchBookableSessions,
   fetchCurrentProfile,
   fetchParentAccount,
   fetchParentBadgeBook,
@@ -902,6 +903,32 @@ function isUuid(value) {
 
 function sessionBlockIdForBooking(block) {
   return block.sessionBlockId || block.session_block_id || block.id || "";
+}
+
+function basketPricingSignatureForItems(items = []) {
+  return items.map((item) => `${item.sessionBlockId}:${item.childId}`).sort().join("|");
+}
+
+async function resolveLiveBasketSessionBlocks(items = []) {
+  if (!items.length || items.every((item) => isUuid(item.sessionBlockId))) return items;
+  const firstDate = items.map((item) => item.sessionDate || labDayIso(item.day)).filter(Boolean).sort()[0];
+  if (!firstDate) throw new Error("A basket session is missing its date. Remove it and add it again.");
+  const liveSessions = await fetchBookableSessions({ from: new Date(`${firstDate}T00:00:00`), limit: 500 });
+  return items.map((item) => {
+    if (isUuid(item.sessionBlockId)) return item;
+    const sessionDate = item.sessionDate || labDayIso(item.day);
+    const liveSession = liveSessions.find((session) => (
+      String(session.site?.name || "").trim().toLowerCase() === String(item.site || "").trim().toLowerCase()
+      && String(session.startsAt || "").slice(0, 10) === sessionDate
+    ));
+    const liveBlock = liveSession?.blocks?.find((block) => (
+      String(block.label || "").trim().toLowerCase() === String(item.sessionLabel || "").trim().toLowerCase()
+    ));
+    if (!liveBlock?.id) {
+      throw new Error(`${item.site || "This site"} ${item.sessionLabel || "session"} on ${sessionDate || "the selected date"} is not available for live booking.`);
+    }
+    return { ...item, liveSessionId: liveSession.id, sessionBlockId: liveBlock.id };
+  });
 }
 
 function preferredParentSession(sessionList) {
@@ -1979,7 +2006,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const basketChildIds = [...new Set(draftBookingBasket.map((item) => item.childId))];
   const basketDays = [...new Set(draftBookingBasket.map((item) => item.day))];
   const subtotal = basketCheckoutActive ? basketSubtotal : currentSelectionSubtotal;
-  const basketPricingSignature = draftBookingBasket.map((item) => `${item.sessionBlockId}:${item.childId}`).sort().join("|");
+  const basketPricingSignature = basketPricingSignatureForItems(draftBookingBasket);
   const basketPricingQuote = pricingQuote?.signature === basketPricingSignature ? pricingQuote : null;
   const activePricingQuote = basketCheckoutActive ? basketPricingQuote : null;
   const selectedPaymentRoutes = [...new Set(pickedDayRows.map((row) => row.paymentRoute))];
@@ -5257,11 +5284,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     let cancelled = false;
     setPricingQuoteLoading(true);
     setPricingQuoteError("");
-    quoteParentBookingPricing(draftBookingBasket.map((item) => ({ sessionBlockId: item.sessionBlockId, quantity: 1 })))
-      .then((quote) => {
+    resolveLiveBasketSessionBlocks(draftBookingBasket)
+      .then(async (resolvedItems) => {
+        if (cancelled) return null;
+        if (resolvedItems.some((item, index) => item.sessionBlockId !== draftBookingBasket[index]?.sessionBlockId)) {
+          setDraftBookingBasket(resolvedItems);
+        }
+        const quote = await quoteParentBookingPricing(resolvedItems.map((item) => ({ sessionBlockId: item.sessionBlockId, quantity: 1 })));
         if (cancelled) return;
         if (!quote) throw new Error("No bookable sessions were found in the basket.");
-        setPricingQuote({ ...quote, signature: basketPricingSignature });
+        setPricingQuote({ ...quote, signature: basketPricingSignatureForItems(resolvedItems) });
       })
       .catch((error) => {
         if (cancelled) return;
@@ -8185,8 +8217,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       try {
         setPricingQuoteLoading(true);
         setPricingQuoteError("");
-        const signature = basketPricingSignature;
-        const quote = basketPricingQuote || await quoteParentBookingPricing(draftBookingBasket.map((item) => ({ sessionBlockId: item.sessionBlockId, quantity: 1 })));
+        const resolvedItems = await resolveLiveBasketSessionBlocks(draftBookingBasket);
+        if (resolvedItems.some((item, index) => item.sessionBlockId !== draftBookingBasket[index]?.sessionBlockId)) {
+          setDraftBookingBasket(resolvedItems);
+        }
+        const signature = basketPricingSignatureForItems(resolvedItems);
+        const quote = basketPricingQuote || await quoteParentBookingPricing(resolvedItems.map((item) => ({ sessionBlockId: item.sessionBlockId, quantity: 1 })));
         if (!quote) throw new Error("No bookable sessions were found in the basket.");
         setPricingQuote({ ...quote, signature });
       } catch (pricingError) {

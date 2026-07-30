@@ -287,6 +287,22 @@ async function handlePaymentAdminAction(input: PaymentAdminActionInput) {
     updated_at: new Date().toISOString(),
   };
 
+  if (action === "record_credit_note") {
+    const currentBalance = moneyValue(invoice.balance);
+    if (actionAmount <= 0) throw new Error("Enter a credit note amount greater than zero.");
+    const creditedAmount = Math.min(actionAmount, currentBalance);
+    const nextBalance = Math.max(0, currentBalance - creditedAmount);
+    updatePayload.balance = nextBalance;
+    updatePayload.payment_status = nextBalance === 0 ? "credited" : "partially_credited";
+    updatePayload.receipt_status = "credit_note_issued";
+    updatePayload.metadata = {
+      ...(isObject(updatePayload.metadata) ? updatePayload.metadata : {}),
+      creditedAmount,
+      balanceBeforeCredit: currentBalance,
+      balanceAfterCredit: nextBalance,
+    };
+  }
+
   if (action === "mark_voucher_reconciled") {
     const totalAmount = moneyValue(invoice.total_amount);
     updatePayload.paid_amount = totalAmount;
@@ -301,6 +317,15 @@ async function handlePaymentAdminAction(input: PaymentAdminActionInput) {
     .eq("id", invoice.id);
 
   if (updateError) throw updateError;
+
+  if (action === "record_credit_note" && invoice.booking_id) {
+    const { error: bookingUpdateError } = await supabase
+      .from("bookings")
+      .update({ outstanding_balance: moneyValue(updatePayload.balance), updated_at: new Date().toISOString() })
+      .eq("id", stringValue(invoice.booking_id));
+
+    if (bookingUpdateError) throw bookingUpdateError;
+  }
 
   const { data: adminAction, error: actionError } = await supabase
     .from("booking_payment_admin_actions")
