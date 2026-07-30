@@ -233,11 +233,6 @@ const platformTabHints = {
   Audit: "Important admin activity",
   Settings: "Platform preferences and controls",
 };
-const nextCamp = {
-  title: "May Half Term Camp",
-  dates: "26-29 May",
-  sites: ["Willington Prep", "The Rowans", "King's House School"],
-};
 const payrollHoursStorageKey = "apres-payroll-hours";
 const payrollRunsStorageKey = "apres-payroll-runs";
 const staffPayOverridesStorageKey = "apres-staff-pay-overrides";
@@ -15022,7 +15017,7 @@ function Settings() {
     const next = { ...settings, ...patch, updatedAt: new Date().toISOString() };
     setSettings(next);
     localStorage.setItem(publicSettingsStorageKey, JSON.stringify(next));
-    addAuditLog("Public settings updated", `Camp announcement ${next.campAnnouncementEnabled ? "enabled" : "disabled"}`);
+    addAuditLog("Public settings updated", `Booking system announcement ${next.campAnnouncementEnabled ? "enabled" : "disabled"}`);
     if (!hasSupabaseConfig) {
       setSettingsStatus("Saved locally for this browser. Supabase is not configured in this environment.");
       return;
@@ -15034,7 +15029,7 @@ function Settings() {
       const savedSettings = { ...next, ...saved };
       setSettings(savedSettings);
       localStorage.setItem(publicSettingsStorageKey, JSON.stringify(savedSettings));
-      setSettingsStatus(`Saved live. Camp announcement is now ${savedSettings.campAnnouncementEnabled ? "enabled" : "disabled"}.`);
+      setSettingsStatus(`Saved live. Booking system announcement is now ${savedSettings.campAnnouncementEnabled ? "enabled" : "disabled"}.`);
     } catch (error) {
       setSettingsStatus(`${error.message || "Unable to save live setting."} Local browser setting was updated, but the public site may not change until Supabase settings are available.`);
     }
@@ -15071,12 +15066,12 @@ function Settings() {
           <article className="setting-card setting-card-feature">
             <div>
               <p className="eyebrow">Public website</p>
-              <h3>Camp announcement pop-out</h3>
-              <p>Advertises {nextCamp.title} on the homepage with dates, sites, daily themes and a booking link. Turning this off hides the pop-out on the public homepage once the live setting is saved.</p>
+              <h3>Booking system announcement</h3>
+              <p>Introduces the new Après School family booking platform and invites parents to try it and share feedback. Turning this off hides the announcement on the public homepage once the live setting is saved.</p>
             </div>
             <div className="settings-feature-row">
               <label className="toggle-row">
-                <input aria-label="Camp announcement pop-out" type="checkbox" checked={settings.campAnnouncementEnabled} onChange={(event) => updateSetting({ campAnnouncementEnabled: event.target.checked })} />
+                <input aria-label="Booking system announcement" type="checkbox" checked={settings.campAnnouncementEnabled} onChange={(event) => updateSetting({ campAnnouncementEnabled: event.target.checked })} />
                 <span>{settings.campAnnouncementEnabled ? "Enabled" : "Disabled"}</span>
               </label>
               <Badge value={settings.campAnnouncementEnabled ? "Live on homepage" : "Hidden"} />
@@ -15085,8 +15080,8 @@ function Settings() {
           <article className="setting-card">
             <div>
               <p className="eyebrow">Current campaign</p>
-              <h3>{nextCamp.title}</h3>
-              <p>{nextCamp.dates} · {nextCamp.sites.join(", ")}</p>
+              <h3>Our new booking system is live</h3>
+              <p>Parent feedback · Faster booking · Continuous improvements</p>
             </div>
             <Badge value={settings.campAnnouncementEnabled ? "Promoted" : "Not promoted"} />
           </article>

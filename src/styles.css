@@ -10427,9 +10427,11 @@ label {
 
 .camp-announcement-card {
   display: grid;
-  grid-template-columns: minmax(0, 0.62fr) minmax(300px, 0.38fr);
-  width: min(860px, calc(100vw - 48px));
+  grid-template-columns: minmax(0, 0.64fr) minmax(300px, 0.36fr);
+  width: min(960px, calc(100vw - 48px));
   min-height: 470px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   border-color: rgba(255, 255, 255, 0.5);
   border-radius: 22px;
   box-shadow: 0 34px 90px rgba(11, 16, 45, 0.36);
@@ -10438,7 +10440,7 @@ label {
 .announcement-copy {
   display: grid;
   align-content: center;
-  gap: 14px;
+  gap: 12px;
   padding: clamp(28px, 4vw, 42px);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 255, 0.98)),
@@ -10452,6 +10454,10 @@ label {
   font-size: clamp(2rem, 3.25vw, 3.15rem);
   font-weight: 780;
   line-height: 1.06;
+}
+
+.announcement-copy h2 {
+  font-size: clamp(2rem, 3vw, 2.85rem);
 }
 
 .announcement-pills {
@@ -10530,7 +10536,7 @@ label {
   color: var(--orange);
 }
 
-.announcement-theme-panel > p:last-child {
+.announcement-theme-panel > p:not(.eyebrow) {
   color: rgba(255, 255, 255, 0.76);
   font-weight: 850;
   line-height: 1.55;

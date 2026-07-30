@@ -591,20 +591,6 @@ const ofstedSites = [
   },
 ];
 const coverReasons = ["Illness cover", "Planned absence", "Training cover", "Ratio support", "Emergency cover"];
-const nextCamp = {
-  title: "Summer Holiday Camps",
-  dates: "13th-17th",
-  bookingUrl: FAMILY_BOOKING_URL,
-  sites: ["Shrewsbury House", "King's House School", "The Rowans", "Willington Prep"],
-  note: "Shrewsbury, King's House and The Rowans run 13th-17th. Willington Prep continues throughout the summer.",
-  dailyThemes: [
-    ["Move", "Outdoor Games", "Football, team challenges, relays and active play across the week."],
-    ["Make", "Creative Projects", "Hands-on making, construction, messy play and imaginative activities."],
-    ["Explore", "Daily Challenges", "Treasure hunts, missions, problem solving and group adventures."],
-    ["Reset", "Calm Moments", "Lunch routines, drawing, reading and quieter choices when children need a breather."],
-  ],
-};
-
 const bookingSites = [
   {
     title: "Willington Prep",
@@ -1198,7 +1184,8 @@ function BookingPreviewGate({ setPage }) {
 function CampAnnouncement({ setPage }) {
   const [settings, setSettings] = useState(() => readPublicSettings());
   const [settingsLoaded, setSettingsLoaded] = useState(() => !hasSupabaseConfig);
-  const [closed, setClosed] = useState(() => sessionStorage.getItem("apres-camp-announcement-closed") === "true");
+  const announcementStorageKey = "apres-booking-launch-announcement-closed";
+  const [closed, setClosed] = useState(() => sessionStorage.getItem(announcementStorageKey) === "true");
   useEffect(() => {
     let mounted = true;
     if (!hasSupabaseConfig) return undefined;
@@ -1224,41 +1211,38 @@ function CampAnnouncement({ setPage }) {
   if (!settings.campAnnouncementEnabled || closed) return null;
 
   function close() {
-    sessionStorage.setItem("apres-camp-announcement-closed", "true");
+    sessionStorage.setItem(announcementStorageKey, "true");
     setClosed(true);
   }
 
   return (
-    <aside className="camp-announcement" role="dialog" aria-modal="true" aria-label={`${nextCamp.title} announcement`}>
+    <aside className="camp-announcement" role="dialog" aria-modal="true" aria-label="New Après School booking system announcement">
       <div className="camp-announcement-card">
-        <button className="announcement-close" type="button" onClick={close} aria-label="Close camp announcement">×</button>
+        <button className="announcement-close" type="button" onClick={close} aria-label="Close booking system announcement">×</button>
         <div className="announcement-copy">
           <div className="announcement-pills">
-            <span>Next camp</span>
-            <span>{nextCamp.dates}</span>
+            <span>Now live</span>
+            <span>Built for Après families</span>
           </div>
-          <h2>{nextCamp.title}</h2>
-          <p className="announcement-lede">Summer days of games, making, outdoor challenges and calmer moments at selected school sites.</p>
-          <div className="announcement-sites">
-            {nextCamp.sites.map((site) => <span key={site}>{site}</span>)}
-          </div>
-          <p>{nextCamp.note}</p>
+          <h2>We’ve launched our brand-new booking system</h2>
+          <p className="announcement-lede">We’ve been listening.</p>
+          <p>Over the past year, many parents shared their thoughts on our previous booking system. We took that feedback seriously and invested in designing and building our own platform from the ground up.</p>
+          <p>The result is a faster, simpler and more intuitive way to book with Après School.</p>
+          <p>Because we developed it ourselves, we can introduce new features and improvements much more quickly. We’ve already made enhancements based directly on parent feedback since launch.</p>
           <div className="hero-actions">
-            <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Book Camp</button>
-            <button className="button light" type="button" onClick={() => setPage("Holiday Clubs")}>View Schedule</button>
+            <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Try it today</button>
+            <button className="button light" type="button" onClick={() => setPage("Contact")}>Share feedback</button>
           </div>
         </div>
         <div className="announcement-theme-panel">
-          <p className="eyebrow">Daily themes</p>
+          <p className="eyebrow">Designed around you</p>
           <div className="announcement-themes">
-            {nextCamp.dailyThemes.map(([day, title]) => (
-              <article key={day}>
-                <strong>{day}</strong>
-                <span>{title}</span>
-              </article>
-            ))}
+            <article><strong>01</strong><span>Faster and simpler</span><small>A clearer journey from choosing care through to confirmation.</small></article>
+            <article><strong>02</strong><span>Built from feedback</span><small>Parent experiences directly shaped the platform you see today.</small></article>
+            <article><strong>03</strong><span>Always improving</span><small>Owning the system means we can respond and release improvements quickly.</small></article>
           </div>
-          <p>Timings vary by site. Select your venue in the family booking system for live details.</p>
+          <p>If you spot something we could improve or have an idea for a new feature, we’d genuinely love to hear from you. Your feedback will continue to shape the platform.</p>
+          <p>Thank you for being part of the Après School community. We hope you enjoy using the new system.</p>
         </div>
       </div>
     </aside>
@@ -1727,7 +1711,6 @@ function HolidayClubs({ setPage }) {
           </div>
         </div>
       </section>
-      <NextCampCard setPage={setPage} />
       <section className="camp-site-directory">
         <div className="section-kicker">
           <p className="eyebrow">Where to book</p>
@@ -1791,43 +1774,6 @@ function HolidayClubs({ setPage }) {
 
 function holidayCampBookingUrl(site) {
   return site?.url || FAMILY_BOOKING_URL;
-}
-
-function NextCampCard({ setPage }) {
-  const fixedWeekSites = ["Shrewsbury House", "King's House School", "The Rowans"];
-
-  return (
-    <section className="next-camp-card">
-      <div>
-        <p className="eyebrow">Next camp</p>
-        <h2>{nextCamp.title}</h2>
-        <p>{nextCamp.note} Continue to the Après School family booking system to choose your location and dates.</p>
-        <div className="announcement-sites">
-          {nextCamp.sites.map((site) => <span key={site}>{site}</span>)}
-        </div>
-        <div className="camp-availability-list" aria-label="Summer camp availability">
-          <article>
-            <span>{nextCamp.dates}</span>
-            <strong>{fixedWeekSites.join(", ")}</strong>
-          </article>
-          <article>
-            <span>Throughout summer</span>
-            <strong>Willington Prep</strong>
-          </article>
-        </div>
-        <button className="button book large" type="button" onClick={() => setPage("Launch Booking")}>Choose Camp Location</button>
-      </div>
-      <div className="camp-schedule">
-        {nextCamp.dailyThemes.map(([day, title, text]) => (
-          <article key={day}>
-            <strong>{day}</strong>
-            <h3>{title}</h3>
-            <p>{text}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
 }
 
 function Wraparound({ setPage }) {
