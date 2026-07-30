@@ -36011,8 +36011,8 @@ th {
 
 .booking-launch-page .lab-school-quick-select {
   gap: 9px;
-  max-height: 340px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   padding-right: 3px;
 }
 
@@ -40923,7 +40923,7 @@ th {
 
   .booking-launch-page .lab-school-quick-select {
     grid-template-columns: 1fr;
-    max-height: 278px;
+    max-height: none;
   }
 
   .booking-launch-page .lab-selected-school-card {

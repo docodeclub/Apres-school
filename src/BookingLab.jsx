@@ -1647,7 +1647,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     return canonicalSessionDays(session, proposedDays);
   };
   const activeSessionDays = daysForSession(activeSession);
-  const launchSchoolChoices = schoolOptions.map((site) => {
+  const launchSchoolSites = [
+    ...parentSchoolPriority.filter((site) => schoolOptions.includes(site)),
+    ...schoolOptions.filter((site) => !parentSchoolPriority.includes(site)),
+  ];
+  const launchSchoolChoices = launchSchoolSites.map((site) => {
     const siteSessions = sessions.filter((session) => session.site === site);
     const types = [...new Set(siteSessions.map((session) => session.type))];
     const openDaysForSite = siteSessions.reduce((sum, session) => sum + daysForSession(session).length, 0);
