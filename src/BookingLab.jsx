@@ -324,6 +324,34 @@ const childConsentRows = [
   "I consent to my child going home alone (Year 6 only)",
 ];
 
+const explicitChildConsentChoices = ["No", "Yes"];
+
+function childConsentResponses(child = {}) {
+  const responses = child?.consents?.responses || child?.consents || {};
+  return responses && typeof responses === "object" && !Array.isArray(responses) ? responses : {};
+}
+
+function unresolvedChildConsents(child = {}) {
+  const responses = childConsentResponses(child);
+  return childConsentRows.filter((row) => !explicitChildConsentChoices.includes(String(responses[row] || "")));
+}
+
+function childBookingProfileIssues(child = {}) {
+  const registration = child?.consents?.registration || {};
+  const missing = [
+    ["date of birth", child.dob || child.dateOfBirth || child.date_of_birth],
+    ["gender", child.gender || registration.gender],
+    ["relationship to child", child.relationship || registration.relationship],
+    ["who the child lives with", child.livesWith || registration.livesWith],
+    ["parental responsibility", child.parentalResponsibility || registration.parentalResponsibility],
+    ["school", child.school || child.schoolName || child.school_name],
+    ["year group", child.year || child.yearGroup || child.year_group || child.classroom],
+    ["collection password", child.collectionPassword || registration.collectionPassword],
+  ].filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
+  const unresolvedConsents = unresolvedChildConsents(child);
+  return { missing, unresolvedConsents };
+}
+
 const childRegistrationSteps = [
   { id: "Basics", label: "Child", detail: "Profile and school" },
   { id: "Health", label: "Health", detail: "Care notes" },
@@ -662,7 +690,7 @@ const defaultChildRegistration = {
   sendNeed: "",
   sendEhcp: "No",
   sendDetails: "",
-  consents: Object.fromEntries(childConsentRows.map((row) => [row, "N/A"])),
+  consents: Object.fromEntries(childConsentRows.map((row) => [row, ""])),
 };
 
 const setupWeekdays = [
@@ -1334,6 +1362,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [creditTopUpBusy, setCreditTopUpBusy] = useState(false);
   const [creditTopUpError, setCreditTopUpError] = useState("");
   const [pricingQuote, setPricingQuote] = useState(null);
+  const [pricingQuoteLoading, setPricingQuoteLoading] = useState(false);
+  const [pricingQuoteError, setPricingQuoteError] = useState("");
   const [liveFinanceActions, setLiveFinanceActions] = useState(() => readJson("apres-booking-lab-live-finance-actions", {}));
   const [liveFinanceActionPending, setLiveFinanceActionPending] = useState({});
   const [launchParentPortalOpen, setLaunchParentPortalOpen] = useState(false);
@@ -1950,7 +1980,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const basketDays = [...new Set(draftBookingBasket.map((item) => item.day))];
   const subtotal = basketCheckoutActive ? basketSubtotal : currentSelectionSubtotal;
   const basketPricingSignature = draftBookingBasket.map((item) => `${item.sessionBlockId}:${item.childId}`).sort().join("|");
-  const activePricingQuote = basketCheckoutActive && pricingQuote?.signature === basketPricingSignature ? pricingQuote : null;
+  const basketPricingQuote = pricingQuote?.signature === basketPricingSignature ? pricingQuote : null;
+  const activePricingQuote = basketCheckoutActive ? basketPricingQuote : null;
   const selectedPaymentRoutes = [...new Set(pickedDayRows.map((row) => row.paymentRoute))];
   const activePaymentRoute = selectedPaymentRoutes.length === 1 ? selectedPaymentRoutes[0] : selectedPaymentRoutes.length ? "Mixed PonchoPay routes" : (activeSession.paymentRoute || "PonchoPay card + vouchers");
   const parentPaymentOptions = activePaymentRoute === "PonchoPay card only"
@@ -2019,8 +2050,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const draftBasketPromoDiscount = promoCode.trim().toUpperCase() === String(rules.promoCode || "").toUpperCase()
     ? basketSubtotal * (Number(rules.promoDiscountPercent || 0) / 100)
     : 0;
-  const draftBasketTotal = activePricingQuote
-    ? Math.max(0, Number(activePricingQuote.totalAmount || 0))
+  const draftBasketTotal = basketPricingQuote
+    ? Math.max(0, Number(basketPricingQuote.totalAmount || 0))
     : Math.max(0, basketSubtotal - draftBasketSiblingDiscount - draftBasketWeeklyDiscount - draftBasketPromoDiscount);
   const paymentPlanMinimum = Math.max(0, Number(rules.paymentPlanMinTotal ?? defaultLabRules.paymentPlanMinTotal));
   const paymentPlanMaxInstallments = Math.max(2, Number(rules.paymentPlanMaxInstallments ?? defaultLabRules.paymentPlanMaxInstallments));
@@ -5217,6 +5248,35 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }, [realBookingServiceReady, parentAccountSignedIn, parentAccountMode, launchParentPortalOpen, labView, paymentReturnNotice?.handledKey]);
 
   useEffect(() => {
+    if (!isLaunchMode || !realBookingServiceReady || !parentAccountSignedIn || parentAccountMode !== "live" || !basketPricingSignature) {
+      setPricingQuote(null);
+      setPricingQuoteLoading(false);
+      setPricingQuoteError("");
+      return undefined;
+    }
+    let cancelled = false;
+    setPricingQuoteLoading(true);
+    setPricingQuoteError("");
+    quoteParentBookingPricing(draftBookingBasket.map((item) => ({ sessionBlockId: item.sessionBlockId, quantity: 1 })))
+      .then((quote) => {
+        if (cancelled) return;
+        if (!quote) throw new Error("No bookable sessions were found in the basket.");
+        setPricingQuote({ ...quote, signature: basketPricingSignature });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setPricingQuote(null);
+        setPricingQuoteError(error?.message || "Your tier price could not be checked.");
+      })
+      .finally(() => {
+        if (!cancelled) setPricingQuoteLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLaunchMode, realBookingServiceReady, parentAccountSignedIn, parentAccountMode, basketPricingSignature]);
+
+  useEffect(() => {
     if (!realBookingServiceReady || !parentAccountSignedIn || parentAccountMode !== "live" || !launchParentPortalOpen) {
       setParentBadgeBook({ rewards: [], total: 0 });
       setParentBadgeBookError("");
@@ -5626,6 +5686,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     event.preventDefault();
     const child = launchRegisteredChildren.find((item) => item.id === launchFamilyChildId);
     if (!child || !launchFamilyEditor || parentAccountLoading) return;
+    if (launchFamilyEditor === "Consents") {
+      const unanswered = childConsentRows.filter((row) => !explicitChildConsentChoices.includes(String(childRegistration.consents?.[row] || "")));
+      if (unanswered.length) {
+        setStatus(`Answer every permission with Yes or No before saving. ${unanswered.length} answer${unanswered.length === 1 ? " is" : "s are"} still required.`);
+        return;
+      }
+    }
     const sectionPatch = launchFamilyEditor === "Contacts" ? {
       emergencyContacts: [{
         title: childRegistration.emergencyTitle,
@@ -8097,16 +8164,37 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       setStatus("Add at least one child session to the basket first.");
       return;
     }
+    const basketChildren = basketChildIds.map((childId) => selectableChildProfiles.find((child) => child.id === childId)).filter(Boolean);
+    if (basketChildren.length !== basketChildIds.length) {
+      setStatus("One of the children in this basket is no longer available. Remove that booking and add it again.");
+      return;
+    }
+    const incompleteChild = basketChildren.map((child) => ({ child, issues: childBookingProfileIssues(child) }))
+      .find(({ issues }) => issues.missing.length || issues.unresolvedConsents.length);
+    if (incompleteChild) {
+      const { child, issues } = incompleteChild;
+      const detail = issues.missing.length
+        ? `Complete ${issues.missing.slice(0, 3).join(", ")}${issues.missing.length > 3 ? " and the remaining required details" : ""}`
+        : `Answer every permission with Yes or No (${issues.unresolvedConsents.length} still need${issues.unresolvedConsents.length === 1 ? "s" : ""} an answer)`;
+      setStatus(`${child.name}'s profile needs attention before checkout. ${detail}. Your basket has been kept.`);
+      openLaunchChildEditor(issues.missing.length ? "Basics" : "Consents", child);
+      return;
+    }
     setStatus("Checking your pricing benefits…");
     if (isLaunchMode && realBookingServiceReady && parentAccountMode === "live") {
       try {
-        const signature = draftBookingBasket.map((item) => `${item.sessionBlockId}:${item.childId}`).sort().join("|");
-        const quote = await quoteParentBookingPricing(draftBookingBasket.map((item) => ({ sessionBlockId: item.sessionBlockId, quantity: 1 })));
+        setPricingQuoteLoading(true);
+        setPricingQuoteError("");
+        const signature = basketPricingSignature;
+        const quote = basketPricingQuote || await quoteParentBookingPricing(draftBookingBasket.map((item) => ({ sessionBlockId: item.sessionBlockId, quantity: 1 })));
         if (!quote) throw new Error("No bookable sessions were found in the basket.");
         setPricingQuote({ ...quote, signature });
       } catch (pricingError) {
+        setPricingQuoteError(pricingError?.message || "Please try again.");
         setStatus(`We could not verify your booking price, so checkout has not opened. ${pricingError?.message || "Please try again."}`);
         return;
+      } finally {
+        setPricingQuoteLoading(false);
       }
     }
     setStatus("");
@@ -8410,6 +8498,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ].filter(([, , value]) => !String(value || "").trim()).map(([field, label, , step]) => ({ field, label, step }));
     if (childRegistration.dob && !normaliseChildDob(childRegistration.dob)) {
       missingFields.push({ field: "dob", label: "valid date of birth", step: "Basics" });
+    }
+    if (childConsentRows.some((row) => !explicitChildConsentChoices.includes(String(childRegistration.consents?.[row] || "")))) {
+      missingFields.push({ field: "consents", label: "a Yes or No answer for every permission", step: "Consents" });
     }
     return missingFields;
   }
@@ -16114,14 +16205,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <label className="full">Support details<textarea rows="5" value={childRegistration.sendDetails} onChange={(event) => updateChildRegistration("sendDetails", event.target.value)} /></label>
               </div>}
               {launchFamilyEditor === "Consents" && <div className="lab-launch-family-consent-editor">
-                {childConsentRows.map((row) => <label key={row}><span>{row}</span><select value={childRegistration.consents?.[row] || "N/A"} onChange={(event) => updateChildConsent(row, event.target.value)}><option>Yes</option><option>No</option><option>N/A</option></select></label>)}
+                <p className="lab-section-copy">Choose Yes or No for every permission. N/A is no longer accepted because staff need a clear instruction for each child.</p>
+                {childConsentRows.map((row) => <label key={row}><span>{row}</span><select aria-invalid={!explicitChildConsentChoices.includes(String(childRegistration.consents?.[row] || ""))} value={explicitChildConsentChoices.includes(String(childRegistration.consents?.[row] || "")) ? childRegistration.consents[row] : ""} onChange={(event) => updateChildConsent(row, event.target.value)}><option value="" disabled>Choose Yes or No</option>{explicitChildConsentChoices.map((choice) => <option key={choice}>{choice}</option>)}</select></label>)}
               </div>}
               <footer>
                 <button type="button" onClick={() => setLaunchFamilyEditor("")}>Cancel</button>
                 <button type="submit" disabled={parentAccountLoading || (launchFamilyEditor === "Medications" && Boolean(
                   (childRegistration.medicationName && (!childRegistration.medicationExpiry || childRegistration.medicationExpiry < new Date().toISOString().slice(0, 10)))
                   || (childRegistration.autoInjector && (!childRegistration.autoInjectorExpiry || childRegistration.autoInjectorExpiry < new Date().toISOString().slice(0, 10)))
-                ))}>{parentAccountLoading ? "Saving..." : `Save ${launchFamilyEditor.toLowerCase()}`}</button>
+                )) || (launchFamilyEditor === "Consents" && childConsentRows.some((row) => !explicitChildConsentChoices.includes(String(childRegistration.consents?.[row] || ""))))}>{parentAccountLoading ? "Saving..." : `Save ${launchFamilyEditor.toLowerCase()}`}</button>
               </footer>
             </form>
           </div>
@@ -21753,18 +21845,20 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 }
                 {childRegistrationStep === "Consents" && <div className="lab-launch-child-section">
                   <h4>Consents</h4>
+                  <p className="lab-section-copy">Choose Yes or No for every permission. You can change these choices later in the family profile.</p>
                   <div className="lab-consent-grid">
                     {childConsentRows.map((row) => (
                       <div key={row}>
                         <span>{row}</span>
                         <div>
-                          {["No", "N/A", "Yes"].map((value) => (
-                            <button className={(childRegistration.consents?.[row] || "N/A") === value ? "active" : ""} key={value} type="button" onClick={() => updateChildConsent(row, value)}>{value}</button>
+                          {explicitChildConsentChoices.map((value) => (
+                            <button className={childRegistration.consents?.[row] === value ? "active" : ""} key={value} type="button" onClick={() => updateChildConsent(row, value)}>{value}</button>
                           ))}
                         </div>
                       </div>
                     ))}
                   </div>
+                  {childRegistrationSubmitAttempted && childConsentRows.some((row) => !explicitChildConsentChoices.includes(String(childRegistration.consents?.[row] || ""))) && <p className="field-error" role="alert">Choose Yes or No for every permission before registering this child.</p>}
                   <div className="lab-launch-form-actions">
                     <button type="button" onClick={() => moveChildRegistrationStep("Health")}>Back</button>
                     <button type="submit">Register child and book</button>
@@ -23422,6 +23516,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <span>Running total</span>
                   <strong>{money(draftBasketTotal)}</strong>
                   {draftBasketTotal !== basketSubtotal && <small>{money(basketSubtotal)} before discounts</small>}
+                  {pricingQuoteLoading && <small>Checking your tier price…</small>}
+                  {!pricingQuoteLoading && basketPricingQuote && Number(basketPricingQuote.discountTotal || 0) > 0 && <small>{basketPricingQuote.pricingGroupName || "Tier"} applied · {money(basketPricingQuote.discountTotal)} saved</small>}
+                  {!pricingQuoteLoading && basketPricingQuote && Number(basketPricingQuote.discountTotal || 0) === 0 && <small>{basketPricingQuote.pricingGroupName || "Standard"} checked · no tier discount for these sessions</small>}
+                  {!pricingQuoteLoading && pricingQuoteError && <small>Tier price needs rechecking at checkout</small>}
                 </div>
               </header>
               {draftBookingBasket.length > 0 ? (
@@ -23432,15 +23530,19 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     </div>
                     {draftBasketGroups.map((group) => (
                       <section className="lab-draft-basket-group" key={group.id}>
-                        {group.items.map((item) => (
-                          <div className="lab-draft-basket-row" role="row" key={item.id}>
-                            <span data-label="Child"><strong>{item.childName}</strong><small>{item.site}</small></span>
-                            <span data-label="Date"><strong>{item.day}</strong></span>
-                            <span data-label="Session"><strong>{item.sessionLabel}</strong><small>{item.start}-{item.end}</small></span>
-                            <span data-label="Price"><strong>{money(item.price)}</strong></span>
-                            <span data-label="Remove"><button type="button" onClick={() => removeBasketLine(item.id)} aria-label={`Remove ${item.childName}, ${item.day}, ${item.sessionLabel}`}>Remove</button></span>
-                          </div>
-                        ))}
+                        {group.items.map((item) => {
+                          const quotedLine = basketPricingQuote?.items?.find((quotedItem) => quotedItem.sessionBlockId === item.sessionBlockId);
+                          const quotedPrice = quotedLine ? Number(quotedLine.finalUnitAmount ?? quotedLine.lineTotal ?? item.price) : Number(item.price || 0);
+                          return (
+                            <div className="lab-draft-basket-row" role="row" key={item.id}>
+                              <span data-label="Child"><strong>{item.childName}</strong><small>{item.site}</small></span>
+                              <span data-label="Date"><strong>{item.day}</strong></span>
+                              <span data-label="Session"><strong>{item.sessionLabel}</strong><small>{item.start}-{item.end}</small></span>
+                              <span data-label="Price"><strong>{money(quotedPrice)}</strong>{quotedLine && quotedPrice !== Number(item.price || 0) && <small>{money(item.price)} standard</small>}</span>
+                              <span data-label="Remove"><button type="button" onClick={() => removeBasketLine(item.id)} aria-label={`Remove ${item.childName}, ${item.day}, ${item.sessionLabel}`}>Remove</button></span>
+                            </div>
+                          );
+                        })}
                         <footer>
                           <button type="button" onClick={() => loadBasketGroup(group.id)}>Edit booking</button>
                           <button type="button" onClick={() => loadBasketGroup(group.id, true)}>Duplicate booking</button>
@@ -23450,7 +23552,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   </div>
                   <div className="lab-draft-basket-actions">
                     <button type="button" onClick={clearDraftBasket}>Clear basket</button>
-                    <button className="primary" type="button" onClick={proceedBasketCheckout}>Proceed to checkout · {money(draftBasketTotal)}</button>
+                    <button className="primary" type="button" onClick={proceedBasketCheckout}>{pricingQuoteLoading ? "Checking tier price…" : `Proceed to checkout · ${money(draftBasketTotal)}`}</button>
                   </div>
                 </>
               ) : (

@@ -32,9 +32,13 @@ const checks = [
   [adHoc.includes('rpc("apply_booking_pricing"'), "staff ad-hoc bookings use family pricing"],
   [invoice.includes("Pricing group:") && invoice.includes("pricingLabel"), "invoice pricing transparency"],
   [bookingLab.includes("lab-active-pricing-benefit") && bookingLab.includes("Final price is confirmed after you choose dates and sessions"), "activity-level parent benefit preview"],
+  [bookingLab.includes("pricingQuoteLoading") && bookingLab.includes("Checking your tier price") && bookingLab.includes("const basketPricingQuote = pricingQuote?.signature === basketPricingSignature"), "basket prices quote and display before checkout"],
+  [bookingLab.includes("explicitChildConsentChoices") && bookingLab.includes("Answer every permission with Yes or No") && !bookingLab.includes('["No", "N/A", "Yes"]'), "child permissions require explicit Yes or No"],
+  [bookingLab.includes("childBookingProfileIssues") && bookingLab.includes("Your basket has been kept"), "checkout blocks incomplete child profiles with a recovery route"],
+  [createBooking.includes("CHILD_PROFILE_INCOMPLETE") && createBooking.includes("requiredChildConsentRows") && createBooking.includes('["Yes", "No"]'), "server rejects bookings with incomplete child profiles or ambiguous permissions"],
   [assignmentFunction.includes('emailType: "parent_pricing_tier_welcome"') && assignmentFunction.includes("Your benefits") && assignmentFunction.includes("buildStaffEmailHtml") && assignmentFunction.includes("sole discretion of Après School"), "branded pricing tier welcome email and eligibility terms"],
   [assignmentFunction.includes("APRES_PRICING_EMAIL_CC") && assignmentFunction.includes("luke@apres-school.co.uk") && assignmentFunction.includes("monitoringCc"), "pricing welcome monitoring copy"],
-  [assignmentFunction.includes('rpc("assign_parent_pricing_group"') && supabaseClient.includes('"manage-parent-pricing-group"') && supabaseClient.includes("auth.refreshSession()"), "session-safe assignment triggers welcome email"],
+  [assignmentFunction.includes('rpc("assign_parent_pricing_group"') && supabaseClient.includes('"manage-parent-pricing-group"') && supabaseClient.includes("auth.refreshSession()") && bookingLab.includes("quoteParentBookingPricing") && read("src/bookingSystem.js").includes("supabase.auth.refreshSession()"), "session-safe assignment and parent quote calls"],
 ];
 
 const failures = checks.filter(([pass]) => !pass);

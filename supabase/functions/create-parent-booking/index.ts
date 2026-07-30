@@ -26,6 +26,21 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   },
 });
 
+const requiredChildConsentRows = [
+  "I give consent for my child being photographed",
+  "Does your child have religious or cultural needs?",
+  "I consent to my child receiving emergency treatments",
+  "I consent for plasters to be used on my child if required",
+  "I consent to my child taking part in face-painting activities",
+  "I consent to my child having medication. I have completed a medical form in advance",
+  "I consent to my child to be supported by staff to apply sun cream",
+  "I consent for pictures or videos of my child to be used on social media",
+  "I consent to my child receiving basic first-aid treatments",
+  "I consent to my child receiving help in the bathroom if needed (6 years old and under)",
+  "I consent for my child to be collected by someone in my list of collectors",
+  "I consent to my child going home alone (Year 6 only)",
+];
+
 type BookingItemRequest = {
   childId?: string;
   child_id?: string;
@@ -84,6 +99,20 @@ serve(async (request) => {
       bookedByEmail: actor.email,
       accountHolderRole: bookingActor.accountHolderRole,
     });
+
+    if (stringValue(body.source) === "launch_parent_flow") {
+      const childProfileBlock = await findChildProfileBookingBlock(bookingActor, body.items || []);
+      if (childProfileBlock) {
+        return json({
+          error: childProfileBlock.message,
+          code: "CHILD_PROFILE_INCOMPLETE",
+          childId: childProfileBlock.childId,
+          childName: childProfileBlock.childName,
+          missingFields: childProfileBlock.missingFields,
+          unansweredConsents: childProfileBlock.unansweredConsents,
+        }, 409);
+      }
+    }
 
     const { data: financeGate, error: financeGateError } = await supabase.rpc("parent_booking_finance_gate", {
       p_parent_id: bookingActor.id,
@@ -362,6 +391,82 @@ async function resolveBookingActor(actor: Actor): Promise<BookingActor> {
   }
 
   return { ...actor, accountHolderRole: "primary" };
+}
+
+async function findChildProfileBookingBlock(bookingActor: BookingActor, items: BookingItemRequest[]) {
+  const { data: parentAccount, error: parentError } = await supabase
+    .from("parent_accounts")
+    .select("id")
+    .or(`profile_id.eq.${bookingActor.id},email.eq.${bookingActor.email}`)
+    .limit(1)
+    .maybeSingle();
+  if (parentError) throw parentError;
+  if (!parentAccount?.id) {
+    return {
+      childId: "",
+      childName: "Child",
+      missingFields: ["parent account"],
+      unansweredConsents: [],
+      message: "Your family account could not be verified. Sign out, sign in again and retry checkout.",
+    };
+  }
+
+  const { data: children, error: childError } = await supabase
+    .from("child_profiles")
+    .select("id, full_name, date_of_birth, school_name, year_group, consents, active")
+    .eq("parent_account_id", parentAccount.id)
+    .eq("active", true);
+  if (childError) throw childError;
+
+  const requestedChildren = [...new Map(items.map((item) => {
+    const childId = stringValue(item.childId || item.child_id);
+    const childName = stringValue(item.childName || item.child_name);
+    return [`${childId}:${childName.toLowerCase()}`, { childId, childName }];
+  })).values()];
+
+  for (const requested of requestedChildren) {
+    const child = (children || []).find((candidate) => (
+      (requested.childId && stringValue(candidate.id) === requested.childId)
+      || (requested.childName && stringValue(candidate.full_name).toLowerCase() === requested.childName.toLowerCase())
+    ));
+    if (!child) {
+      return {
+        childId: requested.childId,
+        childName: requested.childName || "Child",
+        missingFields: ["saved child profile"],
+        unansweredConsents: [],
+        message: `${requested.childName || "This child"}'s saved profile could not be verified. Remove the basket line and add it again.`,
+      };
+    }
+    const consents = isObject(child.consents) ? child.consents : {};
+    const registration = isObject(consents.registration) ? consents.registration : {};
+    const responses = isObject(consents.responses) ? consents.responses : {};
+    const missingFields = [
+      ["date of birth", child.date_of_birth],
+      ["gender", registration.gender],
+      ["relationship to child", registration.relationship],
+      ["who the child lives with", registration.livesWith],
+      ["parental responsibility", registration.parentalResponsibility],
+      ["school", child.school_name],
+      ["year group", child.year_group],
+      ["collection password", registration.collectionPassword],
+    ].filter((entry) => !stringValue(entry[1])).map((entry) => String(entry[0]));
+    const unansweredConsents = requiredChildConsentRows.filter((row) => !["Yes", "No"].includes(stringValue(responses[row])));
+    if (missingFields.length || unansweredConsents.length) {
+      const childName = stringValue(child.full_name) || requested.childName || "This child";
+      const issue = missingFields.length
+        ? `complete ${missingFields.slice(0, 3).join(", ")}${missingFields.length > 3 ? " and the remaining required details" : ""}`
+        : `answer every permission with Yes or No (${unansweredConsents.length} still require an answer)`;
+      return {
+        childId: stringValue(child.id),
+        childName,
+        missingFields,
+        unansweredConsents,
+        message: `${childName}'s profile needs attention before checkout: ${issue}.`,
+      };
+    }
+  }
+  return null;
 }
 
 async function sendBookingRequestEmail({
