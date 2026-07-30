@@ -23247,7 +23247,7 @@ th {
   display: none;
 }
 
-.lab-view-parent .lab-parent-pathway section:first-child > div button:not(.active):nth-of-type(n+4) {
+.lab-view-parent:not(.booking-launch-page) .lab-parent-pathway section:first-child > div button:not(.active):nth-of-type(n+4) {
   display: none;
 }
 
