@@ -3447,9 +3447,11 @@ function FamilyImportReview({ access }) {
     setPricingBusy(true); setPricingMessage("");
     try {
       const module = await loadSupabaseModule();
-      await module.assignParentPricingGroup({ parentAccountId: selectedFamily.id, ...pricingDraft });
+      const result = await module.assignParentPricingGroup({ parentAccountId: selectedFamily.id, ...pricingDraft });
       setFamilies(await module.fetchMigrationReviewFamilies());
-      setPricingMessage("Pricing group assignment saved. New bookings will use it from the effective date; existing prices remain unchanged.");
+      setPricingMessage(result.emailed
+        ? `Pricing group assignment saved and the welcome email was sent to ${result.recipient}. New bookings will use it from the effective date; existing prices remain unchanged.`
+        : `Pricing group assignment saved, but the welcome email could not be sent${result.emailError ? `: ${result.emailError}` : "."}`);
     } catch (pricingError) { setPricingMessage(pricingError?.message || "The pricing group could not be assigned."); }
     finally { setPricingBusy(false); }
   }

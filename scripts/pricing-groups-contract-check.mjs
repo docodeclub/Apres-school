@@ -12,6 +12,8 @@ const createBooking = read("supabase/functions/create-parent-booking/index.ts");
 const amendBooking = read("supabase/functions/update-parent-booking/index.ts");
 const adHoc = read("supabase/functions/create-staff-adhoc-booking/index.ts");
 const invoice = read("supabase/functions/_shared/booking-invoice-pdf.js");
+const assignmentFunction = read("supabase/functions/manage-parent-pricing-group/index.ts");
+const supabaseClient = read("src/supabaseClient.js");
 
 const checks = [
   [migration.includes("create table if not exists public.pricing_groups"), "pricing group schema"],
@@ -30,6 +32,8 @@ const checks = [
   [adHoc.includes('rpc("apply_booking_pricing"'), "staff ad-hoc bookings use family pricing"],
   [invoice.includes("Pricing group:") && invoice.includes("pricingLabel"), "invoice pricing transparency"],
   [bookingLab.includes("lab-active-pricing-benefit") && bookingLab.includes("Final price is confirmed after you choose dates and sessions"), "activity-level parent benefit preview"],
+  [assignmentFunction.includes('emailType: "parent_pricing_tier_welcome"') && assignmentFunction.includes("Your benefits") && assignmentFunction.includes("buildStaffEmailHtml"), "branded pricing tier welcome email"],
+  [assignmentFunction.includes('rpc("assign_parent_pricing_group"') && supabaseClient.includes('"manage-parent-pricing-group"'), "secure assignment triggers welcome email"],
 ];
 
 const failures = checks.filter(([pass]) => !pass);

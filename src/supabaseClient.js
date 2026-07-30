@@ -11,6 +11,7 @@ const financeInvoiceFunctionName = import.meta.env.VITE_FINANCE_INVOICE_FUNCTION
 const adminParentCreditFunctionName = import.meta.env.VITE_ADMIN_PARENT_CREDIT_FUNCTION_NAME || "admin-adjust-parent-credit";
 const staffingNotificationFunctionName = import.meta.env.VITE_STAFFING_NOTIFICATION_FUNCTION_NAME || "notify-staffing-publication";
 const employeeDocumentFunctionName = import.meta.env.VITE_EMPLOYEE_DOCUMENT_FUNCTION_NAME || "manage-employee-document";
+const parentPricingGroupFunctionName = import.meta.env.VITE_PARENT_PRICING_GROUP_FUNCTION_NAME || "manage-parent-pricing-group";
 const staffPhotoBucket = "staff-profile-photos";
 const staffHrFilesBucket = "staff-hr-files";
 
@@ -499,11 +500,14 @@ export async function savePricingRule(input) {
 
 export async function assignParentPricingGroup(input) {
   if (!supabase) throw new Error("Supabase is not configured.");
-  const payload={ parent_account_id:input.parentAccountId,pricing_group_id:input.pricingGroupId,effective_from:input.effectiveFrom||new Date().toISOString().slice(0,10),effective_to:input.effectiveTo||null,notes:String(input.notes||"").trim()||null };
-  const { data,error }=await supabase.rpc("assign_parent_pricing_group",{p_parent_account_id:payload.parent_account_id,p_pricing_group_id:payload.pricing_group_id,p_effective_from:payload.effective_from,p_effective_to:payload.effective_to,p_notes:payload.notes});
-  if (error) throw error;
-  await recordPricingEvent({ pricingGroupId:payload.pricing_group_id,parentAccountId:payload.parent_account_id,action:"parent_assigned",notes:payload.notes||`Effective ${payload.effective_from}` });
-  return data;
+  const payload={ parentAccountId:input.parentAccountId,pricingGroupId:input.pricingGroupId,effectiveFrom:input.effectiveFrom||new Date().toISOString().slice(0,10),effectiveTo:input.effectiveTo||null,notes:String(input.notes||"").trim()||null };
+  const { data,error }=await supabase.functions.invoke(parentPricingGroupFunctionName,{body:payload});
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "The pricing tier could not be assigned.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data || {};
 }
 
 export async function saveParentPricingOverride(input) {
