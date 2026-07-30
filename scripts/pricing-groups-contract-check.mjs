@@ -32,7 +32,7 @@ const checks = [
   [adHoc.includes('rpc("apply_booking_pricing"'), "staff ad-hoc bookings use family pricing"],
   [invoice.includes("Pricing group:") && invoice.includes("pricingLabel"), "invoice pricing transparency"],
   [bookingLab.includes("lab-active-pricing-benefit") && bookingLab.includes("Final price is confirmed after you choose dates and sessions"), "activity-level parent benefit preview"],
-  [assignmentFunction.includes('emailType: "parent_pricing_tier_welcome"') && assignmentFunction.includes("Your benefits") && assignmentFunction.includes("buildStaffEmailHtml"), "branded pricing tier welcome email"],
+  [assignmentFunction.includes('emailType: "parent_pricing_tier_welcome"') && assignmentFunction.includes("Your benefits") && assignmentFunction.includes("buildStaffEmailHtml") && assignmentFunction.includes("sole discretion of Après School"), "branded pricing tier welcome email and eligibility terms"],
   [assignmentFunction.includes('rpc("assign_parent_pricing_group"') && supabaseClient.includes('"manage-parent-pricing-group"'), "secure assignment triggers welcome email"],
 ];
 

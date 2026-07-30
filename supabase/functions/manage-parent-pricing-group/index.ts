@@ -142,7 +142,9 @@ function buildTextEmail(name: string, groupName: string, benefits: Benefit[], ef
     "",
     `Your tier is effective from ${displayDate(effectiveFrom)}${effectiveTo ? ` until ${displayDate(effectiveTo)}` : ""}. These prices apply automatically when you make an eligible booking while signed in with this email address. You'll see the benefit on the activity and the confirmed saving in your basket before checkout.`,
     "",
-    "The tier applies only to the services and locations listed above; other bookings remain at their usual price. If anything looks wrong, simply reply to this email and we'll help.",
+    "The tier applies only to the services and locations listed above; other bookings remain at their usual price.",
+    "Eligibility for this pricing tier is at the sole discretion of Après School and may be reviewed or withdrawn at any time.",
+    "If anything looks wrong, simply reply to this email and we'll help.",
     "",
     "Welcome to the tier,",
     "The Après School team",
@@ -168,7 +170,7 @@ function buildPricingEmailHtml(name: string, groupName: string, benefits: Benefi
     ],
     contentHtml,
     action: { label: "View activities", url: parentPortalUrl },
-    notice: "Your tier applies only to the services and locations listed above. Other bookings remain at their usual price.",
+    notice: "Your tier applies only to the services and locations listed above. Other bookings remain at their usual price. Eligibility for this pricing tier is at the sole discretion of Après School and may be reviewed or withdrawn at any time.",
     footerText: "Trusted wraparound care, holiday clubs and school partnerships.",
   });
 }
