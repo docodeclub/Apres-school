@@ -94,6 +94,25 @@ import {
 
 const APRES_TERMS_URL = "https://docs.google.com/document/d/1ursh4YbP1e8cLG7fiUy0z3JezZWBUBG2_-7eG8wA0u0/edit?usp=sharing";
 
+const parentSchoolPriority = [
+  "Willington Prep",
+  "King's House School",
+  "Ripley Court",
+  "Shrewsbury House School",
+  "The Rowans School",
+];
+
+function normaliseParentSchool(value) {
+  const school = String(value || "").trim();
+  if (/^willington(?:\s+(?:prep|school))?$/i.test(school)) return "Willington Prep";
+  if (/^ripley\s+court(?:\s+school)?$/i.test(school)) return "Ripley Court";
+  return school;
+}
+
+function parentSchoolOptionLabel(school) {
+  return school === "Willington Prep" ? "Willington Prep (Willington School)" : school;
+}
+
 const bookingLabViews = ["Parent", "Family", "Operations", "Collection", "Setup", "Schools", "Audit", "Pilot", "Payments", "Support", "Staffing", "Capacity", "Comms", "QA", "Launch Gate", "Data Model", "Readiness"];
 
 const defaultMessageTemplates = [
@@ -475,7 +494,7 @@ function normaliseLiveChildFlags(child) {
 
 function liveChildProfileToFamilyChild(child = {}) {
   const name = child.name || child.fullName || child.full_name || [child.firstName || child.first_name, child.lastName || child.last_name].filter(Boolean).join(" ");
-  const school = child.school || child.schoolName || child.school_name || "School pending";
+  const school = normaliseParentSchool(child.school || child.schoolName || child.school_name) || "School pending";
   const year = child.year || child.yearGroup || child.year_group || child.classroom || "Year group pending";
   const dob = child.dob || child.dateOfBirth || child.date_of_birth || "";
   const flags = normaliseLiveChildFlags(child);
@@ -1596,7 +1615,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const launchGateReady = !isLaunchMode || (launchAccountCanBook && launchHasBookingChild && !launchChildRegistrationOpen && !launchChildReviewOpen);
   const launchBookingShellOpen = !isLaunchMode || (launchAccountCanBook && launchBookingActive);
   const launchShowRegistrationGate = isLaunchMode && (launchNeedsAccount || launchChildFormOpen || launchChildReviewOpen);
-  const parentRegistrationSchools = schoolOptions.length ? schoolOptions : ["King's House School", "Ripley Court", "Shrewsbury House School", "The Rowans School", "Willington Prep"].sort();
+  const parentRegistrationSchools = [...new Set([
+    ...parentSchoolPriority,
+    ...schoolOptions.map(normaliseParentSchool).filter(Boolean),
+  ])];
   const careOptionsForSchool = [...new Set(sessions.filter((session) => session.site === selectedSchool).map((session) => session.type))];
   const activityOptionsForCare = sessions
     .filter((session) => session.site === selectedSchool && session.type === careType)
@@ -5528,7 +5550,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         relationship: child.relationship || defaultChildRegistration.relationship,
         livesWith: child.livesWith || defaultChildRegistration.livesWith,
         parentalResponsibility: child.parentalResponsibility || defaultChildRegistration.parentalResponsibility,
-        school: child.school || child.schoolName || selectedSchool,
+        school: normaliseParentSchool(child.school || child.schoolName || selectedSchool),
         classroom: child.classroom || child.year || child.yearGroup || "",
         collectionPassword: child.collectionPassword || "",
         emergencyTitle: emergencyContact.title || "",
@@ -21723,7 +21745,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         <label>Password <span>Required</span><input type="password" aria-invalid={fieldInvalid(parentRegistrationErrors.password)} value={parentRegistration.password} onChange={(event) => updateParentRegistration("password", event.target.value)} />{fieldError(parentRegistrationErrors.password)}<small className="lab-field-hint">Use upper and lower case letters, a number and a special character.</small></label>
                         <label>Confirm password <span>Required</span><input type="password" aria-invalid={fieldInvalid(parentRegistrationErrors.confirmPassword)} value={parentRegistration.confirmPassword} onChange={(event) => updateParentRegistration("confirmPassword", event.target.value)} />{fieldError(parentRegistrationErrors.confirmPassword)}</label>
                         <label>Where did you hear about us? <span>Optional</span><select value={parentRegistration.heardFrom} onChange={(event) => updateParentRegistration("heardFrom", event.target.value)}>{parentHeardOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
-                        <label>Default school <span>Required</span><select aria-invalid={fieldInvalid(parentRegistrationErrors.centre)} value={parentRegistration.centre || selectedSchool} onChange={(event) => updateParentRegistration("centre", event.target.value)}>{parentRegistrationSchools.map((school) => <option key={school}>{school}</option>)}</select>{fieldError(parentRegistrationErrors.centre)}</label>
+                        <label>Default school <span>Required</span><select aria-invalid={fieldInvalid(parentRegistrationErrors.centre)} value={normaliseParentSchool(parentRegistration.centre || selectedSchool)} onChange={(event) => updateParentRegistration("centre", event.target.value)}>{parentRegistrationSchools.map((school) => <option key={school} value={school}>{parentSchoolOptionLabel(school)}</option>)}</select>{fieldError(parentRegistrationErrors.centre)}</label>
                         <label>Title <span>Required</span><select aria-invalid={fieldInvalid(parentRegistrationErrors.title)} value={parentRegistration.title} onChange={(event) => updateParentRegistration("title", event.target.value)}><option value="">Select</option><option>Mr</option><option>Mrs</option><option>Miss</option><option>Ms</option><option>Dr</option><option>Other</option></select>{fieldError(parentRegistrationErrors.title)}</label>
                         <label>Gender <span>Required</span><select aria-invalid={fieldInvalid(parentRegistrationErrors.gender)} value={parentRegistration.gender} onChange={(event) => updateParentRegistration("gender", event.target.value)}><option value="">Select</option><option>Female</option><option>Male</option><option>Other</option><option>Prefer not to say</option></select>{fieldError(parentRegistrationErrors.gender)}</label>
                         <label>Primary contact number <span>Required</span><input inputMode="tel" autoComplete="tel" aria-invalid={Boolean(parentRegistrationErrors.primaryPhone)} title={phoneValidationHint} value={parentRegistration.primaryPhone} onChange={(event) => updateParentRegistration("primaryPhone", event.target.value)} />{fieldError(parentRegistrationErrors.primaryPhone)}</label>
@@ -21836,7 +21858,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <label>Who does your child live with? <span>Required</span><select aria-invalid={fieldInvalid(childBasicErrors.livesWith)} value={childRegistration.livesWith} onChange={(event) => updateChildRegistration("livesWith", event.target.value)}>{parentRelationshipOptions.slice(0, 12).map((option) => <option key={option}>{option}</option>)}</select>{fieldError(childBasicErrors.livesWith)}</label>
                   <label>Parental responsibility <span>Required</span><select aria-invalid={fieldInvalid(childBasicErrors.parentalResponsibility)} value={childRegistration.parentalResponsibility} onChange={(event) => updateChildRegistration("parentalResponsibility", event.target.value)}>{parentRelationshipOptions.slice(0, 12).map((option) => <option key={option}>{option}</option>)}</select>{fieldError(childBasicErrors.parentalResponsibility)}</label>
                   <label>External agencies involved?<select value={childRegistration.externalAgencies} onChange={(event) => updateChildRegistration("externalAgencies", event.target.value)}><option>No</option><option>Yes</option></select></label>
-                  <label>Main school <span>Required</span><select aria-invalid={fieldInvalid(childBasicErrors.school)} value={childRegistration.school || activeFamily.registeredCentre || selectedSchool} onChange={(event) => updateChildRegistration("school", event.target.value)}>{parentRegistrationSchools.map((school) => <option key={school}>{school}</option>)}</select>{fieldError(childBasicErrors.school)}</label>
+                  <label>Main school <span>Required</span><select aria-invalid={fieldInvalid(childBasicErrors.school)} value={normaliseParentSchool(childRegistration.school || activeFamily.registeredCentre || selectedSchool)} onChange={(event) => updateChildRegistration("school", event.target.value)}>{parentRegistrationSchools.map((school) => <option key={school} value={school}>{parentSchoolOptionLabel(school)}</option>)}</select>{fieldError(childBasicErrors.school)}</label>
                   <label>Year group <span>Required</span><select aria-invalid={fieldInvalid(childBasicErrors.classroom)} value={childRegistration.classroom} onChange={(event) => updateChildRegistration("classroom", event.target.value)}><option value="">Select</option>{childYearGroupOptions.map((option) => <option key={option}>{option}</option>)}</select>{fieldError(childBasicErrors.classroom)}</label>
                   <label>Collection password <span>Required</span><input aria-invalid={fieldInvalid(childBasicErrors.collectionPassword)} value={childRegistration.collectionPassword} onChange={(event) => updateChildRegistration("collectionPassword", event.target.value)} />{fieldError(childBasicErrors.collectionPassword)}<small className="lab-field-hint">Staff use this if someone collects your child and needs to confirm they are authorised.</small></label>
                   <label>TFC reference <span>Optional</span><input value={childRegistration.tfcReference} onChange={(event) => updateChildRegistration("tfcReference", event.target.value)} /><small className="lab-field-hint">Your Tax-Free Childcare reference can be found in your HMRC Childcare Account.</small></label>
