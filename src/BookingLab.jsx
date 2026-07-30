@@ -5335,7 +5335,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       .catch((error) => {
         if (cancelled) return;
         setParentBadgeBookLoading(false);
-        setParentBadgeBookError(error?.message || "We could not load the Badge Book.");
+        setParentBadgeBookError(error?.message || "We could not load your children’s rewards.");
       });
     return () => {
       cancelled = true;
@@ -16028,11 +16028,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       : "Date not available";
 
     return (
-      <section className="lab-parent-badge-book" aria-label="Badge Book">
+      <section className="lab-parent-badge-book" aria-label="Your children’s rewards">
         <header className="lab-parent-badge-book-head">
           <div>
             <p className="eyebrow">Family achievements</p>
-            <h3>🏅 Badge Book</h3>
+            <h3>🏅 Your children’s rewards</h3>
             <p>A joyful record of the moments our team has celebrated at Après School.</p>
           </div>
           <div className="lab-parent-badge-total">
@@ -16040,7 +16040,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             <span>Total badge{parentBadgeBook.total === 1 ? "" : "s"} earned</span>
           </div>
         </header>
-        <div className="lab-parent-badge-filters" aria-label="Filter Badge Book">
+        <div className="lab-parent-badge-filters" aria-label="Filter children’s rewards">
           <label>
             Child
             <select value={parentBadgeChildFilter} onChange={(event) => setParentBadgeChildFilter(event.target.value)}>
@@ -16057,9 +16057,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           </label>
         </div>
         {parentBadgeBookLoading ? (
-          <div className="lab-parent-badge-empty"><strong>Opening the Badge Book…</strong><p>Collecting the latest achievements.</p></div>
+          <div className="lab-parent-badge-empty"><strong>Loading children’s rewards…</strong><p>Collecting the latest achievements.</p></div>
         ) : parentBadgeBookError ? (
-          <div className="lab-parent-badge-empty is-error"><strong>Badge Book unavailable</strong><p>{parentBadgeBookError}</p></div>
+          <div className="lab-parent-badge-empty is-error"><strong>Children’s rewards unavailable</strong><p>{parentBadgeBookError}</p></div>
         ) : filteredRewards.length ? (
           <div className="lab-parent-badge-timeline">
             {filteredRewards.map((reward) => {
@@ -22162,14 +22162,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     {liveParentLedger.loading ? "Refreshing..." : "Refresh account"}
                   </button>
                 )}
-                {parentAccountSignedIn ? (
-                  <button className="button light" type="button" onClick={signOutParentAccount} disabled={parentAccountLoading}>{parentAccountLoading ? "Signing out..." : "Sign out"}</button>
-                ) : null}
                 {isLaunchMode && parentAccountSignedIn && (
                   <button className="button light" type="button" onClick={() => openLaunchChildEditor("Basics")}>
                     Add child
                   </button>
                 )}
+                {parentAccountSignedIn ? (
+                  <button className="button light lab-parent-sign-out" type="button" onClick={signOutParentAccount} disabled={parentAccountLoading}>{parentAccountLoading ? "Signing out…" : "Sign out"}</button>
+                ) : null}
                 {!isLaunchMode && <button className="button light" type="button" onClick={() => setLabView("Family")}>Family details</button>}
               </div>
             </div>
@@ -22198,14 +22198,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   onClick={() => setLaunchAccountMenuOpen((current) => !current)}
                 >
                   <span>Account menu</span>
-                  <strong>{launchAccountSection === "Payments" ? "Payments & credit" : launchAccountSection === "Badges" ? "Badge Book" : launchAccountSection === "Account" ? "Account settings" : launchAccountSection}</strong>
+                  <strong>{launchAccountSection === "Payments" ? "Payments & credit" : launchAccountSection === "Badges" ? "Children’s rewards" : launchAccountSection === "Account" ? "Account settings" : launchAccountSection}</strong>
                   <b aria-hidden="true">{launchAccountMenuOpen ? "Close" : "Open"}</b>
                 </button>
                 <nav id="parent-account-sections" className={`lab-parent-account-sections${launchAccountMenuOpen ? " is-open" : ""}`} aria-label="Parent account sections">
                   {[
                     ["Overview", "Overview"],
                     ["Family", "Family"],
-                    ["Badges", "Badge Book"],
+                    ["Badges", "Children’s rewards"],
                     ["Bookings", "Bookings"],
                     ["Payments", "Payments & credit"],
                     ["Messages", "Messages"],

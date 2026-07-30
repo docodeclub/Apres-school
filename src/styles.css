@@ -23786,6 +23786,20 @@ th {
   justify-content: flex-end;
 }
 
+.booking-launch-page .lab-parent-portal-actions .lab-parent-sign-out {
+  order: 99;
+  border: 2px solid var(--royal-dark);
+  background: #fff;
+  color: var(--royal-dark);
+  box-shadow: 0 8px 18px rgba(30, 54, 132, 0.12);
+}
+
+.booking-launch-page .lab-parent-portal-actions .lab-parent-sign-out:hover:not(:disabled),
+.booking-launch-page .lab-parent-portal-actions .lab-parent-sign-out:focus-visible {
+  background: var(--royal-dark);
+  color: #fff;
+}
+
 .lab-parent-auth-state {
   display: inline-grid;
   min-height: 34px;
@@ -36988,7 +37002,7 @@ th {
 
 .booking-launch-page .lab-parent-account-sections {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
   border: 1px solid rgba(49, 75, 184, 0.16);
   border-radius: 16px;
@@ -43130,7 +43144,7 @@ th {
     flex-direction: column;
   }
 }
-/* Reward collections and the parent Badge Book */
+/* Reward collections and the parent children’s rewards area */
 .booking-launch-page .lab-child-badge-collection {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
