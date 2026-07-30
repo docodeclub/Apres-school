@@ -39,6 +39,8 @@ const checks = [
   [bookingLab.includes("pricingQuoteLoading") && bookingLab.includes("Checking your tier price") && bookingLab.includes("const basketPricingQuote = pricingQuote?.signature === basketPricingSignature"), "basket prices quote and display before checkout"],
   [bookingLab.includes("resolveLiveBasketSessionBlocks") && bookingLab.includes("fetchBookableSessions") && bookingLab.includes("liveBlock.id"), "prototype basket rows resolve to live session blocks before pricing"],
   [bookingLab.includes("confirmedWithoutPayment") && bookingLab.includes("confirmed_without_payment") && bookingLab.includes("No payment link is required"), "fully discounted bookings never open a payment fallback"],
+  [createBooking.includes("zeroBalanceBooking") && createBooking.includes('status: "confirmed"') && createBooking.includes('due_today: 0'), "zero-balance backend fallback confirms without PonchoPay"],
+  [bookingLab.includes("bookingRequiresNoPayment") && bookingLab.includes("Confirm free booking") && bookingLab.includes("No PonchoPay step or card guarantee"), "free-booking checkout clearly bypasses PonchoPay"],
   [bookingLab.includes("confirmedNoBalance") && bookingLab.includes('"Pricing benefit"'), "parent account shows confirmed zero-price bookings without a payment wait state"],
   [bookingLab.includes("explicitChildConsentChoices") && bookingLab.includes("Answer every permission with Yes or No") && !bookingLab.includes('["No", "N/A", "Yes"]'), "child permissions require explicit Yes or No"],
   [bookingLab.includes("childBookingProfileIssues") && bookingLab.includes("Your basket has been kept"), "checkout blocks incomplete child profiles with a recovery route"],

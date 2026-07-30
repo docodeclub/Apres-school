@@ -4004,6 +4004,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     : 0;
   const payableTodayAmount = Math.max(0, dueTodayAmount - accountCreditPreview);
   const remainingPlanBalance = Math.max(0, total - dueTodayAmount);
+  const bookingRequiresNoPayment = total <= 0;
   const familyCreditNeedsReconciliation = parentAccountMode === "live"
     && displayedFamilyCreditBalance > 0
     && (liveParentLedger.creditEntries || []).some((entry) => String(entry.metadata?.financeStatus || "").toLowerCase().includes("review"));
@@ -4898,6 +4899,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const previousCheckoutStep = checkoutSteps[Math.max(0, checkoutStepIndex - 1)];
   const checkoutActionLabel = isWaitlist
     ? "Change selection"
+    : bookingRequiresNoPayment
+      ? "Confirm free booking"
     : accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0
       ? "Confirm booking with credit"
     : activePaymentPlan === "Monthly"
@@ -4909,6 +4912,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           : "Continue to PonchoPay";
   const checkoutActionSummary = isWaitlist
     ? "One or more selected sessions are full. Choose another date or remove a session before checkout."
+    : bookingRequiresNoPayment
+      ? "Your pricing benefit covers this booking in full. Confirm it now without opening PonchoPay or adding a card guarantee."
     : accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0
       ? `${money(accountCreditPreview)} account credit covers this booking. It will confirm without opening PonchoPay.`
     : activePaymentPlan === "Monthly"
@@ -4920,7 +4925,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           : isLaunchMode
             ? `PonchoPay opens securely, saves a card guarantee, then watches for the ${effectivePaymentMethod === "tfc" || effectivePaymentMethod === "tax-free" ? "Tax-Free Childcare" : "voucher"} payment.`
             : `PonchoPay opens securely, stores the card guarantee and matches the ${effectivePaymentMethod === "tfc" || effectivePaymentMethod === "tax-free" ? "Tax-Free Childcare" : "voucher"} payment automatically.`;
-  const checkoutPaymentHeading = activePaymentPlan === "Monthly"
+  const checkoutPaymentHeading = bookingRequiresNoPayment
+    ? "No payment required"
+    : activePaymentPlan === "Monthly"
     ? "Set up monthly payments"
     : availableAccountCreditAmount > 0 ? "Use credit or choose how to pay" : "Choose how to pay";
   const campUpsellSession = sessions.find((session) => session.type === "Holiday Camp");
@@ -6090,6 +6097,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         : "card";
   const parentPaymentGuideTitle = accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0
     ? "Pay with account credit"
+    : bookingRequiresNoPayment
+      ? "Covered by your pricing benefit"
     : activePaymentPlan === "Monthly"
     ? "Monthly payments"
     : effectivePaymentMethod === "card"
@@ -6105,12 +6114,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         ? "Invoice note"
         : "No reference needed";
   const paymentStepCards = [
-    [isLaunchMode ? "Payment" : "Route", isLaunchMode ? parentPaymentGuideTitle : activeRouteGuidance.title, isLaunchMode ? parentPaymentReferenceLabel : activeRouteGuidance.reference],
-    ["Due today", money(payableTodayAmount), accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied automatically` : activePaymentPlan === "Monthly" ? `${remainingPlanBalance ? `${money(remainingPlanBalance)} scheduled` : "No remaining balance"}` : isLaunchMode ? "Taken or guaranteed by PonchoPay" : "Paid or guaranteed by PonchoPay"],
+    [isLaunchMode ? "Payment" : "Route", isLaunchMode ? parentPaymentGuideTitle : activeRouteGuidance.title, bookingRequiresNoPayment ? "No card or payment reference needed" : isLaunchMode ? parentPaymentReferenceLabel : activeRouteGuidance.reference],
+    ["Due today", money(payableTodayAmount), bookingRequiresNoPayment ? "Covered in full by your pricing benefit" : accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied automatically` : activePaymentPlan === "Monthly" ? `${remainingPlanBalance ? `${money(remainingPlanBalance)} scheduled` : "No remaining balance"}` : isLaunchMode ? "Taken or guaranteed by PonchoPay" : "Paid or guaranteed by PonchoPay"],
     ["Booking total", money(total), `${pickedDays.length} session${pickedDays.length === 1 ? "" : "s"}`],
   ];
   const paymentNextSteps = isLaunchMode
-    ? [
+    ? bookingRequiresNoPayment ? [
+        "Confirm booking",
+        "No payment required",
+        "Booking added to your account",
+      ] : [
         "Secure PonchoPay window",
         effectivePaymentMethod === "card" ? "Card authorised" : "Card guarantee saved",
         effectivePaymentMethod === "card" ? "Booking confirmed" : "Voucher/TFC matched",
@@ -6125,7 +6138,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ["Invoice", activePaymentPlan === "Monthly" ? "Plan prepared" : effectivePaymentMethod === "card" ? "Receipt after payment" : "Invoice pending match", "Also shown in parent portal"],
     ["Payment status", effectivePaymentMethod === "card" ? "Authorises now" : "Auto reconciles", effectivePaymentMethod === "card" ? "Booking confirms after payment" : "PonchoPay watches for the voucher/TFC payment"],
   ];
-  const parentPaymentDecisionRows = accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0
+  const parentPaymentDecisionRows = bookingRequiresNoPayment
+    ? [
+        ["Today", money(0), "Covered by your pricing benefit"],
+        ["Card", "Not needed", "PonchoPay will not open"],
+        ["Status", "Confirms immediately", "Booking saved in your portal"],
+      ]
+    : accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0
     ? [
         ["Today", money(0), `${money(accountCreditPreview)} account credit used`],
         ["Card", "Not needed", "No PonchoPay payment opens"],
@@ -6229,11 +6248,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ["Booked", parentActivityLabel(activeSession), `${activeSession.site} · ${checkoutDayCount} day${checkoutDayCount === 1 ? "" : "s"}`],
     ["Sessions", `${checkoutItemCount} selected`, basketCheckoutActive ? basketDays.join(" · ") : pickedDaysSummary || "Choose dates"],
     ["Children", checkoutChildNames.join(", ") || "Saved child", selectedCareFlags.length ? selectedCareFlags.join(" · ") : "No selected care flags"],
-    ["Payment", accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Account credit" : activePaymentPlan === "Monthly" ? monthlyScheduleSummary : selectedPaymentLabel, accountCreditPreview > 0 ? `${money(accountCreditPreview)} credit applied · ${money(payableTodayAmount)} left to pay` : activePaymentPlan === "Monthly" ? `${money(dueTodayAmount)} first payment via PonchoPay` : effectivePaymentMethod === "card" ? "Pay securely through PonchoPay" : "Secured by card guarantee"],
+    ["Payment", bookingRequiresNoPayment ? "No payment required" : accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Account credit" : activePaymentPlan === "Monthly" ? monthlyScheduleSummary : selectedPaymentLabel, bookingRequiresNoPayment ? "Covered in full by your pricing benefit" : accountCreditPreview > 0 ? `${money(accountCreditPreview)} credit applied · ${money(payableTodayAmount)} left to pay` : activePaymentPlan === "Monthly" ? `${money(dueTodayAmount)} first payment via PonchoPay` : effectivePaymentMethod === "card" ? "Pay securely through PonchoPay" : "Secured by card guarantee"],
   ];
   const parentAgreementRows = [
-    ["Pay today", money(payableTodayAmount), accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied first` : activePaymentPlan === "Monthly" ? `${money(remainingPlanBalance)} scheduled after today` : effectivePaymentMethod === "card" ? "Card payment in PonchoPay" : "Card guarantee in PonchoPay"],
-    ["Email", activePaymentPlan === "Monthly" ? "Plan after setup" : effectivePaymentMethod === "card" ? "Receipt after payment" : "Invoice after guarantee", "Also saved in the parent portal"],
+    ["Pay today", money(payableTodayAmount), bookingRequiresNoPayment ? "No PonchoPay step or card guarantee" : accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied first` : activePaymentPlan === "Monthly" ? `${money(remainingPlanBalance)} scheduled after today` : effectivePaymentMethod === "card" ? "Card payment in PonchoPay" : "Card guarantee in PonchoPay"],
+    ["Email", bookingRequiresNoPayment ? "Booking confirmation" : activePaymentPlan === "Monthly" ? "Plan after setup" : effectivePaymentMethod === "card" ? "Receipt after payment" : "Invoice after guarantee", "Also saved in the parent portal"],
     ["Portal", "Updated instantly", "Booking, invoice and payment status stay together"],
     ["Changes", `${rules.cancellationHours}h cancellation`, `${rules.amendmentHours}h amendment window before the first session`],
   ];
@@ -6244,13 +6263,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   ];
   const parentSubmitConfidenceRows = [
     ["Dates checked", `${pickedDays.length} day${pickedDays.length === 1 ? "" : "s"}`, `${selectedBlockCount || pickedDays.length} session block${(selectedBlockCount || pickedDays.length) === 1 ? "" : "s"}`],
-    ["Pay today", money(payableTodayAmount), accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied automatically` : activePaymentPlan === "Monthly" ? monthlyScheduleSummary : effectivePaymentMethod === "card" ? "PonchoPay card payment; booking confirms only after payment is authorised" : "PonchoPay card guarantee; booking confirms only after payment is authorised"],
+    ["Pay today", money(payableTodayAmount), bookingRequiresNoPayment ? "No PonchoPay step or card guarantee" : accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied automatically` : activePaymentPlan === "Monthly" ? monthlyScheduleSummary : effectivePaymentMethod === "card" ? "PonchoPay card payment; booking confirms only after payment is authorised" : "PonchoPay card guarantee; booking confirms only after payment is authorised"],
     ["Parent portal", "Updated instantly", "Invoice, receipt and booking history stay visible"],
   ];
   const launchHandoffRows = [
-    ["Email", effectivePaymentMethod === "card" ? "Receipt after payment" : "Invoice after guarantee", activeFamily.email || "Parent email"],
+    ["Email", bookingRequiresNoPayment ? "Booking confirmation" : effectivePaymentMethod === "card" ? "Receipt after payment" : "Invoice after guarantee", activeFamily.email || "Parent email"],
     ["Portal", "Booking visible", "Sessions, invoice and payment status"],
-    ["Payment", activePaymentPlan === "Monthly" ? "Plan tracked" : activePaymentOutcome.status, activePaymentPlan === "Monthly" ? monthlyScheduleSummary : activePaymentOutcome.parent],
+    ["Payment", bookingRequiresNoPayment ? "Nothing due" : activePaymentPlan === "Monthly" ? "Plan tracked" : activePaymentOutcome.status, bookingRequiresNoPayment ? "Pricing benefit applied in full" : activePaymentPlan === "Monthly" ? monthlyScheduleSummary : activePaymentOutcome.parent],
     ["Changes", `${rules.cancellationHours}h window`, `${rules.amendmentHours}h amendments before the session`],
   ];
   const parentSafeStatusLabel = (status) => {
@@ -6287,9 +6306,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     || confirmation?.paymentMethod === "account_credit"
     || confirmation?.checkoutSessionStatus === "paid_by_credit"
     || confirmation?.ponchoCheckout?.status === "paid_by_credit";
-  const confirmationDisplayPaymentLabel = confirmationPaidWithCredit ? "Account credit" : confirmationPaymentLabel;
-  const confirmationDisplayDueToday = confirmationPaidWithCredit ? 0 : confirmationDueToday;
-  const confirmationDisplayOutstanding = confirmationPaidWithCredit ? 0 : confirmationOutstanding;
+  const confirmationNoPaymentDue = confirmation?.paymentStatus === "No payment due"
+    || confirmation?.paymentMethod === "pricing_benefit"
+    || confirmation?.checkoutSessionStatus === "confirmed_without_payment"
+    || confirmation?.ponchoCheckout?.status === "confirmed_without_payment";
+  const confirmationDisplayPaymentLabel = confirmationNoPaymentDue ? "Pricing benefit" : confirmationPaidWithCredit ? "Account credit" : confirmationPaymentLabel;
+  const confirmationDisplayDueToday = confirmationPaidWithCredit || confirmationNoPaymentDue ? 0 : confirmationDueToday;
+  const confirmationDisplayOutstanding = confirmationPaidWithCredit || confirmationNoPaymentDue ? 0 : confirmationOutstanding;
   const confirmationInvoiceStatus = confirmation?.invoiceStatus
     || (confirmation?.status === "Waitlist"
       ? "Not issued until a place is confirmed"
@@ -6316,6 +6339,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ? "Waitlist request saved"
       : confirmationPaidWithCredit
         ? "Booking confirmed"
+      : confirmationNoPaymentDue
+        ? "Booking confirmed"
       : confirmation?.paymentPlan === "Monthly"
         ? "Complete setup in PonchoPay"
         : confirmationHasCheckoutUrl
@@ -6325,7 +6350,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           : "Awaiting PonchoPay guarantee";
   const confirmationDocumentLabel = confirmation?.status === "Waitlist"
     ? "Request"
-    : confirmationPaidWithCredit || confirmation?.paymentMethod === "card"
+    : confirmationPaidWithCredit || confirmationNoPaymentDue || confirmation?.paymentMethod === "card"
       ? "Receipt"
       : "Invoice";
   const confirmationParentEmail = isLaunchMode ? "your saved email" : confirmation?.parentEmail || activeFamily.email || "Parent email";
@@ -6339,6 +6364,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ? "We have saved the request and will confirm the place before any payment is taken."
     : confirmationPaidWithCredit
       ? "Your booking is confirmed and paid in full using account credit. No card payment is needed."
+    : confirmationNoPaymentDue
+      ? "Your booking is confirmed at £0.00 through your pricing benefit. No PonchoPay step or card guarantee is required."
     : confirmation?.paymentPlan === "Monthly"
       ? isLaunchMode ? "Open PonchoPay to set up the monthly plan and confirm the booking automatically." : "Open PonchoPay to set up the monthly plan before the booking is confirmed."
       : confirmationHasCheckoutUrl
@@ -6353,7 +6380,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   ] : [];
   const confirmationEmailRows = confirmation ? [
     ["Booking confirmation", confirmationParentEmail, `${confirmationDayCount} session${confirmationDayCount === 1 ? "" : "s"} and child details`],
-    [confirmationPaidWithCredit || confirmation?.paymentMethod === "card" ? "Receipt email" : "Invoice email", confirmationInvoiceStatus, isLaunchMode ? "Also saved in your portal" : confirmation.paymentRoute || "PonchoPay route"],
+    [confirmationPaidWithCredit || confirmationNoPaymentDue || confirmation?.paymentMethod === "card" ? "Confirmation email" : "Invoice email", confirmationInvoiceStatus, isLaunchMode ? "Also saved in your portal" : confirmation.paymentRoute || "PonchoPay route"],
     ["Parent portal", confirmationDisplayOutstanding > 0 ? `${money(confirmationDisplayOutstanding)} outstanding` : "No outstanding balance", "Invoice and payment history updated"],
   ] : [];
   const confirmationRegisterState = confirmationHasCheckoutUrl
@@ -15791,6 +15818,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         : "";
     const launchCheckoutStatus = realBookingResult?.credit?.fullyCovered
       ? `Booking confirmed. ${money(Number(realBookingResult.credit.applied || 0))} account credit was used and no card payment was needed.`
+      : confirmedWithoutPayment
+        ? "Booking confirmed at £0.00. Your pricing benefit covered it in full, so PonchoPay and a card guarantee were not required."
       : isWaitlist
         ? "One or more selected sessions are full. Remove those sessions or choose another date before checkout."
       : activePaymentPlan === "Monthly"
@@ -24252,8 +24281,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <div className="lab-checkout-snapshot final" aria-label="Final booking summary">
                   <article><span>Children</span><strong>{checkoutChildNames.join(", ") || "Saved child"}</strong><small>{checkoutChildNames.length} included</small></article>
                   <article><span>Booking</span><strong>{parentActivityLabel(activeSession)}</strong><small>{activeSession.site}</small></article>
-                  <article><span>Payment</span><strong>{accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Account credit" : activePaymentPlan === "Monthly" ? "Monthly plan" : selectedPaymentLabel}</strong><small>{accountCreditPreview > 0 ? `${money(accountCreditPreview)} credit applied` : isLaunchMode ? "Shown in your family account" : activePaymentRoute}</small></article>
-                  <article><span>{accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Confirmation" : effectivePaymentMethod === "card" ? "Receipt" : "Invoice"}</span><strong>{accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Immediate" : activePaymentPlan === "Monthly" ? "Plan created" : effectivePaymentMethod === "card" ? "Emailed after payment" : "Emailed after booking"}</strong><small>Family account updated</small></article>
+                  <article><span>Payment</span><strong>{bookingRequiresNoPayment ? "No payment required" : accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Account credit" : activePaymentPlan === "Monthly" ? "Monthly plan" : selectedPaymentLabel}</strong><small>{bookingRequiresNoPayment ? "Covered by your pricing benefit" : accountCreditPreview > 0 ? `${money(accountCreditPreview)} credit applied` : isLaunchMode ? "Shown in your family account" : activePaymentRoute}</small></article>
+                  <article><span>{bookingRequiresNoPayment || accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Confirmation" : effectivePaymentMethod === "card" ? "Receipt" : "Invoice"}</span><strong>{bookingRequiresNoPayment || accountCreditPreview >= dueTodayAmount && dueTodayAmount > 0 ? "Immediate" : activePaymentPlan === "Monthly" ? "Plan created" : effectivePaymentMethod === "card" ? "Emailed after payment" : "Emailed after booking"}</strong><small>Family account updated</small></article>
                 </div>
               )}
               {isLaunchMode && (
@@ -24312,8 +24341,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <section className="lab-parent-review-panel">
                   <div>
                     <p className="eyebrow">Final check</p>
-                    <h4>{effectivePaymentMethod === "card" ? "Ready to pay and confirm" : "Ready to confirm your booking"}</h4>
-                    <p>{effectivePaymentMethod === "card" ? "You’ll pay securely through PonchoPay. Once payment is confirmed, your receipt and booking will appear in your account." : "We’ll confirm your booking and show the latest payment status in your account."}</p>
+                    <h4>{bookingRequiresNoPayment ? "Ready to confirm your free booking" : effectivePaymentMethod === "card" ? "Ready to pay and confirm" : "Ready to confirm your booking"}</h4>
+                    <p>{bookingRequiresNoPayment ? "Your pricing benefit covers the full cost. Confirm now without opening PonchoPay or adding a card guarantee." : effectivePaymentMethod === "card" ? "You’ll pay securely through PonchoPay. Once payment is confirmed, your receipt and booking will appear in your account." : "We’ll confirm your booking and show the latest payment status in your account."}</p>
                   </div>
                   <div className="lab-parent-review-highlights">
                     {parentReviewHighlights.map(([label, value, detail]) => (
@@ -24340,7 +24369,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <div className="lab-review-cost-head">
                     <div>
                       <p className="eyebrow">{isLaunchMode ? "Total" : "Cost breakdown"}</p>
-                      <h4>{isLaunchMode ? (activePaymentPlan === "Monthly" ? "Monthly payment plan" : "Pay today") : activePaymentPlan === "Monthly" ? "Monthly plan preview" : "Booking total"}</h4>
+                      <h4>{isLaunchMode ? (bookingRequiresNoPayment ? "Booking total" : activePaymentPlan === "Monthly" ? "Monthly payment plan" : "Pay today") : activePaymentPlan === "Monthly" ? "Monthly plan preview" : "Booking total"}</h4>
                     </div>
                     <strong>{money(isLaunchMode ? payableTodayAmount : total)}</strong>
                   </div>

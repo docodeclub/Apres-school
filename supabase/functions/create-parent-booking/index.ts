@@ -167,6 +167,53 @@ serve(async (request) => {
       }
     }
 
+    const zeroBalanceBooking = moneyValue(booking.totalAmount) <= 0
+      && stringValue(booking.status).toLowerCase() !== "waitlist"
+      && savedItems.some((item) => stringValue(item.status).toLowerCase() !== "waitlist");
+    if (zeroBalanceBooking && stringValue(booking.status).toLowerCase() !== "confirmed") {
+      const confirmedAt = new Date().toISOString();
+      const { error: bookingConfirmationError } = await supabase
+        .from("bookings")
+        .update({
+          status: "confirmed",
+          due_today: 0,
+          outstanding_balance: 0,
+          updated_at: confirmedAt,
+        })
+        .eq("id", stringValue(booking.id));
+      if (bookingConfirmationError) throw bookingConfirmationError;
+
+      const { error: itemConfirmationError } = await supabase
+        .from("booking_items")
+        .update({ status: "confirmed", updated_at: confirmedAt })
+        .eq("booking_id", stringValue(booking.id))
+        .eq("status", "reserved");
+      if (itemConfirmationError) throw itemConfirmationError;
+
+      const confirmedItemIds = savedItems
+        .filter((item) => stringValue(item.status).toLowerCase() !== "waitlist")
+        .map((item) => stringValue(item.id))
+        .filter(Boolean);
+      if (confirmedItemIds.length) {
+        const { error: holdConfirmationError } = await supabase
+          .from("booking_capacity_holds")
+          .update({ status: "confirmed", expires_at: null })
+          .in("booking_item_id", confirmedItemIds)
+          .is("released_at", null);
+        if (holdConfirmationError) throw holdConfirmationError;
+      }
+
+      booking = {
+        ...booking,
+        status: "confirmed",
+        dueToday: 0,
+        outstandingBalance: 0,
+      };
+      savedItems = savedItems.map((item) => stringValue(item.status).toLowerCase() === "reserved"
+        ? { ...item, status: "confirmed", updated_at: confirmedAt }
+        : item);
+    }
+
     let credit: Record<string, unknown> = {
       applied: 0,
       dueToday: moneyValue(booking.dueToday),
