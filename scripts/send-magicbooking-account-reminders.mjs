@@ -116,7 +116,8 @@ try {
   if (!accessToken) throw new Error("The temporary reminder administrator could not sign in.");
 
   let consecutiveFailures = 0;
-  for (const parent of eligible) {
+  for (let index = 0; index < eligible.length; index += 1) {
+    const parent = eligible[index];
     try {
       const response = await fetch(`${functionsUrl.replace(/\/$/, "")}/manage-parent-account`, {
         method: "POST",
@@ -131,6 +132,9 @@ try {
       failures.push({ parentAccountId: parent.id, email: normalizeEmail(parent.email), reason: error instanceof Error ? error.message : "Reminder failed" });
       consecutiveFailures += 1;
       if (consecutiveFailures >= 3) break;
+    }
+    if ((index + 1) % 25 === 0 || index + 1 === eligible.length) {
+      console.error(`Processed ${index + 1}/${eligible.length}: ${sent.length} sent, ${failures.length} failed.`);
     }
   }
 
