@@ -22995,19 +22995,27 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     const cancelPolicy = bookingPolicyState(draft, rules.cancellationHours);
                     const changeOpen = amendPolicy.allowed || cancelPolicy.allowed;
                     const bookingBlocks = bookingBlockRows(draft);
-                    const bookingBalance = draft.status === "Prototype paid" ? 0 : Math.max(0, Number(draft.outstandingBalance ?? draft.total ?? 0));
+                    const liveInvoice = liveInvoiceForDraft(draft);
+                    const liveBooking = liveBookingForDraft(draft, liveInvoice);
+                    const confirmedNoBalance = String(liveBooking?.status || "").toLowerCase() === "confirmed"
+                      && Number(liveInvoice?.balance ?? liveBooking?.outstandingBalance ?? draft.outstandingBalance ?? 0) <= 0;
+                    const bookingBalance = draft.status === "Prototype paid" || confirmedNoBalance ? 0 : Math.max(0, Number(draft.outstandingBalance ?? draft.total ?? 0));
+                    const bookingStatusLabel = confirmedNoBalance ? "Confirmed" : parentSafeStatusLabel(draft.status);
+                    const bookingPaymentLabel = confirmedNoBalance && Number(liveBooking?.totalAmount ?? draft.total ?? 0) <= 0
+                      ? "Pricing benefit"
+                      : draft.paymentLabel || draft.paymentMethod || "Card";
                     const bookingPolicyText = changeOpen ? "Changes open" : "Policy locked";
                     const bookingNextAction = bookingBalance > 0 ? "Payment due" : changeOpen ? "Can amend" : "View receipt";
                     return (
                       <div className={changeOpen ? "" : "policy-locked"} key={draft.id}>
                         <strong>{draft.activity}</strong>
                         <span>{draft.site} · {bookingBlockSummary(draft)}</span>
-                        <small>{parentSafeStatusLabel(draft.status)} · {bookingBlockCount(draft)} block{bookingBlockCount(draft) === 1 ? "" : "s"} · {money(Number(draft.total || 0))}{draft.creditEvents?.length ? ` · credit ${money(draft.creditEvents.reduce((sum, event) => sum + Number(event.amount || 0), 0))}` : ""}</small>
+                        <small>{bookingStatusLabel} · {bookingBlockCount(draft)} block{bookingBlockCount(draft) === 1 ? "" : "s"} · {money(Number(draft.total || 0))}{draft.creditEvents?.length ? ` · credit ${money(draft.creditEvents.reduce((sum, event) => sum + Number(event.amount || 0), 0))}` : ""}</small>
                         <div className="lab-parent-booking-facts">
                           <article><span>Sessions</span><strong>{bookingBlockCount(draft)}</strong><small>{bookingBlocks[0]?.day || "No date"}</small></article>
-                          <article><span>Payment</span><strong>{bookingBalance > 0 ? money(bookingBalance) : "Clear"}</strong><small>{draft.paymentLabel || draft.paymentMethod || "Card"}</small></article>
+                          <article><span>Payment</span><strong>{bookingBalance > 0 ? money(bookingBalance) : "Clear"}</strong><small>{bookingPaymentLabel}</small></article>
                           <article><span>Policy</span><strong>{bookingPolicyText}</strong><small>{changeOpen ? `Cancel ${rules.cancellationHours}h prior` : "Contact us to change"}</small></article>
-                          <article><span>Next</span><strong>{bookingNextAction}</strong><small>{parentSafeStatusLabel(draft.status)}</small></article>
+                          <article><span>Next</span><strong>{bookingNextAction}</strong><small>{bookingStatusLabel}</small></article>
                         </div>
                         <small className={changeOpen ? "lab-policy-note open" : "lab-policy-note locked"}>{changeOpen ? amendPolicy.detail : `Outside policy window. ${amendPolicy.detail}`}</small>
                         <div>
