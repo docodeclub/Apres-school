@@ -167,15 +167,18 @@ function normaliseLine(line = {}) {
   const originalTotal = Number(line.originalTotal ?? line.original_line_total ?? quantity * originalUnitAmount);
   const discountTotal = Math.max(0, Number(line.discountTotal ?? line.discount_amount ?? originalTotal - total));
   const pricingLabel = clean(line.pricingLabel || line.pricing_label || "");
+  const sessionName = clean(line.sessionName || line.sessionLabel || line.session_label || line.careType || "Care session");
+  const siteName = clean(line.siteName || line.site_name || "");
   return {
     date: formatDate(date),
     time: [start, end].filter(Boolean).join("-") || "Time recorded in portal",
     child: clean(line.childName || line.child_name || "Child"),
-    description: clean([
-      line.sessionName || line.sessionLabel || line.session_label || line.careType || "Care session",
-      line.siteName || line.site_name,
-      pricingLabel && discountTotal > 0 ? `${pricingLabel}: ${money(originalTotal)} less ${money(discountTotal)}` : "",
-    ].filter(Boolean).join(" · ")),
+    description: [sessionName, siteName].filter(Boolean).join(" | "),
+    pricingNote: pricingLabel && discountTotal > 0
+      ? `${pricingLabel}: ${money(originalTotal)} less ${money(discountTotal)}`
+      : "",
+    originalTotal,
+    discountTotal,
     total,
   };
 }
@@ -201,18 +204,26 @@ export function buildBookingInvoicePdf(input = {}) {
   const total = Number(input.total || lines.reduce((sum, line) => sum + line.total, 0));
   const paid = Number(input.paid ?? Math.max(0, total - Number(input.balance || 0)));
   const balance = Number(input.balance ?? Math.max(0, total - paid));
+  const gross = Number(input.grossTotal ?? (lines.reduce((sum, line) => sum + line.originalTotal, 0) || total));
+  const discount = Number(input.discountTotal ?? Math.max(0, gross - total));
+  const paymentMethod = clean(input.paymentMethod || "PonchoPay");
+  const statusLabel = clean(input.statusLabel || (balance <= 0 ? "Paid" : "Payment arranged"));
+  const pricingGroupName = clean(input.pricingGroupName || "Standard");
   const doc = new PdfDoc(`Après School invoice ${invoiceNumber}`);
-  const tableWidths = [94, 70, 100, 185, 62];
+  const tableWidths = [82, 67, 91, 201, 70];
   const pageWidth = PAGE.width - PAGE.margin * 2;
+  const tableBottom = 744;
+  const lineSize = 8.2;
+  const lineHeight = 10.5;
 
   const addHeader = (continued = false) => {
     doc.addPage();
-    doc.rect(0, 0, PAGE.width, 78, BLUE, null);
-    doc.bold("Apres School", PAGE.margin, 34, 20, WHITE);
-    doc.text("Let's Learn and Play", PAGE.margin, 53, 8.5, ORANGE);
-    doc.bold("INVOICE", 430, 34, 20, WHITE);
-    doc.text(invoiceNumber, 430, 54, 9, WHITE);
-    if (continued) doc.text("Continued", 430, 68, 8, WHITE);
+    doc.bold("Apres School", PAGE.margin, 40, 17, BLUE);
+    doc.text("Let's Learn and Play", PAGE.margin, 58, 8, ORANGE);
+    doc.bold("INVOICE", 430, 40, 20, BLUE);
+    doc.text(invoiceNumber, 430, 62, 9.5, INK);
+    if (continued) doc.text("Continued", 430, 77, 8, MUTED);
+    doc.line(PAGE.margin, 92, PAGE.width - PAGE.margin, 92);
   };
 
   const renderTableHeader = (y) => {
@@ -225,48 +236,84 @@ export function buildBookingInvoicePdf(input = {}) {
     return y + 28;
   };
 
+  const rowHeightFor = (line) => {
+    const descriptionLines = doc.measureLines(line.description, tableWidths[3] - 14, lineSize);
+    const pricingLines = line.pricingNote ? doc.measureLines(line.pricingNote, tableWidths[3] - 14, 7.2) : [];
+    const childLines = doc.measureLines(line.child, tableWidths[2] - 14, lineSize);
+    return Math.max(40, Math.max(childLines.length * lineHeight, descriptionLines.length * lineHeight + pricingLines.length * 9) + 18);
+  };
+
   const renderRow = (line, y) => {
-    const descriptionLines = doc.measureLines(line.description, tableWidths[3] - 14, 8);
-    const childLines = doc.measureLines(line.child, tableWidths[2] - 14, 8);
-    const height = Math.max(38, Math.max(descriptionLines.length, childLines.length) * 10 + 18);
+    const height = rowHeightFor(line);
     doc.rect(PAGE.margin, y, pageWidth, height, WHITE, LINE);
     let x = PAGE.margin;
-    [line.date, line.time, line.child, line.description, money(line.total, currency)].forEach((value, index) => {
-      doc.wrap(value, x + 7, y + 16, tableWidths[index] - 14, 8, index === 4 ? NAVY : INK, 10, index === 4 ? "F2" : "F1");
+    [line.date, line.time, line.child].forEach((value, index) => {
+      doc.wrap(value, x + 7, y + 16, tableWidths[index] - 14, lineSize, INK, lineHeight);
       x += tableWidths[index];
     });
+    const descriptionLineCount = doc.wrap(line.description, x + 7, y + 16, tableWidths[3] - 14, lineSize, INK, lineHeight, "F2");
+    if (line.pricingNote) {
+      doc.wrap(line.pricingNote, x + 7, y + 16 + descriptionLineCount * lineHeight + 2, tableWidths[3] - 14, 7.2, MUTED, 9);
+    }
+    x += tableWidths[3];
+    doc.bold(money(line.total, currency), x + 7, y + 16, lineSize, NAVY);
     return y + height;
   };
 
   addHeader(false);
-  doc.bold("Billed to", PAGE.margin, 112, 10, BLUE);
-  doc.bold(clean(input.parentName || "Parent or carer"), PAGE.margin, 133, 11, INK);
-  doc.text(clean(input.parentEmail || ""), PAGE.margin, 151, 8.5, MUTED);
-  doc.bold("Invoice details", 340, 112, 10, BLUE);
-  doc.text(`Issued: ${formatDate(input.issueDate || new Date().toISOString())}`, 340, 133, 8.5, MUTED);
-  doc.text(`Booking reference: ${bookingReference}`, 340, 151, 8.5, MUTED);
-  if (input.pricingGroupName) doc.text(`Pricing group: ${clean(input.pricingGroupName)}`, 340, 166, 8.5, MUTED);
+  doc.bold("APRES SCHOOL LIMITED", PAGE.margin, 122, 10.5, INK);
+  doc.text("Finance Email: hello@apres-school.co.uk", PAGE.margin, 139, 8.2, MUTED);
+  doc.text("Website: www.apres-school.co.uk", PAGE.margin, 152, 8.2, MUTED);
 
-  doc.rect(PAGE.margin, 178, pageWidth, 96, PALE_GREEN, LINE);
-  const summaries = [
-    ["TOTAL", money(total, currency)],
-    ["PAID", money(paid, currency)],
-    ["BALANCE", money(balance, currency)],
-    ["STATUS", clean(input.statusLabel || (balance <= 0 ? "Paid" : "Payment arranged"))],
+  doc.rect(344, 116, 209, 124, WHITE, LINE);
+  const metaRows = [
+    ["Invoice date", formatDate(input.issueDate || new Date().toISOString())],
+    ["Booking reference", bookingReference],
+    ["Payment method", paymentMethod],
+    ["Pricing group", pricingGroupName],
   ];
-  summaries.forEach(([label, value], index) => {
-    const x = PAGE.margin + 16 + index * 124;
-    doc.text(label, x, 203, 7.2, MUTED);
-    doc.bold(value, x, 232, index === 3 ? 11 : 16, index === 2 && balance > 0 ? ORANGE : GREEN);
+  metaRows.forEach(([label, value], index) => {
+    const rowY = 134 + index * 27;
+    doc.text(label.toUpperCase(), 360, rowY, 7.2, MUTED);
+    doc.wrap(value, 360, rowY + 12, 170, 8.5, INK, 10.5);
   });
-  doc.text(`Payment: ${clean(input.paymentMethod || "PonchoPay")}`, PAGE.margin + 16, 257, 8, MUTED);
-  if (input.providerReference) doc.text(`Payment reference: ${clean(input.providerReference)}`, 300, 257, 8, MUTED);
 
-  doc.bold("Booked care", PAGE.margin, 306, 12, BLUE);
-  let y = renderTableHeader(322);
-  const rows = lines.length ? lines : [{ date: "-", time: "-", child: "-", description: "Booking details are available in the parent portal", total }];
+  doc.bold("Bill To", PAGE.margin, 252, 12, BLUE);
+  doc.line(PAGE.margin, 262, 286, 262);
+  doc.bold(clean(input.parentName || "Parent or carer"), PAGE.margin, 284, 10, BLUE);
+  doc.text(clean(input.parentEmail || ""), PAGE.margin, 304, 8.6, MUTED);
+
+  doc.bold("Summary", 344, 252, 12, BLUE);
+  doc.line(344, 262, PAGE.width - PAGE.margin, 262);
+  const summaryRows = [
+    ["Standard price", money(gross, currency)],
+    ["Discount", discount > 0 ? `-${money(discount, currency)}` : money(0, currency)],
+    ["Invoice total", money(total, currency)],
+    ["Paid", money(paid, currency)],
+    ["Balance due", money(balance, currency)],
+  ];
+  summaryRows.forEach(([label, value], index) => {
+    const rowY = 284 + index * 21;
+    const highlighted = label === "Invoice total";
+    if (highlighted) doc.rect(344, rowY - 14, 209, 25, PALE_GREEN, LINE);
+    doc.text(label, 360, rowY, highlighted ? 8.8 : 8.2, highlighted ? INK : MUTED);
+    doc.bold(value, 468, rowY, highlighted ? 11.5 : 9, highlighted ? GREEN : label === "Balance due" && balance > 0 ? ORANGE : INK);
+  });
+
+  doc.bold("Care Sessions", PAGE.margin, 390, 12.5, BLUE);
+  let y = renderTableHeader(408);
+  const rows = lines.length ? lines : [{
+    date: "-",
+    time: "-",
+    child: "-",
+    description: "Booking details are available in the parent portal",
+    pricingNote: "",
+    originalTotal: total,
+    discountTotal: 0,
+    total,
+  }];
   rows.forEach((line) => {
-    const height = Math.max(38, Math.max(doc.measureLines(line.description, tableWidths[3] - 14, 8).length, doc.measureLines(line.child, tableWidths[2] - 14, 8).length) * 10 + 18);
+    const height = rowHeightFor(line);
     if (y + height > 748) {
       addHeader(true);
       y = renderTableHeader(110);
@@ -274,11 +321,34 @@ export function buildBookingInvoicePdf(input = {}) {
     y = renderRow(line, y);
   });
 
+  const paymentPanelHeight = 130;
+  if (y + paymentPanelHeight + 24 > tableBottom) {
+    addHeader(true);
+    y = 118;
+  } else {
+    y += 24;
+  }
+  doc.rect(PAGE.margin, y, pageWidth, paymentPanelHeight, SOFT, LINE);
+  doc.bold(balance <= 0 ? "Payment Complete" : "Payment Summary", PAGE.margin + 18, y + 28, 14, BLUE);
+  const paymentRows = [
+    ["Payment method", paymentMethod],
+    ["Status", statusLabel],
+    ["Payment reference", clean(input.providerReference || bookingReference)],
+  ];
+  paymentRows.forEach(([label, value], index) => {
+    const rowY = y + 57 + index * 22;
+    doc.text(label, PAGE.margin + 18, rowY, 8, MUTED);
+    doc.bold(value, PAGE.margin + 134, rowY, 9, INK);
+  });
+  doc.rect(PAGE.width - PAGE.margin - 170, y + 28, 150, 78, WHITE, LINE);
+  doc.text(balance <= 0 ? "Paid" : "Balance Due", PAGE.width - PAGE.margin - 150, y + 53, 8.4, MUTED);
+  doc.bold(money(balance <= 0 ? paid : balance, currency), PAGE.width - PAGE.margin - 150, y + 83, 18, balance <= 0 ? GREEN : ORANGE);
+
   doc.pages.forEach((page, index) => {
     const current = doc.current;
     doc.current = page;
     doc.line(PAGE.margin, 786, PAGE.width - PAGE.margin, 786, LINE);
-    doc.text("Apres School | hello@apres-school.co.uk | www.apres-school.co.uk", PAGE.margin, 808, 8, MUTED);
+    doc.text("Finance contact: hello@apres-school.co.uk | www.apres-school.co.uk", PAGE.margin, 808, 8, MUTED);
     doc.text(`Page ${index + 1} of ${doc.pages.length}`, 500, 808, 8, MUTED);
     doc.current = current;
   });

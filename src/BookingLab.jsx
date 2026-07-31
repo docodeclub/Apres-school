@@ -14752,7 +14752,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         date: row.day,
         time: `${block.start || ""}-${block.end || ""}`.replace(/^-|-$/g, "") || row.time,
         child,
-        description: [block.label || draft.activity || "Care session", draft.site].filter(Boolean).join(" · "),
+        description: [block.label || draft.activity || "Care session", draft.site].filter(Boolean).join(" | "),
+        originalTotal: Number(block.originalPrice ?? block.price ?? row.price / Math.max(1, row.blocks.length) ?? 0),
+        pricingNote: block.pricingLabel || "",
         total: Number(block.price || row.price / Math.max(1, row.blocks.length) || 0),
       }))
     )));
@@ -14765,10 +14767,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       parentName: draft.parentName || activeFamily.parentName,
       parentEmail: draft.parentEmail || activeFamily.email,
       total,
+      grossTotal: Number(draft.grossTotal ?? draft.metadata?.grossTotal ?? total),
+      discountTotal: Number(draft.discountAmount ?? draft.metadata?.discountTotal ?? 0),
       paid,
       balance,
       status: draft.status === "Cancelled" ? "Cancelled" : balance <= 0 ? "Paid" : draft.paymentStatus || draft.invoiceStatus || "Payment arranged",
       paymentMethod: draft.paymentLabel || draft.paymentMethod || draft.paymentRoute || "PonchoPay",
+      pricingGroupName: draft.pricingGroupName || draft.metadata?.pricingGroup || "Standard",
+      providerReference: draft.providerReference || draft.paymentReference || "",
       lines,
     });
   }

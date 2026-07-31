@@ -248,19 +248,28 @@ export function exportBookingInvoicePdf(invoice = {}) {
   const total = Number(invoice.total || rows.reduce((sum, row) => sum + Number(row.total || 0), 0));
   const paid = Number(invoice.paid ?? Math.max(0, total - Number(invoice.balance || 0)));
   const balance = Number(invoice.balance ?? Math.max(0, total - paid));
+  const gross = Number(invoice.grossTotal ?? (rows.reduce((sum, row) => sum + Number(row.originalTotal ?? row.total ?? 0), 0) || total));
+  const discount = Number(invoice.discountTotal ?? Math.max(0, gross - total));
+  const paymentMethod = invoice.paymentMethod || "PonchoPay";
+  const statusLabel = invoice.status || (balance <= 0 ? "Paid" : "Payment arranged");
+  const pricingGroupName = invoice.pricingGroupName || "Standard";
   const doc = new PdfDoc(`Apres School invoice ${reference}`);
-  const tableWidths = [92, 72, 98, 185, 64];
+  const tableWidths = [82, 67, 91, 201, 70];
   const tableWidth = tableWidths.reduce((sum, width) => sum + width, 0);
+  const tableBottom = 744;
+  const lineSize = 8.2;
+  const lineHeight = 10.5;
 
   const addHeader = (continued = false) => {
     doc.addPage();
-    doc.rect(0, 0, PAGE.width, 78, BLUE, null);
-    doc.textBold("Apres School", PAGE.margin, 34, 20, WHITE);
-    doc.text("Let's Learn and Play", PAGE.margin, 53, 8.5, AMBER);
-    doc.textBold("INVOICE", 430, 34, 20, WHITE);
-    doc.text(reference, 430, 54, 9, WHITE);
-    if (continued) doc.text("Continued", 430, 68, 8, WHITE);
+    doc.textBold("Apres School", PAGE.margin, 40, 17, BLUE);
+    doc.text("Let's Learn and Play", PAGE.margin, 58, 8, AMBER);
+    doc.textBold("INVOICE", 430, 40, 20, BLUE);
+    doc.text(reference, 430, 62, 9.5, INK);
+    if (continued) doc.text("Continued", 430, 77, 8, MUTED);
+    doc.line(PAGE.margin, 92, PAGE.width - PAGE.margin, 92);
   };
+
   const tableHeader = (y) => {
     doc.rect(PAGE.margin, y, tableWidth, 28, SOFT, LINE);
     let x = PAGE.margin;
@@ -270,48 +279,108 @@ export function exportBookingInvoicePdf(invoice = {}) {
     });
     return y + 28;
   };
+
+  const rowHeightFor = (row) => {
+    const descriptionLines = doc.measureLines(row.description || "Care session", tableWidths[3] - 14, lineSize);
+    const pricingLines = row.pricingNote ? doc.measureLines(row.pricingNote, tableWidths[3] - 14, 7.2) : [];
+    const childLines = doc.measureLines(row.child || "Child", tableWidths[2] - 14, lineSize);
+    return Math.max(40, Math.max(childLines.length * lineHeight, descriptionLines.length * lineHeight + pricingLines.length * 9) + 18);
+  };
+
   const tableRow = (row, y) => {
-    const values = [row.date || "-", row.time || "-", row.child || "Child", row.description || "Care session", money(row.total)];
-    const height = Math.max(38, Math.max(...values.map((value, index) => doc.measureLines(value, tableWidths[index] - 14, 8).length)) * 10 + 18);
+    const height = rowHeightFor(row);
     doc.rect(PAGE.margin, y, tableWidth, height, WHITE, LINE);
     let x = PAGE.margin;
-    values.forEach((value, index) => {
-      doc.wrap(value, x + 7, y + 16, tableWidths[index] - 14, 8, index === 4 ? BLUE : INK, 10, index === 4 ? "F2" : "F1");
+    [row.date || "-", row.time || "-", row.child || "Child"].forEach((value, index) => {
+      doc.wrap(value, x + 7, y + 16, tableWidths[index] - 14, lineSize, INK, lineHeight);
       x += tableWidths[index];
     });
+    const descriptionLines = doc.measureLines(row.description || "Care session", tableWidths[3] - 14, lineSize);
+    doc.wrap(row.description || "Care session", x + 7, y + 16, tableWidths[3] - 14, lineSize, INK, lineHeight, "F2");
+    if (row.pricingNote) {
+      doc.wrap(row.pricingNote, x + 7, y + 16 + descriptionLines.length * lineHeight + 2, tableWidths[3] - 14, 7.2, MUTED, 9);
+    }
+    x += tableWidths[3];
+    doc.textBold(money(row.total), x + 7, y + 16, lineSize, BLUE);
     return y + height;
   };
 
   addHeader(false);
-  doc.textBold("Billed to", PAGE.margin, 112, 10, BLUE);
-  doc.textBold(invoice.parentName || "Parent or carer", PAGE.margin, 133, 11, INK);
-  doc.text(invoice.parentEmail || "", PAGE.margin, 151, 8.5, MUTED);
-  doc.textBold("Invoice details", 340, 112, 10, BLUE);
-  doc.text(`Issued: ${formatDate(invoice.issueDate || new Date().toISOString())}`, 340, 133, 8.5, MUTED);
-  doc.text(`Booking reference: ${reference}`, 340, 151, 8.5, MUTED);
-  doc.rect(PAGE.margin, 178, tableWidth, 96, PALE_GREEN, LINE);
-  [["TOTAL", money(total)], ["PAID", money(paid)], ["BALANCE", money(balance)], ["STATUS", invoice.status || (balance <= 0 ? "Paid" : "Payment arranged")]].forEach(([label, value], index) => {
-    const x = PAGE.margin + 16 + index * 124;
-    doc.text(label, x, 203, 7.2, MUTED);
-    doc.textBold(value, x, 232, index === 3 ? 11 : 16, index === 2 && balance > 0 ? AMBER : GREEN);
+  doc.textBold("APRES SCHOOL LIMITED", PAGE.margin, 122, 10.5, INK);
+  doc.text("Finance Email: hello@apres-school.co.uk", PAGE.margin, 139, 8.2, MUTED);
+  doc.text("Website: www.apres-school.co.uk", PAGE.margin, 152, 8.2, MUTED);
+
+  doc.rect(344, 116, 209, 124, WHITE, LINE);
+  [
+    ["Invoice date", formatDate(invoice.issueDate || new Date().toISOString())],
+    ["Booking reference", reference],
+    ["Payment method", paymentMethod],
+    ["Pricing group", pricingGroupName],
+  ].forEach(([label, value], index) => {
+    const rowY = 134 + index * 27;
+    doc.text(label.toUpperCase(), 360, rowY, 7.2, MUTED);
+    doc.wrap(value, 360, rowY + 12, 170, 8.5, INK, 10.5);
   });
-  doc.text(`Payment: ${invoice.paymentMethod || "PonchoPay"}`, PAGE.margin + 16, 257, 8, MUTED);
-  doc.textBold("Booked care", PAGE.margin, 306, 12, BLUE);
-  let y = tableHeader(322);
+
+  doc.textBold("Bill To", PAGE.margin, 252, 12, BLUE);
+  doc.line(PAGE.margin, 262, 286, 262);
+  doc.textBold(invoice.parentName || "Parent or carer", PAGE.margin, 284, 10, BLUE);
+  doc.text(invoice.parentEmail || "", PAGE.margin, 304, 8.6, MUTED);
+
+  doc.textBold("Summary", 344, 252, 12, BLUE);
+  doc.line(344, 262, PAGE.width - PAGE.margin, 262);
+  [
+    ["Standard price", money(gross)],
+    ["Discount", discount > 0 ? `-${money(discount)}` : money(0)],
+    ["Invoice total", money(total)],
+    ["Paid", money(paid)],
+    ["Balance due", money(balance)],
+  ].forEach(([label, value], index) => {
+    const rowY = 284 + index * 21;
+    const highlighted = label === "Invoice total";
+    if (highlighted) doc.rect(344, rowY - 14, 209, 25, PALE_GREEN, LINE);
+    doc.text(label, 360, rowY, highlighted ? 8.8 : 8.2, highlighted ? INK : MUTED);
+    doc.textBold(value, 468, rowY, highlighted ? 11.5 : 9, highlighted ? GREEN : label === "Balance due" && balance > 0 ? AMBER : INK);
+  });
+
+  doc.textBold("Care Sessions", PAGE.margin, 390, 12.5, BLUE);
+  let y = tableHeader(408);
   (rows.length ? rows : [{ description: "Booking details are available in the parent portal", total }]).forEach((row) => {
-    const values = [row.date || "-", row.time || "-", row.child || "Child", row.description || "Care session", money(row.total)];
-    const height = Math.max(38, Math.max(...values.map((value, index) => doc.measureLines(value, tableWidths[index] - 14, 8).length)) * 10 + 18);
-    if (y + height > 748) {
+    const height = rowHeightFor(row);
+    if (y + height > tableBottom) {
       addHeader(true);
       y = tableHeader(110);
     }
     y = tableRow(row, y);
   });
+
+  const paymentPanelHeight = 130;
+  if (y + paymentPanelHeight + 24 > tableBottom) {
+    addHeader(true);
+    y = 118;
+  } else {
+    y += 24;
+  }
+  doc.rect(PAGE.margin, y, tableWidth, paymentPanelHeight, SOFT, LINE);
+  doc.textBold(balance <= 0 ? "Payment Complete" : "Payment Summary", PAGE.margin + 18, y + 28, 14, BLUE);
+  [
+    ["Payment method", paymentMethod],
+    ["Status", statusLabel],
+    ["Payment reference", invoice.providerReference || reference],
+  ].forEach(([label, value], index) => {
+    const rowY = y + 57 + index * 22;
+    doc.text(label, PAGE.margin + 18, rowY, 8, MUTED);
+    doc.textBold(value, PAGE.margin + 134, rowY, 9, INK);
+  });
+  doc.rect(PAGE.width - PAGE.margin - 170, y + 28, 150, 78, WHITE, LINE);
+  doc.text(balance <= 0 ? "Paid" : "Balance Due", PAGE.width - PAGE.margin - 150, y + 53, 8.4, MUTED);
+  doc.textBold(money(balance <= 0 ? paid : balance), PAGE.width - PAGE.margin - 150, y + 83, 18, balance <= 0 ? GREEN : AMBER);
+
   doc.pages.forEach((page, index) => {
     const previous = doc.current;
     doc.current = page;
     doc.line(PAGE.margin, 786, PAGE.width - PAGE.margin, 786, LINE);
-    doc.text("Apres School | hello@apres-school.co.uk | www.apres-school.co.uk", PAGE.margin, 808, 8, MUTED);
+    doc.text("Finance contact: hello@apres-school.co.uk | www.apres-school.co.uk", PAGE.margin, 808, 8, MUTED);
     doc.text(`Page ${index + 1} of ${doc.pages.length}`, 500, 808, 8, MUTED);
     doc.current = previous;
   });
