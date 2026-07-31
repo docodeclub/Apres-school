@@ -939,16 +939,27 @@ function basketPricingSignatureForItems(items = []) {
 
 async function resolveLiveBasketSessionBlocks(items = []) {
   if (!items.length || items.every((item) => isUuid(item.sessionBlockId))) return items;
-  const firstDate = items.map((item) => item.sessionDate || labDayIso(item.day)).filter(Boolean).sort()[0];
-  if (!firstDate) throw new Error("A basket session is missing its date. Remove it and add it again.");
-  const liveSessions = await fetchBookableSessions({ from: new Date(`${firstDate}T00:00:00`), limit: 500 });
+  const basketDates = items.map((item) => item.sessionDate || labDayIso(item.day)).filter(Boolean).sort();
+  const firstDate = basketDates[0];
+  const lastDate = basketDates.at(-1);
+  const siteName = items.find((item) => item.site)?.site || "";
+  if (!firstDate || !lastDate) throw new Error("A basket session is missing its date. Remove it and add it again.");
+  const liveSessions = await fetchBookableSessions({
+    from: new Date(`${firstDate}T00:00:00`),
+    to: new Date(`${lastDate}T23:59:59`),
+    siteName,
+    limit: 1000,
+  });
   return items.map((item) => {
     if (isUuid(item.sessionBlockId)) return item;
     const sessionDate = item.sessionDate || labDayIso(item.day);
-    const liveSession = liveSessions.find((session) => (
+    const matchingSessions = liveSessions.filter((session) => (
       String(session.site?.name || "").trim().toLowerCase() === String(item.site || "").trim().toLowerCase()
       && String(session.startsAt || "").slice(0, 10) === sessionDate
     ));
+    const liveSession = matchingSessions.find((session) => session.blocks?.some((block) => (
+      String(block.label || "").trim().toLowerCase() === String(item.sessionLabel || "").trim().toLowerCase()
+    )));
     const liveBlock = liveSession?.blocks?.find((block) => (
       String(block.label || "").trim().toLowerCase() === String(item.sessionLabel || "").trim().toLowerCase()
     ));

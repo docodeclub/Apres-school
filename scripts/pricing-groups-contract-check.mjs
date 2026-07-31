@@ -37,7 +37,7 @@ const checks = [
   [invoice.includes("Pricing group:") && invoice.includes("pricingLabel"), "invoice pricing transparency"],
   [bookingLab.includes("lab-active-pricing-benefit") && bookingLab.includes("Final price is confirmed after you choose dates and sessions"), "activity-level parent benefit preview"],
   [bookingLab.includes("pricingQuoteLoading") && bookingLab.includes("Checking your tier price") && bookingLab.includes("const basketPricingQuote = pricingQuote?.signature === basketPricingSignature"), "basket prices quote and display before checkout"],
-  [bookingLab.includes("resolveLiveBasketSessionBlocks") && bookingLab.includes("fetchBookableSessions") && bookingLab.includes("liveBlock.id"), "prototype basket rows resolve to live session blocks before pricing"],
+  [bookingLab.includes("resolveLiveBasketSessionBlocks") && bookingLab.includes("fetchBookableSessions") && bookingLab.includes("matchingSessions.find") && bookingLab.includes("session.blocks?.some") && bookingLab.includes("liveBlock.id"), "prototype basket rows resolve the matching activity block when a site has multiple sessions on one date"],
   [bookingLab.includes("confirmedWithoutPayment") && bookingLab.includes("confirmed_without_payment") && bookingLab.includes("No payment link is required"), "fully discounted bookings never open a payment fallback"],
   [createBooking.includes("zeroBalanceBooking") && createBooking.includes('status: "confirmed"') && createBooking.includes('due_today: 0'), "zero-balance backend fallback confirms without PonchoPay"],
   [bookingLab.includes("bookingRequiresNoPayment") && bookingLab.includes("Confirm free booking") && bookingLab.includes("No PonchoPay step or card guarantee"), "free-booking checkout clearly bypasses PonchoPay"],

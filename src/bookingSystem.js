@@ -869,10 +869,11 @@ export async function updateOwnParentPassword({ currentPassword, newPassword } =
   return data;
 }
 
-export async function fetchBookableSessions({ from = new Date(), limit = 120 } = {}) {
+export async function fetchBookableSessions({ from = new Date(), to = null, siteName = "", limit = 120 } = {}) {
   assertSupabase();
   const fromIso = from instanceof Date ? from.toISOString() : new Date(from).toISOString();
-  const { data, error } = await supabase
+  const toIso = to ? (to instanceof Date ? to.toISOString() : new Date(to).toISOString()) : "";
+  let query = supabase
     .from("sessions")
     .select(`
       id,
@@ -888,11 +889,11 @@ export async function fetchBookableSessions({ from = new Date(), limit = 120 } =
       amendment_hours,
       booking_cutoff_hours,
       eligibility,
-      programmes(
+      programmes!inner(
         id,
         name,
         category,
-        locations(id, name, area)
+        locations!inner(id, name, area)
       ),
       session_blocks(
         id,
@@ -906,7 +907,12 @@ export async function fetchBookableSessions({ from = new Date(), limit = 120 } =
       )
     `)
     .eq("parent_bookable", true)
-    .gte("starts_at", fromIso)
+    .gte("starts_at", fromIso);
+
+  if (toIso) query = query.lte("starts_at", toIso);
+  if (siteName) query = query.eq("programmes.locations.name", siteName);
+
+  const { data, error } = await query
     .order("starts_at", { ascending: true })
     .limit(limit);
 
