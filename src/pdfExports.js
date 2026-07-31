@@ -13,16 +13,19 @@ const PALE_GREEN = [0.92, 0.98, 0.95];
 
 function clean(value) {
   return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFC")
     .replace(/[’‘]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/[–—]/g, "-")
-    .replace(/[^\x20-\x7E£]/g, "");
+    .replace(/[^\x20-\x7E\u00A0-\u00FF]/g, "");
 }
 
 function escapePdf(value) {
-  return clean(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)").replace(/£/g, "\\243");
+  return clean(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/[\u00A0-\u00FF]/g, (character) => `\\${character.charCodeAt(0).toString(8).padStart(3, "0")}`);
 }
 
 function dateStamp() {
@@ -153,7 +156,7 @@ class PdfDoc {
   }
 
   pageHeader(documentType, meta) {
-    this.text("Apres School", PAGE.margin, 38, 17, BLUE);
+    this.text("Après School", PAGE.margin, 38, 17, BLUE);
     this.text("Let's Learn and Play", PAGE.margin, 55, 8, AMBER);
     this.text(`Document: ${documentType}`, 370, 38, 9, MUTED);
     this.text(`Generated: ${dateStamp()}`, 370, 52, 9, MUTED);
@@ -200,8 +203,8 @@ class PdfDoc {
       objects.push(body);
       return objects.length;
     };
-    const fontId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-    const boldFontId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+    const fontId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+    const boldFontId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
     const pageIds = [];
     this.pages.forEach((page) => {
       const stream = page.join("\n");
@@ -262,7 +265,7 @@ export function exportBookingInvoicePdf(invoice = {}) {
 
   const addHeader = (continued = false) => {
     doc.addPage();
-    doc.textBold("Apres School", PAGE.margin, 40, 17, BLUE);
+    doc.textBold("Après School", PAGE.margin, 40, 17, BLUE);
     doc.text("Let's Learn and Play", PAGE.margin, 58, 8, AMBER);
     doc.textBold("INVOICE", 430, 40, 20, BLUE);
     doc.text(reference, 430, 62, 9.5, INK);
@@ -1235,7 +1238,7 @@ export function exportFinanceInvoicePdf(invoice = {}, customer = {}, settings = 
 
   const addInvoiceHeader = (continued = false) => {
     doc.addPage();
-    doc.textBold("Apres School", PAGE.margin, 40, 17, BLUE);
+    doc.textBold("Après School", PAGE.margin, 40, 17, BLUE);
     doc.text("Let's Learn and Play", PAGE.margin, 58, 8, AMBER);
     doc.textBold("INVOICE", 430, 40, 20, BLUE);
     doc.text(invoiceNumber, 430, 62, 9.5, INK);

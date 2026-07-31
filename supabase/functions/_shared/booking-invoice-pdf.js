@@ -12,16 +12,19 @@ const WHITE = [1, 1, 1];
 
 function clean(value) {
   return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFC")
     .replace(/[’‘]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/[–—]/g, "-")
-    .replace(/[^\x20-\x7E£]/g, "");
+    .replace(/[^\x20-\x7E\u00A0-\u00FF]/g, "");
 }
 
 function escapePdf(value) {
-  return clean(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)").replace(/£/g, "\\243");
+  return clean(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/[\u00A0-\u00FF]/g, (character) => `\\${character.charCodeAt(0).toString(8).padStart(3, "0")}`);
 }
 
 function money(value, currency = "GBP") {
@@ -127,8 +130,8 @@ class PdfDoc {
       objects.push(body);
       return objects.length;
     };
-    const font = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-    const bold = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+    const font = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+    const bold = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
     const pageIds = [];
     this.pages.forEach((page) => {
       const stream = page.join("\n");
@@ -218,7 +221,7 @@ export function buildBookingInvoicePdf(input = {}) {
 
   const addHeader = (continued = false) => {
     doc.addPage();
-    doc.bold("Apres School", PAGE.margin, 40, 17, BLUE);
+    doc.bold("Après School", PAGE.margin, 40, 17, BLUE);
     doc.text("Let's Learn and Play", PAGE.margin, 58, 8, ORANGE);
     doc.bold("INVOICE", 430, 40, 20, BLUE);
     doc.text(invoiceNumber, 430, 62, 9.5, INK);
