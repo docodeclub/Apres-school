@@ -450,6 +450,35 @@ export async function fetchPricingGroupCatalogue() {
   return { groups: groups.data || [], rules: rules.data || [], schools: schools.data || [], programmes: programmes.data || [], assignments: [], overrides: [], events: [], parents: [], adjustments: [] };
 }
 
+export async function fetchPricingGroupFinanceData() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const [groupsResult, assignmentsResult] = await Promise.all([
+    supabase.from("pricing_groups").select("id,name,status,is_default,created_at,updated_at").is("deleted_at", null).order("name"),
+    supabase.from("parent_pricing_assignments").select("id,pricing_group_id,parent_account_id,effective_from,effective_to").is("deleted_at", null).order("effective_from", { ascending: false }),
+  ]);
+  if (groupsResult.error) throw groupsResult.error;
+  if (assignmentsResult.error) throw assignmentsResult.error;
+
+  const adjustments = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const result = await supabase
+      .from("booking_pricing_adjustments")
+      .select("id,booking_id,booking_item_id,parent_account_id,pricing_group_id,pricing_group_name,original_line_total,discount_amount,final_line_total,created_at,bookings(booking_reference,status,outstanding_balance),booking_items(status,starts_at),locations(name)")
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (result.error) throw result.error;
+    adjustments.push(...(result.data || []));
+    if ((result.data || []).length < pageSize) break;
+  }
+
+  return {
+    groups: groupsResult.data || [],
+    assignments: assignmentsResult.data || [],
+    adjustments,
+  };
+}
+
 export async function savePricingGroup(input) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const actorId = await pricingActorId();

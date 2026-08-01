@@ -4905,7 +4905,7 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
   );
 }
 
-const financeSections = ["Dashboard", "Invoices", "Customers", "Credit Notes", "Reports", "Settings"];
+const financeSections = ["Dashboard", "Invoices", "Customers", "Pricing Groups", "Credit Notes", "Reports", "Settings"];
 const financeVatRates = ["No VAT", "Exempt", "Zero Rated", "Standard Rated"];
 const financeServiceTypes = ["School trip", "Sports day staffing", "PPA cover", "Supply staff", "One-off event", "Consultancy", "Holiday camp", "Venue hire", "Ad-hoc service"];
 const financeChaseStatuses = ["Not started", "Emailed", "Awaiting response", "Query raised", "Payment promised"];
@@ -5051,6 +5051,11 @@ function SchoolFinance({ data, access }) {
   const canManageFinance = access?.role === "Superadmin" || access?.role === "Admin";
   const [view, setView] = useState("Dashboard");
   const [finance, setFinance] = useState(() => emptySchoolFinanceData(data));
+  const [pricingFinance, setPricingFinance] = useState({ groups: [], assignments: [], adjustments: [] });
+  const [pricingFinanceStatus, setPricingFinanceStatus] = useState("Loading pricing-group performance...");
+  const [pricingFinanceLoaded, setPricingFinanceLoaded] = useState(false);
+  const [pricingPeriod, setPricingPeriod] = useState("all");
+  const [pricingQuery, setPricingQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Loading finance records...");
   const [query, setQuery] = useState("");
@@ -5104,6 +5109,33 @@ function SchoolFinance({ data, access }) {
     return () => { active = false; };
   }, [canViewFinance, data]);
 
+  useEffect(() => {
+    if (view !== "Pricing Groups" || !canViewFinance || pricingFinanceLoaded) return undefined;
+    let active = true;
+    if (!hasSupabaseConfig) {
+      setPricingFinanceStatus("Pricing-group performance is unavailable in demo mode.");
+      setPricingFinanceLoaded(true);
+      return undefined;
+    }
+    setPricingFinanceStatus("Loading pricing-group performance...");
+    loadSupabaseModule()
+      .then(({ fetchPricingGroupFinanceData }) => fetchPricingGroupFinanceData())
+      .then((result) => {
+        if (!active) return;
+        setPricingFinance(result);
+        setPricingFinanceStatus("Live booking values loaded from the pricing ledger.");
+      })
+      .catch((error) => {
+        if (!active) return;
+        setPricingFinance({ groups: [], assignments: [], adjustments: [] });
+        setPricingFinanceStatus(error?.message || "Pricing-group performance could not load.");
+      })
+      .finally(() => {
+        if (active) setPricingFinanceLoaded(true);
+      });
+    return () => { active = false; };
+  }, [view, canViewFinance, pricingFinanceLoaded]);
+
   const customers = finance.customers || [];
   const invoices = finance.invoices || [];
   const selectedInvoice = invoices.find((invoice) => invoice.id === selectedInvoiceId) || invoices[0] || null;
@@ -5117,6 +5149,7 @@ function SchoolFinance({ data, access }) {
   const activeDashboardFilter = dashboardFilterOptions.find((option) => option.id === dashboardInvoiceFilter) || dashboardFilterOptions[0];
   const debtorSummary = buildFinanceDebtorSummary(invoices, customers);
   const reports = calculateSchoolFinanceReports(invoices, customers, finance.locations || []);
+  const pricingGroupPerformance = buildPricingGroupFinancePerformance(pricingFinance, pricingPeriod, pricingQuery);
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId) || customers[0] || null;
   const selectedCustomerActivity = selectedCustomer ? buildFinanceCustomerActivity(selectedCustomer, invoices, finance.audit || finance.auditEvents || []) : [];
 
@@ -5697,6 +5730,61 @@ function SchoolFinance({ data, access }) {
         </div>
       )}
 
+      {view === "Pricing Groups" && (
+        <section className="section-card finance-pricing-groups">
+          <div className="finance-toolbar">
+            <div>
+              <p className="eyebrow">Customer pricing</p>
+              <h2>Pricing-group performance</h2>
+              <p className="muted">Track what families in each group have spent and how much their pricing benefits have saved them.</p>
+            </div>
+            <div className="finance-toolbar-actions finance-pricing-filters">
+              <input value={pricingQuery} onChange={(event) => setPricingQuery(event.target.value)} placeholder="Search pricing group" aria-label="Search pricing groups" />
+              <select value={pricingPeriod} onChange={(event) => setPricingPeriod(event.target.value)} aria-label="Pricing-group reporting period">
+                <option value="all">All time</option>
+                <option value="month">This month</option>
+                <option value="year">This calendar year</option>
+                <option value="academic">This academic year</option>
+                <option value="twelve_months">Last 12 months</option>
+              </select>
+              <button type="button" className="button secondary" disabled={!pricingFinanceLoaded} onClick={() => downloadCsv("apres-pricing-group-performance.csv", pricingGroupPerformance.csvRows)}>Export CSV</button>
+            </div>
+          </div>
+
+          <div className="finance-pricing-summary" aria-label="Pricing-group totals">
+            <article><span>Customer spend</span><strong>{formatCurrency(pricingGroupPerformance.totals.spent)}</strong><small>After group savings</small></article>
+            <article><span>Total saved</span><strong>{formatCurrency(pricingGroupPerformance.totals.saved)}</strong><small>Benefits given to families</small></article>
+            <article><span>Standard value</span><strong>{formatCurrency(pricingGroupPerformance.totals.original)}</strong><small>Value before discounts</small></article>
+            <article><span>Active families</span><strong>{pricingGroupPerformance.totals.activeFamilies}</strong><small>Current group assignments</small></article>
+          </div>
+
+          <div className="finance-pricing-note"><Badge value="Live ledger" /><span>{pricingFinanceStatus} Cancelled, draft and waitlist bookings are excluded.</span></div>
+
+          <TableWrap>
+            <table className="finance-pricing-table">
+              <thead><tr><th>Pricing group</th><th>Active families</th><th>Bookings</th><th>Standard value</th><th>Customer spend</th><th>Saved</th><th>Average saving</th><th>Outstanding</th></tr></thead>
+              <tbody>
+                {pricingGroupPerformance.rows.map((row) => (
+                  <tr key={row.id}>
+                    <td><strong>{row.name}</strong><br /><span className="muted">{row.status === "active" ? "Active" : "Archived"}{row.isDefault ? " · Default" : ""}</span></td>
+                    <td>{row.activeFamilies}</td>
+                    <td>{row.bookingCount}<br /><span className="muted">{row.lineCount} priced line{row.lineCount === 1 ? "" : "s"}</span></td>
+                    <td>{formatCurrency(row.original)}</td>
+                    <td><strong>{formatCurrency(row.spent)}</strong></td>
+                    <td><span className={row.saved > 0 ? "finance-pricing-saving" : "muted"}>{formatCurrency(row.saved)}</span></td>
+                    <td>{formatCurrency(row.averageSaving)}</td>
+                    <td>{formatCurrency(row.outstanding)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!pricingFinanceLoaded
+              ? <EmptyList title="Loading pricing-group performance" text="Reading confirmed booking values from the pricing ledger." />
+              : !pricingGroupPerformance.rows.length && <EmptyList title="No pricing-group activity" text="No qualifying booking activity matches this period or search." />}
+          </TableWrap>
+        </section>
+      )}
+
       {view === "Credit Notes" && (
         <section className="section-card">
           <p className="eyebrow">Credit notes</p>
@@ -6007,6 +6095,78 @@ function FinanceReport({ title, rows }) {
       {!rows.length && <p className="muted">No data yet.</p>}
     </div>
   );
+}
+
+function pricingFinancePeriodStart(period, now = new Date()) {
+  if (period === "month") return new Date(now.getFullYear(), now.getMonth(), 1);
+  if (period === "year") return new Date(now.getFullYear(), 0, 1);
+  if (period === "academic") return new Date(now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1, 8, 1);
+  if (period === "twelve_months") return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+  return null;
+}
+
+function buildPricingGroupFinancePerformance(data = {}, period = "all", query = "") {
+  const groups = data.groups || [];
+  const assignments = data.assignments || [];
+  const periodStart = pricingFinancePeriodStart(period);
+  const today = new Date().toISOString().slice(0, 10);
+  const search = String(query || "").trim().toLowerCase();
+  const validBookingStatuses = new Set(["confirmed", "payment_pending", "payment_plan_active"]);
+  const currentAssignments = assignments.filter((item) => item.effective_from <= today && (!item.effective_to || item.effective_to >= today));
+  const memberSets = currentAssignments.reduce((map, item) => {
+    if (!map.has(item.pricing_group_id)) map.set(item.pricing_group_id, new Set());
+    map.get(item.pricing_group_id).add(item.parent_account_id);
+    return map;
+  }, new Map());
+
+  const validAdjustments = (data.adjustments || []).filter((item) => {
+    const booking = Array.isArray(item.bookings) ? item.bookings[0] : item.bookings;
+    const bookingItem = Array.isArray(item.booking_items) ? item.booking_items[0] : item.booking_items;
+    if (!item.pricing_group_id || !validBookingStatuses.has(String(booking?.status || "").toLowerCase())) return false;
+    if (["cancelled", "waitlist"].includes(String(bookingItem?.status || "").toLowerCase())) return false;
+    const activityDate = bookingItem?.starts_at || item.created_at;
+    return !periodStart || (activityDate && new Date(activityDate) >= periodStart);
+  });
+
+  const rows = groups.map((group) => {
+    const items = validAdjustments.filter((item) => item.pricing_group_id === group.id);
+    const bookings = new Map();
+    items.forEach((item) => {
+      const booking = Array.isArray(item.bookings) ? item.bookings[0] : item.bookings;
+      if (item.booking_id && !bookings.has(item.booking_id)) bookings.set(item.booking_id, booking || {});
+    });
+    const original = items.reduce((sum, item) => sum + Number(item.original_line_total || 0), 0);
+    const saved = items.reduce((sum, item) => sum + Number(item.discount_amount || 0), 0);
+    const spent = items.reduce((sum, item) => sum + Number(item.final_line_total || 0), 0);
+    const outstanding = [...bookings.values()].reduce((sum, booking) => sum + Number(booking?.outstanding_balance || 0), 0);
+    return {
+      id: group.id,
+      name: group.name,
+      status: group.status,
+      isDefault: Boolean(group.is_default),
+      activeFamilies: memberSets.get(group.id)?.size || 0,
+      bookingCount: bookings.size,
+      lineCount: items.length,
+      original,
+      saved,
+      spent,
+      averageSaving: items.length ? saved / items.length : 0,
+      outstanding,
+    };
+  }).filter((row) => !search || row.name.toLowerCase().includes(search));
+
+  rows.sort((a, b) => b.spent - a.spent || b.saved - a.saved || a.name.localeCompare(b.name));
+  const totals = rows.reduce((summary, row) => ({
+    original: summary.original + row.original,
+    spent: summary.spent + row.spent,
+    saved: summary.saved + row.saved,
+    activeFamilies: summary.activeFamilies + row.activeFamilies,
+  }), { original: 0, spent: 0, saved: 0, activeFamilies: 0 });
+  const csvRows = [
+    ["Pricing group", "Status", "Active families", "Bookings", "Priced lines", "Standard value", "Customer spend", "Saved", "Average saving per line", "Outstanding"],
+    ...rows.map((row) => [row.name, row.status, row.activeFamilies, row.bookingCount, row.lineCount, row.original.toFixed(2), row.spent.toFixed(2), row.saved.toFixed(2), row.averageSaving.toFixed(2), row.outstanding.toFixed(2)]),
+  ];
+  return { rows, totals, csvRows };
 }
 
 function emptySchoolFinanceData(data = {}) {
