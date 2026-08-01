@@ -22241,7 +22241,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
 
         <div className="lab-booking-panel">
           {(!isLaunchMode || (launchParentPortalOpen && !launchBookingActive)) && <section className={`lab-parent-portal${isLaunchMode && parentAccountSignedIn ? ` has-account-sections account-section-${launchAccountSection.toLowerCase()}` : ""}`}>
-            {isLaunchMode && parentAccountSignedIn && launchAccountSection === "Overview" && (
+            {isLaunchMode && parentAccountSignedIn && (
               <section className="lab-parent-booking-cta" aria-label="Make a booking">
                 <div>
                   <p className="eyebrow">Book care</p>
