@@ -2732,7 +2732,7 @@ function Footer({ setPage }) {
         <div className="footer-column" key={heading}>
           <h3>{heading}</h3>
           {links.map((link) => <button key={link} type="button" onClick={() => setPage(link)}>{link}</button>)}
-          {heading === "Parents" && <a className="footer-beta-link" href="/launch-booking">Book care</a>}
+          {heading === "Parents" && <a className="footer-beta-link" href="/launch-booking">Make a booking</a>}
         </div>
       ))}
       <div className="footer-contact">
