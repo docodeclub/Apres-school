@@ -1121,7 +1121,7 @@ function Header({ page, setPage, platform, setPlatform, platformUnlocked, menu, 
         {!platform && <button className="nav-staff-login" type="button" onClick={() => { setPlatform(true); setMenu(false); }}>Staff Login</button>}
         {platform && platformUnlocked && <span className="secure-label">Signed in</span>}
       </nav>
-      <button className="button book" type="button" onClick={() => platform ? setPlatform(false) : setPage("Launch Booking")}>
+      <button className={`button book${platform ? "" : " header-book-cta"}`} type="button" onClick={() => platform ? setPlatform(false) : setPage("Launch Booking")}>
         {platform ? "Public Website" : "Book Now"}
       </button>
       {!platform && <button className="button staff-login" type="button" onClick={() => setPlatform(true)}>Staff Login</button>}
