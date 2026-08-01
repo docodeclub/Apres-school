@@ -356,7 +356,7 @@ footer button {
   isolation: isolate;
   border: 2px solid transparent;
   background:
-    linear-gradient(135deg, var(--royal-dark), var(--royal)) padding-box,
+    linear-gradient(var(--royal), var(--royal)) padding-box,
     conic-gradient(
       from var(--book-glow-angle),
       #263fa9 0deg,
@@ -376,7 +376,7 @@ footer button {
   content: "";
   position: absolute;
   z-index: -1;
-  inset: -5px;
+  inset: -2px;
   border-radius: inherit;
   background: conic-gradient(
     from var(--book-glow-angle),
@@ -387,8 +387,8 @@ footer button {
     rgba(124, 85, 232, 0.62),
     rgba(38, 63, 169, 0.12)
   );
-  filter: blur(8px);
-  opacity: 0.58;
+  filter: blur(3px);
+  opacity: 0.28;
   pointer-events: none;
 }
 
@@ -18234,6 +18234,56 @@ th {
 @media (max-width: 620px) {
   body {
     padding-bottom: 82px;
+  }
+
+  .camp-announcement {
+    align-items: start;
+    padding:
+      max(8px, env(safe-area-inset-top))
+      8px
+      max(8px, env(safe-area-inset-bottom));
+    overflow: hidden;
+  }
+
+  .camp-announcement-card {
+    display: block;
+    width: 100%;
+    min-height: 0;
+    max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 16px;
+  }
+
+  .camp-announcement-card .announcement-close {
+    position: sticky;
+    top: 8px;
+    display: block;
+    margin: 8px 8px -46px auto;
+  }
+
+  .camp-announcement-card .announcement-copy {
+    gap: 9px;
+    padding: 18px 16px 16px;
+  }
+
+  .camp-announcement-card .announcement-copy h2 {
+    max-width: calc(100% - 42px);
+    font-size: clamp(1.6rem, 7.4vw, 2rem);
+    line-height: 1.04;
+  }
+
+  .camp-announcement-card .announcement-copy p {
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+
+  .camp-announcement-card .announcement-copy .hero-actions {
+    margin-top: 4px;
+  }
+
+  .camp-announcement-card .announcement-theme-panel {
+    display: none;
   }
 
   .site-header {
@@ -36902,7 +36952,7 @@ th {
   border: 2px solid transparent;
   border-radius: 16px;
   background:
-    linear-gradient(135deg, var(--royal-dark), var(--royal)) padding-box,
+    linear-gradient(var(--royal), var(--royal)) padding-box,
     conic-gradient(
       from var(--book-glow-angle),
       #263fa9 0deg,
@@ -36925,7 +36975,7 @@ th {
   content: "";
   position: absolute;
   z-index: -1;
-  inset: -5px;
+  inset: -2px;
   border-radius: inherit;
   background: conic-gradient(
     from var(--book-glow-angle),
@@ -36936,8 +36986,8 @@ th {
     rgba(124, 85, 232, 0.62),
     rgba(38, 63, 169, 0.12)
   );
-  filter: blur(8px);
-  opacity: 0.58;
+  filter: blur(3px);
+  opacity: 0.28;
   pointer-events: none;
 }
 
