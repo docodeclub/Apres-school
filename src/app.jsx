@@ -1972,7 +1972,10 @@ function HolidayClubs({ setPage }) {
                   <span>{site.area}</span>
                   <span>{site.ages}</span>
                 </div>
-                <a className="button book" href={site.url} aria-label={`Start an Après School booking for ${site.title}`}>Start booking</a>
+                <p className="camp-site-context-links">
+                  Read our <a href="/policies" onClick={(event) => handlePublicPageLink(event, "Policies", setPage)}>holiday-club policies and safeguarding information</a>, then <a href={site.url}>book {holidayVenueName(site.title)} through your family account</a>.
+                </p>
+                <a className="button book" href={site.url} aria-label={`Start an Après School booking for ${site.title}`}>Book {holidayVenueName(site.title)}</a>
               </div>
             </article>
           ))}
@@ -2035,6 +2038,10 @@ function HolidayResponsiveImage({ src, alt, width, height, sizes, className, loa
 
 function holidayCampBookingUrl(site) {
   return site?.url || FAMILY_BOOKING_URL;
+}
+
+function holidayVenueName(title) {
+  return title.replace(/^Holiday (?:Camp|Enrichment) at /, "");
 }
 
 function Wraparound({ setPage }) {
@@ -2468,7 +2475,8 @@ function Schools({ setPage }) {
           <p className="eyebrow">School partnerships</p>
           <h2>Extend your provision without stretching your school team.</h2>
           <p>
-            Après School runs warm, organised wraparound care, holiday camps and enrichment with the safeguarding mindset,
+            Après School runs warm, organised <a className="contextual-link" href="/wraparound" onClick={(event) => handlePublicPageLink(event, "Wraparound", setPage)}>wraparound care for schools and families</a>,
+            {" "}<a className="contextual-link" href="/holiday-clubs" onClick={(event) => handlePublicPageLink(event, "Holiday Clubs", setPage)}>holiday clubs across five school venues</a> and enrichment with the safeguarding mindset,
             parent communication and operational discipline schools need behind the scenes.
           </p>
           <div className="school-hero-actions">
@@ -2519,7 +2527,7 @@ function Schools({ setPage }) {
           <h2>Friendly for families. Reassuring for school leaders.</h2>
           <p>
             The visible experience is active, creative and child-centred. Behind it sits a practical operating
-            structure for staffing, compliance, policies, scheduling and follow-up, so your extended provision feels like an asset rather than another burden.
+            structure for staffing, compliance, scheduling and follow-up. Our <a className="contextual-link" href="/policies" onClick={(event) => handlePublicPageLink(event, "Policies", setPage)}>safeguarding and operational policies</a> explain the standards behind that provision, so it feels like an asset rather than another burden.
           </p>
         </div>
         <div className="assurance-list">

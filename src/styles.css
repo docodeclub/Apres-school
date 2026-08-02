@@ -349,6 +349,19 @@ footer button {
   transform: translateY(-1px);
 }
 
+.contextual-link {
+  color: inherit;
+  font-weight: 900;
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.1em;
+  text-underline-offset: 0.16em;
+}
+
+.contextual-link:hover,
+.contextual-link:focus-visible {
+  text-decoration-thickness: 0.16em;
+}
+
 .site-header .button {
   min-width: 120px;
   white-space: nowrap;
@@ -2548,6 +2561,28 @@ summary {
 .camp-site-copy .button {
   justify-self: start;
   align-self: flex-start;
+}
+
+.camp-site-context-links {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  color: #45506c;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.camp-site-context-links a {
+  color: var(--royal-dark);
+  font-weight: 900;
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.09em;
+  text-underline-offset: 0.15em;
+}
+
+.camp-site-context-links a:hover,
+.camp-site-context-links a:focus-visible {
+  color: var(--royal);
+  text-decoration-thickness: 0.15em;
 }
 
 .camp-gallery {

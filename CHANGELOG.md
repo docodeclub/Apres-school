@@ -12,6 +12,7 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Added
 
+- Descriptive in-paragraph links between school partnerships, wraparound care, holiday clubs, venue booking routes and relevant policies.
 - Semantic responsive imagery on the Holiday Clubs page, with descriptive alt text, intrinsic dimensions, responsive sources and intentional loading priority.
 - Build-time static generation of the complete content, navigation and footer for every indexable public page.
 - SEO regression checks that require substantial pre-rendered copy, heading structure and full-site internal linking on every public route.

@@ -67,6 +67,14 @@ check(holidayImages.length >= 9, "holiday-clubs exposes venue and activity photo
 check(holidayImages.every((image) => /\balt="[^"]+"/.test(image) && /\bwidth="\d+"/.test(image) && /\bheight="\d+"/.test(image)), "holiday-clubs images have useful alt text and intrinsic dimensions");
 check(holidayImages.every((image) => /\bsrcSet="[^"]+\s480w[^\"]+\s800w[^\"]+\s1600w"/.test(image) && /\bsizes="[^"]+"/.test(image)), "holiday-clubs images expose responsive sources and sizes");
 check(holidayImages.some((image) => /loading="eager"/.test(image) && /fetchpriority="high"/.test(image)) && holidayImages.filter((image) => /loading="lazy"/.test(image)).length >= 8, "holiday-clubs prioritises its hero image and lazy-loads later photography");
+const venueCards = holidayMain.match(/<article class="camp-site-card">[\s\S]*?<\/article>/g) || [];
+check(venueCards.length === 5 && venueCards.every((card) => /href="\/policies"/.test(card) && /href="\/launch-booking\?school=/.test(card)), "every holiday venue links contextually to its booking route and policies");
+check(venueCards.every((card) => />holiday-club policies and safeguarding information<\/a>/.test(card) && />book [^<]+ through your family account<\/a>/.test(card)), "holiday venue links use descriptive anchor text");
+
+const schoolsHtml = read("dist/schools/index.html");
+const schoolsMain = schoolsHtml.match(/<main id="main-content">([\s\S]*?)<footer class="site-footer">/)?.[1] || "";
+check(/href="\/wraparound">wraparound care for schools and families<\/a>/.test(schoolsMain) && /href="\/holiday-clubs">holiday clubs across five school venues<\/a>/.test(schoolsMain), "schools page links contextually to wraparound care and holiday clubs");
+check(/href="\/policies">safeguarding and operational policies<\/a>/.test(schoolsMain), "schools page links its assurance copy to relevant policies");
 
 for (const route of ["launch-booking", "staff-login", "tutor"]) {
   const privateHtml = read(`dist/${route}/index.html`);
