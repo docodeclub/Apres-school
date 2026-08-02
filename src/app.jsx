@@ -164,6 +164,45 @@ const APRES_IMG = {
 const nav = ["Home", "Holiday Clubs", "Wraparound", "Schools", "Contact"];
 const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformTabStorageKey = "apres-platform-active-tab";
+const storageConsentKey = "apres-storage-consent";
+const storageConsentVersion = 1;
+const storageConsentLifetimeMs = 180 * 24 * 60 * 60 * 1000;
+const optionalExperienceStorageKeys = ["apres-booking-launch-announcement-closed"];
+
+function readStorageConsent() {
+  try {
+    const consent = JSON.parse(localStorage.getItem(storageConsentKey) || "null");
+    const savedAt = Date.parse(consent?.savedAt || "");
+    if (consent?.version !== storageConsentVersion || !Number.isFinite(savedAt) || Date.now() - savedAt > storageConsentLifetimeMs) {
+      return null;
+    }
+    return consent;
+  } catch {
+    return null;
+  }
+}
+
+function saveStorageConsent(experience) {
+  const consent = {
+    version: storageConsentVersion,
+    necessary: true,
+    experience: Boolean(experience),
+    savedAt: new Date().toISOString(),
+  };
+  try {
+    localStorage.setItem(storageConsentKey, JSON.stringify(consent));
+    if (!consent.experience) optionalExperienceStorageKeys.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // The choice still applies for this page view if browser storage is unavailable.
+  }
+  window.dispatchEvent(new CustomEvent("apres-storage-consent-changed", { detail: consent }));
+  return consent;
+}
+
+function hasExperienceStorageConsent() {
+  return readStorageConsent()?.experience === true;
+}
+
 const platformTabSlugs = Object.fromEntries(platformTabs.map((item) => [item, item.toLowerCase().replace(/[^a-z0-9]+/g, "-")]));
 const platformTabsBySlug = {
   ...Object.fromEntries(Object.entries(platformTabSlugs).map(([item, slug]) => [slug, item])),
@@ -1045,6 +1084,7 @@ export default function App() {
         : passwordRecovery
           ? <PasswordReset onAuthenticated={handleAuthenticated} setPlatformMode={setPlatform} setPasswordRecovery={setPasswordRecovery} />
           : <PublicSite page={page} setPage={setPage} />}
+      <CookieConsent setPage={setPage} setPlatform={setPlatform} />
     </div>
   );
 }
@@ -1192,7 +1232,7 @@ function CampAnnouncement({ setPage }) {
   const [settings, setSettings] = useState(() => readPublicSettings());
   const [settingsLoaded, setSettingsLoaded] = useState(() => !hasSupabaseConfig);
   const announcementStorageKey = "apres-booking-launch-announcement-closed";
-  const [closed, setClosed] = useState(() => sessionStorage.getItem(announcementStorageKey) === "true");
+  const [closed, setClosed] = useState(() => sessionStorage.getItem(announcementStorageKey) === "true" || (hasExperienceStorageConsent() && localStorage.getItem(announcementStorageKey) === "true"));
   useEffect(() => {
     let mounted = true;
     if (!hasSupabaseConfig) return undefined;
@@ -1219,6 +1259,7 @@ function CampAnnouncement({ setPage }) {
 
   function close() {
     sessionStorage.setItem(announcementStorageKey, "true");
+    if (hasExperienceStorageConsent()) localStorage.setItem(announcementStorageKey, "true");
     setClosed(true);
   }
 
@@ -1251,6 +1292,83 @@ function CampAnnouncement({ setPage }) {
           <p>If you spot something we could improve or have an idea for a new feature, we’d genuinely love to hear from you. Your feedback will continue to shape the platform.</p>
           <p>Thank you for being part of the Après School community. We hope you enjoy using the new system.</p>
         </div>
+      </div>
+    </aside>
+  );
+}
+
+function CookieConsent({ setPage, setPlatform }) {
+  const [consent, setConsent] = useState(readStorageConsent);
+  const [open, setOpen] = useState(() => !readStorageConsent());
+  const [managing, setManaging] = useState(false);
+  const [experience, setExperience] = useState(() => readStorageConsent()?.experience === true);
+
+  useEffect(() => {
+    function openSettings() {
+      const current = readStorageConsent();
+      setExperience(current?.experience === true);
+      setManaging(true);
+      setOpen(true);
+    }
+    window.addEventListener("apres-open-cookie-settings", openSettings);
+    return () => window.removeEventListener("apres-open-cookie-settings", openSettings);
+  }, []);
+
+  function choose(nextExperience) {
+    const next = saveStorageConsent(nextExperience);
+    setConsent(next);
+    setExperience(next.experience);
+    setManaging(false);
+    setOpen(false);
+  }
+
+  function viewPolicy() {
+    setPlatform(false);
+    setPage("Policies");
+    setOpen(false);
+    window.setTimeout(() => document.getElementById("cookie-information")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
+  if (!open) return null;
+
+  return (
+    <aside className="cookie-consent" role="dialog" aria-modal="true" aria-labelledby="cookie-consent-title">
+      <div className="cookie-consent-card">
+        <div className="cookie-consent-heading">
+          <div>
+            <p className="eyebrow">Your privacy choices</p>
+            <h2 id="cookie-consent-title">Cookies and similar storage</h2>
+          </div>
+          {consent && <button className="cookie-consent-close" type="button" onClick={() => setOpen(false)} aria-label="Close cookie settings">×</button>}
+        </div>
+        <p>We use necessary browser storage to keep the site secure and support sign-in, bookings and payments. With your permission, we can also remember optional experience choices. We do not currently use advertising or analytics cookies.</p>
+        {managing ? (
+          <div className="cookie-preferences">
+            <div className="cookie-preference-row">
+              <div><strong>Necessary</strong><span>Security, account access, bookings, payments and your privacy choice.</span></div>
+              <span className="cookie-always-on">Always on</span>
+            </div>
+            <label className="cookie-preference-row" htmlFor="cookie-experience-choice">
+              <div><strong>Experience</strong><span>Remember non-essential display choices, such as dismissing an announcement across visits.</span></div>
+              <input id="cookie-experience-choice" type="checkbox" checked={experience} onChange={(event) => setExperience(event.target.checked)} />
+            </label>
+            <div className="cookie-consent-actions">
+              <button className="cookie-choice-button" type="button" onClick={() => choose(experience)}>Save choices</button>
+              <button className="cookie-text-button" type="button" onClick={viewPolicy}>Privacy and cookie information</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="cookie-consent-actions cookie-consent-actions-primary">
+              <button className="cookie-choice-button" type="button" onClick={() => choose(false)}>Reject optional</button>
+              <button className="cookie-choice-button" type="button" onClick={() => choose(true)}>Accept optional</button>
+            </div>
+            <div className="cookie-consent-links">
+              <button className="cookie-text-button" type="button" onClick={() => setManaging(true)}>Manage choices</button>
+              <button className="cookie-text-button" type="button" onClick={viewPolicy}>Privacy and cookie information</button>
+            </div>
+          </>
+        )}
       </div>
     </aside>
   );
@@ -2460,6 +2578,33 @@ function Policies({ setPage }) {
           </article>
         ))}
       </div>
+      <section className="cookie-information" id="cookie-information">
+        <div className="cookie-information-head">
+          <div>
+            <p className="eyebrow">Privacy and browser storage</p>
+            <h2>How this site uses cookies and similar technology.</h2>
+          </div>
+          <button className="button light" type="button" onClick={() => window.dispatchEvent(new Event("apres-open-cookie-settings"))}>Change cookie settings</button>
+        </div>
+        <p>Browser storage includes cookies, local storage and session storage. We currently use it for the purposes below and do not use advertising or analytics cookies.</p>
+        <div className="cookie-information-grid">
+          <article>
+            <span>Always active</span>
+            <h3>Necessary storage</h3>
+            <p>Supports secure sign-in, account sessions, booking and payment journeys, fraud and error protection, and records your privacy choice. Removing it may prevent these services from working.</p>
+          </article>
+          <article>
+            <span>Your choice</span>
+            <h3>Experience storage</h3>
+            <p>Remembers non-essential display choices, such as whether you dismissed a public announcement, across later visits. It is only used after you accept it.</p>
+          </article>
+          <article>
+            <span>Six months</span>
+            <h3>Your consent record</h3>
+            <p>We remember your selection for up to six months, then ask again. You can withdraw or change it at any time using Cookie settings in the footer.</p>
+          </article>
+        </div>
+      </section>
       <section className="policy-help-band">
         <div>
           <h2>Need a specific document?</h2>
@@ -2750,6 +2895,7 @@ function Footer({ setPage }) {
           <a className="button book" href="/launch-booking" onClick={(event) => handlePublicPageLink(event, "Launch Booking", setPage)}>Book now</a>
           <a className="button light" href="/contact" onClick={(event) => handlePublicPageLink(event, "Contact", setPage)}>Contact</a>
         </div>
+        <button className="footer-cookie-settings" type="button" onClick={() => window.dispatchEvent(new Event("apres-open-cookie-settings"))}>Cookie settings</button>
       </div>
     </footer>
   );

@@ -10,6 +10,12 @@ Notable changes to the Après School website and operations platform are recorde
 - Added a maintained architecture guide and project tree.
 - Added this changelog for future production changes.
 
+### Added
+
+- First-visit consent for cookies and similar browser storage, with equally clear accept and reject choices.
+- Granular privacy settings, six-month consent renewal and a permanent way to change or withdraw consent.
+- Public information explaining necessary and optional browser storage, including confirmation that advertising and analytics cookies are not currently used.
+
 ## 2026-08-02
 
 ### Added
