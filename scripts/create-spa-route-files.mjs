@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const distDir = path.resolve("dist");
@@ -35,6 +35,7 @@ const routeMeta = {
     title: "Book Après School Clubs & Holiday Camps",
     description: "Find your school, wraparound care site or holiday camp and continue to the correct booking platform.",
     keywords: "Après School bookings, book holiday camps, book after school club, Magicbooking, Book Pebble, school childcare bookings",
+    robots: "noindex,nofollow",
   },
   "holiday-clubs": {
     title: "Holiday Camps for Schools and Families | Après School",
@@ -61,11 +62,26 @@ const routeMeta = {
     description: "Safeguarding, behaviour, health and safety, privacy and complaints policy summaries for Après School families and partner schools.",
     keywords: "Après School policies, safeguarding policy, childcare policies, school assurance",
   },
+  payments: {
+    title: "Payments for Wraparound Care & Holiday Clubs | Après School",
+    description: "Information for families about paying for Après School wraparound care and holiday club bookings.",
+    keywords: "Après School payments, childcare payments, wraparound care payments, holiday club payments",
+  },
+  cancellations: {
+    title: "Booking Cancellations & Account Credit | Après School",
+    description: "Information about eligible booking changes, cancellations and account credit for Après School families.",
+    keywords: "Après School cancellations, childcare booking changes, booking credit, family account",
+  },
   "staff-login": {
     title: "Staff Login | Après School",
     description: "Secure staff and admin login for Après School.",
     keywords: "Après School staff login",
     robots: "noindex,nofollow",
+  },
+  "staff-application": {
+    title: "Work With Après School | Staff Applications",
+    description: "Apply to join the Après School team and support children through wraparound care and holiday programmes.",
+    keywords: "Après School jobs, wraparound care jobs, holiday club jobs, childcare staff application",
   },
   tutor: {
     title: "Admin Dashboard | Après School",
@@ -74,9 +90,21 @@ const routeMeta = {
     robots: "noindex,nofollow",
   },
   "launch-booking": {
-    title: "Beta Booking System | Après School",
-    description: "Private beta booking flow for Après School wraparound care and holiday camp testing.",
-    keywords: "Après School beta booking, wraparound booking, holiday camp booking",
+    title: "Family Booking System | Après School",
+    description: "Sign in to book Après School wraparound care and holiday club sessions for your family.",
+    keywords: "Après School booking, wraparound booking, holiday club booking",
+    robots: "noindex,nofollow",
+  },
+  magicbooking: {
+    title: "Booking Route Moved | Après School",
+    description: "Continue to the current Après School family booking system.",
+    keywords: "Après School booking",
+    robots: "noindex,nofollow",
+  },
+  "book-pebble": {
+    title: "Booking Route Moved | Après School",
+    description: "Continue to the current Après School family booking system.",
+    keywords: "Après School booking",
     robots: "noindex,nofollow",
   },
   "booking/success": {
@@ -117,9 +145,34 @@ const routeMeta = {
   },
 };
 const hiddenRoutes = [`booking${"-lab"}`];
+const crawlerContent = {
+  "": ["Wraparound care and holiday camps children look forward to", "Après School provides breakfast clubs, after-school care, holiday camps and extended school provision for families and partner schools."],
+  "holiday-clubs": ["Holiday clubs for active, creative school breaks", "Explore Après School holiday clubs at selected venues, with engaging activities, familiar routines and straightforward booking for families."],
+  wraparound: ["Wraparound care that works for families and schools", "Après School provides dependable breakfast clubs and after-school care with child-first routines, active play and calmer choices."],
+  schools: ["Extended school provision families can rely on", "Partner with Après School for wraparound care, holiday clubs and operational support designed around your school community."],
+  payments: ["Payments for Après School bookings", "Find clear information about paying for wraparound care and holiday clubs through the Après School family booking system."],
+  cancellations: ["Booking cancellations and account credit", "Review how to manage eligible booking changes and cancellations through your Après School family account."],
+  policies: ["Policies, safeguarding and family assurance", "Read about the safeguarding, safer recruitment, behaviour, health and safety, privacy and complaints standards behind Après School provision."],
+  contact: ["Contact Après School", "Get help with a family booking, ask about a school partnership or contact the Après School team."],
+  "staff-application": ["Apply to work with Après School", "Find out about joining the Après School team and supporting children across our wraparound care and holiday programmes."],
+};
 
 function escapeAttribute(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll("\"", "&quot;").replaceAll("<", "&lt;");
+}
+
+function crawlerHtmlForRoute(route) {
+  const [heading, summary] = crawlerContent[route] || [routeMeta[route]?.title || "Après School", routeMeta[route]?.description || "Après School public information."];
+  return `<!-- crawler-content:start -->
+      <main style="font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;padding:24px;color:#172b6d">
+        <nav aria-label="Public site pages" style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:32px">
+          <a href="/">Home</a><a href="/holiday-clubs">Holiday Clubs</a><a href="/wraparound">Wraparound Care</a><a href="/schools">Schools</a><a href="/payments">Payments</a><a href="/policies">Policies</a><a href="/contact">Contact</a>
+        </nav>
+        <h1>${escapeAttribute(heading)}</h1>
+        <p>${escapeAttribute(summary)}</p>
+        <p><a href="/launch-booking">Make a booking</a> or <a href="/contact">contact Après School</a>.</p>
+      </main>
+      <!-- crawler-content:end -->`;
 }
 
 function htmlForRoute(route, html) {
@@ -134,7 +187,8 @@ function htmlForRoute(route, html) {
     .replace(/<meta\s+property="og:description"\s+content="[^"]*"\s*\/>/, `<meta property="og:description" content="${escapeAttribute(meta.description)}" />`)
     .replace(/<meta\s+property="og:url"\s+content="[^"]*"\s*\/>/, `<meta property="og:url" content="${escapeAttribute(url)}" />`)
     .replace(/<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${escapeAttribute(meta.title)}" />`)
-    .replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${escapeAttribute(meta.description)}" />`);
+    .replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${escapeAttribute(meta.description)}" />`)
+    .replace(/<!-- crawler-content:start -->[\s\S]*?<!-- crawler-content:end -->/, crawlerHtmlForRoute(route));
   return meta.robots
     ? routeHtml.replace("</head>", `    <meta name="robots" content="${escapeAttribute(meta.robots)}" />\n  </head>`)
     : routeHtml;
@@ -158,4 +212,9 @@ for (const route of routes) {
   await writeFile(path.join(routeDir, "index.html"), routeHtml);
 }
 
-console.log(`Created static entry files for ${routes.length} public routes.`);
+await Promise.all([
+  copyFile(path.resolve("robots.txt"), path.join(distDir, "robots.txt")),
+  copyFile(path.resolve("sitemap.xml"), path.join(distDir, "sitemap.xml")),
+]);
+
+console.log(`Created static entry files for ${routes.length} public routes, plus robots.txt and sitemap.xml.`);

@@ -1101,10 +1101,17 @@ function ForcedPasswordChange({ userEmail, onChanged, onSignOut }) {
   );
 }
 
+function handlePublicPageLink(event, nextPage, setPage, afterNavigate) {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  setPage(nextPage);
+  afterNavigate?.();
+}
+
 function Header({ page, setPage, platform, setPlatform, platformUnlocked, menu, setMenu }) {
   return (
     <header className={`site-header ${page === "Launch Booking" ? "launch-booking-header" : ""}`}>
-      <a className="brand" href="#home" onClick={() => { setPlatform(false); setPage("Home"); }}>
+      <a className="brand" href="/" onClick={(event) => handlePublicPageLink(event, "Home", setPage, () => setPlatform(false))}>
         <img src="/assets/apres-school-text.png" alt="Après School" />
         <strong>Après School</strong>
         <span>Let's Learn and Play</span>
@@ -1114,11 +1121,11 @@ function Header({ page, setPage, platform, setPlatform, platformUnlocked, menu, 
       </button>
       <nav className={menu ? "nav open" : "nav"}>
         {!platform && nav.map((item) => (
-          <button key={item} type="button" aria-current={page === item ? "page" : undefined} className={page === item ? "active" : ""} onClick={() => { setPage(item); setMenu(false); }}>
+          <a key={item} href={pagePaths[item] || "/"} aria-current={page === item ? "page" : undefined} className={page === item ? "active" : ""} onClick={(event) => handlePublicPageLink(event, item, setPage, () => setMenu(false))}>
             {item}
-          </button>
+          </a>
         ))}
-        {!platform && <button className="nav-staff-login" type="button" onClick={() => { setPlatform(true); setMenu(false); }}>Staff Login</button>}
+        {!platform && <a className="nav-staff-login" href="/staff-login" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); setPlatform(true); setMenu(false); }}>Staff Login</a>}
         {platform && platformUnlocked && <span className="secure-label">Signed in</span>}
       </nav>
       <button className={`button book${platform ? "" : " header-book-cta"}`} type="button" onClick={() => platform ? setPlatform(false) : setPage("Launch Booking")}>
@@ -2669,8 +2676,8 @@ function MobileCTA({ page, setPage }) {
   const hiddenPages = ["Home", "Holiday Clubs", "Schools", "Contact"];
   return (
     <div className={hiddenPages.includes(page) ? "mobile-cta home-hidden" : "mobile-cta"}>
-      <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Book Now</button>
-      <button className="button light" type="button" onClick={() => setPage("Contact")}>Contact</button>
+      <a className="button book" href="/launch-booking" onClick={(event) => handlePublicPageLink(event, "Launch Booking", setPage)}>Book Now</a>
+      <a className="button light" href="/contact" onClick={(event) => handlePublicPageLink(event, "Contact", setPage)}>Contact</a>
     </div>
   );
 }
@@ -2731,7 +2738,7 @@ function Footer({ setPage }) {
       {columns.map(([heading, links]) => (
         <div className="footer-column" key={heading}>
           <h3>{heading}</h3>
-          {links.map((link) => <button key={link} type="button" onClick={() => setPage(link)}>{link}</button>)}
+          {links.map((link) => <a key={link} href={pagePaths[link] || "/"} onClick={(event) => handlePublicPageLink(event, link, setPage)}>{link}</a>)}
           {heading === "Parents" && <a className="footer-beta-link" href="/launch-booking">Make a booking</a>}
         </div>
       ))}
@@ -2740,8 +2747,8 @@ function Footer({ setPage }) {
         <a href="mailto:hello@apres-school.co.uk">hello@apres-school.co.uk</a>
         <small>Book care securely online, or contact us if you need any help.</small>
         <div className="footer-actions">
-          <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Book now</button>
-          <button className="button light" type="button" onClick={() => setPage("Contact")}>Contact</button>
+          <a className="button book" href="/launch-booking" onClick={(event) => handlePublicPageLink(event, "Launch Booking", setPage)}>Book now</a>
+          <a className="button light" href="/contact" onClick={(event) => handlePublicPageLink(event, "Contact", setPage)}>Contact</a>
         </div>
       </div>
     </footer>

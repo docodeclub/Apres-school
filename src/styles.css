@@ -289,6 +289,7 @@ button:disabled,
 }
 
 .nav button,
+.nav a,
 .nav select,
 footer button {
   border: 0;
@@ -297,11 +298,14 @@ footer button {
   color: #3b3e52;
   padding: 9px 12px;
   font-weight: 700;
+  text-decoration: none;
   transition: background 180ms ease, color 180ms ease, transform 180ms ease;
 }
 
 .nav button.active,
-.nav button:hover {
+.nav button:hover,
+.nav a.active,
+.nav a:hover {
   background: var(--soft);
   color: var(--royal-dark);
   transform: translateY(-1px);
@@ -4225,11 +4229,20 @@ label {
   margin-bottom: 4px;
 }
 
-.footer-column button {
+.footer-column button,
+.footer-column a:not(.footer-beta-link) {
   justify-self: start;
   padding: 0;
   background: transparent;
   color: rgba(255, 255, 255, 0.86);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.footer-column a:not(.footer-beta-link):hover {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 .footer-beta-link {
@@ -17789,7 +17802,8 @@ th {
     display: inline-flex;
   }
 
-  .nav button {
+  .nav button,
+  .nav a {
     flex: 0 0 auto;
     min-height: 42px;
     padding-inline: 14px;
@@ -18518,7 +18532,8 @@ th {
     overflow: visible;
   }
 
-  .nav button {
+  .nav button,
+  .nav a {
     width: 100%;
     min-height: 48px;
     white-space: normal;

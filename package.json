@@ -16,6 +16,7 @@
     "validate:static": "node scripts/static-check.mjs",
     "check:booking-links": "node scripts/audit-public-booking-links.mjs",
     "check:wraparound-ctas": "node scripts/wraparound-cta-contract-check.mjs",
+    "check:seo": "node scripts/seo-crawlability-check.mjs",
     "check:dbs-disclosure": "node scripts/audit-dbs-disclosure-results.mjs",
     "validate:launch-data": "node scripts/validate-wraparound-2026.mjs",
     "validate:school-calendars": "node scripts/validate-school-calendars.mjs",
