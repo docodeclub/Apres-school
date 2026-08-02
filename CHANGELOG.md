@@ -20,6 +20,10 @@ Notable changes to the Après School website and operations platform are recorde
 - Fuller homepage Organization structured data with verified company identity, registered office and service information.
 - Route-specific WebPage, ContactPage, CollectionPage and Service markup, plus BreadcrumbList data on every deeper indexable public page.
 
+### Fixed
+
+- Removed robots.txt blocks from HTML routes that already carry `noindex`, allowing crawlers to read and honour the directive while keeping `/api/` blocked.
+
 ## 2026-08-02
 
 ### Added

@@ -12,8 +12,8 @@ const headerMap = new Map((vercel.headers || []).map((entry) => [entry.source, e
 const failures = [];
 
 for (const route of privateRoutes) {
-  if (!robots.includes(`Disallow: ${route}`)) {
-    failures.push(`${route} is not blocked in robots.txt.`);
+  if (robots.includes(`Disallow: ${route}`)) {
+    failures.push(`${route} must remain crawlable so search engines can read its noindex directive.`);
   }
   if (sitemap.includes(`https://www.apres-school.co.uk${route}`)) {
     failures.push(`${route} is exposed in sitemap.xml.`);

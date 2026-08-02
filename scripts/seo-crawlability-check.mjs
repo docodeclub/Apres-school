@@ -13,6 +13,7 @@ const robots = read("dist/robots.txt");
 const sitemap = read("dist/sitemap.xml");
 const app = read("src/app.jsx");
 const publicRoutes = ["", "holiday-clubs", "wraparound", "schools", "payments", "cancellations", "policies", "contact", "staff-application"];
+const noindexHtmlRoutes = ["/staff-login", "/tutor", "/booking-lab", "/launch-booking"];
 
 function readStructuredData(html) {
   const match = html.match(/<script\s+id="apres-structured-data"\s+type="application\/ld\+json">([\s\S]*?)<\/script>/);
@@ -37,6 +38,7 @@ function visibleText(html) {
 }
 
 check(robots.includes("User-agent: *") && robots.includes("Sitemap: https://www.apres-school.co.uk/sitemap.xml"), "robots.txt is deployed and advertises the sitemap");
+check(robots.includes("Disallow: /api/") && noindexHtmlRoutes.every((route) => !robots.includes(`Disallow: ${route}`)), "robots.txt blocks APIs but allows noindex HTML routes to be crawled");
 check(!sitemap.includes("/bookings</loc>") && !sitemap.includes("/magicbooking</loc>") && !sitemap.includes("/book-pebble</loc>"), "sitemap excludes obsolete booking routes");
 check(publicRoutes.every((route) => sitemap.includes(`<loc>https://www.apres-school.co.uk/${route}</loc>`)), "sitemap includes every indexable public route");
 check(app.includes("href={pagePaths[item] || \"/\"}") && app.includes("footer-column") && app.includes("href={pagePaths[link] || \"/\"}"), "header and footer navigation expose real links");
@@ -58,8 +60,10 @@ for (const route of publicRoutes) {
   else check(types.includes("Organization") && structuredData["@graph"].some((item) => item["@type"] === "Organization" && item.legalName === "Après School Limited" && item.identifier?.value === "14934898"), "home includes full Organization details");
 }
 
-const privateHtml = read("dist/launch-booking/index.html");
-check(privateHtml.includes('name="robots" content="noindex,nofollow"'), "account booking route remains noindex");
+for (const route of ["launch-booking", "staff-login", "tutor"]) {
+  const privateHtml = read(`dist/${route}/index.html`);
+  check(privateHtml.includes('name="robots" content="noindex,nofollow"'), `${route} remains noindex while crawlable`);
+}
 
 if (failures.length) {
   console.error(`SEO crawlability check failed (${failures.length} issue${failures.length === 1 ? "" : "s"}).`);
