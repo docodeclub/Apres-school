@@ -161,6 +161,48 @@ const APRES_IMG = {
   ripleyCourtTile: "/assets/school-tiles/ripley-court-booking-tile.jpg",
   rowansTile: "/assets/school-tiles/rowans-booking-tile.jpg",
 };
+const HOLIDAY_RESPONSIVE_IMAGES = {
+  [APRES_IMG.parachute]: [
+    "/assets/apres-highlights/real-img_0043-480.jpg 480w",
+    "/assets/apres-highlights/real-img_0043-800.jpg 800w",
+    `${APRES_IMG.parachute} 1600w`,
+  ],
+  [APRES_IMG.campMoveFootball]: [
+    "/assets/apres-highlights/camp-move-football-480.jpg 480w",
+    "/assets/apres-highlights/camp-move-football-800.jpg 800w",
+    `${APRES_IMG.campMoveFootball} 1600w`,
+  ],
+  [APRES_IMG.campResetTennis]: [
+    "/assets/apres-highlights/camp-reset-tennis-480.jpg 480w",
+    "/assets/apres-highlights/camp-reset-tennis-800.jpg 800w",
+    `${APRES_IMG.campResetTennis} 1600w`,
+  ],
+  [APRES_IMG.kingsHouseTile]: [
+    "/assets/school-tiles/kings-house-booking-tile-480.jpg 480w",
+    "/assets/school-tiles/kings-house-booking-tile-800.jpg 800w",
+    `${APRES_IMG.kingsHouseTile} 1600w`,
+  ],
+  [APRES_IMG.willingtonTile]: [
+    "/assets/school-tiles/willington-booking-tile-480.jpg 480w",
+    "/assets/school-tiles/willington-booking-tile-800.jpg 800w",
+    `${APRES_IMG.willingtonTile} 1600w`,
+  ],
+  [APRES_IMG.ripleyCourtTile]: [
+    "/assets/school-tiles/ripley-court-booking-tile-480.jpg 480w",
+    "/assets/school-tiles/ripley-court-booking-tile-800.jpg 800w",
+    `${APRES_IMG.ripleyCourtTile} 1600w`,
+  ],
+  [APRES_IMG.rowansTile]: [
+    "/assets/school-tiles/rowans-booking-tile-480.jpg 480w",
+    "/assets/school-tiles/rowans-booking-tile-800.jpg 800w",
+    `${APRES_IMG.rowansTile} 1600w`,
+  ],
+  [APRES_IMG.shrewsburyHouseTile]: [
+    "/assets/school-tiles/shrewsbury-house-booking-tile-480.jpg 480w",
+    "/assets/school-tiles/shrewsbury-house-booking-tile-800.jpg 800w",
+    `${APRES_IMG.shrewsburyHouseTile} 1600w`,
+  ],
+};
 
 const nav = ["Home", "Holiday Clubs", "Wraparound", "Schools", "Contact"];
 const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
@@ -1865,7 +1907,17 @@ function HolidayClubs({ setPage }) {
 
   return (
     <PageShell eyebrow="Holiday Clubs" title="Holiday clubs across five school venues.">
-      <section className="image-copy-band holiday" style={{ backgroundImage: `linear-gradient(90deg, rgba(23, 23, 47, 0.82), rgba(23, 23, 47, 0.24)), url("${APRES_IMG.parachute}")` }}>
+      <section className="image-copy-band holiday">
+        <HolidayResponsiveImage
+          className="holiday-hero-image"
+          src={APRES_IMG.parachute}
+          alt="Children and staff playing with a colourful parachute outdoors at an Après School holiday club."
+          width={1600}
+          height={1200}
+          sizes="(max-width: 760px) 100vw, min(1180px, 92vw)"
+          loading="eager"
+          fetchPriority="high"
+        />
         <div>
           <h2>Active, creative holiday clubs with calm routines underneath.</h2>
           <p>
@@ -1903,7 +1955,15 @@ function HolidayClubs({ setPage }) {
         <div className="camp-site-grid">
           {holidaySites.map((site) => (
             <article className="camp-site-card" key={site.title}>
-              <div className="camp-site-image" style={{ backgroundImage: `url("${site.image}")`, backgroundPosition: site.imagePosition }} />
+              <HolidayResponsiveImage
+                className="camp-site-image"
+                src={site.image}
+                alt={`Branded venue card for ${site.title} in ${site.area}.`}
+                width={1600}
+                height={820}
+                sizes="(max-width: 760px) 100vw, (max-width: 1100px) 50vw, 33vw"
+                style={{ objectPosition: site.imagePosition }}
+              />
               <div className="camp-site-copy">
                 <span className="platform-badge apres">Après School booking</span>
                 <h3>{site.title}</h3>
@@ -1932,14 +1992,44 @@ function HolidayClubs({ setPage }) {
           </article>
         ))}
       </section>
-      <section className="camp-gallery">
+      <section className="camp-gallery" aria-label="Holiday club activities">
         {[
-          [APRES_IMG.campMoveFootball, "50% 48%"],
-          [APRES_IMG.parachute, "50% 50%"],
-          [APRES_IMG.campResetTennis, "50% 50%"],
-        ].map(([src, position]) => <div key={src} style={{ backgroundImage: `url("${src}")`, backgroundPosition: position }} />)}
+          [APRES_IMG.campMoveFootball, "Children playing football together during an Après School holiday club.", "Active team games", "50% 48%"],
+          [APRES_IMG.parachute, "Children and staff playing with a colourful parachute outdoors at an Après School holiday club.", "Co-operative outdoor play", "50% 50%"],
+          [APRES_IMG.campResetTennis, "Children practising tennis together during an Après School holiday club.", "Sport and confidence", "50% 50%"],
+        ].map(([src, alt, caption, position]) => (
+          <figure key={src}>
+            <HolidayResponsiveImage
+              src={src}
+              alt={alt}
+              width={1600}
+              height={1200}
+              sizes="(max-width: 760px) 100vw, 34vw"
+              style={{ objectPosition: position }}
+            />
+            <figcaption>{caption}</figcaption>
+          </figure>
+        ))}
       </section>
     </PageShell>
+  );
+}
+
+function HolidayResponsiveImage({ src, alt, width, height, sizes, className, loading = "lazy", fetchPriority, style }) {
+  return (
+    <img
+      className={className}
+      src={src}
+      srcSet={(HOLIDAY_RESPONSIVE_IMAGES[src] || [`${src} ${width}w`]).join(", ")}
+      sizes={sizes}
+      alt={alt}
+      width={width}
+      height={height}
+      loading={loading}
+      decoding="async"
+      fetchpriority={fetchPriority}
+      style={style}
+    />
   );
 }
 

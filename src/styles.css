@@ -2269,7 +2269,27 @@ summary {
 }
 
 .image-copy-band.holiday {
-  background-position: center;
+  position: relative;
+  isolation: isolate;
+  background: #17172f;
+}
+
+.image-copy-band.holiday:after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(23, 23, 47, 0.84), rgba(23, 23, 47, 0.24));
+  content: "";
+}
+
+.holiday-hero-image {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
 }
 
 .image-copy-band.wraparound {
@@ -2454,10 +2474,11 @@ summary {
 }
 
 .camp-site-image {
+  display: block;
   width: 100%;
   aspect-ratio: 1600 / 820;
-  background-position: center;
-  background-size: cover;
+  height: auto;
+  object-fit: cover;
 }
 
 .camp-site-copy {
@@ -2536,12 +2557,35 @@ summary {
   margin-bottom: 26px;
 }
 
-.camp-gallery div {
+.camp-gallery figure {
+  position: relative;
+  margin: 0;
   min-height: 300px;
+  overflow: hidden;
   border-radius: 18px;
-  background-position: center;
-  background-size: cover;
   box-shadow: var(--shadow);
+}
+
+.camp-gallery img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  object-fit: cover;
+}
+
+.camp-gallery figcaption {
+  position: absolute;
+  inset: auto 14px 14px;
+  width: fit-content;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(23, 23, 47, 0.78);
+  color: #fff;
+  padding: 8px 11px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  backdrop-filter: blur(10px);
 }
 
 .simple-band {
@@ -18117,7 +18161,7 @@ th {
   }
 
   .photo-strip div,
-  .camp-gallery div,
+  .camp-gallery figure,
   .photo-strip div:first-child {
     min-height: 260px;
     grid-row: auto;

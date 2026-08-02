@@ -12,6 +12,7 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Added
 
+- Semantic responsive imagery on the Holiday Clubs page, with descriptive alt text, intrinsic dimensions, responsive sources and intentional loading priority.
 - Build-time static generation of the complete content, navigation and footer for every indexable public page.
 - SEO regression checks that require substantial pre-rendered copy, heading structure and full-site internal linking on every public route.
 - First-visit consent for cookies and similar browser storage, with equally clear accept and reject choices.

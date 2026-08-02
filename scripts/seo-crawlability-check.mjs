@@ -60,6 +60,14 @@ for (const route of publicRoutes) {
   else check(types.includes("Organization") && structuredData["@graph"].some((item) => item["@type"] === "Organization" && item.legalName === "Après School Limited" && item.identifier?.value === "14934898"), "home includes full Organization details");
 }
 
+const holidayHtml = read("dist/holiday-clubs/index.html");
+const holidayMain = holidayHtml.match(/<main id="main-content">([\s\S]*?)<footer class="site-footer">/)?.[1] || "";
+const holidayImages = holidayMain.match(/<img\b[^>]*>/g) || [];
+check(holidayImages.length >= 9, "holiday-clubs exposes venue and activity photography as real images");
+check(holidayImages.every((image) => /\balt="[^"]+"/.test(image) && /\bwidth="\d+"/.test(image) && /\bheight="\d+"/.test(image)), "holiday-clubs images have useful alt text and intrinsic dimensions");
+check(holidayImages.every((image) => /\bsrcSet="[^"]+\s480w[^\"]+\s800w[^\"]+\s1600w"/.test(image) && /\bsizes="[^"]+"/.test(image)), "holiday-clubs images expose responsive sources and sizes");
+check(holidayImages.some((image) => /loading="eager"/.test(image) && /fetchpriority="high"/.test(image)) && holidayImages.filter((image) => /loading="lazy"/.test(image)).length >= 8, "holiday-clubs prioritises its hero image and lazy-loads later photography");
+
 for (const route of ["launch-booking", "staff-login", "tutor"]) {
   const privateHtml = read(`dist/${route}/index.html`);
   check(privateHtml.includes('name="robots" content="noindex,nofollow"'), `${route} remains noindex while crawlable`);
