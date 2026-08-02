@@ -1,5 +1,6 @@
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { serializeStructuredData, structuredDataForPath } from "../src/structuredData.js";
 
 const distDir = path.resolve("dist");
 const indexPath = path.join(distDir, "index.html");
@@ -188,6 +189,10 @@ function htmlForRoute(route, html) {
     .replace(/<meta\s+property="og:url"\s+content="[^"]*"\s*\/>/, `<meta property="og:url" content="${escapeAttribute(url)}" />`)
     .replace(/<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${escapeAttribute(meta.title)}" />`)
     .replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${escapeAttribute(meta.description)}" />`)
+    .replace(/<script\s+id="apres-structured-data"\s+type="application\/ld\+json">[\s\S]*?<\/script>/, () => {
+      const data = structuredDataForPath(route ? `/${route}` : "/");
+      return data ? `<script id="apres-structured-data" type="application/ld+json">${serializeStructuredData(data)}</script>` : "";
+    })
     .replace(/<!-- crawler-content:start -->[\s\S]*?<!-- crawler-content:end -->/, crawlerHtmlForRoute(route));
   return meta.robots
     ? routeHtml.replace("</head>", `    <meta name="robots" content="${escapeAttribute(meta.robots)}" />\n  </head>`)

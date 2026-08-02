@@ -15,6 +15,8 @@ Notable changes to the Après School website and operations platform are recorde
 - First-visit consent for cookies and similar browser storage, with equally clear accept and reject choices.
 - Granular privacy settings, six-month consent renewal and a permanent way to change or withdraw consent.
 - Public information explaining necessary and optional browser storage, including confirmation that advertising and analytics cookies are not currently used.
+- Fuller homepage Organization structured data with verified company identity, registered office and service information.
+- Route-specific WebPage, ContactPage, CollectionPage and Service markup, plus BreadcrumbList data on every deeper indexable public page.
 
 ## 2026-08-02
 

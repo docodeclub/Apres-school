@@ -29,19 +29,59 @@
     <meta name="twitter:image:alt" content="Children enjoying an Après School activity session." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="./site.webmanifest" />
-    <script type="application/ld+json">
+    <script id="apres-structured-data" type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "ChildCare",
-        "name": "Après School",
-        "url": "https://www.apres-school.co.uk/",
-        "email": "hello@apres-school.co.uk",
-        "description": "Wraparound care for schools, holiday camps and extended school provision that helps schools strengthen their parent offer.",
-        "areaServed": "London and Surrey",
-        "serviceType": ["Wraparound care for schools", "Holiday camps", "After-school care", "Breakfast club", "Extended school provision", "School partnerships"],
-        "audience": [
-          { "@type": "Audience", "audienceType": "Parents looking for school holiday camps and term-time childcare" },
-          { "@type": "Audience", "audienceType": "Schools looking to extend wraparound care, holiday provision and enrichment" }
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://www.apres-school.co.uk/#organization",
+            "name": "Après School",
+            "legalName": "Après School Limited",
+            "url": "https://www.apres-school.co.uk/",
+            "email": "hello@apres-school.co.uk",
+            "foundingDate": "2023-06-14",
+            "description": "Provider of wraparound care, breakfast clubs, after-school care, holiday clubs and managed extended-school provision for families and partner schools.",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://www.apres-school.co.uk/assets/apres-school-text.png",
+              "width": 1025,
+              "height": 396
+            },
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "24 Cherry Orchard Road",
+              "addressLocality": "Bromley",
+              "addressRegion": "Kent",
+              "postalCode": "BR2 8NE",
+              "addressCountry": "GB"
+            },
+            "identifier": {
+              "@type": "PropertyValue",
+              "propertyID": "Companies House",
+              "value": "14934898",
+              "url": "https://find-and-update.company-information.service.gov.uk/company/14934898"
+            },
+            "sameAs": ["https://find-and-update.company-information.service.gov.uk/company/14934898"]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://www.apres-school.co.uk/#website",
+            "url": "https://www.apres-school.co.uk/",
+            "name": "Après School",
+            "inLanguage": "en-GB",
+            "publisher": { "@id": "https://www.apres-school.co.uk/#organization" }
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://www.apres-school.co.uk/#webpage",
+            "url": "https://www.apres-school.co.uk/",
+            "name": "Après School | Wraparound Care for Schools & Holiday Camps",
+            "description": "Wraparound care, holiday camps and extended school provision that helps schools strengthen their parent offer.",
+            "inLanguage": "en-GB",
+            "isPartOf": { "@id": "https://www.apres-school.co.uk/#website" },
+            "about": { "@id": "https://www.apres-school.co.uk/#organization" }
+          }
         ]
       }
     </script>

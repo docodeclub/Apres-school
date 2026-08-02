@@ -3,6 +3,7 @@ import {
   faqs,
   services,
 } from "./data.js";
+import { serializeStructuredData, structuredDataForPage } from "./structuredData.js";
 
 const hasSupabaseConfig = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 let supabaseModulePromise;
@@ -849,6 +850,20 @@ export default function App() {
     if (ogUrl) ogUrl.setAttribute("content", canonicalUrl);
     if (!keepPaymentReturnPath && window.location.pathname !== nextPath) window.history.pushState({ page }, "", nextPath);
     if (!keepPaymentReturnPath) window.scrollTo({ top: 0, behavior: "auto" });
+  }, [page, platform, passwordRecovery]);
+
+  useEffect(() => {
+    const existing = document.getElementById("apres-structured-data");
+    const data = !platform && !passwordRecovery && !privatePrototypePages.has(page) ? structuredDataForPage(page) : null;
+    if (!data) {
+      existing?.remove();
+      return;
+    }
+    const script = existing || document.createElement("script");
+    script.id = "apres-structured-data";
+    script.type = "application/ld+json";
+    script.textContent = serializeStructuredData(data);
+    if (!existing) document.head.appendChild(script);
   }, [page, platform, passwordRecovery]);
 
   useEffect(() => {
