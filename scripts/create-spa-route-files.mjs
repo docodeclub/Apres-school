@@ -1,5 +1,6 @@
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { createServer as createViteServer } from "vite";
 import { serializeStructuredData, structuredDataForPath } from "../src/structuredData.js";
 
 const distDir = path.resolve("dist");
@@ -157,12 +158,27 @@ const crawlerContent = {
   contact: ["Contact Après School", "Get help with a family booking, ask about a school partnership or contact the Après School team."],
   "staff-application": ["Apply to work with Après School", "Find out about joining the Après School team and supporting children across our wraparound care and holiday programmes."],
 };
+const prerenderedPages = {
+  "": "Home",
+  "holiday-clubs": "Holiday Clubs",
+  wraparound: "Wraparound",
+  schools: "Schools",
+  payments: "Payments",
+  cancellations: "Cancellations",
+  policies: "Policies",
+  contact: "Contact",
+  "staff-application": "Staff Application",
+};
+const prerenderedHtml = new Map();
 
 function escapeAttribute(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll("\"", "&quot;").replaceAll("<", "&lt;");
 }
 
 function crawlerHtmlForRoute(route) {
+  if (prerenderedHtml.has(route)) {
+    return `<!-- crawler-content:start -->\n      ${prerenderedHtml.get(route)}\n      <!-- crawler-content:end -->`;
+  }
   const [heading, summary] = crawlerContent[route] || [routeMeta[route]?.title || "Après School", routeMeta[route]?.description || "Après School public information."];
   return `<!-- crawler-content:start -->
       <main style="font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;padding:24px;color:#172b6d">
@@ -199,6 +215,21 @@ function htmlForRoute(route, html) {
     : routeHtml;
 }
 
+const vite = await createViteServer({
+  appType: "custom",
+  logLevel: "error",
+  server: { middlewareMode: true },
+});
+
+try {
+  const { renderStaticPublicPage } = await vite.ssrLoadModule("/src/staticRender.jsx");
+  for (const [route, page] of Object.entries(prerenderedPages)) {
+    prerenderedHtml.set(route, renderStaticPublicPage(page));
+  }
+} finally {
+  await vite.close();
+}
+
 const indexHtml = await readFile(indexPath, "utf8");
 await writeFile(indexPath, htmlForRoute("", indexHtml));
 
@@ -222,4 +253,4 @@ await Promise.all([
   copyFile(path.resolve("sitemap.xml"), path.join(distDir, "sitemap.xml")),
 ]);
 
-console.log(`Created static entry files for ${routes.length} public routes, plus robots.txt and sitemap.xml.`);
+console.log(`Created static entry files for ${routes.length} routes, including ${prerenderedHtml.size} fully prerendered public pages, plus robots.txt and sitemap.xml.`);

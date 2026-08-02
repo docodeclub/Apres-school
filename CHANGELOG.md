@@ -12,6 +12,8 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Added
 
+- Build-time static generation of the complete content, navigation and footer for every indexable public page.
+- SEO regression checks that require substantial pre-rendered copy, heading structure and full-site internal linking on every public route.
 - First-visit consent for cookies and similar browser storage, with equally clear accept and reject choices.
 - Granular privacy settings, six-month consent renewal and a permanent way to change or withdraw consent.
 - Public information explaining necessary and optional browser storage, including confirmation that advertising and analytics cookies are not currently used.

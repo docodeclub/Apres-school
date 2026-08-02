@@ -35,6 +35,7 @@ The application is a single React codebase with three main surfaces:
 ├── scripts/                     Build, validation, migration and rehearsal tooling
 ├── src/
 │   ├── app.jsx                  Application shell, public pages, routing and auth entry
+│   ├── staticRender.jsx         Build-time renderer for complete public-page HTML
 │   ├── PlatformModule.jsx       Main protected staff/admin workspace
 │   ├── BookingLab.jsx           Family booking, account and booking administration UI
 │   ├── StaffingModule.jsx       Workforce planning and staffing workflows
@@ -68,7 +69,9 @@ Generated directories such as `dist`, local `output` and temporary files are not
 
 ### Public site
 
-Public pages are rendered from `app.jsx`. The production build generates a static HTML entry for each indexable route. Each entry includes route-specific metadata and readable crawler content before JavaScript loads.
+Public pages are rendered from `app.jsx`. During the production build, `staticRender.jsx` uses the same React page components to generate the complete initial HTML for every indexable route. The result includes the header, full page copy and headings, forms where relevant, internal links and footer before JavaScript loads. The browser bundle then replaces that static shell with the interactive application, avoiding a second separately maintained version of the page content.
+
+Account, payment-return and staff routes remain client-rendered and `noindex`; only public information pages are statically generated.
 
 The source of truth for discoverability is:
 

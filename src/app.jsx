@@ -1199,13 +1199,10 @@ function PublicSite({ page, setPage, setPlatform }) {
     <main id="main-content">
       {isPrivatePrototype && !previewAllowed && <BookingPreviewGate setPage={setPage} />}
       {page === "Home" && <CampAnnouncement setPage={setPage} />}
-      {page === "Home" && <Home setPage={setPage} setPlatform={setPlatform} />}
-      {page === "Holiday Clubs" && <HolidayClubs setPage={setPage} />}
-      {page === "Wraparound" && <Wraparound setPage={setPage} />}
+      <IndexablePublicPage page={page} setPage={setPage} setPlatform={setPlatform} />
       {page === "About" && <About />}
       {page === "Services" && <Services />}
       {page === "Parents" && <Parents />}
-      {page === "Schools" && <Schools setPage={setPage} />}
       {page === "Booking Lab" && previewAllowed && (
         <Suspense fallback={<div className="platform-loading">Loading booking lab...</div>}>
           <BookingLab setPage={setPage} />
@@ -1216,14 +1213,48 @@ function PublicSite({ page, setPage, setPlatform }) {
           <BookingLab setPage={setPage} mode="launch" />
         </Suspense>
       )}
+      <Footer setPage={setPage} />
+      <MobileCTA page={page} setPage={setPage} />
+    </main>
+  );
+}
+
+function IndexablePublicPage({ page, setPage, setPlatform }) {
+  return (
+    <>
+      {page === "Home" && <Home setPage={setPage} setPlatform={setPlatform} />}
+      {page === "Holiday Clubs" && <HolidayClubs setPage={setPage} />}
+      {page === "Wraparound" && <Wraparound setPage={setPage} />}
+      {page === "Schools" && <Schools setPage={setPage} />}
       {page === "Payments" && <Payments setPage={setPage} />}
       {page === "Cancellations" && <Cancellations setPage={setPage} />}
       {page === "Policies" && <Policies setPage={setPage} />}
       {page === "Contact" && <Contact setPage={setPage} />}
       {page === "Staff Application" && <StaffApplication />}
-      <Footer setPage={setPage} />
-      <MobileCTA page={page} setPage={setPage} />
-    </main>
+    </>
+  );
+}
+
+export function StaticPublicPage({ page }) {
+  const noOp = () => {};
+  return (
+    <div data-prerendered-page={page}>
+      <a className="skip-link" href="#main-content">Skip to content</a>
+      <Header
+        page={page}
+        setPage={noOp}
+        platform={false}
+        setPlatform={noOp}
+        platformUnlocked={false}
+        menu={false}
+        setMenu={noOp}
+      />
+      <main id="main-content">
+        <IndexablePublicPage page={page} setPage={noOp} setPlatform={noOp} />
+        <Footer setPage={noOp} />
+        <MobileCTA page={page} setPage={noOp} />
+      </main>
+    </div>
   );
 }
 

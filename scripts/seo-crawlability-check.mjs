@@ -20,6 +20,22 @@ function readStructuredData(html) {
   return JSON.parse(match[1]);
 }
 
+function readPrerenderedContent(html) {
+  const match = html.match(/<!-- crawler-content:start -->([\s\S]*?)<!-- crawler-content:end -->/);
+  return match?.[1] || "";
+}
+
+function visibleText(html) {
+  return html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&(?:#x27|#39);/gi, "'")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 check(robots.includes("User-agent: *") && robots.includes("Sitemap: https://www.apres-school.co.uk/sitemap.xml"), "robots.txt is deployed and advertises the sitemap");
 check(!sitemap.includes("/bookings</loc>") && !sitemap.includes("/magicbooking</loc>") && !sitemap.includes("/book-pebble</loc>"), "sitemap excludes obsolete booking routes");
 check(publicRoutes.every((route) => sitemap.includes(`<loc>https://www.apres-school.co.uk/${route}</loc>`)), "sitemap includes every indexable public route");
@@ -28,9 +44,12 @@ check(app.includes("href={pagePaths[item] || \"/\"}") && app.includes("footer-co
 for (const route of publicRoutes) {
   const file = route ? `dist/${route}/index.html` : "dist/index.html";
   const html = read(file);
-  check(/<!-- crawler-content:start -->[\s\S]*?<h1>[^<]+<\/h1>[\s\S]*?<!-- crawler-content:end -->/.test(html), `${route || "home"} has readable pre-JavaScript content`);
+  const prerendered = readPrerenderedContent(html);
+  const prerenderedText = visibleText(prerendered);
+  check(prerendered.includes(`data-prerendered-page=`) && prerendered.includes("<main id=\"main-content\">") && prerendered.includes("site-footer"), `${route || "home"} has its complete public shell before JavaScript`);
+  check(prerenderedText.length >= 1500 && (prerendered.match(/<h[1-6]\b/g) || []).length >= 6, `${route || "home"} pre-renders the full page copy and heading structure`);
   check(html.includes('rel="canonical"') && !html.includes('name="robots" content="noindex'), `${route || "home"} is canonical and indexable`);
-  check((html.match(/<a href="\//g) || []).length >= 7, `${route || "home"} exposes crawlable internal links`);
+  check((prerendered.match(/<a href="\//g) || []).length >= 14, `${route || "home"} exposes crawlable header, content and footer links`);
   const structuredData = readStructuredData(html);
   check(Boolean(structuredData?.["@graph"]?.length), `${route || "home"} has parseable route-specific JSON-LD`);
   const types = structuredData?.["@graph"]?.flatMap((item) => Array.isArray(item["@type"]) ? item["@type"] : [item["@type"]]) || [];
