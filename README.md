@@ -1,10 +1,39 @@
 # Après School Website & Operations Platform
 
-Standalone first version for Après School: a polished public website plus a protected internal operations platform foundation for staff, compliance, documents, rota, hours, pay, rewards, Ofsted readiness and enquiries.
+The production web platform for Après School. One React application provides the public website, family booking and account experience, and a protected role-based workspace for staff and administrators.
 
-## Run Locally
+Production: [www.apres-school.co.uk](https://www.apres-school.co.uk/)
 
-The project is now structured as a Vite React app.
+## Product areas
+
+- Public website for wraparound care, holiday clubs, schools, policies, recruitment and enquiries.
+- Family accounts for children, bookings, payments, invoices, account credit, messages and rewards.
+- Booking system with school and session availability, pricing groups, ad-hoc bookings, cancellations and PonchoPay integration.
+- Staff operations for registers, incidents, safeguarding, staffing, sessions and site oversight.
+- People and compliance tools for users, HR, employee documents, SCR and Ofsted readiness.
+- Finance tools for school invoicing, payments, pay, rewards and pricing-group performance.
+- Communications, CRM, documents, audit and system settings.
+
+## Technology
+
+- React 18 and Vite 6
+- Supabase Auth, Postgres, Row Level Security, Storage and Edge Functions
+- Vercel hosting, rewrites, API routes and security headers
+- PonchoPay checkout and webhook processing
+- Resend-backed transactional email functions
+- PDF generation for invoices, employee documents and operational exports
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the system design and project tree. Recent product changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+
+## Local development
+
+Requirements:
+
+- Node.js 20–23
+- npm or pnpm
+- Supabase credentials for live data-backed functionality
+
+Install and run:
 
 ```bash
 npm install
@@ -13,57 +42,75 @@ npm run dev
 
 Open `http://127.0.0.1:5173`.
 
-## What Is Included
+Copy `.env.example` to an ignored local environment file and add only the variables required for the task. Never commit `.env.local`, production credentials, service-role keys, payment credentials or customer data.
 
-- Public website pages: Home, Bookings, Holiday Clubs, Wraparound, Schools, Contact, Magicbooking Guide, Book Pebble Guide, Payments, Cancellations and Policies.
-- Bookings page with Magicbooking and booking-partner links for the current Après School sites.
-- Contact and school enquiry flows that call a Supabase Edge Function when configured, with local fallback for development.
-- Staff login screen wired to Supabase Auth, with role loading from `profiles.role` and no public fallback into internal dashboards.
-- Mobile-first navigation, sticky mobile CTAs and real Après School imagery.
-- SEO basics: `robots.txt`, `sitemap.xml`, social metadata, manifest and structured data.
-- Vercel config with clean URL rewrites and baseline security headers.
-- Vite migration notes in [docs/vite-migration.md](/Users/lukecurrie/Documents/New%20project%203/docs/vite-migration.md).
-- Staff dashboard, admin dashboard, SCR, Ofsted readiness, documents, rota, hours tracking, pay, rewards, sessions and CRM screens.
-- Supabase-ready data model and RLS outline in [docs/supabase-blueprint.md](/Users/lukecurrie/Documents/New%20project%203/docs/supabase-blueprint.md).
-- Starter Supabase SQL migration in [supabase/migrations/0001_initial_schema.sql](/Users/lukecurrie/Documents/New%20project%203/supabase/migrations/0001_initial_schema.sql).
-- Public enquiry Edge Function in [supabase/functions/notify-public-enquiry/index.ts](/Users/lukecurrie/Documents/New%20project%203/supabase/functions/notify-public-enquiry/index.ts).
+## Important commands
 
-## Validation
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the Vite development server |
+| `npm run build` | Build the production app |
+| `npm run validate:static` | Check required files and public-data safety rules |
+| `npm run check:seo` | Verify crawlable HTML, links, robots and sitemap output after a build |
+| `npm run smoke` | Exercise the main public routes against a running local server |
+| `npm run qa:launch` | Run public launch checks at desktop and mobile sizes |
+| `npm run check:deploy` | Validate deployment configuration |
+| `npm run check:deploy:strict` | Validate deployment with production environment requirements |
+| `npm run check:booking-contract` | Check booking-system integration contracts |
+| `npm run check:pricing-groups` | Check pricing-group and discount behaviour |
+| `npm run check:staffing` | Check staffing-system contracts |
+| `npm run check:employee-documents` | Check employee-document privacy and workflow contracts |
 
-If dependencies are available, run:
+The complete command list is in [package.json](package.json).
+
+## Build and deployment
+
+`npm run build` creates the Vite bundle. The post-build step then:
+
+1. Removes unused public image assets from `dist`.
+2. Generates route-specific static HTML entry files and metadata.
+3. Copies `robots.txt` and `sitemap.xml` into the deployed output.
+
+[vercel.json](vercel.json) defines clean URLs, payment-return redirects, SPA rewrites and baseline security headers. Changes pushed to the production branch are deployed through the connected Vercel project.
+
+Before publishing a material change:
 
 ```bash
-npm run validate:static
 npm run build
-npm run check:deploy
-npm run smoke
-npm run qa:launch
+npm run validate:static
+npm run check:seo
 ```
 
-The build automatically prunes unused public image files from `dist`, so old working assets can remain in `public` without being shipped. `check:deploy` validates launch configuration and can test hosted routes when `PRODUCTION_URL` is set. The smoke and launch QA tests expect the Vite dev server to be running at `http://127.0.0.1:5173` and cover current public routes on desktop and mobile.
+Run the relevant domain contract check as well.
 
-For production, run the stricter environment check after Vercel and Supabase secrets are loaded:
+## Supabase
 
-```bash
-npm run check:deploy:strict
-```
+Database changes live in [supabase/migrations](supabase/migrations) and must be additive, reviewable and safe for existing production data. Deployed server-side workflows live in [supabase/functions](supabase/functions).
 
-## Staff Login
+Key principles:
 
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` before production staff access can unlock. Each Supabase Auth user should have a matching `profiles` row with the same `id` and a `role` of `staff`, `manager`, `admin` or `superadmin`. Local demo buttons are available only in development when Supabase is not configured.
+- Parent, employee, safeguarding and finance records are protected by role-aware RLS and server-side checks.
+- Booking prices are frozen on booking lines for audit and invoicing.
+- Sensitive operations use Edge Functions or server API routes rather than trusting browser input.
+- Production secrets stay in Vercel or Supabase environment settings—not the repository.
 
-## Launch Docs
+## Documentation
 
-- [Deployment checklist](/Users/lukecurrie/Documents/New%20project%203/docs/deployment-checklist.md)
-- [Production Supabase runbook](/Users/lukecurrie/Documents/New%20project%203/docs/production-supabase-runbook.md)
-- [QA checklist](/Users/lukecurrie/Documents/New%20project%203/docs/qa-checklist.md)
-- [Content checklist](/Users/lukecurrie/Documents/New%20project%203/docs/content-checklist.md)
-- [GDPR retention plan](/Users/lukecurrie/Documents/New%20project%203/docs/gdpr-retention-plan.md)
-- [Image privacy guidance](/Users/lukecurrie/Documents/New%20project%203/docs/image-privacy-guidance.md)
-- [School assurance letter template](/Users/lukecurrie/Documents/New%20project%203/docs/templates/school-assurance-letter.md)
+- [Architecture and project tree](ARCHITECTURE.md)
+- [Tree-view shortcut](TREEVIEW.md)
+- [Changelog](CHANGELOG.md)
+- [Deployment checklist](docs/deployment-checklist.md)
+- [Production booking launch runbook](docs/production-booking-launch-runbook.md)
+- [Production Supabase runbook](docs/production-supabase-runbook.md)
+- [PonchoPay live checklist](docs/ponchopay-live-checklist.md)
+- [QA checklist](docs/qa-checklist.md)
+- [Content checklist](docs/content-checklist.md)
+- [GDPR retention plan](docs/gdpr-retention-plan.md)
+- [Image privacy guidance](docs/image-privacy-guidance.md)
+- [Supabase blueprint](docs/supabase-blueprint.md)
 
-## Production Next Steps
+## Maintaining these docs
 
-- Replace remaining mock operational data with Supabase Postgres tables, RLS policies and private Storage buckets.
-- Add audit logging for admin actions and GDPR retention workflows.
-- Connect Supabase Auth and private Storage buckets.
+- Update `README.md` when setup, deployment or major product scope changes.
+- Add user-visible, operational, security or data-model changes to `CHANGELOG.md`.
+- Update `ARCHITECTURE.md` when modules, integrations, data boundaries or directory ownership changes.
