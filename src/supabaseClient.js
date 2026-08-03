@@ -26,6 +26,14 @@ export const supabase = hasSupabaseConfig
     })
   : null;
 
+export async function submitStaffApplication(application) {
+  if (!supabase) throw new Error("Secure applications are temporarily unavailable.");
+  const { data, error } = await supabase.functions.invoke("submit-staff-application", { body: application });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data.application;
+}
+
 export async function signInStaff(email, password) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });

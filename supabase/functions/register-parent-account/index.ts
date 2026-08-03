@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { paragraphsToHtml, sendBookingEmail } from "../_shared/booking-email.ts";
+import { enforcePublicRateLimit, sha256 } from "../_shared/public-rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,18 +33,24 @@ serve(async (request) => {
     const payload = normalizePayload(await request.json().catch(() => ({})));
     const validationError = validatePayload(payload);
     if (validationError) return json({ error: validationError }, 400);
+    const allowed = await enforcePublicRateLimit(supabase, request, "parent-registration", {
+      limit: 3,
+      windowSeconds: 3600,
+      identity: payload.email,
+    });
+    if (!allowed) return json({ error: "Too many registration attempts. Please wait before trying again." }, 429);
 
-    const linkedInvite = await findLinkedAccountInvite(payload.email);
+    const linkedInvite = await findLinkedAccountInvite(payload.email, payload.inviteToken);
     const existing = await findAuthUserByEmail(payload.email);
     if (existing) {
       return json({ error: "A parent account already exists for this email. Please sign in." }, 409);
     }
 
-    const user = await createUser(payload);
+    const { user, verificationUrl } = await createUser(payload);
     await upsertParentProfile(user.id, payload);
     if (linkedInvite) {
       const holder = await activateLinkedAccountInvite(linkedInvite, user.id, payload);
-      const emailResult = await sendLinkedAccountWelcomeEmail(payload, linkedInvite, holder);
+      const emailResult = await sendLinkedAccountWelcomeEmail(payload, linkedInvite, holder, verificationUrl);
 
       await supabase.from("audit_log").insert({
         actor_id: user.id,
@@ -66,12 +73,13 @@ serve(async (request) => {
         email: payload.email,
         emailed: emailResult.emailed,
         emailError: emailResult.emailError,
+        verificationRequired: true,
       });
     }
 
     const parentAccount = await upsertParentAccount(user.id, payload);
 
-    const emailResult = await sendWelcomeEmail(payload, parentAccount.id);
+    const emailResult = await sendWelcomeEmail(payload, parentAccount.id, verificationUrl);
 
     await supabase.from("audit_log").insert({
       actor_id: user.id,
@@ -91,6 +99,7 @@ serve(async (request) => {
       userId: user.id,
       parentAccountId: parentAccount.id,
       email: payload.email,
+      verificationRequired: true,
       parentAccount,
       emailed: emailResult.emailed,
       emailError: emailResult.emailError,
@@ -102,18 +111,22 @@ serve(async (request) => {
 });
 
 async function createUser(payload: ParentRegistrationPayload) {
-  const { data, error } = await supabase.auth.admin.createUser({
+  const { data, error } = await supabase.auth.admin.generateLink({
+    type: "signup",
     email: payload.email,
     password: payload.password,
-    email_confirm: true,
-    user_metadata: {
-      full_name: payload.fullName,
-      role: "parent",
-      preferred_centre: payload.centre,
+    options: {
+      redirectTo: defaultLoginUrl,
+      data: {
+        full_name: payload.fullName,
+        role: "parent",
+        preferred_centre: payload.centre,
+      },
     },
   });
   if (error) throw error;
-  return data.user;
+  if (!data.user || !data.properties?.action_link) throw new Error("Unable to create a secure email verification link.");
+  return { user: data.user, verificationUrl: data.properties.action_link };
 }
 
 async function findAuthUserByEmail(email: string) {
@@ -172,7 +185,7 @@ async function upsertParentAccount(userId: string, payload: ParentRegistrationPa
         ],
       },
       marketing_preferences: payload.marketingPreferences,
-      portal_status: "active",
+      portal_status: "pending_verification",
       updated_at: new Date().toISOString(),
     }, { onConflict: "email" })
     .select("id, profile_id, full_name, email, phone, billing_address, emergency_contact, portal_status")
@@ -181,12 +194,16 @@ async function upsertParentAccount(userId: string, payload: ParentRegistrationPa
   return data;
 }
 
-async function findLinkedAccountInvite(email: string) {
+async function findLinkedAccountInvite(email: string, inviteToken: string) {
+  if (!inviteToken) return null;
   const { data, error } = await supabase
     .from("parent_account_holders")
     .select("id, parent_account_id, email, full_name, status, parent_accounts(id, full_name, email)")
     .eq("email", email.toLowerCase())
-    .neq("status", "removed")
+    .eq("status", "invited")
+    .eq("invitation_token_hash", await sha256(inviteToken))
+    .gt("invitation_expires_at", new Date().toISOString())
+    .is("invitation_used_at", null)
     .order("invited_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -205,6 +222,7 @@ async function activateLinkedAccountInvite(invite: LinkedAccountInvite, userId: 
       full_name: payload.fullName,
       status: "active",
       accepted_at: new Date().toISOString(),
+      invitation_used_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq("id", invite.id)
@@ -214,13 +232,13 @@ async function activateLinkedAccountInvite(invite: LinkedAccountInvite, userId: 
   return data;
 }
 
-async function sendWelcomeEmail(payload: ParentRegistrationPayload, parentAccountId: string) {
+async function sendWelcomeEmail(payload: ParentRegistrationPayload, parentAccountId: string, verificationUrl: string) {
   const lines = [
     `Hi ${payload.firstName},`,
     "",
-    "Your Après School parent account has been created.",
+    "Confirm your email address to finish creating your Après School parent account.",
     "",
-    `Sign in here: ${payload.loginUrl}`,
+    `Confirm email: ${verificationUrl}`,
     "",
     "Before booking, please add your child profile, emergency contacts, medical information and consents.",
     "",
@@ -231,13 +249,13 @@ async function sendWelcomeEmail(payload: ParentRegistrationPayload, parentAccoun
     recipientEmail: payload.email,
     recipientName: payload.fullName,
     emailType: "parent_registration",
-    subject: "Your Après School parent account",
+    subject: "Confirm your Après School parent account",
     text: lines.join("\n"),
     html: paragraphsToHtml(lines, {
-      title: "Your parent account is ready",
-      preheader: "Sign in to add children and book care.",
+      title: "Confirm your email address",
+      preheader: "Verify this email before signing in to your parent account.",
     }),
-    metadata: { loginUrl: payload.loginUrl, parentAccountId },
+    metadata: { parentAccountId, verificationRequired: true },
   });
   return {
     emailed: emailLog?.status === "sent",
@@ -249,15 +267,16 @@ async function sendLinkedAccountWelcomeEmail(
   payload: ParentRegistrationPayload,
   invite: LinkedAccountInvite,
   holder: Record<string, unknown>,
+  verificationUrl: string,
 ) {
   const parentAccount = Array.isArray(invite.parent_accounts) ? invite.parent_accounts[0] : invite.parent_accounts;
   const primaryName = cleanString(parentAccount?.full_name) || "the main account holder";
   const lines = [
     `Hi ${payload.firstName},`,
     "",
-    `Your linked Après School account is ready. You are now connected to ${primaryName}'s family account.`,
+    `Confirm your email to finish connecting to ${primaryName}'s family account.`,
     "",
-    `Sign in here: ${payload.loginUrl}`,
+    `Confirm email: ${verificationUrl}`,
     "",
     "You can view booked days, book care, manage payments and see invoices for the linked family.",
     "",
@@ -270,13 +289,13 @@ async function sendLinkedAccountWelcomeEmail(
     recipientEmail: payload.email,
     recipientName: payload.fullName,
     emailType: "parent_account_holder_registration",
-    subject: "Your linked Après School account is ready",
+    subject: "Confirm your linked Après School account",
     text: lines.join("\n"),
     html: paragraphsToHtml(lines, {
-      title: "Your linked account is ready",
-      preheader: "You can now share the family booking account.",
+      title: "Confirm your linked account",
+      preheader: "Verify this email before accessing the shared family account.",
     }),
-    metadata: { loginUrl: payload.loginUrl, parentAccountId: invite.parent_account_id, holderId: holder.id },
+    metadata: { parentAccountId: invite.parent_account_id, holderId: holder.id, verificationRequired: true },
   });
   return {
     emailed: emailLog?.status === "sent",
@@ -302,7 +321,8 @@ function normalizePayload(input: Record<string, unknown>): ParentRegistrationPay
     heardFrom: cleanString(input.heardFrom),
     terms: Boolean(input.terms),
     privacy: Boolean(input.privacy),
-    loginUrl: cleanString(input.loginUrl) || defaultLoginUrl,
+    loginUrl: defaultLoginUrl,
+    inviteToken: cleanString(input.inviteToken),
     billingAddress: {
       line1: cleanString(input.address1),
       line2: cleanString(input.address2),
@@ -407,6 +427,7 @@ type ParentRegistrationPayload = {
   terms: boolean;
   privacy: boolean;
   loginUrl: string;
+  inviteToken: string;
   billingAddress: {
     line1: string;
     line2: string;

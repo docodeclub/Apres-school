@@ -14502,7 +14502,6 @@ function Incidents() {
 
 function CRM({ data }) {
   const [updates, setUpdates] = useState(() => readCrmUpdates());
-  const [fallbackOutreach, setFallbackOutreach] = useState([]);
   const [typeFilter, setTypeFilter] = useState("Website enquiries");
   const [query, setQuery] = useState("");
   const [rowLimit, setRowLimit] = useState("25");
@@ -14510,18 +14509,7 @@ function CRM({ data }) {
   const [selectedId, setSelectedId] = useState("");
   const [selectedRows, setSelectedRows] = useState([]);
 
-  useEffect(() => {
-    if (data.outreach?.length) return undefined;
-    let active = true;
-    import("./outreachProspects.js").then(({ outreachProspects }) => {
-      if (active) setFallbackOutreach(outreachProspects);
-    });
-    return () => {
-      active = false;
-    };
-  }, [data.outreach]);
-
-  const outreachSource = data.outreach?.length ? data.outreach : fallbackOutreach;
+  const outreachSource = data.outreach?.length ? data.outreach : [];
   const outreach = outreachSource.map((record) => ({ ...record, ...updates[record.id] }));
   const enquiryRecords = mergeCrmRecords(data.enquiries, updates);
   const records = [...enquiryRecords, ...outreach];

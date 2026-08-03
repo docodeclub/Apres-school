@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { paragraphsToHtml, sendBookingEmail } from "../_shared/booking-email.ts";
+import { enforcePublicRateLimit } from "../_shared/public-rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,6 +49,12 @@ serve(async (request) => {
 async function requestCode(input: Record<string, unknown>, request: Request) {
   const email = normalizeEmail(input.email);
   if (!isValidEmail(email)) return json({ error: "Enter a valid parent email address." }, 400);
+  const allowed = await enforcePublicRateLimit(supabase, request, "parent-password-reset", {
+    limit: 5,
+    windowSeconds: 3600,
+    identity: email,
+  });
+  if (!allowed) return json({ error: "Too many reset requests. Please wait before trying again." }, 429);
 
   const parentUser = await resolveParentUser(email);
   let emailSent = false;
@@ -76,7 +83,7 @@ async function requestCode(input: Record<string, unknown>, request: Request) {
     if (insertError) throw insertError;
 
     const firstName = firstNameFromUser(parentUser);
-    const loginUrl = cleanString(input.loginUrl) || defaultLoginUrl;
+    const loginUrl = defaultLoginUrl;
     const lines = [
       `Hi ${firstName || "there"},`,
       "",

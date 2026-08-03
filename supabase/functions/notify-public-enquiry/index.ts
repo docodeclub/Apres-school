@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { enforcePublicRateLimit } from "../_shared/public-rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +46,12 @@ serve(async (request) => {
     const validationError = validateEnquiry(enquiry);
 
     if (validationError) return json({ error: validationError }, 400);
+    const allowed = await enforcePublicRateLimit(supabase, request, "public-enquiry", {
+      limit: 5,
+      windowSeconds: 3600,
+      identity: enquiry.email,
+    });
+    if (!allowed) return json({ error: "Too many enquiries. Please wait before trying again." }, 429, { "Retry-After": "3600" });
 
     const { data, error } = await supabase
       .from("enquiries")
@@ -88,6 +95,8 @@ function validateEnquiry(enquiry: ReturnType<typeof normalizeEnquiry>) {
   if (!enquiry.name) return "Name is required";
   if (!enquiry.email || !enquiry.email.includes("@")) return "Valid email is required";
   if (!enquiry.message) return "Message is required";
+  if (enquiry.name.length > 120 || enquiry.email.length > 254 || enquiry.organisation.length > 160) return "One or more fields are too long";
+  if (enquiry.message.length > 5000) return "Message is too long";
   return null;
 }
 
@@ -192,11 +201,12 @@ async function logEmail(entry: {
   if (error) console.error(`Email log failed: ${error.message}`);
 }
 
-function json(body: Record<string, unknown>, status = 200) {
+function json(body: Record<string, unknown>, status = 200, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       ...corsHeaders,
+      ...extraHeaders,
       "Content-Type": "application/json",
     },
   });

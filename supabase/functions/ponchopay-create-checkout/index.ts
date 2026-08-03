@@ -77,7 +77,9 @@ serve(async (request) => {
   if (!supabaseUrl || !serviceRoleKey) return json({ error: "Supabase service role is not configured" }, 500);
 
   try {
-    const body = await request.json().catch(() => null) as CheckoutRequest | null;
+    const submitted = await request.json().catch(() => null) as CheckoutRequest | null;
+    const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    const body = await trustedCheckoutRequest(submitted, token);
     const validationError = validateCheckoutRequest(body);
     if (validationError || !body) return json({ error: validationError || "Checkout payload is required" }, 400);
 
@@ -166,7 +168,7 @@ serve(async (request) => {
     });
   } catch (error) {
     console.error(error);
-    return json({ error: errorMessage(error) || "Unable to create PonchoPay checkout" }, 500);
+    return json({ error: errorMessage(error) || "Unable to create PonchoPay checkout" }, error instanceof HttpError ? error.status : 500);
   }
 });
 
@@ -229,8 +231,8 @@ function buildPonchoPayPayload(body: CheckoutRequest, payment: {
   paymentPlan: string;
   providerReference: string;
 }) {
-  const successUrl = stringValue(body.successUrl) || `${publicSiteUrl}/api/ponchopay_redirect?payment=pending&reference=${encodeURIComponent(payment.providerReference)}`;
-  const cancelUrl = stringValue(body.cancelUrl) || `${publicSiteUrl}/api/ponchopay_redirect?payment=cancelled&reference=${encodeURIComponent(payment.providerReference)}`;
+  const successUrl = `${publicSiteUrl.replace(/\/$/, "")}/api/ponchopay_redirect?payment=pending&reference=${encodeURIComponent(payment.providerReference)}`;
+  const cancelUrl = `${publicSiteUrl.replace(/\/$/, "")}/api/ponchopay_redirect?payment=cancelled&reference=${encodeURIComponent(payment.providerReference)}`;
   const webhookUrl = `${publicSiteUrl}/api/ponchopay/webhook`;
   const capturedUrl = `${publicSiteUrl}/api/ponchopay/captured`;
   const completedUrl = `${publicSiteUrl}/api/ponchopay/completed`;
@@ -253,9 +255,11 @@ function buildPonchoPayPayload(body: CheckoutRequest, payment: {
   const additionalInfo = buildPonchoAdditionalInfo(childNames, payment.providerReference);
   const amountInPence = Math.round(payment.amount * 100);
   const accountCreditApplied = moneyValue(body.metadata?.accountCreditApplied);
-  const providerLineItems = accountCreditApplied > 0
+  const pricedItemTotal = checkoutTotal(body.items || []);
+  const usesAdjustedTotal = accountCreditApplied > 0 || Math.abs(pricedItemTotal - payment.amount) >= 0.01;
+  const providerLineItems = usesAdjustedTotal
     ? [{
-        description: "Après School booking after account credit",
+        description: accountCreditApplied > 0 ? "Après School booking after account credit" : "Après School booking total",
         amount: amountInPence,
         quantity: 1,
       }]
@@ -402,6 +406,67 @@ function buildPonchoPayPayload(body: CheckoutRequest, payment: {
       ...(isObject(body.metadata) ? body.metadata : {}),
     },
   };
+}
+
+async function trustedCheckoutRequest(submitted: CheckoutRequest | null, token: string): Promise<CheckoutRequest | null> {
+  if (!submitted) return null;
+  if (token && token === serviceRoleKey) return submitted;
+
+  const { data: authData, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !authData.user) throw new HttpError("Sign in before starting checkout.", 401);
+  const bookingId = stringValue(submitted.bookingId);
+  if (!bookingId) throw new HttpError("A saved booking is required before checkout.", 400);
+
+  const { data: booking, error: bookingError } = await supabase
+    .from("bookings")
+    .select("id,parent_id,parent_account_id,parent_email,parent_name,invoice_id,payment_method,payment_plan,total_amount,due_today,metadata,booking_items(id,child_id,child_name,site_name,session_label,starts_at,ends_at,quantity,unit_amount,metadata)")
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (bookingError) throw bookingError;
+  if (!booking) throw new HttpError("Saved booking not found.", 404);
+
+  const email = String(authData.user.email || "").toLowerCase();
+  const ownsBooking = booking.parent_id === authData.user.id || String(booking.parent_email || "").toLowerCase() === email;
+  if (!ownsBooking) throw new HttpError("You cannot pay for this booking.", 403);
+
+  const invoiceId = stringValue(booking.invoice_id);
+  const { data: invoice, error: invoiceError } = invoiceId
+    ? await supabase.from("booking_invoices").select("id,total_amount,balance,currency,parent_id,parent_email,metadata").eq("id", invoiceId).maybeSingle()
+    : { data: null, error: null };
+  if (invoiceError) throw invoiceError;
+  const amount = moneyValue(invoice?.balance) || moneyValue(booking.due_today) || moneyValue(booking.total_amount);
+  if (amount <= 0) throw new HttpError("This booking has no payment due.", 400);
+
+  const items = Array.isArray(booking.booking_items) ? booking.booking_items : [];
+  return {
+    bookingId: booking.id,
+    invoiceId: invoice?.id || invoiceId,
+    parentId: authData.user.id,
+    parentEmail: authData.user.email || booking.parent_email,
+    parentName: booking.parent_name,
+    paymentMethod: booking.payment_method,
+    paymentPlan: booking.payment_plan,
+    currency: stringValue(invoice?.currency) || "GBP",
+    amount,
+    items: items.map((item: Record<string, unknown>) => ({
+      id: stringValue(item.id),
+      childId: stringValue(item.child_id),
+      childName: stringValue(item.child_name),
+      siteName: stringValue(item.site_name),
+      sessionName: stringValue(item.session_label),
+      date: stringValue(item.starts_at).slice(0, 10),
+      startTime: stringValue(item.starts_at),
+      endTime: stringValue(item.ends_at),
+      quantity: Math.max(1, Number(item.quantity || 1)),
+      unitAmount: moneyValue(item.unit_amount),
+    })),
+    metadata: { ...(isObject(booking.metadata) ? booking.metadata : {}), source: "server_verified_parent_checkout" },
+  };
+}
+
+class HttpError extends Error {
+  status: number;
+  constructor(message: string, status: number) { super(message); this.status = status; }
 }
 
 async function createPonchoPayPayment(payload: Record<string, unknown>) {

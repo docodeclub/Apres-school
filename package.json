@@ -48,6 +48,7 @@
     "booking:staging-env-guards": "node scripts/booking-staging-env-guard-check.mjs",
     "booking:frontend-env": "node scripts/booking-frontend-env-check.mjs",
     "booking:secret-safety": "node scripts/booking-secret-safety-check.mjs",
+    "check:security": "node scripts/security-contract-check.mjs",
     "booking:hidden-routes": "node scripts/booking-hidden-route-check.mjs",
     "booking:preview-token": "node scripts/booking-preview-token.mjs",
     "booking:preview-token:write": "node scripts/booking-preview-token.mjs --write",
@@ -67,9 +68,10 @@
     "@supabase/supabase-js": "^2.49.1",
     "@vitejs/plugin-react": "^4.3.4",
     "pdfjs-dist": "5.4.296",
+    "postcss": "^8.5.25",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "vite": "^6.0.0"
   },
   "devDependencies": {

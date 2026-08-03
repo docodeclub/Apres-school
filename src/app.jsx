@@ -2858,13 +2858,13 @@ function Contact({ setPage }) {
 
 function StaffApplication() {
   const [submitted, setSubmitted] = useState(false);
-  function submit(event) {
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  async function submit(event) {
     event.preventDefault();
+    if (submitting) return;
     const form = new FormData(event.currentTarget);
     const application = {
-      id: `application-${Date.now()}`,
-      status: "Pending approval",
-      submittedAt: new Date().toISOString(),
       name: form.get("name"),
       email: form.get("email"),
       phone: form.get("phone"),
@@ -2890,11 +2890,18 @@ function StaffApplication() {
       personalStatement: form.get("personalStatement"),
       safeguardingStatement: form.get("safeguardingStatement") || "No",
     };
-    const existing = readJson(staffApplicationsStorageKey, []);
-    localStorage.setItem(staffApplicationsStorageKey, JSON.stringify([application, ...existing]));
-    addAuditLog("Staff application submitted", `${application.name} submitted onboarding form`);
-    event.currentTarget.reset();
-    setSubmitted(true);
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const { submitStaffApplication } = await loadSupabaseModule();
+      await submitStaffApplication(application);
+      event.currentTarget.reset();
+      setSubmitted(true);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Unable to submit securely. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
   return (
     <PageShell eyebrow="Staff onboarding" title="Apply to work with Après School">
@@ -2906,6 +2913,7 @@ function StaffApplication() {
         </div>
         <form className="contact-form staff-application-form" onSubmit={submit}>
           {submitted && <div className="form-status success">Application received. An admin will review it before account creation.</div>}
+          {submitError && <div className="form-status error" role="alert">{submitError}</div>}
           <label>Name<input required name="name" placeholder="First and last name" /></label>
           <label>Email<input required type="email" name="email" /></label>
           <label>Phone<input required name="phone" /></label>
@@ -2930,7 +2938,7 @@ function StaffApplication() {
           <label>Right to work type<select name="rightToWorkType"><option>Permanent</option><option>Time limited</option></select></label>
           <label className="full">Personal statement<textarea name="personalStatement" rows="4" placeholder="Why do you want to work with Après School?" /></label>
           <label className="full checkbox-line"><input required type="checkbox" name="safeguardingStatement" value="Confirmed" /> I understand the role is subject to safer recruitment checks and safeguarding requirements.</label>
-          <button className="button book" type="submit">Submit Application</button>
+          <button className="button book" type="submit" disabled={submitting}>{submitting ? "Submitting securely..." : "Submit Application"}</button>
         </form>
       </section>
     </PageShell>

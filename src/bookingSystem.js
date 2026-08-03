@@ -740,7 +740,7 @@ export async function requestParentPasswordReset(payload = {}) {
   assertSupabase();
   const { data, error } = await supabase.functions.invoke("parent-password-reset", {
     body: {
-      ...payload,
+      email: payload.email,
       action: "request-code",
     },
   });

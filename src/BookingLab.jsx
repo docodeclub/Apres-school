@@ -1391,7 +1391,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   });
   const [parentPasswordResetBusy, setParentPasswordResetBusy] = useState(false);
   const [parentAccessMode, setParentAccessMode] = useState("signin");
-  const [parentRegistration, setParentRegistration] = useState(() => readJson("apres-parent-registration-draft", defaultParentRegistration));
+  const [parentRegistration, setParentRegistration] = useState(() => {
+    const saved = readJson("apres-parent-registration-draft", defaultParentRegistration);
+    return { ...defaultParentRegistration, ...saved, password: "", confirmPassword: "" };
+  });
   const [childRegistration, setChildRegistration] = useState(() => (isLaunchMode ? defaultChildRegistration : readJson("apres-child-registration-draft", defaultChildRegistration)));
   const [childRegistrationStep, setChildRegistrationStep] = useState("Basics");
   const [launchChildRegistrationOpen, setLaunchChildRegistrationOpen] = useState(false);
@@ -8372,7 +8375,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   function updateParentRegistration(field, value) {
     setParentRegistration((current) => {
       const next = { ...current, [field]: value };
-      localStorage.setItem("apres-parent-registration-draft", JSON.stringify(next));
+      const { password: _password, confirmPassword: _confirmPassword, ...safeDraft } = next;
+      localStorage.setItem("apres-parent-registration-draft", JSON.stringify(safeDraft));
       return next;
     });
   }
@@ -8449,7 +8453,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     if (realBookingServiceReady) {
       try {
         setStatus("Creating your parent account...");
-        await registerParentAccount({
+        const registrationResult = await registerParentAccount({
           firstName: parentRegistration.firstName,
           lastName: parentRegistration.lastName,
           fullName: `${parentRegistration.firstName} ${parentRegistration.lastName}`.trim(),
@@ -8471,8 +8475,17 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           marketingSms: parentRegistration.marketingSms,
           terms: parentRegistration.terms,
           privacy: parentRegistration.privacy,
-          loginUrl: `${window.location.origin}/launch-booking`,
+          inviteToken: new URLSearchParams(window.location.search).get("invite") || "",
         });
+        if (registrationResult?.verificationRequired) {
+          localStorage.removeItem("apres-parent-registration-draft");
+          setParentRegistration((current) => ({ ...current, password: "", confirmPassword: "" }));
+          setParentAccessMode("signin");
+          setParentLogin({ username: email, password: "" });
+          setParentAccountLoading(false);
+          setStatus("Check your email and confirm your address before signing in.");
+          return;
+        }
         await signInRealParentAccount({ email, password });
         liveParentAccount = await fetchParentAccount();
         if (!liveParentAccount) throw new Error("Parent account was created but could not be loaded.");
@@ -9369,10 +9382,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentPasswordResetBusy(true);
     setStatus("For your security, choose your own password before continuing.");
     try {
-      await requestParentPasswordResetCode({
-        email: normalizedEmail,
-        loginUrl: `${window.location.origin}/launch-booking`,
-      });
+      await requestParentPasswordResetCode({ email: normalizedEmail });
       setParentPasswordReset((current) => ({
         ...current,
         forced: true,
@@ -9406,10 +9416,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     }
     setParentPasswordResetBusy(true);
     try {
-      await requestParentPasswordResetCode({
-        email,
-        loginUrl: `${window.location.origin}/launch-booking`,
-      });
+      await requestParentPasswordResetCode({ email });
       setParentPasswordReset((current) => ({
         ...current,
         email,

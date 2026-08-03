@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { paragraphsToHtml, sendBookingEmail } from "../_shared/booking-email.ts";
+import { sha256 } from "../_shared/public-rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -396,7 +397,9 @@ async function inviteLinkedAccountHolder(actor: ActorProfile, payload: Record<st
   const parentAccountId = stringValue(payload.parentAccountId);
   const email = stringValue(payload.email).toLowerCase();
   const fullName = stringValue(payload.fullName);
-  const loginUrl = stringValue(payload.loginUrl) || defaultLoginUrl;
+  const invitationToken = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
+  const invitationUrl = new URL(defaultLoginUrl);
+  invitationUrl.searchParams.set("invite", invitationToken);
   if (!parentAccountId) return json({ error: "Parent account is required" }, 400);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "Enter a valid second account holder email." }, 400);
 
@@ -425,6 +428,8 @@ async function inviteLinkedAccountHolder(actor: ActorProfile, payload: Record<st
       role: "secondary",
       status: "invited",
       invited_by: actor.id,
+      invitation_token_hash: await sha256(invitationToken),
+      invitation_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       permissions: {
         book: true,
         view_schedule: true,
@@ -443,7 +448,7 @@ async function inviteLinkedAccountHolder(actor: ActorProfile, payload: Record<st
     "",
     `${primaryName} has invited you to share access to their Après School family account.`,
     "",
-    `Create or sign in here: ${loginUrl}`,
+    `Accept your invitation: ${invitationUrl.toString()}`,
     "",
     "You can view booked days, book care, manage payments and see invoices for the linked family.",
     "",
@@ -463,7 +468,7 @@ async function inviteLinkedAccountHolder(actor: ActorProfile, payload: Record<st
       preheader: "Create or sign in to share the family booking account.",
     }),
     sentBy: actor.id,
-    metadata: { parentAccountId, holderId: holder.id, loginUrl },
+    metadata: { parentAccountId, holderId: holder.id, invitationExpiresInDays: 7 },
   });
 
   await supabase.from("audit_log").insert({
