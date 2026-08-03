@@ -1393,7 +1393,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [parentAccessMode, setParentAccessMode] = useState("signin");
   const [parentRegistration, setParentRegistration] = useState(() => {
     const saved = readJson("apres-parent-registration-draft", defaultParentRegistration);
-    return { ...defaultParentRegistration, ...saved, password: "", confirmPassword: "" };
+    const { password: _savedPassword, confirmPassword: _savedConfirmation, ...safeSaved } = saved;
+    localStorage.setItem("apres-parent-registration-draft", JSON.stringify(safeSaved));
+    return { ...defaultParentRegistration, ...safeSaved, password: "", confirmPassword: "" };
   });
   const [childRegistration, setChildRegistration] = useState(() => (isLaunchMode ? defaultChildRegistration : readJson("apres-child-registration-draft", defaultChildRegistration)));
   const [childRegistrationStep, setChildRegistrationStep] = useState("Basics");
