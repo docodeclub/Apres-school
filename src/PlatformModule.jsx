@@ -975,8 +975,9 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
     : effectiveRole === "Manager"
       ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Employee Documents", "Ofsted", "Documents", "Sessions", "Pricing Groups"]
       : platformTabs;
+  const pinnedDashboardTab = ["Staff", "Manager"].includes(effectiveRole) ? "Staff" : "";
   const visibleGroups = platformGroups
-    .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item))])
+    .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item) && item !== pinnedDashboardTab)])
     .filter(([, items]) => items.length);
 
   useEffect(() => {
@@ -1097,6 +1098,16 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
           <span>{effectiveRole === "Staff" ? "Your shifts, documents and pay" : effectiveRole === "Manager" ? "Your team, rota, hours and compliance" : "People, sites, compliance and bookings"}</span>
         </div>
         <nav className="platform-nav" aria-label="Internal platform sections">
+          {pinnedDashboardTab && (
+            <button
+              className={`platform-nav-dashboard ${tab === pinnedDashboardTab ? "active" : ""}`}
+              type="button"
+              aria-current={tab === pinnedDashboardTab ? "page" : undefined}
+              onClick={() => selectNavItem("Today", pinnedDashboardTab)}
+            >
+              <LayoutDashboard /> <span>Dashboard</span>
+            </button>
+          )}
           {visibleGroups.map(([group, items]) => (
             <div className={`platform-nav-group ${openNavGroup === group ? "open" : "collapsed"}`} key={group}>
               <button
