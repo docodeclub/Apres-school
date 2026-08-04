@@ -1139,7 +1139,7 @@ function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
           data={enrichedData}
           access={access}
         />
-        {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} />}
+        {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} onOpenRegisters={() => selectNavItem("Sites", "Registers")} />}
         {tab === "Staff" && effectiveRole === "Staff" && <MyShifts access={access} />}
         {tab === "Staff" && effectiveRole === "Staff" && scopedData.staff?.[0] && <EmployeeDocumentsPanel person={scopedData.staff[0]} access={access} legacyFiles={scopedData.hrFiles || []} compact />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
@@ -2417,7 +2417,7 @@ function Registers({ access }) {
             </header>
             <div className="register-table-wrap">
               <table className="register-table">
-                <thead><tr><th>Child</th><th>Session</th><th>Needs</th><th>Status</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Child</th><th>Needs</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody>
                   {section.rows.map((row) => {
                     const busy = savingIds.includes(row.bookingItemId);
@@ -2456,7 +2456,6 @@ function Registers({ access }) {
                             <span>{row.childYearGroup || "Year not recorded"}{childAge(row) ? ` · Age ${childAge(row)}` : ""}</span>
                           </button>
                         </td>
-                        <td><strong>{row.sessionLabel}</strong><span>{new Date(row.startsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}-{new Date(row.endsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span><small>{row.programmeName}</small></td>
                         <td><div className="register-need-icons">
                           {hasSend && <span className="register-need-icon send" title="SEND information recorded" aria-label="SEND information recorded"><SendNeeds size={17} /><b>SEND</b></span>}
                           {hasMedical && <span className="register-need-icon medical" title="Medical information recorded" aria-label="Medical information recorded"><MedicalCross size={17} /><b>Medical</b></span>}
@@ -2476,7 +2475,7 @@ function Registers({ access }) {
                       </tr>
                     );
                   })}
-                  {!section.rows.length && !loading && <tr><td className="register-empty" colSpan="5">No bookings for {section.label} on this date.</td></tr>}
+                  {!section.rows.length && !loading && <tr><td className="register-empty" colSpan="4">No bookings for {section.label} on this date.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -3787,7 +3786,7 @@ function FamilyImportReview({ access }) {
   );
 }
 
-function StaffDashboard({ data, access, userEmail }) {
+function StaffDashboard({ data, access, userEmail, onOpenRegisters }) {
   const pendingDocs = data.documents.reduce((total, doc) => total + Math.max(0, Number(doc.assigned || 0) - Number(doc.read || 0)), 0);
   const ownStaff = resolveOwnStaffRecord(data, access, userEmail);
   const [ownSuitabilityDeclarations, setOwnSuitabilityDeclarations] = useState(() => normaliseSuitabilityDeclarations(ownStaff || {}));
@@ -3851,6 +3850,15 @@ function StaffDashboard({ data, access, userEmail }) {
   }
   return (
     <DashboardGrid className="staff-workspace-grid">
+      <button className="staff-register-shortcut" type="button" onClick={onOpenRegisters}>
+        <span className="staff-register-shortcut-icon"><ClipboardCheck aria-hidden="true" /></span>
+        <span className="staff-register-shortcut-copy">
+          <small>Live attendance</small>
+          <strong>Open Registers</strong>
+          <span>Check children in and out, record absences and see essential care alerts.</span>
+        </span>
+        <span className="staff-register-shortcut-action">Open now <ChevronRight aria-hidden="true" /></span>
+      </button>
       {ownStaff && (
         <section className="staff-home-summary">
           <div className="staff-home-copy">

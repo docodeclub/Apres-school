@@ -5141,7 +5141,7 @@ label {
 
 .register-table {
   width: 100%;
-  min-width: 820px;
+  min-width: 680px;
   border-collapse: collapse;
 }
 
@@ -7906,6 +7906,155 @@ label {
 
 .staff-workspace-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.staff-register-shortcut {
+  --book-glow-angle: 0deg;
+  position: relative;
+  isolation: isolate;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  min-height: 104px;
+  border: 2px solid transparent;
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, #263fa9 0%, #4f6de8 100%) padding-box,
+    conic-gradient(
+      from var(--book-glow-angle),
+      #263fa9 0deg,
+      #5391f7 82deg,
+      #ffd65a 150deg,
+      #f4a23a 218deg,
+      #7c55e8 292deg,
+      #263fa9 360deg
+    ) border-box;
+  color: #fff;
+  padding: 20px 24px;
+  text-align: left;
+  box-shadow:
+    0 16px 34px rgba(38, 63, 169, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+  cursor: pointer;
+  animation: header-book-glow-spin 3.8s linear infinite;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.staff-register-shortcut::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--book-glow-angle),
+    rgba(38, 63, 169, 0.12),
+    rgba(83, 145, 247, 0.72),
+    rgba(255, 214, 90, 0.72),
+    rgba(244, 162, 58, 0.76),
+    rgba(124, 85, 232, 0.62),
+    rgba(38, 63, 169, 0.12)
+  );
+  filter: blur(3px);
+  opacity: 0.28;
+  pointer-events: none;
+}
+
+.staff-register-shortcut:hover,
+.staff-register-shortcut:focus-visible {
+  transform: translateY(-2px);
+  box-shadow:
+    0 20px 40px rgba(38, 63, 169, 0.34),
+    0 0 0 1px rgba(255, 255, 255, 0.3) inset;
+}
+
+.staff-register-shortcut-icon {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.staff-register-shortcut-icon svg {
+  width: 29px;
+  height: 29px;
+}
+
+.staff-register-shortcut-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.staff-register-shortcut-copy small {
+  color: #ffd476;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.staff-register-shortcut-copy strong {
+  color: #fff;
+  font-size: clamp(1.45rem, 2.6vw, 2rem);
+  line-height: 1.08;
+}
+
+.staff-register-shortcut-copy > span {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.88rem;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.staff-register-shortcut-action {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  padding: 10px 13px;
+  color: #fff;
+  font-size: 0.84rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.staff-register-shortcut-action svg {
+  width: 18px;
+  height: 18px;
+}
+
+@media (max-width: 760px) {
+  .staff-register-shortcut {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 13px;
+    min-height: 96px;
+    padding: 17px;
+  }
+
+  .staff-register-shortcut-action {
+    display: none;
+  }
+
+  .staff-register-shortcut-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staff-register-shortcut {
+    --book-glow-angle: 135deg;
+    animation: none;
+  }
 }
 
 .staff-home-summary {

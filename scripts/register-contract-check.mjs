@@ -36,9 +36,10 @@ const checks = [
   ["register returns child year group", /child_year_group text/],
   ["staff UI bulk register actions persist through the server RPC", /Promise\.allSettled\(targetRows\.map\(\(row\) => updateStaffRegisterEntry\(\{/],
   ["compact register opens pupil details from the child name", /className="register-child-button"[\s\S]*setSelectedChildId\(row\.bookingItemId\)/],
+  ["compact register removes repeated session details from child rows", /<thead><tr><th>Child<\/th><th>Needs<\/th><th>Status<\/th><th>Actions<\/th><\/tr><\/thead>/],
   ["compact register shows SEND only when recorded", /hasSend && <span className="register-need-icon send"/],
   ["compact register shows medical only when recorded", /hasMedical && <span className="register-need-icon medical"/],
-  ["pupil drawer contains care, SEND and emergency details", /className="register-child-drawer"[\s\S]*Medical and care information[\s\S]*<h3>SEND<\/h3>[\s\S]*Emergency contact/],
+  ["pupil drawer contains care, SEND and emergency details", /className=\{`register-child-drawer[\s\S]*Medical and care information[\s\S]*<h3>SEND<\/h3>[\s\S]*Emergency contact/],
   ["register selectors combine timetable options with confirmed rows", /const registerOptions = \[\.\.\.timetable, \.\.\.rows\]/],
   ["register renders every available session as a section", /const sessionSections = visibleSessionLabels\.map[\s\S]*className="register-session-section"/],
   ["register provides quick session filter buttons", /className="register-session-filters"[\s\S]*setSession\(item\)/],
@@ -65,6 +66,7 @@ const checks = [
   ["first aid reports require a named provider", /require_first_aid_provider[\s\S]*firstAidProvider/],
   ["staff form captures the named first aider", /Who performed first aid\?[\s\S]*firstAidProvider/],
   ["parent first aid email places what happened above date and time", /label: "What happened:"[\s\S]*label: "Date and time"/],
+  ["staff dashboard provides a prominent registers shortcut", /className="staff-register-shortcut"[\s\S]*onClick=\{onOpenRegisters\}[\s\S]*Open Registers/],
 ];
 
 checks.forEach(([label, pattern]) => {
@@ -76,7 +78,7 @@ checks.forEach(([label, pattern]) => {
       ? `${migration}\n${parentBookingFunction}`
     : label.startsWith("parent first aid email")
       ? registerParentNotification
-    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register renders") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("admin UI") || label.startsWith("staff form")
+    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register renders") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("admin UI") || label.startsWith("staff form") || label.startsWith("staff dashboard")
       ? platformSource
       : label.startsWith("staff UI")
         ? interfaceSource
