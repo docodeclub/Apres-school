@@ -9,8 +9,8 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const serviceRoleKey =
-  Deno.env.get("APRES_SERVICE_ROLE_KEY") ??
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  Deno.env.get("APRES_SERVICE_ROLE_KEY") ??
   "";
 const operationsTo = Deno.env.get("OPERATIONS_NOTIFICATION_TO") ?? "hello@apres-school.co.uk";
 const resendApiKey = Deno.env.get("RESEND_API_KEY");

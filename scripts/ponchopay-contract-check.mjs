@@ -52,6 +52,7 @@ const callbackEvents = [
 
 const checks = [
   [files.checkout, "checkout token signature", /sha256Base64[\s\S]*metadata[\s\S]*ponchoPayIntegrationKey/],
+  [files.checkout, "checkout prefers the current Supabase service key", /Deno\.env\.get\("SUPABASE_SERVICE_ROLE_KEY"\)[\s\S]{0,80}Deno\.env\.get\("APRES_SERVICE_ROLE_KEY"\)/],
   [files.checkout, "generic initiate checkout endpoint", /PONCHOPAY_CHECKOUT_PATH[\s\S]*\/api\/integration\/generic\/initiate[\s\S]*ponchoPayCheckoutEndpoint/],
   [files.checkout, "nested checkout url parsing", /data\.checkoutUrl[\s\S]*payment\.checkoutUrl/],
   [files.checkout, "missing checkout url state", /provider_response_missing_checkout_url/],
@@ -64,6 +65,7 @@ const checks = [
   [files.checkout, "separate PonchoPay callback fields", /paymentCapturedCallbackUrl[\s\S]*paymentCompletedCallbackUrl[\s\S]*recurringPaymentCancelledCallbackUrl/],
   [files.checkout, "redirects use the POST-safe return handler", /\/api\/ponchopay_redirect\?payment=pending[\s\S]*\/api\/ponchopay_redirect\?payment=cancelled/],
   [files.callback, "alternate signature headers", /x-ponchopay-signature[\s\S]*x-webhook-signature/],
+  [files.callback, "callback prefers the current Supabase service key", /Deno\.env\.get\("SUPABASE_SERVICE_ROLE_KEY"\)[\s\S]{0,80}Deno\.env\.get\("APRES_SERVICE_ROLE_KEY"\)/],
   [files.callback, "webhook secret supported", /PONCHOPAY_WEBHOOK_SECRET[\s\S]*ponchoPayWebhookSecret/],
   [files.callback, "signature is compared to generated candidates only", /unprefixedSignature[\s\S]*sha256=/],
   [files.callback, "nested callback payload support", /objectValue\(payload\.data\)[\s\S]*objectValue\(payload\.payment\)/],
@@ -100,6 +102,7 @@ const checks = [
   [files.updateBooking, "payment admin queues email logs", /booking_payment_link[\s\S]*booking_payment_receipt[\s\S]*email_logs/],
   [files.updateBooking, "payment admin updates invoice finance status", /finance_status[\s\S]*parent_portal_status/],
   [files.bookingSystem, "frontend invokes payment admin action", /updateLivePaymentAdminAction[\s\S]*update-parent-booking/],
+  [files.bookingSystem, "parent booking surfaces the function response message", /error\.context\?\.json[\s\S]*responseBody\?\.error/],
   [files.bookingLab, "launch opens hosted PonchoPay checkout", /openPonchoCheckoutWindow[\s\S]*window\.open\(checkoutUrl/],
   [files.bookingLab, "launch blocks payment without a durable booking", /if \(!realBookingResult\?\.booking\)[\s\S]*no payment has been opened[\s\S]*return;/],
   [files.bookingLab, "parent voucher copy includes card guarantee", /Card guarantee[\s\S]*guaranteed card can be charged/],

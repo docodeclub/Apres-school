@@ -9,8 +9,8 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const serviceRoleKey =
-  Deno.env.get("APRES_SERVICE_ROLE_KEY") ??
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  Deno.env.get("APRES_SERVICE_ROLE_KEY") ??
   "";
 const ponchoPayApiUrl = Deno.env.get("PONCHOPAY_API_URL") ?? "";
 const ponchoPayCheckoutPath = Deno.env.get("PONCHOPAY_CHECKOUT_PATH") ?? "/api/integration/generic/initiate";

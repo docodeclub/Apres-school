@@ -1247,7 +1247,16 @@ export async function createParentBooking(request) {
     },
   });
 
-  if (error) throw error;
+  if (error) {
+    let message = error.message || "The booking service could not reserve these sessions.";
+    try {
+      const responseBody = await error.context?.json?.();
+      message = responseBody?.error || responseBody?.message || message;
+    } catch {
+      // Keep the SDK message when the function response has no readable JSON body.
+    }
+    throw new Error(message);
+  }
   if (data?.error) throw new Error(data.error);
   return data;
 }

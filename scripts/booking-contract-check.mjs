@@ -50,6 +50,8 @@ if (request) validateRequestShape(request);
   ["parent terms URL is canonical", bookingLabSource.includes(`const APRES_TERMS_URL = "${termsUrl}"`)],
   ["terms link is used at account creation and booking review", (bookingLabSource.match(/href=\{APRES_TERMS_URL\}/g) || []).length >= 2],
   ["technical ledger diagnostics are hidden from launch parents", bookingLabSource.includes("realBookingServiceReady && !isLaunchMode")],
+  ["family account exposes authorised collectors", bookingLabSource.includes('"Authorised Collectors"') && bookingLabSource.includes("Manage authorised collectors")],
+  ["authorised collectors remain separate from emergency contacts", bookingLabSource.includes("authorisedCollectors: updatedChild.authorisedCollectors || []")],
 ].forEach(([label, ok]) => {
   if (!ok) failures.push(label);
 });

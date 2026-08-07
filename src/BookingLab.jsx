@@ -520,7 +520,8 @@ function liveChildProfileToFamilyChild(child = {}) {
     livesWith: child.livesWith || consentRegistration.livesWith || "",
     parentalResponsibility: child.parentalResponsibility || consentRegistration.parentalResponsibility || "",
     collectionPassword: child.collectionPassword || consentRegistration.collectionPassword || "",
-    emergencyContacts: child.emergencyContacts || child.authorisedCollectors || child.authorised_collectors || [],
+    emergencyContacts: child.emergencyContacts || [],
+    authorisedCollectors: child.authorisedCollectors || child.authorised_collectors || [],
     dietaryNeeds: child.dietaryNeeds || consentRegistration.dietaryNeeds || (dietaryNotes ? [{ need: dietaryNotes, details: "" }] : []),
     allergies: child.allergies || consentRegistration.allergies || (allergyNotes ? [{ allergy: "Allergy information", details: allergyNotes }] : []),
     medications: child.medications || consentRegistration.medications || [],
@@ -1404,6 +1405,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [launchFamilyChildTab, setLaunchFamilyChildTab] = useState("Overview");
   const [launchFamilyChildId, setLaunchFamilyChildId] = useState("");
   const [launchFamilyEditor, setLaunchFamilyEditor] = useState("");
+  const [launchAuthorisedCollectorsDraft, setLaunchAuthorisedCollectorsDraft] = useState([]);
   const [launchEmergencyContactsEditorOpen, setLaunchEmergencyContactsEditorOpen] = useState(false);
   const [launchEmergencyContactsDraft, setLaunchEmergencyContactsDraft] = useState([]);
   const [launchChildSavedNotice, setLaunchChildSavedNotice] = useState("");
@@ -5638,7 +5640,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
 
   function openLaunchFamilySectionEditor(section, child) {
     if (!child) return;
-    const emergencyContact = child.emergencyContacts?.[0] || child.authorisedCollectors?.[0] || {};
+    const emergencyContact = child.emergencyContacts?.[0] || {};
     const dietary = child.dietaryNeeds?.[0] || {};
     const allergy = child.allergies?.[0] || {};
     const medication = child.medications?.[0] || {};
@@ -5646,6 +5648,18 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const medicalCondition = child.medicalConditions?.[0] || {};
     const send = child.send?.[0] || {};
     setLaunchFamilyChildId(child.id);
+    if (section === "Authorised Collectors") {
+      const collectors = (child.authorisedCollectors || child.authorised_collectors || []).map((collector, index) => {
+        if (typeof collector === "string") return { id: `collector-${index + 1}`, name: collector, relationship: "", mobile: "" };
+        return {
+          id: collector.id || `collector-${index + 1}`,
+          name: collector.name || [collector.firstName, collector.lastName].filter(Boolean).join(" ") || "",
+          relationship: collector.relationship || "",
+          mobile: collector.mobile || collector.telephone || "",
+        };
+      });
+      setLaunchAuthorisedCollectorsDraft(collectors.length ? collectors : [{ id: "collector-1", name: "", relationship: "", mobile: "" }]);
+    }
     setChildRegistration((current) => ({
       ...current,
       emergencyTitle: emergencyContact.title || "",
@@ -5789,7 +5803,25 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         return;
       }
     }
-    const sectionPatch = launchFamilyEditor === "Contacts" ? {
+    const authorisedCollectors = launchAuthorisedCollectorsDraft
+      .map((collector, index) => ({
+        id: collector.id || `collector-${index + 1}`,
+        name: String(collector.name || "").trim(),
+        relationship: String(collector.relationship || "").trim(),
+        mobile: String(collector.mobile || "").trim(),
+      }))
+      .filter((collector) => collector.name);
+    if (launchFamilyEditor === "Authorised Collectors" && !authorisedCollectors.length) {
+      setStatus("Add at least one authorised collector, or cancel without saving.");
+      return;
+    }
+    if (launchFamilyEditor === "Authorised Collectors" && authorisedCollectors.some((collector) => collector.mobile && !isValidPhoneNumber(collector.mobile))) {
+      setStatus("Check the mobile number for each authorised collector.");
+      return;
+    }
+    const sectionPatch = launchFamilyEditor === "Authorised Collectors" ? {
+      authorisedCollectors,
+    } : launchFamilyEditor === "Contacts" ? {
       emergencyContacts: [{
         title: childRegistration.emergencyTitle,
         relationship: childRegistration.emergencyRelationship,
@@ -5842,6 +5874,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       Allergies: [/allerg/i],
       Medications: [/medication/i, /auto-injector/i],
       "Medical Conditions": [/medical condition/i],
+      "Authorised Collectors": [/authorised collector/i, /collector/i],
       SEND: [/send/i],
     };
     const migrationMetadata = clearMigrationMissingFields(child.migrationMetadata, migrationReviewPatterns[launchFamilyEditor] || []);
@@ -5863,7 +5896,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           medicalNotes: (updatedChild.medicalConditions || []).map((item) => [item.condition, item.details].filter(Boolean).join(": ")).join("\n"),
           allergyNotes: (updatedChild.allergies || []).map((item) => [item.allergy, item.triggers && `Avoid: ${item.triggers}`, item.symptoms && `Symptoms: ${item.symptoms}`, item.initialAction && `Action: ${item.initialAction}`, item.medication && `Medication: ${item.medication}`, item.details].filter(Boolean).join("\n")).join("\n"),
           dietaryNotes: (updatedChild.dietaryNeeds || []).map((item) => [item.need, item.details].filter(Boolean).join(": ")).join("\n"),
-          authorisedCollectors: updatedChild.emergencyContacts || [],
+          authorisedCollectors: updatedChild.authorisedCollectors || [],
           consents: {
             responses: updatedChild.consents?.responses || updatedChild.consents || {},
             registration: {
@@ -8747,7 +8780,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             childRegistration.allergyDetails,
           ].filter(Boolean).join("\n"),
           dietaryNotes: [childRegistration.dietaryNeed, childRegistration.dietaryDetails].filter(Boolean).join(": "),
-          authorisedCollectors: existingChild?.emergencyContacts || existingChild?.authorisedCollectors || [],
+          authorisedCollectors: existingChild?.authorisedCollectors || [],
           consents: {
             responses: childRegistration.consents,
             registration: {
@@ -8813,7 +8846,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       collectionPassword: childRegistration.collectionPassword,
       religiousInfo: childRegistration.religiousInfo,
       additionalInfo: childRegistration.additionalInfo,
-      emergencyContacts: existingChild?.emergencyContacts || existingChild?.authorisedCollectors || [],
+      emergencyContacts: existingChild?.emergencyContacts || [],
+      authorisedCollectors: existingChild?.authorisedCollectors || [],
       doctorContacts: childRegistration.doctorName || childRegistration.doctorSurgery || childRegistration.doctorTelephone ? [{
         name: childRegistration.doctorName,
         surgery: childRegistration.doctorSurgery,
@@ -16215,7 +16249,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }
 
   function renderLaunchFamilyConsole() {
-    const tabs = ["Overview", "Contacts", "Consents", "Dietary Needs", "Allergies", "Medications", "Medical Conditions", "SEND", "Badges"];
+    const tabs = ["Overview", "Contacts", "Authorised Collectors", "Consents", "Dietary Needs", "Allergies", "Medications", "Medical Conditions", "SEND", "Badges"];
     const selectedChild = launchRegisteredChildren.find((child) => child.id === launchFamilyChildId) || launchRegisteredChildren[0] || null;
     const selectedChildBadges = selectedChild ? parentBadgeBook.rewards.filter((reward) => reward.childId === selectedChild.id) : [];
     const editStepForTab = launchFamilyChildTab === "Overview" ? "Basics" : launchFamilyChildTab === "Consents" ? "Consents" : "Health";
@@ -16258,6 +16292,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           </div>
           <div className="lab-launch-family-head-actions">
             <button type="button" onClick={openLaunchEmergencyContactsEditor}>Manage emergency contacts</button>
+            {selectedChild && <button type="button" onClick={() => openLaunchFamilySectionEditor("Authorised Collectors", selectedChild)}>Manage authorised collectors</button>}
             <button type="button" onClick={() => openLaunchChildEditor("Basics")}>Add child</button>
           </div>
         </div>
@@ -16297,6 +16332,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 </div>
               )}
               {launchFamilyChildTab === "Contacts" && <><p className="lab-section-copy">These emergency contacts belong to the family account and are shared by every child. You only need to keep them up to date once.</p>{emergencyContacts.length ? detailCards(emergencyContacts, [["Name", (item) => item.name || [item.firstName, item.lastName].filter(Boolean).join(" ")], ["Relationship", (item) => item.relationship], ["Mobile", (item) => item.mobile || item.telephone], ["Email", (item) => item.email]]) : <div className="lab-launch-family-empty"><strong>No family emergency contacts found</strong><p>Add at least two emergency contacts in account settings.</p></div>}</>}
+              {launchFamilyChildTab === "Authorised Collectors" && <><p className="lab-section-copy">These are the people permitted to collect {selectedChild.name}. Keep this list separate from emergency contacts.</p>{(selectedChild.authorisedCollectors || []).length ? detailCards(selectedChild.authorisedCollectors.map((collector, index) => typeof collector === "string" ? { id: `collector-${index}`, name: collector } : collector), [["Name", (item) => item.name || [item.firstName, item.lastName].filter(Boolean).join(" ")], ["Relationship", (item) => item.relationship], ["Mobile", (item) => item.mobile || item.telephone]]) : <div className="lab-launch-family-empty"><strong>No authorised collectors added</strong><p>Add anyone who is permitted to collect {selectedChild.name}.</p><button type="button" onClick={() => openLaunchFamilySectionEditor("Authorised Collectors", selectedChild)}>Add authorised collector</button></div>}</>}
               {launchFamilyChildTab === "Consents" && (consentRows.length ? <div className="lab-launch-family-consents">{consentRows.map(([label, value]) => <article key={label}><strong>{label}</strong><span>{String(value)}</span></article>)}</div> : emptyPanel("No consent responses added", "Add consents"))}
               {launchFamilyChildTab === "Dietary Needs" && (dietaryNeeds.length ? detailCards(dietaryNeeds, [["Dietary need", (item) => item.need], ["Details", (item) => item.details]]) : emptyPanel("No dietary needs added", "Add dietary need"))}
               {launchFamilyChildTab === "Allergies" && (allergies.length ? detailCards(allergies, [["Allergy", (item) => item.allergy || item.name], ["Triggers", (item) => item.triggers], ["Symptoms", (item) => item.symptoms], ["Action", (item) => item.initialAction], ["Medication", (item) => item.medication]]) : emptyPanel("No allergies added", "Add allergy"))}
@@ -16346,6 +16382,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <div><span>{selectedChild.name}</span><h4>{launchFamilyEditor}</h4></div>
                 <button type="button" aria-label="Close editor" onClick={() => setLaunchFamilyEditor("")}>×</button>
               </header>
+              {launchFamilyEditor === "Authorised Collectors" && <>
+                <p className="lab-section-copy">Add every person who is permitted to collect {selectedChild.name}. A mobile number is optional but helpful to staff.</p>
+                <div className="lab-launch-emergency-contact-list">
+                  {launchAuthorisedCollectorsDraft.map((collector, index) => (
+                    <fieldset key={collector.id || index}>
+                      <legend>Authorised collector {index + 1}</legend>
+                      <div className="lab-launch-family-modal-fields">
+                        <label>Name <span>Required</span><input required value={collector.name} onChange={(event) => setLaunchAuthorisedCollectorsDraft((collectors) => collectors.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} /></label>
+                        <label>Relationship <span>Optional</span><input value={collector.relationship} onChange={(event) => setLaunchAuthorisedCollectorsDraft((collectors) => collectors.map((item, itemIndex) => itemIndex === index ? { ...item, relationship: event.target.value } : item))} placeholder="Grandparent, family friend" /></label>
+                        <label>Mobile number <span>Optional</span><input inputMode="tel" autoComplete="tel" value={collector.mobile} onChange={(event) => setLaunchAuthorisedCollectorsDraft((collectors) => collectors.map((item, itemIndex) => itemIndex === index ? { ...item, mobile: event.target.value } : item))} /></label>
+                      </div>
+                      {launchAuthorisedCollectorsDraft.length > 1 && <button className="lab-launch-remove-contact" type="button" onClick={() => setLaunchAuthorisedCollectorsDraft((collectors) => collectors.filter((_, itemIndex) => itemIndex !== index))}>Remove collector</button>}
+                    </fieldset>
+                  ))}
+                </div>
+                <button className="lab-launch-add-contact" type="button" onClick={() => setLaunchAuthorisedCollectorsDraft((collectors) => [...collectors, { id: `collector-${Date.now()}`, name: "", relationship: "", mobile: "" }])}>+ Add another authorised collector</button>
+              </>}
               {launchFamilyEditor === "Contacts" && <div className="lab-launch-family-modal-fields">
                 <label>Relationship<select value={childRegistration.emergencyRelationship} onChange={(event) => updateChildRegistration("emergencyRelationship", event.target.value)}><option value="">Select</option>{parentRelationshipOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
                 <label>First name<input value={childRegistration.emergencyFirstName} onChange={(event) => updateChildRegistration("emergencyFirstName", event.target.value)} /></label>
