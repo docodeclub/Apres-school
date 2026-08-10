@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 const files = {
   checkout: "supabase/functions/ponchopay-create-checkout/index.ts",
+  createParentBooking: "supabase/functions/create-parent-booking/index.ts",
   callback: "supabase/functions/ponchopay-callback/index.ts",
   processor: "supabase/functions/ponchopay-process-events/index.ts",
   webhookProxy: "api/ponchopay/webhook.js",
@@ -53,6 +54,8 @@ const callbackEvents = [
 const checks = [
   [files.checkout, "checkout token signature", /sha256Base64[\s\S]*metadata[\s\S]*ponchoPayIntegrationKey/],
   [files.checkout, "checkout prefers the current Supabase service key", /Deno\.env\.get\("SUPABASE_SERVICE_ROLE_KEY"\)[\s\S]{0,80}Deno\.env\.get\("APRES_SERVICE_ROLE_KEY"\)/],
+  [files.checkout, "parent payment refresh loads booking item status", /booking_items\(id,child_id,child_name,site_name,session_label,starts_at,ends_at,quantity,unit_amount,status,metadata\)/],
+  [files.checkout, "parent payment refresh excludes cancelled sessions", /status === "reserved" \|\| status === "confirmed"/],
   [files.checkout, "generic initiate checkout endpoint", /PONCHOPAY_CHECKOUT_PATH[\s\S]*\/api\/integration\/generic\/initiate[\s\S]*ponchoPayCheckoutEndpoint/],
   [files.checkout, "nested checkout url parsing", /data\.checkoutUrl[\s\S]*payment\.checkoutUrl/],
   [files.checkout, "missing checkout url state", /provider_response_missing_checkout_url/],
@@ -103,6 +106,8 @@ const checks = [
   [files.updateBooking, "payment admin updates invoice finance status", /finance_status[\s\S]*parent_portal_status/],
   [files.bookingSystem, "frontend invokes payment admin action", /updateLivePaymentAdminAction[\s\S]*update-parent-booking/],
   [files.bookingSystem, "parent booking surfaces the function response message", /error\.context\?\.json[\s\S]*responseBody\?\.error/],
+  [files.createParentBooking, "outstanding balance message tells parents where to pay", /Open Payments & credit in your family account and select Pay now/],
+  [files.createParentBooking, "booking checkout separates active sessions from removed sessions", /const bookableItems = savedItems\.filter/],
   [files.bookingLab, "launch opens hosted PonchoPay checkout", /openPonchoCheckoutWindow[\s\S]*window\.open\(checkoutUrl/],
   [files.bookingLab, "launch blocks payment without a durable booking", /if \(!realBookingResult\?\.booking\)[\s\S]*no payment has been opened[\s\S]*return;/],
   [files.bookingLab, "parent voucher copy includes card guarantee", /Card guarantee[\s\S]*guaranteed card can be charged/],

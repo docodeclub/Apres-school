@@ -123,7 +123,7 @@ serve(async (request) => {
       const outstanding = moneyValue(financeGate.outstandingBalance);
       return json({
         error: outstanding > 0
-          ? `Please clear the £${outstanding.toFixed(2)} outstanding balance on your family account before making another booking.`
+          ? `Please clear the £${outstanding.toFixed(2)} outstanding balance before making another booking. Open Payments & credit in your family account and select Pay now.`
           : "Please clear the negative balance on your family account before making another booking.",
         code: "OUTSTANDING_ACCOUNT_BALANCE",
         outstandingBalance: outstanding,
@@ -167,9 +167,13 @@ serve(async (request) => {
       }
     }
 
+    const bookableItems = savedItems.filter((item) => {
+      const status = stringValue(item.status).toLowerCase();
+      return status === "reserved" || status === "confirmed";
+    });
     const zeroBalanceBooking = moneyValue(booking.totalAmount) <= 0
       && stringValue(booking.status).toLowerCase() !== "waitlist"
-      && savedItems.some((item) => stringValue(item.status).toLowerCase() !== "waitlist");
+      && bookableItems.length > 0;
     if (zeroBalanceBooking && stringValue(booking.status).toLowerCase() !== "confirmed") {
       const confirmedAt = new Date().toISOString();
       const { error: bookingConfirmationError } = await supabase
@@ -232,7 +236,7 @@ serve(async (request) => {
     }
 
     let checkout: Record<string, unknown> | null = null;
-    if (moneyValue(booking?.dueToday) > 0 && savedItems.some((item) => item.status !== "waitlist")) {
+    if (moneyValue(booking?.dueToday) > 0 && bookableItems.length > 0) {
       try {
         checkout = await createCheckout({
         bookingId: stringValue(booking.id),
@@ -253,8 +257,7 @@ serve(async (request) => {
           invoice: stringValue(booking.invoiceId),
           reference: stringValue(booking.bookingReference) || stringValue(booking.id),
         }),
-        items: savedItems
-          .filter((item) => item.status !== "waitlist")
+        items: bookableItems
           .map((item) => ({
             id: item.id,
             childId: item.child_id,
@@ -338,7 +341,7 @@ serve(async (request) => {
         actor,
         parentName,
         booking,
-        items: savedItems,
+        items: savedItems.filter((item) => stringValue(item.status).toLowerCase() !== "cancelled"),
         checkout,
         existing: Boolean(reservationResult.existing),
       });

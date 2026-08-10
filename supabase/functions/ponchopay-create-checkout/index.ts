@@ -419,7 +419,7 @@ async function trustedCheckoutRequest(submitted: CheckoutRequest | null, token: 
 
   const { data: booking, error: bookingError } = await supabase
     .from("bookings")
-    .select("id,parent_id,parent_account_id,parent_email,parent_name,invoice_id,payment_method,payment_plan,total_amount,due_today,metadata,booking_items(id,child_id,child_name,site_name,session_label,starts_at,ends_at,quantity,unit_amount,metadata)")
+    .select("id,parent_id,parent_account_id,parent_email,parent_name,invoice_id,payment_method,payment_plan,total_amount,due_today,metadata,booking_items(id,child_id,child_name,site_name,session_label,starts_at,ends_at,quantity,unit_amount,status,metadata)")
     .eq("id", bookingId)
     .maybeSingle();
   if (bookingError) throw bookingError;
@@ -437,7 +437,13 @@ async function trustedCheckoutRequest(submitted: CheckoutRequest | null, token: 
   const amount = moneyValue(invoice?.balance) || moneyValue(booking.due_today) || moneyValue(booking.total_amount);
   if (amount <= 0) throw new HttpError("This booking has no payment due.", 400);
 
-  const items = Array.isArray(booking.booking_items) ? booking.booking_items : [];
+  const items = Array.isArray(booking.booking_items)
+    ? booking.booking_items.filter((item: Record<string, unknown>) => {
+        const status = stringValue(item.status).toLowerCase();
+        return status === "reserved" || status === "confirmed";
+      })
+    : [];
+  if (!items.length) throw new HttpError("This booking has no active sessions to pay for.", 400);
   return {
     bookingId: booking.id,
     invoiceId: invoice?.id || invoiceId,
