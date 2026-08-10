@@ -44,6 +44,32 @@ serve(async (request) => {
       return json({ error: "This enquiry does not have a valid reply address." }, 400);
     }
 
+    // A provider request can succeed before a later database write fails. Recover
+    // that delivery instead of sending the same approved reply a second time.
+    const { data: existingLog, error: existingLogError } = await supabase
+      .from("email_logs")
+      .select("id,status,provider_message_id,sent_at,created_at")
+      .eq("enquiry_id", enquiryId)
+      .eq("email_type", "enquiry_reply")
+      .eq("subject", subject)
+      .eq("status", "sent")
+      .contains("metadata", { body })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (existingLogError) throw existingLogError;
+    if (existingLog) {
+      const reply = await recoverSentReply({
+        enquiryId,
+        recipientEmail,
+        subject,
+        body,
+        actorId: actor.id,
+        emailLog: existingLog,
+      });
+      return json({ sent: true, recovered: true, reply }, 200);
+    }
+
     const lines = body.split(/\r?\n/);
     const emailLog = await sendBookingEmail(supabase, {
       recipientEmail,
@@ -103,9 +129,58 @@ serve(async (request) => {
   } catch (error) {
     console.error(error);
     const status = error instanceof AccessError ? error.status : 500;
-    return json({ error: error instanceof Error ? error.message : "Unable to send this reply" }, status);
+    return json({ error: errorMessage(error) }, status);
   }
 });
+
+async function recoverSentReply({
+  enquiryId,
+  recipientEmail,
+  subject,
+  body,
+  actorId,
+  emailLog,
+}: {
+  enquiryId: string;
+  recipientEmail: string;
+  subject: string;
+  body: string;
+  actorId: string;
+  emailLog: Record<string, unknown>;
+}) {
+  const emailLogId = stringValue(emailLog.id);
+  const { data: existingReply, error: existingReplyError } = await supabase
+    .from("enquiry_replies")
+    .select("id,enquiry_id,recipient_email,subject,body,status,provider_message_id,sent_by,sent_at,created_at")
+    .eq("email_log_id", emailLogId)
+    .maybeSingle();
+  if (existingReplyError) throw existingReplyError;
+
+  let reply = existingReply;
+  if (!reply) {
+    const { data, error } = await supabase
+      .from("enquiry_replies")
+      .insert({
+        enquiry_id: enquiryId,
+        recipient_email: recipientEmail,
+        subject,
+        body,
+        status: "sent",
+        provider_message_id: stringValue(emailLog.provider_message_id) || null,
+        email_log_id: emailLogId || null,
+        sent_by: actorId,
+        sent_at: stringValue(emailLog.sent_at) || new Date().toISOString(),
+      })
+      .select("id,enquiry_id,recipient_email,subject,body,status,provider_message_id,sent_by,sent_at,created_at")
+      .single();
+    if (error) throw error;
+    reply = data;
+  }
+
+  const { error: statusError } = await supabase.from("enquiries").update({ status: "responded" }).eq("id", enquiryId);
+  if (statusError) throw statusError;
+  return reply;
+}
 
 async function requireAdmin(authHeader: string) {
   const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -134,6 +209,14 @@ class AccessError extends Error {
 
 function stringValue(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return "Unable to send this reply";
 }
 
 function json(body: Record<string, unknown>, status = 200) {
