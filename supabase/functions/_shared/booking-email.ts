@@ -19,6 +19,7 @@ type BookingEmailInput = {
   cc?: string[];
   headers?: Record<string, string>;
   sentBy?: string | null;
+  enquiryId?: string | null;
   metadata?: Record<string, unknown>;
   attachments?: Array<{
     filename: string;
@@ -29,6 +30,8 @@ type BookingEmailInput = {
 type BookingEmailHtmlOptions = {
   title?: string;
   preheader?: string;
+  badge?: string;
+  eyebrow?: string;
 };
 
 const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -104,6 +107,7 @@ export async function sendBookingEmail(supabase: SupabaseLike, input: BookingEma
       provider_message_id: providerMessageId || null,
       error_message: errorMessage || null,
       sent_by: input.sentBy || null,
+      enquiry_id: input.enquiryId || null,
       metadata: {
         ...(input.metadata || {}),
         body: input.text,
@@ -141,6 +145,8 @@ export function paragraphsToHtml(lines: string[], options: BookingEmailHtmlOptio
   const actionUrl = firstUrl(actionLine);
   const title = stringValue(options.title) || emailTitleFromLines(cleanedLines);
   const preheader = stringValue(options.preheader) || emailPreheaderFromLines(cleanedLines);
+  const badge = stringValue(options.badge) || "Family booking";
+  const eyebrow = stringValue(options.eyebrow) || "Après School Bookings";
   const content = cleanedLines
     .map((line, index) => lineToEmailHtml(line, index, actionUrl))
     .join("");
@@ -168,7 +174,7 @@ export function paragraphsToHtml(lines: string[], options: BookingEmailHtmlOptio
                       <span style="display:block;margin-top:5px;color:#c47708;font-size:12px;line-height:1.2;letter-spacing:1.1px;font-weight:900;">Let's Learn and Play</span>
                     </td>
                     <td valign="middle" align="right">
-                      <span style="display:inline-block;padding:9px 13px;background:#f4f6ff;border-radius:999px;color:${brandNavy};font-size:13px;line-height:1.2;font-weight:800;">Family booking</span>
+                      <span style="display:inline-block;padding:9px 13px;background:#f4f6ff;border-radius:999px;color:${brandNavy};font-size:13px;line-height:1.2;font-weight:800;">${escapeHtml(badge)}</span>
                     </td>
                   </tr>
                 </table>
@@ -179,7 +185,7 @@ export function paragraphsToHtml(lines: string[], options: BookingEmailHtmlOptio
             </tr>
             <tr>
               <td style="padding:30px 24px 8px;">
-                <p style="margin:0 0 9px;font-size:12px;line-height:1.35;letter-spacing:1px;text-transform:uppercase;color:#b96e00;font-weight:900;">Après School Bookings</p>
+                <p style="margin:0 0 9px;font-size:12px;line-height:1.35;letter-spacing:1px;text-transform:uppercase;color:#b96e00;font-weight:900;">${escapeHtml(eyebrow)}</p>
                 <h1 style="margin:0 0 20px;font-size:27px;line-height:1.2;color:${brandNavy};font-weight:900;">${escapeHtml(title)}</h1>
                 ${content}
               </td>

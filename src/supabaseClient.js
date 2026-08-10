@@ -698,7 +698,7 @@ export async function fetchPlatformData({ userId, role }) {
     ? Promise.resolve({ data: [], error: null })
     : supabase
         .from("enquiries")
-        .select("id, name, email, organisation, type, subject, message, status, owner_id, internal_notes, created_at")
+        .select("id, name, email, organisation, type, subject, message, status, owner_id, internal_notes, created_at, enquiry_replies(id, recipient_email, subject, body, status, provider_message_id, sent_by, sent_at, created_at)")
         .order("created_at", { ascending: false })
         .limit(250);
 
@@ -1315,6 +1315,17 @@ function mapEnquiries(records) {
     note: parseInternalNotes(record.internal_notes).note || "",
     nextAction: parseInternalNotes(record.internal_notes).nextAction || "call/email follow-up",
     createdAt: record.created_at || "",
+    replies: (record.enquiry_replies || []).map((reply) => ({
+      id: reply.id,
+      recipientEmail: reply.recipient_email,
+      subject: reply.subject,
+      body: reply.body,
+      status: reply.status,
+      providerMessageId: reply.provider_message_id || "",
+      sentBy: reply.sent_by || "",
+      sentAt: reply.sent_at || "",
+      createdAt: reply.created_at || "",
+    })).sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))),
     source: "supabase",
   }));
 }
@@ -1586,6 +1597,25 @@ export async function updateCrmEnquiry(id, patch) {
 
   if (error) throw error;
   return { id, ...patch };
+}
+
+export async function sendEnquiryReply({ enquiryId, subject, body }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.functions.invoke("send-enquiry-reply", {
+    body: { enquiryId, subject, body },
+  });
+  if (error) {
+    let message = error.message || "The reply could not be sent.";
+    try {
+      const responseBody = await error.context?.json?.();
+      message = responseBody?.error || responseBody?.message || message;
+    } catch {
+      // Keep the SDK message when the function response is not readable JSON.
+    }
+    throw new Error(message);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
 }
 
 export async function updateDocumentSourceUrl(id, sourceUrl) {
@@ -2416,6 +2446,7 @@ function normalizeCrmStatus(status) {
   if (value === "follow_up") return "follow_up";
   if (value === "reviewing") return "reviewing";
   if (value === "closed") return "closed";
+  if (value === "responded") return "responded";
   return "new";
 }
 
@@ -2424,6 +2455,7 @@ function formatCrmStatus(status) {
   if (value === "follow_up") return "Follow up";
   if (value === "reviewing") return "Reviewing";
   if (value === "closed") return "Closed";
+  if (value === "responded") return "Responded";
   return "New";
 }
 

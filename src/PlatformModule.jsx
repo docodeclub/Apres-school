@@ -14829,6 +14829,42 @@ function CrmBulkActions({ selectedCount, visibleCount, allVisibleSelected, onSel
 
 function CrmDetailDrawer({ record, onChange }) {
   const isOutreach = record.type === "Outreach";
+  const firstName = String(record.name || "there").trim().split(/\s+/)[0] || "there";
+  const [replySubject, setReplySubject] = useState("");
+  const [replyBody, setReplyBody] = useState("");
+  const [replyReviewed, setReplyReviewed] = useState(false);
+  const [replyState, setReplyState] = useState({ status: "idle", message: "" });
+  const [lastSentReply, setLastSentReply] = useState(null);
+  const replyHistory = [lastSentReply, ...(record.replies || [])].filter(Boolean).filter((reply, index, items) => items.findIndex((item) => item.id === reply.id) === index);
+
+  useEffect(() => {
+    setReplySubject(`Re: ${record.subject || "Your Après School enquiry"}`);
+    setReplyBody(`Hi ${firstName},\n\n\n\nKind regards,\n\nAprès School`);
+    setReplyReviewed(false);
+    setReplyState({ status: "idle", message: "" });
+    setLastSentReply(null);
+  }, [record.id]);
+
+  async function sendReply() {
+    if (!replyReviewed || !replySubject.trim() || !replyBody.trim() || replyState.status === "sending") return;
+    setReplyState({ status: "sending", message: "Sending your approved reply…" });
+    try {
+      const { sendEnquiryReply } = await loadSupabaseModule();
+      const result = await sendEnquiryReply({ enquiryId: record.id, subject: replySubject.trim(), body: replyBody.trim() });
+      setLastSentReply(result.reply || null);
+      setReplyReviewed(false);
+      setReplyState({ status: "sent", message: `Reply sent to ${record.email}.` });
+      onChange(record.id, { status: "Responded", nextAction: "Monitor for parent reply" });
+      addAuditLog("Enquiry reply sent", `${record.name} · ${record.email} · ${replySubject.trim()}`, {
+        tableName: "enquiries",
+        crmRecord: record.name,
+        email: record.email,
+      });
+    } catch (error) {
+      setReplyState({ status: "error", message: error?.message || "The reply could not be sent." });
+    }
+  }
+
   return (
     <section className="crm-detail-drawer" aria-label="CRM lead details">
       <div className="crm-detail-heading">
@@ -14848,6 +14884,49 @@ function CrmDetailDrawer({ record, onChange }) {
         <label className="full">Next action<input value={record.nextAction || ""} onChange={(event) => onChange(record.id, { nextAction: event.target.value })} placeholder="Call, email, prepare proposal..." /></label>
         <label className="full">Notes<textarea rows="4" value={record.note || ""} onChange={(event) => onChange(record.id, { note: event.target.value })} placeholder="Call notes, context, objections or next steps." /></label>
       </div>
+      {!isOutreach && (
+        <section className="crm-reply-workspace" aria-label={`Reply to ${record.name}`}>
+          <div className="crm-reply-heading">
+            <div>
+              <p className="eyebrow">Parent communication</p>
+              <h4>Review and send a reply</h4>
+              <p>The message is only sent after you approve the final wording.</p>
+            </div>
+            <span>{record.email}</span>
+          </div>
+          <div className="crm-original-message">
+            <span>Original enquiry</span>
+            <strong>{record.subject || `${record.type || "Website"} enquiry`}</strong>
+            <p>{record.message || "No message was supplied."}</p>
+          </div>
+          <label>Subject<input value={replySubject} onChange={(event) => { setReplySubject(event.target.value); setReplyReviewed(false); }} maxLength="180" /></label>
+          <label>Reply<textarea rows="9" value={replyBody} onChange={(event) => { setReplyBody(event.target.value); setReplyReviewed(false); }} maxLength="8000" placeholder="Write or paste the approved reply here." /></label>
+          <label className="crm-reply-approval">
+            <input type="checkbox" checked={replyReviewed} onChange={(event) => setReplyReviewed(event.target.checked)} />
+            <span>I have reviewed the recipient, subject and message and approve this email for sending.</span>
+          </label>
+          <div className="crm-reply-actions">
+            <button className="button book" type="button" onClick={sendReply} disabled={!replyReviewed || !replySubject.trim() || !replyBody.trim() || replyState.status === "sending"}>
+              {replyState.status === "sending" ? "Sending…" : "Send approved reply"}
+            </button>
+            <span className={replyState.status === "error" ? "error" : replyState.status === "sent" ? "success" : ""} role="status">{replyState.message}</span>
+          </div>
+          {!!replyHistory.length && (
+            <details className="crm-reply-history">
+              <summary>{replyHistory.length} previous repl{replyHistory.length === 1 ? "y" : "ies"}</summary>
+              <div>
+                {replyHistory.map((reply) => (
+                  <article key={reply.id}>
+                    <strong>{reply.subject}</strong>
+                    <span>{reply.sentAt ? new Date(reply.sentAt).toLocaleString("en-GB") : reply.createdAt ? new Date(reply.createdAt).toLocaleString("en-GB") : "Time not recorded"} · {reply.status}</span>
+                    <p>{reply.body}</p>
+                  </article>
+                ))}
+              </div>
+            </details>
+          )}
+        </section>
+      )}
       <p className={`crm-sync ${record.syncState || "local"}`}>{crmSyncText(record)}</p>
     </section>
   );
