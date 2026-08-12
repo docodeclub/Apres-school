@@ -12,6 +12,9 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Added
 
+- Admin CRM evidence showing whether each public enquiry was saved and whether its internal notification was sent, failed, queued or has no linked delivery log.
+- Auditable duplicate, test and spam classifications for enquiry records without deleting the original submissions.
+- Atomic public-enquiry fingerprinting so repeated or concurrent submissions within ten minutes resolve to one saved record and one internal notification.
 - Descriptive in-paragraph links between school partnerships, wraparound care, holiday clubs, venue booking routes and relevant policies.
 - Semantic responsive imagery on the Holiday Clubs page, with descriptive alt text, intrinsic dimensions, responsive sources and intentional loading priority.
 - Build-time static generation of the complete content, navigation and footer for every indexable public page.
@@ -24,6 +27,8 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Fixed
 
+- Stopped the public contact and school-enquiry forms from showing success when the server did not accept the enquiry; failed submissions now retain the visitor's text and provide a retry route.
+- Prevented rapid repeat clicks, lost-response retries and concurrent identical submissions from creating duplicate CRM rows or notification emails.
 - Removed robots.txt blocks from HTML routes that already carry `noindex`, allowing crawlers to read and honour the directive while keeping `/api/` blocked.
 
 ## 2026-08-02

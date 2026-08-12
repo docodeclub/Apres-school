@@ -53,29 +53,38 @@ serve(async (request) => {
     });
     if (!allowed) return json({ error: "Too many enquiries. Please wait before trying again." }, 429, { "Retry-After": "3600" });
 
+    const submissionFingerprint = await enquiryFingerprint(enquiry);
+    const { data: acceptanceRows, error: acceptanceError } = await supabase.rpc("accept_public_enquiry", {
+      p_name: enquiry.name,
+      p_email: enquiry.email,
+      p_organisation: enquiry.organisation,
+      p_type: enquiry.type,
+      p_subject: enquiry.subject,
+      p_role: enquiry.role,
+      p_message: enquiry.message,
+      p_submission_fingerprint: submissionFingerprint,
+      p_window_seconds: 600,
+    });
+    if (acceptanceError) throw acceptanceError;
+
+    const acceptance = Array.isArray(acceptanceRows) ? acceptanceRows[0] : acceptanceRows;
+    const enquiryId = stringValue(acceptance?.enquiry_id);
+    if (!enquiryId) throw new Error("The enquiry was not accepted");
+
     const { data, error } = await supabase
       .from("enquiries")
-      .insert({
-        name: enquiry.name,
-        email: enquiry.email,
-        organisation: enquiry.organisation,
-        type: enquiry.type,
-        subject: enquiry.subject,
-        role: enquiry.role,
-        message: enquiry.message,
-        status: "new",
-      })
       .select("*")
+      .eq("id", enquiryId)
       .single();
-
     if (error) throw error;
 
-    await notifyByEmail(enquiry, data.id);
+    const duplicate = acceptance?.duplicate === true;
+    if (!duplicate) await notifyByEmail(enquiry, enquiryId);
 
-    return json({ enquiry: data }, 200);
+    return json({ enquiry: data, duplicate }, 200);
   } catch (error) {
     console.error(error);
-    return json({ error: "Unable to submit enquiry" }, 500);
+    return json({ error: "We could not save your enquiry. Please try again." }, 500);
   }
 });
 
@@ -102,6 +111,20 @@ function validateEnquiry(enquiry: ReturnType<typeof normalizeEnquiry>) {
 
 function stringValue(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+async function enquiryFingerprint(enquiry: ReturnType<typeof normalizeEnquiry>) {
+  const normalized = [
+    enquiry.name,
+    enquiry.email.toLowerCase(),
+    enquiry.organisation,
+    enquiry.type,
+    enquiry.subject,
+    enquiry.role,
+    enquiry.message,
+  ].map((value) => value.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase()).join("\n");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+  return Array.from(new Uint8Array(digest)).map((part) => part.toString(16).padStart(2, "0")).join("");
 }
 
 async function notifyByEmail(enquiry: ReturnType<typeof normalizeEnquiry>, enquiryId: string) {

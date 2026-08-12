@@ -14519,6 +14519,21 @@ function Incidents() {
   );
 }
 
+function crmNotificationEvidence(record) {
+  const notification = record.notification;
+  const status = String(notification?.status || "").toLowerCase();
+  if (status === "sent") {
+    return { key: "sent", label: "Notification sent", detail: notification.sentAt ? `Sent ${new Date(notification.sentAt).toLocaleString("en-GB")}` : "Provider accepted the notification." };
+  }
+  if (status === "failed") {
+    return { key: "failed", label: "Notification failed", detail: notification.errorMessage || "The provider did not accept the notification." };
+  }
+  if (["queued", "queued_without_provider"].includes(status)) {
+    return { key: "queued", label: "Notification queued", detail: status === "queued_without_provider" ? "Saved without an active email provider." : "Waiting for provider delivery." };
+  }
+  return { key: "unknown", label: "Notification unknown", detail: "No notification delivery log is linked to this enquiry." };
+}
+
 function CRM({ data }) {
   const [updates, setUpdates] = useState(() => readCrmUpdates());
   const [typeFilter, setTypeFilter] = useState("Website enquiries");
@@ -14743,18 +14758,26 @@ function updateRecord(id, patch) {
           <tbody>
             {rowsToShow.map((record) => {
               const isOutreach = record.type === "Outreach";
+              const notificationEvidence = crmNotificationEvidence(record);
               return (
                 <tr key={record.id} className={selectedRecord?.id === record.id ? "selected" : ""}>
                   <td><input type="checkbox" checked={selectedRows.includes(record.id)} onChange={() => toggleRow(record.id)} aria-label={`Select ${record.name}`} /></td>
                   <td>
                     <strong>{record.name}</strong>
                     <small>{record.type}{record.stage ? ` · ${record.stage}` : ""}</small>
+                    {record.classification && <small className={`crm-classification ${record.classification}`}>{record.classification}</small>}
                     <small>{isOutreach ? [record.area, record.location, record.contactType].filter(Boolean).join(" · ") : record.organisation || "No organisation"}</small>
                   </td>
                   <td>
                     <span>{record.contactEmail || record.email || "No email"}</span>
                     <small>{record.subject || record.message || "No summary"}</small>
                     <small className={`crm-sync ${record.syncState || "local"}`}>{crmSyncText(record)}</small>
+                    {!isOutreach && (
+                      <span className="crm-delivery-stack">
+                        <small className={`crm-delivery-pill ${record.source === "supabase" ? "saved" : "unknown"}`}>{record.source === "supabase" ? "Enquiry saved" : "Save not confirmed"}</small>
+                        <small className={`crm-delivery-pill ${notificationEvidence.key}`}>{notificationEvidence.label}</small>
+                      </span>
+                    )}
                   </td>
                   <td>
                     <strong>{record.createdAt ? formatShortDate(record.createdAt) : "Not recorded"}</strong>
@@ -14836,6 +14859,7 @@ function CrmDetailDrawer({ record, onChange }) {
   const [replyState, setReplyState] = useState({ status: "idle", message: "" });
   const [lastSentReply, setLastSentReply] = useState(null);
   const replyHistory = [lastSentReply, ...(record.replies || [])].filter(Boolean).filter((reply, index, items) => items.findIndex((item) => item.id === reply.id) === index);
+  const notificationEvidence = crmNotificationEvidence(record);
 
   useEffect(() => {
     setReplySubject(`Re: ${record.subject || "Your Après School enquiry"}`);
@@ -14873,7 +14897,10 @@ function CrmDetailDrawer({ record, onChange }) {
           <h3>{record.name}</h3>
           <p>{isOutreach ? [record.area, record.location, record.contactType].filter(Boolean).join(" · ") : record.organisation || "No organisation"}</p>
         </div>
-        <Badge value={record.status || "New"} />
+        <div className="crm-detail-badges">
+          {record.classification && <span className={`crm-classification ${record.classification}`}>{record.classification}</span>}
+          <Badge value={record.status || "New"} />
+        </div>
       </div>
       <div className="crm-detail-grid">
         <label>Status<select value={record.status || "New"} onChange={(event) => onChange(record.id, { status: event.target.value })}>{crmStatuses.map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -14884,6 +14911,22 @@ function CrmDetailDrawer({ record, onChange }) {
         <label className="full">Next action<input value={record.nextAction || ""} onChange={(event) => onChange(record.id, { nextAction: event.target.value })} placeholder="Call, email, prepare proposal..." /></label>
         <label className="full">Notes<textarea rows="4" value={record.note || ""} onChange={(event) => onChange(record.id, { note: event.target.value })} placeholder="Call notes, context, objections or next steps." /></label>
       </div>
+      {!isOutreach && (
+        <section className="crm-delivery-evidence" aria-label="Enquiry delivery evidence">
+          <div>
+            <span>Enquiry record</span>
+            <strong className={record.source === "supabase" ? "saved" : "unknown"}>{record.source === "supabase" ? "Saved to Supabase" : "Save not confirmed"}</strong>
+            <small>{record.createdAt ? `Received ${new Date(record.createdAt).toLocaleString("en-GB")}` : "Received time not recorded"}</small>
+          </div>
+          <div>
+            <span>Internal notification</span>
+            <strong className={notificationEvidence.key}>{notificationEvidence.label}</strong>
+            <small>{notificationEvidence.detail}</small>
+            {record.notification?.provider && <small>Provider: {record.notification.provider}</small>}
+            {record.notification?.providerMessageId && <small>Provider message: {record.notification.providerMessageId}</small>}
+          </div>
+        </section>
+      )}
       {!isOutreach && (
         <section className="crm-reply-workspace" aria-label={`Reply to ${record.name}`}>
           <div className="crm-reply-heading">

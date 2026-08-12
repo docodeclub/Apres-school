@@ -2,6 +2,8 @@
 
 Receives public website enquiries, writes them to the `enquiries` table and optionally sends an email notification using Resend.
 
+Identical normalized submissions accepted within ten minutes resolve to the original enquiry. Acceptance is serialized in Postgres so concurrent double-clicks create one record and one notification. The endpoint returns `duplicate: true` when it safely recovers the existing submission.
+
 ## Required Secrets
 
 Supabase provides these automatically inside Edge Functions:
@@ -18,6 +20,7 @@ supabase secrets set RESEND_FROM="Après School <hello@apres-school.co.uk>"
 ```
 
 If `RESEND_API_KEY` is not set, the function will still save enquiries but skip email notification.
+That state is recorded as `queued_without_provider` and appears as queued evidence in the admin CRM.
 
 Deploy with:
 

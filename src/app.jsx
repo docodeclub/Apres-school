@@ -2453,20 +2453,31 @@ function Schools({ setPage }) {
   ];
   async function submitSchool(event) {
     event.preventDefault();
+    if (schoolStatus?.state === "sending") return;
+    const formElement = event.currentTarget;
     setSchoolStatus({ state: "sending", message: "Sending your school enquiry..." });
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     const entry = Object.fromEntries(form.entries());
-    const { submitPublicEnquiry } = await loadSupabaseModule();
-    const result = await submitPublicEnquiry({
-      ...entry,
-      name: entry.organisation,
-      type: "School",
-    });
-    setSchoolStatus({
-      state: "sent",
-      message: "Thanks. Your school enquiry has been received and the Après School team will follow up.",
-    });
-    event.currentTarget.reset();
+    try {
+      const { submitPublicEnquiry } = await loadSupabaseModule();
+      const result = await submitPublicEnquiry({
+        ...entry,
+        name: entry.organisation,
+        type: "School",
+      });
+      setSchoolStatus({
+        state: "sent",
+        message: result.duplicate
+          ? "We already received this school enquiry. There is no need to send it again."
+          : "Thanks. Your school enquiry has been received and the Après School team will follow up.",
+      });
+      formElement.reset();
+    } catch (error) {
+      setSchoolStatus({
+        state: "error",
+        message: error?.message || "We could not send your enquiry. Your message is still in the form—please try again or email hello@apres-school.co.uk.",
+      });
+    }
   }
   return (
     <PageShell eyebrow="For Schools" title="Wraparound care that helps parents choose your school.">
@@ -2599,7 +2610,7 @@ function Schools({ setPage }) {
           <label>Provision needed<select name="subject"><option>Wraparound care</option><option>Holiday clubs</option><option>Enrichment clubs</option><option>Staffing support</option></select></label>
           <label>Message<textarea required name="message" rows="4" placeholder="Tell us about timings, numbers, site needs or current challenges." /></label>
           <button className="button book" type="submit" disabled={schoolStatus?.state === "sending"}>{schoolStatus?.state === "sending" ? "Sending..." : "Send School Enquiry"}</button>
-          {schoolStatus && <p className="success">{schoolStatus.message}</p>}
+          {schoolStatus && <p className={`form-submit-status ${schoolStatus.state}`} role="status">{schoolStatus.message}</p>}
         </form>
       </section>
     </PageShell>
@@ -2779,16 +2790,27 @@ function Contact({ setPage }) {
   }
   async function submit(event) {
     event.preventDefault();
+    if (status?.state === "sending") return;
+    const formElement = event.currentTarget;
     setStatus({ state: "sending", message: "Sending your enquiry..." });
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     const entry = Object.fromEntries(form.entries());
-    const { submitPublicEnquiry } = await loadSupabaseModule();
-    const result = await submitPublicEnquiry(entry);
-    setStatus({
-      state: "sent",
-      message: "Thanks. Your enquiry has been received and the Après School team will follow up.",
-    });
-    event.currentTarget.reset();
+    try {
+      const { submitPublicEnquiry } = await loadSupabaseModule();
+      const result = await submitPublicEnquiry(entry);
+      setStatus({
+        state: "sent",
+        message: result.duplicate
+          ? "We already received this enquiry. There is no need to send it again."
+          : "Thanks. Your enquiry has been received and the Après School team will follow up.",
+      });
+      formElement.reset();
+    } catch (error) {
+      setStatus({
+        state: "error",
+        message: error?.message || "We could not send your enquiry. Your message is still in the form—please try again or email hello@apres-school.co.uk.",
+      });
+    }
   }
   return (
     <PageShell eyebrow="Contact" title="Speak to the right Après School team.">
@@ -2849,7 +2871,7 @@ function Contact({ setPage }) {
             <button type="button" onClick={(event) => setTemplate(event, "Staff", "I would like to ask about staff opportunities or onboarding:")}>Staff or recruitment enquiry</button>
           </div>
           <button className="button primary" type="submit" disabled={status?.state === "sending"}>{status?.state === "sending" ? "Sending..." : "Send Enquiry"}</button>
-          {status && <p className="success">{status.message}</p>}
+          {status && <p className={`form-submit-status ${status.state}`} role="status">{status.message}</p>}
         </form>
       </section>
     </PageShell>

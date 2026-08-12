@@ -58,6 +58,8 @@
     "check:ponchopay": "node scripts/ponchopay-readiness-check.mjs",
     "check:ponchopay-contract": "node scripts/ponchopay-contract-check.mjs",
     "check:enquiry-replies": "node scripts/enquiry-reply-contract-check.mjs",
+    "check:enquiry-intake": "node scripts/enquiry-intake-contract-check.mjs",
+    "check:enquiry-browser": "node scripts/enquiry-form-browser-check.mjs",
     "check:ponchopay-locations": "node scripts/ponchopay-location-urn-check.mjs",
     "ponchopay:admin-settings": "node scripts/ponchopay-admin-settings.mjs",
     "ponchopay:penny-test": "node scripts/ponchopay-penny-test.mjs",

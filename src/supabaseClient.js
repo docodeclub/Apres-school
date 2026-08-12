@@ -698,7 +698,7 @@ export async function fetchPlatformData({ userId, role }) {
     ? Promise.resolve({ data: [], error: null })
     : supabase
         .from("enquiries")
-        .select("id, name, email, organisation, type, subject, message, status, owner_id, internal_notes, created_at, enquiry_replies(id, recipient_email, subject, body, status, provider_message_id, sent_by, sent_at, created_at)")
+        .select("id, name, email, organisation, type, subject, message, status, classification, duplicate_of, classified_at, classified_by, owner_id, internal_notes, created_at, enquiry_replies(id, recipient_email, subject, body, status, provider_message_id, sent_by, sent_at, created_at), email_logs(id, email_type, status, provider, provider_message_id, error_message, sent_at, created_at)")
         .order("created_at", { ascending: false })
         .limit(250);
 
@@ -1302,32 +1302,52 @@ function mapDocuments(records, chaseEvents = []) {
 }
 
 function mapEnquiries(records) {
-  return records.map((record) => ({
-    id: record.id,
-    name: record.name,
-    email: record.email,
-    type: record.type,
-    organisation: record.organisation,
-    subject: record.subject || "",
-    message: record.message || "",
-    status: formatCrmStatus(record.status),
-    owner: parseInternalNotes(record.internal_notes).owner || (record.owner_id ? "Assigned" : "Unassigned"),
-    note: parseInternalNotes(record.internal_notes).note || "",
-    nextAction: parseInternalNotes(record.internal_notes).nextAction || "call/email follow-up",
-    createdAt: record.created_at || "",
-    replies: (record.enquiry_replies || []).map((reply) => ({
-      id: reply.id,
-      recipientEmail: reply.recipient_email,
-      subject: reply.subject,
-      body: reply.body,
-      status: reply.status,
-      providerMessageId: reply.provider_message_id || "",
-      sentBy: reply.sent_by || "",
-      sentAt: reply.sent_at || "",
-      createdAt: reply.created_at || "",
-    })).sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))),
-    source: "supabase",
-  }));
+  return records.map((record) => {
+    const notes = parseInternalNotes(record.internal_notes);
+    const notificationLogs = (record.email_logs || [])
+      .filter((item) => item.email_type === "enquiry_notification")
+      .sort((left, right) => String(right.created_at || "").localeCompare(String(left.created_at || "")));
+    const notificationLog = notificationLogs[0] || null;
+    return {
+      id: record.id,
+      name: record.name,
+      email: record.email,
+      type: record.type,
+      organisation: record.organisation,
+      subject: record.subject || "",
+      message: record.message || "",
+      status: formatCrmStatus(record.status),
+      classification: record.classification || "",
+      duplicateOf: record.duplicate_of || "",
+      classifiedAt: record.classified_at || "",
+      classifiedBy: record.classified_by || "",
+      owner: notes.owner || (record.owner_id ? "Assigned" : "Unassigned"),
+      note: notes.note || "",
+      nextAction: notes.nextAction || "call/email follow-up",
+      createdAt: record.created_at || "",
+      notification: notificationLog ? {
+        id: notificationLog.id,
+        status: notificationLog.status || "unknown",
+        provider: notificationLog.provider || "",
+        providerMessageId: notificationLog.provider_message_id || "",
+        errorMessage: notificationLog.error_message || "",
+        sentAt: notificationLog.sent_at || "",
+        createdAt: notificationLog.created_at || "",
+      } : null,
+      replies: (record.enquiry_replies || []).map((reply) => ({
+        id: reply.id,
+        recipientEmail: reply.recipient_email,
+        subject: reply.subject,
+        body: reply.body,
+        status: reply.status,
+        providerMessageId: reply.provider_message_id || "",
+        sentBy: reply.sent_by || "",
+        sentAt: reply.sent_at || "",
+        createdAt: reply.created_at || "",
+      })).sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))),
+      source: "supabase",
+    };
+  });
 }
 
 function mapPayrollHours(records) {
@@ -2489,8 +2509,7 @@ export async function submitPublicEnquiry(payload) {
   };
 
   if (!supabase) {
-    saveLocalEnquiry(record);
-    return { mode: "local", record };
+    throw new Error("The enquiry service is temporarily unavailable. Please keep your message and try again shortly, or email hello@apres-school.co.uk.");
   }
 
   const { data, error } = await supabase.functions.invoke(enquiryFunctionName, {
@@ -2498,11 +2517,22 @@ export async function submitPublicEnquiry(payload) {
   });
 
   if (error) {
-    saveLocalEnquiry({ ...record, syncStatus: "pending", syncError: error.message });
-    return { mode: "local-fallback", record, error };
+    let message = "Your enquiry was not accepted. Please try again; your message is still in the form.";
+    try {
+      const responseBody = await error.context?.json?.();
+      message = responseBody?.error || responseBody?.message || message;
+    } catch {
+      // Preserve the recoverable public message when the response is not JSON.
+    }
+    throw new Error(message);
   }
 
-  return { mode: "supabase", record: data?.enquiry || record };
+  if (data?.error) throw new Error(data.error);
+  if (!data?.enquiry?.id) {
+    throw new Error("Your enquiry was not accepted. Please try again; your message is still in the form.");
+  }
+
+  return { mode: "supabase", duplicate: data.duplicate === true, record: data.enquiry };
 }
 
 export function getLocalEnquiries() {

@@ -90,6 +90,12 @@ Booking creation, amendment, cancellation, credit and payment operations cross a
 
 [src/PlatformModule.jsx](src/PlatformModule.jsx) composes the role-based internal workspace. Larger domains with independent workflows are split into dedicated modules, including staffing, employee documents and pricing groups.
 
+### Public enquiry and CRM flow
+
+The public contact and school-partnership forms submit to the `notify-public-enquiry` Edge Function. The function validates and rate-limits the request, computes a normalized content fingerprint, and calls a service-role-only database function that atomically returns either a new enquiry or the matching submission accepted during the preceding ten minutes. Only a newly accepted enquiry triggers an internal notification, so repeat clicks and lost-response retries do not duplicate records or email.
+
+The admin CRM reads enquiry records, reply history and protected `email_logs` evidence under existing admin/superadmin RLS. It distinguishes saved records from browser-only data and shows notification outcomes as sent, failed, queued or unknown. Duplicate, test and spam classifications retain the original record, optional canonical-record link, classifying administrator and timestamp for auditability.
+
 ## Data and server boundaries
 
 ### Supabase

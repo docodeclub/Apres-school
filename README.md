@@ -12,7 +12,7 @@ Production: [www.apres-school.co.uk](https://www.apres-school.co.uk/)
 - Staff operations for registers, incidents, safeguarding, staffing, sessions and site oversight.
 - People and compliance tools for users, HR, employee documents, SCR and Ofsted readiness.
 - Finance tools for school invoicing, payments, pay, rewards and pricing-group performance.
-- Communications, CRM, documents, audit and system settings.
+- Communications and CRM with reliable public enquiry intake, notification-delivery evidence, reply history and auditable classification, plus documents, audit and system settings.
 
 ## Technology
 
@@ -60,6 +60,8 @@ Copy `.env.example` to an ignored local environment file and add only the variab
 | `npm run check:pricing-groups` | Check pricing-group and discount behaviour |
 | `npm run check:staffing` | Check staffing-system contracts |
 | `npm run check:employee-documents` | Check employee-document privacy and workflow contracts |
+| `npm run check:enquiry-intake` | Check public enquiry acceptance, deduplication and CRM delivery evidence |
+| `npm run check:enquiry-browser` | Exercise enquiry success, failure, retry and mobile behaviour against a local mock |
 
 The complete command list is in [package.json](package.json).
 
@@ -92,6 +94,7 @@ Key principles:
 - Parent, employee, safeguarding and finance records are protected by role-aware RLS and server-side checks.
 - Booking prices are frozen on booking lines for audit and invoicing.
 - Sensitive operations use Edge Functions or server API routes rather than trusting browser input.
+- Public enquiries are accepted atomically with a short idempotency window; provider notification outcomes remain admin-only evidence.
 - Production secrets stay in Vercel or Supabase environment settings—not the repository.
 
 ## Documentation
