@@ -4,6 +4,7 @@ import fs from "node:fs";
 const migration = fs.readFileSync(new URL("../supabase/migrations/0099_employee_documents.sql", import.meta.url), "utf8");
 const effectiveTermsMigration = fs.readFileSync(new URL("../supabase/migrations/0100_employee_document_effective_terms.sql", import.meta.url), "utf8");
 const privacyMigration = fs.readFileSync(new URL("../supabase/migrations/0101_employee_document_privacy_hardening.sql", import.meta.url), "utf8");
+const managerOwnPayslipMigration = fs.readFileSync(new URL("../supabase/migrations/0112_manager_own_payslip_storage.sql", import.meta.url), "utf8");
 for (const table of ["employee_document_types", "employee_document_templates", "employee_documents", "employee_document_signatures", "employee_document_events", "employment_terms_history"]) {
   assert.match(migration, new RegExp(`create table if not exists public\\.${table}`), `Missing ${table}`);
 }
@@ -19,6 +20,9 @@ assert.match(privacyMigration, /employee_document_row_visible/);
 assert.match(privacyMigration, /employee_document_storage_object_visible/);
 assert.match(privacyMigration, /awaiting_signature','signed','declined','superseded','expired/);
 assert.match(privacyMigration, /revoke execute on function public\.employee_document_record_event/);
+assert.match(managerOwnPayslipMigration, /current_user_app_role\(\) not in \('staff','manager'\)/);
+assert.match(managerOwnPayslipMigration, /split_part\(object_name,'\/',1\) <> public\.current_user_staff_record_id\(\)::text/);
+assert.match(managerOwnPayslipMigration, /staff_hr_files_storage_staff_select_own/);
 
 const service = fs.readFileSync(new URL("../supabase/functions/manage-employee-document/index.ts", import.meta.url), "utf8");
 for (const action of ["create", "register_upload", "generate", "new_version", "send", "sign", "decline", "archive", "url"]) {
