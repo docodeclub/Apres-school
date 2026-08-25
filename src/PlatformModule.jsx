@@ -17204,7 +17204,11 @@ function buildAccessContext(role, userEmail, data, previewUserId = "") {
     : users;
   const directIds = new Set(directReports.map((user) => user.id));
   const directNames = new Set(directReports.map((user) => user.name));
-  const scopedStaff = isScoped || isStaffScoped ? data.staff.filter((person) => directIds.has(person.profileId || person.id)) : data.staff;
+  const visibleStaffIds = new Set([
+    ...directIds,
+    currentUser?.id,
+  ].filter(Boolean));
+  const scopedStaff = isScoped || isStaffScoped ? data.staff.filter((person) => visibleStaffIds.has(person.profileId || person.id)) : data.staff;
   const scopedSessions = isScoped || isStaffScoped
     ? data.sessions.filter((session) => directNames.has(session.staff) || scopedStaff.some((person) => staffAssignedToSchool(person, session.site)))
     : data.sessions;
