@@ -918,7 +918,93 @@ const ofstedSites = [
 const coverReasons = ["Illness cover", "Planned absence", "Training cover", "Ratio support", "Emergency cover"];
 const defaultStaffAvatar = "/assets/internal/default-staff-avatar.png";
 
-function Platform({ role, tab, setTab, userEmail, onSignOut, data }) {
+function Platform(props) {
+  if (props.formerStaff) {
+    return <FormerStaffPortal data={props.data} userEmail={props.userEmail} onSignOut={props.onSignOut} />;
+  }
+  return <ActivePlatform {...props} />;
+}
+
+function FormerStaffPortal({ data = {}, userEmail = "", onSignOut }) {
+  const person = data.staff || {};
+  const files = data.hrFiles || [];
+  const p45Files = files.filter((file) => /\bp\s*45\b/i.test(`${file.category || ""} ${file.title || ""}`));
+  const payslips = files.filter((file) => /payslip/i.test(`${file.category || ""} ${file.title || ""}`));
+  const otherFiles = files.filter((file) => !p45Files.includes(file) && !payslips.includes(file));
+
+  function DocumentList({ items, emptyTitle, emptyText }) {
+    return (
+      <div className="former-staff-document-list">
+        {items.map((file) => (
+          <article key={file.id}>
+            <span className="former-staff-file-icon"><FileText aria-hidden="true" /></span>
+            <div>
+              <strong>{file.title}</strong>
+              <span>{file.category || "HR file"} · {file.issueDate ? formatShortDate(file.issueDate) : file.uploadedAt ? formatShortDate(file.uploadedAt.slice(0, 10)) : "Date not recorded"}</span>
+              {file.notes && <small>{file.notes}</small>}
+            </div>
+            {file.fileUrl
+              ? <a className="button light" href={file.fileUrl} target="_blank" rel="noreferrer">Open securely</a>
+              : <Badge value={file.storagePath ? "Secure link unavailable" : "File pending"} />}
+          </article>
+        ))}
+        {!items.length && <EmptyList title={emptyTitle} text={emptyText} />}
+      </div>
+    );
+  }
+
+  return (
+    <main className="former-staff-portal" id="main-content">
+      <section className="former-staff-portal-head">
+        <div>
+          <p className="eyebrow">Former staff document access</p>
+          <h1>Your retained employment documents</h1>
+          <p>You can continue to view your P45, previous payslips and HR files securely. Your access to all operational areas ended when you left Après School.</p>
+        </div>
+        <button className="button light" type="button" onClick={onSignOut}>Sign out</button>
+      </section>
+
+      {data.error ? (
+        <section className="former-staff-access-error">
+          <ShieldCheck aria-hidden="true" />
+          <div><h2>We could not load your documents</h2><p>{data.error}</p></div>
+        </section>
+      ) : (
+        <>
+          <section className="former-staff-identity">
+            <div><span>Account</span><strong>{person.name || "Former staff member"}</strong><small>{person.email || userEmail}</small></div>
+            <div><span>Employment ended</span><strong>{person.leftAt ? formatShortDate(person.leftAt.slice(0, 10)) : "Date retained by HR"}</strong><small>{person.leavingReason || "Former staff access"}</small></div>
+            <div><span>Access</span><strong>Documents only</strong><small>No registers, staffing, safeguarding or internal systems</small></div>
+          </section>
+
+          <section className="former-staff-document-section featured">
+            <div className="former-staff-section-head"><div><p className="eyebrow">Leaving document</p><h2>Your P45</h2><p>Your P45 will appear here after payroll has issued it.</p></div><Badge value={p45Files.length ? "Available" : "Awaiting issue"} /></div>
+            <DocumentList items={p45Files} emptyTitle="P45 not issued yet" emptyText="Once payroll uploads your P45, it will appear here automatically." />
+          </section>
+
+          <section className="former-staff-document-section">
+            <div className="former-staff-section-head"><div><p className="eyebrow">Pay history</p><h2>Previous payslips</h2><p>All payslips retained against your account remain available to you.</p></div><Badge value={`${payslips.length} available`} /></div>
+            <DocumentList items={payslips} emptyTitle="No payslips available" emptyText="Please contact Après School if you expected to see a payslip here." />
+          </section>
+
+          <section className="former-staff-document-section">
+            <details className="former-staff-other-files">
+              <summary><span><strong>Other retained HR files</strong><small>Contracts, letters and documents belonging to you</small></span><Badge value={`${otherFiles.length} files`} /></summary>
+              <DocumentList items={otherFiles} emptyTitle="No other HR files" emptyText="There are no additional retained files available in your portal." />
+            </details>
+          </section>
+        </>
+      )}
+
+      <section className="former-staff-security-note">
+        <LockKeyhole aria-hidden="true" />
+        <div><strong>Private, personal access</strong><p>These documents belong to you. They are not visible to other staff or managers. Contact Après School if anything is missing or you need help signing in.</p></div>
+      </section>
+    </main>
+  );
+}
+
+function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const [staffProfileTargetId, setStaffProfileTargetId] = useState("");
   const [scrInspectionTarget, setScrInspectionTarget] = useState("");
   const [bookingAdminFocus, setBookingAdminFocus] = useState("");
@@ -7695,6 +7781,8 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
   const [selectedFormerStaffId, setSelectedFormerStaffId] = useState("");
   const [dismissTargetId, setDismissTargetId] = useState("");
   const [dismissReason, setDismissReason] = useState("Resigned");
+  const [dismissBusy, setDismissBusy] = useState(false);
+  const [dismissStatus, setDismissStatus] = useState("");
   const staffSource = data.allStaff || data.staff;
   const formerStaff = formerStaffRecords || localFormerStaff;
   const setFormerStaff = onFormerStaffChange || setLocalFormerStaff;
@@ -7873,10 +7961,25 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
   function openDismissModal(person) {
     setDismissTargetId(person.id);
     setDismissReason("Resigned");
+    setDismissStatus("");
   }
 
-  function dismissStaffMember() {
+  async function dismissStaffMember() {
     if (!dismissTarget) return;
+    setDismissBusy(true);
+    setDismissStatus("Securing former staff access and preparing the email...");
+    let savedRecord = null;
+    try {
+      if (hasSupabaseConfig && isUuid(dismissTarget.staffRecordId)) {
+        const { dismissStaffRecord } = await loadSupabaseModule();
+        savedRecord = await dismissStaffRecord({ staffRecordId: dismissTarget.staffRecordId, reason: dismissReason });
+      }
+    } catch (error) {
+      setDismissStatus(error.message || "The staff account could not be moved to former access.");
+      setDismissBusy(false);
+      addAuditLog("Former staff save failed", `${dismissTarget.name}: ${error.message || "Supabase rejected the update"}`);
+      return;
+    }
     const key = dismissTarget.staffRecordId || dismissTarget.id;
     const record = {
       id: key,
@@ -7889,7 +7992,7 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
       reportsTo: dismissTarget.reportsTo,
       managerName: dismissTarget.managerName,
       reason: dismissReason,
-      dismissedAt: new Date().toISOString(),
+      dismissedAt: savedRecord?.dismissedAt || new Date().toISOString(),
     };
     const next = {
       ...formerStaff,
@@ -7898,25 +8001,26 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
     };
     setFormerStaff(next);
     localStorage.setItem(formerStaffStorageKey, JSON.stringify(next));
-    addAuditLog("Staff moved to former staff", `${dismissTarget.name}: ${dismissReason}`);
+    addAuditLog("Staff moved to former staff", `${dismissTarget.name}: ${dismissReason}${savedRecord?.emailed ? " · access email sent" : savedRecord?.emailError ? ` · email failed: ${savedRecord.emailError}` : ""}`);
     setSelectedFormerStaffId(dismissTarget.id);
-    if (hasSupabaseConfig && isUuid(dismissTarget.staffRecordId)) {
-      loadSupabaseModule()
-        .then(({ dismissStaffRecord }) => dismissStaffRecord({ staffRecordId: dismissTarget.staffRecordId, reason: dismissReason }))
-        .then((savedRecord) => {
-          addAuditLog("Former staff saved to Supabase", `${dismissTarget.name}: ${savedRecord.reason || dismissReason}`);
-        })
-        .catch((error) => {
-          console.warn("Unable to save former staff record", error);
-          addAuditLog("Former staff save failed", `${dismissTarget.name}: ${error.message || "Supabase rejected the update"}`);
-        });
-    }
     const nextActive = activeRows.find((person) => person.id !== dismissTarget.id);
     setSelectedStaffId(nextActive?.id || "");
     setDismissTargetId("");
+    setDismissBusy(false);
   }
 
-  function restoreStaffMember(person) {
+  async function restoreStaffMember(person) {
+    try {
+      if (hasSupabaseConfig && isUuid(person.staffRecordId)) {
+        const { restoreStaffRecord } = await loadSupabaseModule();
+        await restoreStaffRecord(person.staffRecordId);
+        addAuditLog("Former staff restored in Supabase", person.name);
+      }
+    } catch (error) {
+      console.warn("Unable to restore former staff record", error);
+      addAuditLog("Former staff restore failed", `${person.name}: ${error.message || "Supabase rejected the update"}`);
+      return;
+    }
     const next = { ...formerStaff };
     delete next[person.id];
     delete next[person.staffRecordId];
@@ -7926,17 +8030,6 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
     if (selectedFormerStaffId === person.id || selectedFormerStaffId === person.staffRecordId) {
       const nextFormer = formerRows.find((item) => item.id !== person.id && item.staffRecordId !== person.staffRecordId);
       setSelectedFormerStaffId(nextFormer?.id || "");
-    }
-    if (hasSupabaseConfig && isUuid(person.staffRecordId)) {
-      loadSupabaseModule()
-        .then(({ restoreStaffRecord }) => restoreStaffRecord(person.staffRecordId))
-        .then(() => {
-          addAuditLog("Former staff restored in Supabase", person.name);
-        })
-        .catch((error) => {
-          console.warn("Unable to restore former staff record", error);
-          addAuditLog("Former staff restore failed", `${person.name}: ${error.message || "Supabase rejected the update"}`);
-        });
     }
     setSelectedStaffId(person.id);
   }
@@ -8372,15 +8465,16 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
             <button className="modal-close" type="button" aria-label="Close dismiss staff dialog" onClick={() => setDismissTargetId("")}><X size={18} /></button>
             <p className="eyebrow">Move to former staff</p>
             <h3 id="dismiss-staff-title">Dismiss {dismissTarget.name}</h3>
-            <p>This will remove them from current HR views while keeping their SCR, HR files, pay records and audit history stored.</p>
+            <p>This ends all operational access. They will keep a private document-only login for their P45, previous payslips and HR files, and will receive an email explaining the change.</p>
             <label className="dismiss-reason-form">Reason for leaving:
               <select value={dismissReason} onChange={(event) => setDismissReason(event.target.value)}>
                 {leavingReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
               </select>
             </label>
+            {dismissStatus && <p className="account-message" role="status">{dismissStatus}</p>}
             <div className="dismiss-modal-actions">
-              <button className="button light" type="button" onClick={() => setDismissTargetId("")}>Cancel</button>
-              <button className="button danger" type="button" onClick={dismissStaffMember}>Move to Former Staff</button>
+              <button className="button light" type="button" disabled={dismissBusy} onClick={() => setDismissTargetId("")}>Cancel</button>
+              <button className="button danger" type="button" disabled={dismissBusy} onClick={dismissStaffMember}>{dismissBusy ? "Securing access..." : "Move to Former Staff"}</button>
             </div>
           </section>
         </div>

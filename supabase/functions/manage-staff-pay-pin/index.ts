@@ -112,6 +112,15 @@ async function getActor(authHeader: string) {
   const token = authHeader.replace(/^Bearer\s+/i, "");
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) return null;
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("active, staff_access_status")
+    .eq("id", data.user.id)
+    .maybeSingle();
+  if (profileError) throw profileError;
+  if (!profile?.active || profile.staff_access_status === "former") {
+    throw new Error("Pay privacy settings are unavailable for former staff accounts");
+  }
   return { id: data.user.id, email: data.user.email || "" };
 }
 

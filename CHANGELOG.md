@@ -12,6 +12,9 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Added
 
+- Former-staff document-only accounts that retain secure access to the employee's own P45, previous payslips and HR files after operational access ends.
+- A staff-leaver workflow that archives the employment record, applies the restricted access state and sends a professional access-change email.
+- A restrictive database-wide former-staff guard so preserved manager or admin roles cannot expose operational records through older access rules.
 - Admin CRM evidence showing whether each public enquiry was saved and whether its internal notification was sent, failed, queued or has no linked delivery log.
 - Auditable duplicate, test and spam classifications for enquiry records without deleting the original submissions.
 - Atomic public-enquiry fingerprinting so repeated or concurrent submissions within ten minutes resolve to one saved record and one internal notification.

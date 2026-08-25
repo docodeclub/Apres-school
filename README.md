@@ -60,6 +60,7 @@ Copy `.env.example` to an ignored local environment file and add only the variab
 | `npm run check:pricing-groups` | Check pricing-group and discount behaviour |
 | `npm run check:staffing` | Check staffing-system contracts |
 | `npm run check:employee-documents` | Check employee-document privacy and workflow contracts |
+| `npm run check:staff-leavers` | Check former-staff document-only access and leaver email contracts |
 | `npm run check:enquiry-intake` | Check public enquiry acceptance, deduplication and CRM delivery evidence |
 | `npm run check:enquiry-browser` | Exercise enquiry success, failure, retry and mobile behaviour against a local mock |
 

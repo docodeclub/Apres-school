@@ -848,6 +848,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authUser, setAuthUser] = useState(null);
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [formerStaffAccess, setFormerStaffAccess] = useState(false);
   const [platformAccessMessage, setPlatformAccessMessage] = useState("");
   const [role, setRole] = useState("Admin");
   const [tab, setTab] = useState(getInitialPlatformTab);
@@ -976,6 +977,7 @@ export default function App() {
       authUserIdRef.current = null;
       setAuthUser(null);
       setMustChangePassword(false);
+      setFormerStaffAccess(false);
       setPlatformAccessMessage("");
       setPlatformUnlocked(false);
       setRole("Staff");
@@ -990,9 +992,20 @@ export default function App() {
       const { getProfileAccess } = await loadSupabaseModule();
       const nextAccess = await getProfileAccess(user.id);
 
+      if (nextAccess.formerStaff) {
+        setRole("Staff");
+        setMustChangePassword(false);
+        setFormerStaffAccess(true);
+        setTab("Staff");
+        setPlatformAccessMessage("");
+        setPlatformUnlocked(true);
+        return true;
+      }
+
       if (!nextAccess.active || !nextAccess.staffAccess) {
         setPlatformUnlocked(false);
         setMustChangePassword(false);
+        setFormerStaffAccess(false);
         setRole("Staff");
         setTab("Staff");
         setPlatformAccessMessage(
@@ -1005,6 +1018,7 @@ export default function App() {
 
       setRole(nextAccess.role);
       setMustChangePassword(nextAccess.mustChangePassword);
+      setFormerStaffAccess(false);
       setTab(["Admin", "Superadmin"].includes(nextAccess.role) ? getInitialPlatformTab() : "Staff");
       setPlatformAccessMessage("");
       setPlatformUnlocked(true);
@@ -1013,6 +1027,7 @@ export default function App() {
       setPlatformUnlocked(false);
       setRole("Staff");
       setMustChangePassword(false);
+      setFormerStaffAccess(false);
       setTab("Staff");
       setPlatformAccessMessage("We could not verify staff access for this account. Please sign in with your Après School work account.");
       return false;
@@ -1021,6 +1036,7 @@ export default function App() {
 
   async function handleForcedPasswordChanged(user) {
     setMustChangePassword(false);
+    setFormerStaffAccess(false);
     await applySession({ user });
   }
 
@@ -1034,6 +1050,7 @@ export default function App() {
     const demoData = await loadMockPlatformData();
     setAuthUser({ id: `demo-${demoUser.role.toLowerCase()}`, email: demoUser.email, app_metadata: { demo: true } });
     setMustChangePassword(false);
+    setFormerStaffAccess(false);
     setRole(demoUser.role);
     setTab(demoUser.role === "Staff" ? "Staff" : "Admin");
     setPlatformData({
@@ -1052,6 +1069,7 @@ export default function App() {
     }
     setAuthUser(null);
     setMustChangePassword(false);
+    setFormerStaffAccess(false);
     setPlatformAccessMessage("");
     setPlatformUnlocked(false);
     setRole("Staff");
@@ -1081,12 +1099,22 @@ export default function App() {
     let active = true;
     setPlatformData((current) => ({ ...current, loading: true, error: "" }));
 
-    Promise.all([
-      loadSupabaseModule().then(({ fetchPlatformData }) => fetchPlatformData({ userId: authUser.id, role })),
-      loadMockPlatformData(),
-    ])
+    const liveDataPromise = formerStaffAccess
+      ? loadSupabaseModule().then(({ fetchFormerStaffPortalData }) => fetchFormerStaffPortalData())
+      : loadSupabaseModule().then(({ fetchPlatformData }) => fetchPlatformData({ userId: authUser.id, role }));
+
+    Promise.all([liveDataPromise, loadMockPlatformData()])
       .then(([nextData, demoData]) => {
         if (!active) return;
+        if (formerStaffAccess) {
+          setPlatformData({
+            ...nextData,
+            source: "Supabase former staff portal",
+            loading: false,
+            error: "",
+          });
+          return;
+        }
         setPlatformData({
           ...demoData,
           ...nextData,
@@ -1099,6 +1127,17 @@ export default function App() {
       })
       .catch((error) => {
         if (!active) return;
+        if (formerStaffAccess) {
+          setPlatformData({
+            staff: null,
+            hrFiles: [],
+            source: "Former staff portal",
+            loading: false,
+            error: `Your retained documents could not be loaded. ${error.message || "Please try again."}`,
+            warnings: [],
+          });
+          return;
+        }
         loadMockPlatformData().then((demoData) => {
           if (!active) return;
           setPlatformData({
@@ -1114,7 +1153,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [platformUnlocked, authUser, role]);
+  }, [platformUnlocked, authUser, role, formerStaffAccess]);
 
   return (
     <div>
@@ -1134,7 +1173,7 @@ export default function App() {
             ? <ForcedPasswordChange userEmail={authUser?.email} onChanged={handleForcedPasswordChanged} onSignOut={handleSignOut} />
             : (
               <Suspense fallback={<main className="login-page" id="main-content"><section className="login-card"><p className="eyebrow">Internal platform</p><h1>Loading workspace...</h1></section></main>}>
-                <Platform role={role} tab={tab} setTab={setTab} userEmail={authUser?.email} onSignOut={handleSignOut} data={platformData} />
+                <Platform role={role} tab={tab} setTab={setTab} userEmail={authUser?.email} onSignOut={handleSignOut} data={platformData} formerStaff={formerStaffAccess} />
               </Suspense>
             )
           : <PlatformLogin authLoading={authLoading} accessMessage={platformAccessMessage} setPlatform={setPlatform} onAuthenticated={handleAuthenticated} onDemoAuthenticated={handleDemoAuthenticated} />

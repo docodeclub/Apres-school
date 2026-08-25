@@ -5,6 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const enquiryFunctionName = import.meta.env.VITE_ENQUIRY_FUNCTION_NAME || "notify-public-enquiry";
 const coverMoveFunctionName = import.meta.env.VITE_COVER_MOVE_FUNCTION_NAME || "notify-cover-move";
 const staffAccountFunctionName = import.meta.env.VITE_STAFF_ACCOUNT_FUNCTION_NAME || "manage-staff-account";
+const staffLeaverFunctionName = import.meta.env.VITE_STAFF_LEAVER_FUNCTION_NAME || "manage-staff-leaver";
 const payslipNotificationFunctionName = import.meta.env.VITE_PAYSLIP_NOTIFICATION_FUNCTION_NAME || "notify-payslip-available";
 const staffPayPinFunctionName = import.meta.env.VITE_STAFF_PAY_PIN_FUNCTION_NAME || "manage-staff-pay-pin";
 const financeInvoiceFunctionName = import.meta.env.VITE_FINANCE_INVOICE_FUNCTION_NAME || "send-finance-invoice";
@@ -303,15 +304,19 @@ export async function getProfileRole(userId) {
 }
 
 export async function getProfileAccess(userId) {
-  if (!supabase || !userId) return { role: "Staff", mustChangePassword: false, active: false, staffAccess: false };
+  if (!supabase || !userId) return { role: "Staff", mustChangePassword: false, active: false, staffAccess: false, formerStaff: false };
   const { data, error } = await supabase
     .from("profiles")
-    .select("role, active, must_change_password")
+    .select("role, active, must_change_password, staff_access_status")
     .eq("id", userId)
     .maybeSingle();
 
   if (error) throw error;
-  if (!data?.active) return { role: "Staff", mustChangePassword: false, active: false, staffAccess: false };
+  const formerStaff = data?.staff_access_status === "former";
+  if (formerStaff) {
+    return { role: "Staff", mustChangePassword: false, active: false, staffAccess: true, formerStaff: true };
+  }
+  if (!data?.active) return { role: "Staff", mustChangePassword: false, active: false, staffAccess: false, formerStaff: false };
 
   const storedRole = String(data.role || "").toLowerCase();
   const staffAccess = ["staff", "manager", "admin", "superadmin"].includes(storedRole);
@@ -321,6 +326,7 @@ export async function getProfileAccess(userId) {
     mustChangePassword: Boolean(data.must_change_password),
     active: true,
     staffAccess,
+    formerStaff: false,
   };
 }
 
@@ -893,6 +899,51 @@ export async function fetchPlatformData({ userId, role }) {
     suitabilityDeclarations: suitabilityDeclarationsResult.error ? {} : declarationsByStaff,
     auditLog: auditLogResult.error ? [] : mapAuditLog(auditLogResult.data || []),
     warnings,
+  };
+}
+
+export async function fetchFormerStaffPortalData() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data: portal, error: portalError } = await supabase.rpc("former_staff_portal");
+  if (portalError) throw portalError;
+  if (!portal?.staffRecordId) throw new Error("Former staff access could not be verified.");
+
+  const { data: fileRows, error: fileError } = await supabase
+    .from("staff_hr_files")
+    .select(`
+      id,
+      staff_record_id,
+      title,
+      storage_path,
+      file_url,
+      issue_date,
+      expiry_date,
+      status,
+      notes,
+      uploaded_at,
+      hr_file_categories(id, name, sensitivity)
+    `)
+    .eq("staff_record_id", portal.staffRecordId)
+    .is("archived_at", null)
+    .order("issue_date", { ascending: false })
+    .limit(160);
+  if (fileError) throw fileError;
+
+  const hrFiles = mapHrFiles(fileRows || []);
+  await attachHrFileUrls(hrFiles);
+  return {
+    staff: {
+      id: portal.staffRecordId,
+      name: portal.name || "Former staff member",
+      email: portal.email || "",
+      leftAt: portal.leftAt || "",
+      leavingReason: portal.leavingReason || "Not recorded",
+    },
+    hrFiles,
+    source: "Supabase former staff portal",
+    loading: false,
+    error: "",
+    warnings: [],
   };
 }
 
@@ -2242,56 +2293,34 @@ export async function saveStaffProfileNotes(staffRecordId, notes = {}) {
 export async function dismissStaffRecord({ staffRecordId, reason = "" }) {
   if (!supabase) throw new Error("Supabase is not configured.");
   if (!staffRecordId) throw new Error("Choose a staff member.");
-
-  const dismissedAt = new Date().toISOString();
-  const { data: authData } = await supabase.auth.getUser();
-  const { data, error } = await supabase
-    .from("staff_records")
-    .update({
-      archived_at: dismissedAt,
-      left_at: dismissedAt,
-      leaving_reason: String(reason || "").trim() || "Not recorded",
-      archived_by: authData?.user?.id || null,
-    })
-    .eq("id", staffRecordId)
-    .select("id, archived_at, left_at, leaving_reason")
-    .single();
-
-  if (error) throw error;
-
-  const { error: reportingError } = await supabase
-    .from("hr_reporting_lines")
-    .update({ archived_at: dismissedAt, effective_to: dismissedAt.slice(0, 10) })
-    .eq("staff_record_id", staffRecordId)
-    .is("effective_to", null);
-
-  if (reportingError) console.warn("Unable to archive HR reporting line", reportingError);
-
-  return {
-    staffRecordId: data.id,
-    reason: data.leaving_reason || "",
-    dismissedAt: data.left_at || data.archived_at || dismissedAt,
-  };
+  const { data, error } = await supabase.functions.invoke(staffLeaverFunctionName, {
+    body: {
+      action: "archive",
+      staffRecordId,
+      reason: String(reason || "").trim() || "Not recorded",
+      loginUrl: getStaffLoginUrl(),
+    },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Unable to move this person to former staff.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
 }
 
 export async function restoreStaffRecord(staffRecordId) {
   if (!supabase) throw new Error("Supabase is not configured.");
   if (!staffRecordId) throw new Error("Choose a staff member.");
-
-  const { data, error } = await supabase
-    .from("staff_records")
-    .update({
-      archived_at: null,
-      left_at: null,
-      leaving_reason: null,
-      archived_by: null,
-    })
-    .eq("id", staffRecordId)
-    .select("id")
-    .single();
-
-  if (error) throw error;
-  return { staffRecordId: data.id };
+  const { data, error } = await supabase.functions.invoke(staffLeaverFunctionName, {
+    body: { action: "restore", staffRecordId },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Unable to restore this staff member.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
 }
 
 function scrChecklistPayload(checklist = {}) {

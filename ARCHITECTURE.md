@@ -90,6 +90,8 @@ Booking creation, amendment, cancellation, credit and payment operations cross a
 
 [src/PlatformModule.jsx](src/PlatformModule.jsx) composes the role-based internal workspace. Larger domains with independent workflows are split into dedicated modules, including staffing, employee documents and pricing groups.
 
+Staff leavers retain their authentication account but move to a separate document-only portal. The `manage-staff-leaver` Edge Function archives the employment record, marks the profile inactive with former-staff status and sends the access-change email. A restrictive RLS policy blocks former accounts across operational tables regardless of their previous role; narrowly scoped policies continue to allow only their own P45, payslips, published employment documents and HR files.
+
 ### Public enquiry and CRM flow
 
 The public contact and school-partnership forms submit to the `notify-public-enquiry` Edge Function. The function validates and rate-limits the request, computes a normalized content fingerprint, and calls a service-role-only database function that atomically returns either a new enquiry or the matching submission accepted during the preceding ten minutes. Only a newly accepted enquiry triggers an internal notification, so repeat clicks and lost-response retries do not duplicate records or email.
@@ -122,7 +124,7 @@ Functions under `supabase/functions` handle operations such as:
 - Booking creation, amendment and cancellation
 - Parent credit adjustments and top-ups
 - Pricing-group assignment
-- Staff account and pay security operations
+- Staff account, leaver access and pay security operations
 - Employee document signing
 - Finance invoice delivery
 - Register and staffing notifications
@@ -142,6 +144,8 @@ Public content is anonymous. Family records require an authenticated parent acco
 - Manager
 - Admin
 - Superadmin
+
+Former staff are a separate access state rather than an active role. They can read their own retained employment documents and their own minimal account identity only; they cannot access the staff workspace, other employees, children, bookings, registers, incidents, safeguarding, staffing, finance or message history.
 
 UI visibility improves usability but is not the security boundary. RLS, database functions and Edge Functions must independently enforce access to safeguarding, employee, finance and customer data.
 
