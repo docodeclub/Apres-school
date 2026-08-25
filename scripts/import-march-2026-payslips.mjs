@@ -27,6 +27,23 @@ const expectedFilesFromEnv = process.env.PAYSLIP_FILES
   : [];
 
 const fileHints = {
+  "Miss. I Bailey.pdf": ["imogen", "bailey"],
+  "Miss. JM Azebaze-Ayanama.pdf": ["joelle", "azebaze", "ayanama"],
+  "Mr. JE Dixon.pdf": ["jeremy", "dixon"],
+  "Mr. JW Watts.pdf": ["jack", "watts"],
+  "Ms. A Elekes.pdf": ["angel", "elekes"],
+  "Ms. A Sewell.pdf": ["abi", "abigail", "sewell"],
+  "Ms. AC Nicholson.pdf": ["amanda", "nicholson"],
+  "Ms. B Harrison.pdf": ["brenda", "harrison"],
+  "Ms. CA Hastoy.pdf": ["catherine", "hastoy"],
+  "Ms. J Jackson.pdf": ["josie", "jackson"],
+  "Ms. JM Marsden.pdf": ["maisie", "marsden"],
+  "Ms. K Foley.pdf": ["kelly", "foley"],
+  "Ms. R Singh.pdf": ["rama", "singh"],
+  "Ms. S Fung Au.pdf": ["siu", "fung", "au", "idy"],
+  "Ms. SO Woodley.pdf": ["sadie", "woodley"],
+  "Ms. W Pfeiffer.pdf": ["wendy", "pfeiffer", "pheiffer"],
+  "Ms. X Lindsay.pdf": ["lindsay"],
   "A Alekes.pdf": ["angel", "elekes", "alekes"],
   "A Nicholson.pdf": ["amanda", "nicholson"],
   "A Sewell.pdf": ["sewell"],
@@ -142,12 +159,12 @@ async function extractPayslipPayData(fileBytes) {
   }
 
   const text = lines.join("\n");
-  let grossMatch = text.match(/Total\s+Gross\s+Pay\s+(-?[\d,]+\.\d{2})/i);
-  let netMatch = text.match(/Net\s+Pay\s+(-?[\d,]+\.\d{2})/i);
+  let grossMatch = text.match(/Total\s+Gross\s+Pay\s+£?\s*(-?[\d,]+\.\d{2})/i);
+  let netMatch = text.match(/Net\s+Pay[\s\S]{0,160}?£?\s*(-?[\d,]+\.\d{2})/i);
   if (!netMatch) {
     const netLineIndex = lines.findIndex((line) => /Net\s+Pay/i.test(line));
     const nearbyValues = netLineIndex >= 0
-      ? [lines[netLineIndex], lines[netLineIndex - 1], lines[netLineIndex + 1]]
+      ? lines.slice(Math.max(0, netLineIndex - 2), netLineIndex + 4)
           .filter(Boolean)
           .join(" ")
           .match(/-?[\d,]+\.\d{2}/g) || []

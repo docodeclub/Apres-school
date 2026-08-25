@@ -94,10 +94,17 @@ def parse_standard_payslip(path: Path) -> PayslipData:
         if len(pdf.pages) != 1:
             raise ValueError("Only single-page standard payroll payslips can be branded automatically")
         page = pdf.pages[0]
-        if abs(page.width - 595) > 8 or abs(page.height - 842) > 8:
-            raise ValueError("This is not the standard portrait payroll payslip layout")
+        is_a4_sheet = abs(page.width - 595) <= 8 and abs(page.height - 842) <= 8
+        is_half_a4_laser = abs(page.width - 595) <= 8 and abs(page.height - 421) <= 8
+        if not (is_a4_sheet or is_half_a4_laser):
+            raise ValueError("This is not the standard portrait or two-per-sheet payroll payslip layout")
         words = page.extract_words(x_tolerance=1, y_tolerance=2)
         text = page.extract_text() or ""
+
+    return parse_standard_payslip_content(words, text, path.name)
+
+
+def parse_standard_payslip_content(words: list[dict], text: str, source_filename: str) -> PayslipData:
 
     required = ("Employee Name", "Process Date", "Total Gross Pay", "Net Pay")
     if not all(label in text for label in required):
@@ -166,7 +173,7 @@ def parse_standard_payslip(path: Path) -> PayslipData:
         this_period=this_period,
         year_to_date=year_to_date,
         net_pay=net_match.group(1),
-        source_filename=path.name,
+        source_filename=source_filename,
     )
 
 
