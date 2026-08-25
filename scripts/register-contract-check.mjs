@@ -7,11 +7,12 @@ const registerDetails = readFileSync(join(root, "supabase/migrations/0072_staff_
 const adHocBookings = readFileSync(join(root, "supabase/migrations/0074_staff_adhoc_bookings.sql"), "utf8");
 const adHocFinance = readFileSync(join(root, "supabase/migrations/0075_staff_adhoc_account_finance.sql"), "utf8");
 const adHocPricing = readFileSync(join(root, "supabase/migrations/0106_staff_adhoc_pricing_quote.sql"), "utf8");
+const adHocSchoolSafety = readFileSync(join(root, "supabase/migrations/0111_adhoc_pupil_school_safety.sql"), "utf8");
 const pupilReports = readFileSync(join(root, "supabase/migrations/0083_register_pupil_reports.sql"), "utf8");
 const reportReviewQueue = readFileSync(join(root, "supabase/migrations/0084_register_report_review_queue.sql"), "utf8");
 const guidedIncidentWorkflow = readFileSync(join(root, "supabase/migrations/0089_guided_incident_workflow.sql"), "utf8");
 const firstAidProviderRequirement = readFileSync(join(root, "supabase/migrations/0091_require_first_aid_provider.sql"), "utf8");
-const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}`;
+const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}`;
 const service = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
 const interfaceSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
 const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8");
@@ -47,6 +48,9 @@ const checks = [
   ["ad-hoc sessions use the exact local register date", /staff_adhoc_booking_options[\s\S]*at time zone 'Europe\/London'\)::date = p_register_date/],
   ["ad-hoc booking explicitly prevents duplicate child sessions", /create_staff_adhoc_booking[\s\S]*is already booked into/],
   ["ad-hoc booking checks capacity before insertion", /create_staff_adhoc_booking[\s\S]*is full\./],
+  ["ad-hoc pupil results use the child's full name", /coalesce\(nullif\(trim\(child\.full_name\), ''\), nullif\(trim\(child\.preferred_name\), ''\)/],
+  ["ad-hoc options match pupils and sessions to the selected school", /adhoc_school_key\(child\.school_name\) = public\.adhoc_school_key\(p_site_name\)[\s\S]*adhoc_school_key\(location\.name\) = public\.adhoc_school_key\(p_site_name\)/],
+  ["ad-hoc booking rejects cross-school sessions on the server", /School mismatch:[\s\S]*Choose a session at that school/],
   ["non-booking fee is optional and fixed at £2.50", /p_apply_non_booking_fee[\s\S]*then 2\.50 else 0/],
   ["ad-hoc booking creates a parent invoice", /insert into public\.booking_invoices[\s\S]*'Outstanding'/],
   ["client invokes the protected ad-hoc booking service", /export async function createStaffAdHocBooking[\s\S]*supabase\.functions\.invoke\("create-staff-adhoc-booking"/],
@@ -56,6 +60,8 @@ const checks = [
   ["ad-hoc account debit sends a parent notification", /staff_adhoc_account_debit/],
   ["register exposes the ad-hoc booking action", /onClick=\{openAdHocBooking\}>Ad-hoc booking/],
   ["register disables sessions already booked for that pupil", /childAlreadyBookedInSession\(adHocChildId, option\.id\)/],
+  ["register highlights the pupil school before session selection", /register-adhoc-selected-child[\s\S]*Only sessions at this school can be added/],
+  ["register only offers sessions matching the selected pupil school", /const matchingAdHocSessions = selectedAdHocChild[\s\S]*matchingAdHocSessions\.map/],
   ["register shows the optional non-booking fee control", /Add £2\.50 non-booking fee/],
   ["register previews pricing group savings before confirmation", /Family pricing[\s\S]*Pricing benefit[\s\S]*Family charge/],
   ["register report queue is restricted to administrators", /list_register_pupil_reports[\s\S]*v_role not in \('admin', 'superadmin'\)/],
@@ -79,7 +85,7 @@ checks.forEach(([label, pattern]) => {
       ? `${migration}\n${parentBookingFunction}`
     : label.startsWith("parent first aid email")
       ? registerParentNotification
-    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register renders") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("admin UI") || label.startsWith("staff form") || label.startsWith("staff dashboard") || label.startsWith("staff navigation")
+    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register renders") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("register highlights") || label.startsWith("register only offers") || label.startsWith("admin UI") || label.startsWith("staff form") || label.startsWith("staff dashboard") || label.startsWith("staff navigation")
       ? platformSource
       : label.startsWith("staff UI")
         ? interfaceSource

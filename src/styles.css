@@ -7543,6 +7543,46 @@ label {
   box-shadow: inset 4px 0 #2e8952;
 }
 
+.register-adhoc-result-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.register-adhoc-result-heading strong {
+  color: var(--royal-dark);
+  font-size: 1rem;
+}
+
+.register-adhoc-result-heading b {
+  border-radius: 999px;
+  background: #2e8952;
+  color: #fff;
+  padding: 3px 7px;
+  font-size: 0.63rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.register-adhoc-results .register-adhoc-school-badge {
+  justify-self: start;
+  width: fit-content;
+  border: 1px solid #b7c8ee;
+  border-radius: 999px;
+  background: #edf3ff;
+  color: #2147a6;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.register-adhoc-results .register-adhoc-school-badge.missing {
+  border-color: #efc1a2;
+  background: #fff3ea;
+  color: #9a4a16;
+}
+
 .register-adhoc-results span,
 .register-adhoc-results small,
 .register-adhoc-results > p {
@@ -7553,6 +7593,38 @@ label {
   grid-column: 1 / -1;
   margin: 0;
   padding: 12px;
+}
+
+.register-adhoc-selected-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  border: 2px solid #2e8952;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #eff9f3, #f9fdfb);
+  padding: 13px 14px;
+}
+
+.register-adhoc-selected-child > div {
+  display: grid;
+  gap: 2px;
+}
+
+.register-adhoc-selected-child span {
+  color: #247244;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.register-adhoc-selected-child strong {
+  color: var(--royal-dark);
+  font-size: 1rem;
+}
+
+.register-adhoc-selected-child small {
+  color: var(--muted);
 }
 
 .register-adhoc-sessions {
@@ -7598,6 +7670,15 @@ label {
   color: var(--muted);
   font-size: 0.73rem;
   font-weight: 800;
+}
+
+.register-adhoc-sessions .register-adhoc-school-warning {
+  margin: 0;
+  border: 1px solid #efc1a2;
+  border-radius: 13px;
+  background: #fff7f0;
+  color: #814016;
+  padding: 12px 13px;
 }
 
 .register-adhoc-check {
@@ -7839,6 +7920,10 @@ label {
   }
 
   .register-adhoc-results {
+    grid-template-columns: 1fr;
+  }
+
+  .register-adhoc-selected-child {
     grid-template-columns: 1fr;
   }
 

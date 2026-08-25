@@ -593,7 +593,9 @@ export async function fetchStaffAdHocBookingOptions({
     children: (data?.children || []).map((child) => ({
       id: child.child_id,
       name: child.child_name,
+      preferredName: child.preferred_name || "",
       schoolName: child.school_name || "",
+      schoolKey: child.school_key || "",
       yearGroup: child.year_group || "",
       parentAccountId: child.parent_account_id,
       parentName: child.parent_name || "",
@@ -603,6 +605,7 @@ export async function fetchStaffAdHocBookingOptions({
       id: session.session_block_id,
       sessionId: session.session_id,
       siteName: session.site_name || "",
+      schoolKey: session.school_key || "",
       programmeName: session.programme_name || "",
       label: session.session_label || "Session",
       startsAt: session.starts_at,

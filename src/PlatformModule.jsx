@@ -1495,6 +1495,16 @@ function RegisterChildProfile({ child, profile, activity, careDetails, sendCareD
   );
 }
 
+function adHocSchoolKey(value) {
+  const normalized = String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (normalized.includes("kingshouse")) return "kings-house";
+  if (normalized.includes("ripleycourt")) return "ripley-court";
+  if (normalized.includes("shrewsburyhouse")) return "shrewsbury-house";
+  if (normalized.includes("rowans")) return "rowans";
+  if (normalized.includes("willington")) return "willington";
+  return normalized;
+}
+
 function Registers({ access }) {
   const today = new Date();
   const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -1667,7 +1677,11 @@ function Registers({ access }) {
     return () => window.clearTimeout(timeout);
   }, [registerReportDraft, registerReportType, selectedChild?.bookingItemId]);
   const selectedAdHocChild = adHocOptions.children.find((child) => child.id === adHocChildId) || null;
-  const selectedAdHocSessions = adHocOptions.sessions.filter((option) => adHocSessionIds.includes(option.id));
+  const selectedAdHocSchoolKey = selectedAdHocChild?.schoolKey || adHocSchoolKey(selectedAdHocChild?.schoolName);
+  const matchingAdHocSessions = selectedAdHocChild
+    ? adHocOptions.sessions.filter((option) => (option.schoolKey || adHocSchoolKey(option.siteName)) === selectedAdHocSchoolKey)
+    : [];
+  const selectedAdHocSessions = matchingAdHocSessions.filter((option) => adHocSessionIds.includes(option.id));
   const adHocSessionSubtotal = selectedAdHocSessions.reduce((total, option) => total + option.price, 0);
   const adHocTotal = adHocSessionSubtotal + (adHocApplyFee ? 2.5 : 0);
   const adHocQuotedTotal = Number(adHocPricingQuote?.totalAmount ?? adHocTotal);
@@ -2140,6 +2154,7 @@ function Registers({ access }) {
         });
         if (!active) return;
         setAdHocOptions(options);
+        setAdHocChildId((current) => options.children.some((child) => child.id === current) ? current : "");
         setAdHocSessionIds((current) => current.filter((id) => options.sessions.some((option) => option.id === id)));
       } catch (error) {
         if (!active) return;
@@ -3186,7 +3201,7 @@ function Registers({ access }) {
                   type="search"
                   value={adHocSearch}
                   onChange={(event) => setAdHocSearch(event.target.value)}
-                  placeholder="Start typing a pupil’s name"
+                  placeholder="Search first name, surname or parent"
                   autoFocus
                 />
               </label>
@@ -3204,24 +3219,41 @@ function Registers({ access }) {
                       setAdHocError("");
                     }}
                   >
-                    <strong>{child.name}</strong>
-                    <span>{[child.schoolName, child.yearGroup].filter(Boolean).join(" · ") || "School details not recorded"}</span>
-                    <small>{child.parentName || child.parentEmail}</small>
+                    <span className="register-adhoc-result-heading">
+                      <strong>{child.name}</strong>
+                      {adHocChildId === child.id && <b>Selected</b>}
+                    </span>
+                    <span className={`register-adhoc-school-badge ${child.schoolName ? "" : "missing"}`}>{child.schoolName || "School not recorded"}</span>
+                    <small>{[child.yearGroup, child.parentName || child.parentEmail].filter(Boolean).join(" · ")}</small>
                   </button>
                 ))}
                 {!adHocLoading && !adHocOptions.children.length && (
                   <p>{adHocSearch.trim() ? "No active pupil matches this search." : "No active pupils are available."}</p>
                 )}
               </div>
+              {selectedAdHocChild && (
+                <aside className="register-adhoc-selected-child" aria-live="polite">
+                  <div>
+                    <span>Selected pupil</span>
+                    <strong>{selectedAdHocChild.name}</strong>
+                    <small>{[selectedAdHocChild.yearGroup, selectedAdHocChild.parentName || selectedAdHocChild.parentEmail].filter(Boolean).join(" · ")}</small>
+                  </div>
+                  <div>
+                    <span>School</span>
+                    <strong>{selectedAdHocChild.schoolName || "Not recorded"}</strong>
+                    <small>Only sessions at this school can be added.</small>
+                  </div>
+                </aside>
+              )}
             </div>
 
             <div className="register-adhoc-step">
               <div className="register-adhoc-step-title">
                 <span>2</span>
-                <div><strong>Choose sessions</strong><small>{selectedAdHocChild ? `Adding care for ${selectedAdHocChild.name} on ${new Date(`${registerDate}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}.` : "Choose a pupil first."}</small></div>
+                <div><strong>Choose sessions</strong><small>{selectedAdHocChild ? `Adding care for ${selectedAdHocChild.name} at ${selectedAdHocChild.schoolName || "their recorded school"} on ${new Date(`${registerDate}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}.` : "Choose a pupil first."}</small></div>
               </div>
               <div className="register-adhoc-sessions">
-                {adHocOptions.sessions.map((option) => {
+                {matchingAdHocSessions.map((option) => {
                   const alreadyBooked = adHocChildId && childAlreadyBookedInSession(adHocChildId, option.id);
                   const full = option.placesLeft <= 0;
                   const disabled = !adHocChildId || alreadyBooked || full;
@@ -3241,16 +3273,14 @@ function Registers({ access }) {
                     </button>
                   );
                 })}
-                {!adHocLoading && !adHocOptions.sessions.length && (
+                {!adHocLoading && selectedAdHocChild && !matchingAdHocSessions.length && (
+                  <p className="register-adhoc-school-warning">
+                    No sessions at <strong>{selectedAdHocChild.schoolName || "this pupil’s recorded school"}</strong> are available for this date and activity. No other school’s sessions can be selected.
+                  </p>
+                )}
+                {!adHocLoading && !selectedAdHocChild && (
                   <p>
-                    No sessions are scheduled for {school === "All schools" ? "the selected schools" : school}
-                    {programme === "All activities" ? "" : ` · ${programme}`} on{" "}
-                    {new Date(`${registerDate}T12:00:00`).toLocaleDateString("en-GB", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}. Change the register date or filters above, then reopen Ad-hoc booking.
+                    Choose a pupil first. Sessions will then be limited to that pupil’s recorded school.
                   </p>
                 )}
               </div>
