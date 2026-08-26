@@ -29,6 +29,7 @@
     "check:employee-documents": "node scripts/employee-documents-contract-check.mjs",
     "check:staff-leavers": "node scripts/staff-leaver-contract-check.mjs",
     "check:expenses": "node scripts/expense-contract-check.mjs",
+    "check:scr-assurance": "node scripts/scr-assurance-wizard-check.mjs",
     "check:pricing-groups": "node scripts/pricing-groups-contract-check.mjs",
     "check:booking-live": "node scripts/booking-live-readiness.mjs",
     "check:booking-live:strict": "node scripts/booking-live-readiness.mjs --strict",

@@ -341,6 +341,13 @@ function canonicalSchoolName(value) {
   return aliases[normalised] || text;
 }
 
+function scrAssuranceWorkflowKey(value) {
+  return String(canonicalSchoolName(value) || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function sortPayrollSites(a, b) {
   const order = ["Willington Prep", "King's House School", "Shrewsbury House School", "Ripley Court School", "Holiday Camp"];
   const aIndex = order.indexOf(a);
@@ -4126,6 +4133,20 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
     if (!data.scrRenewalRequests || !Object.keys(data.scrRenewalRequests).length) return;
     setRenewalRequests((current) => ({ ...current, ...data.scrRenewalRequests }));
   }, [data.scrRenewalRequests]);
+  useEffect(() => {
+    let active = true;
+    if (!["Admin", "Superadmin"].includes(access?.role)) return () => { active = false; };
+    loadSupabaseModule()
+      .then(({ fetchScrAssuranceWorkflows }) => fetchScrAssuranceWorkflows())
+      .then((records) => {
+        if (!active) return;
+        setAssuranceWorkflows(Object.fromEntries(records.map((record) => [record.schoolKey, record])));
+      })
+      .catch((error) => {
+        if (active) setAssuranceWizardStatus(error.message || "Assurance wizard progress could not be loaded.");
+      });
+    return () => { active = false; };
+  }, [access?.currentUser?.id, access?.role]);
   useEffect(() => {
     let cancelled = false;
     async function loadDashboardLedger() {
@@ -9398,6 +9419,11 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
   const [profileTargetId, setProfileTargetId] = useState("");
   const [siteFocusMode, setSiteFocusMode] = useState(false);
   const [siteBlockersOnly, setSiteBlockersOnly] = useState(false);
+  const [assuranceWizardOpen, setAssuranceWizardOpen] = useState(false);
+  const [assuranceWizardStep, setAssuranceWizardStep] = useState(0);
+  const [assuranceWorkflows, setAssuranceWorkflows] = useState({});
+  const [assuranceWizardBusy, setAssuranceWizardBusy] = useState(false);
+  const [assuranceWizardStatus, setAssuranceWizardStatus] = useState("");
   const [assignmentState, setAssignmentState] = useState(() => Object.fromEntries(
     data.staff.map((person) => [person.id, staffAssignments(person)]),
   ));
@@ -9827,6 +9853,116 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
     : selectedSchoolStaff;
   const selectedSiteDocumentLinks = readJson(documentLinksStorageKey, {});
   const dbsDisclosureAudit = buildDbsDisclosureAudit(activeScrStaff);
+  const assuranceWorkflowKey = scrAssuranceWorkflowKey(selectedScrSchool);
+  const assuranceWorkflow = assuranceWorkflows[assuranceWorkflowKey] || {
+    schoolKey: assuranceWorkflowKey,
+    schoolName: selectedScrSchool,
+    stepStatus: {},
+    assuranceReviewed: false,
+    includeEvidenceAppendix: false,
+    recipientName: "",
+    submissionMethod: "",
+    submissionNote: "",
+    letterStatus: "draft",
+    generatedAt: "",
+    submittedAt: "",
+  };
+  const staffProfilesComplete = selectedSchoolStaff.length > 0 && selectedSchoolStaff.every((person) => person.compliance === "Compliant" || Boolean(person.scrChecklist?.approvedAt));
+  const staffEvidenceComplete = selectedStaffEvidenceRows.length > 0 && selectedStaffEvidenceRows.every((row) => row.checks
+    .filter((check) => check.key !== "adminReview")
+    .every((check) => ["ready", "neutral"].includes(check.tone)));
+  const selectedRequirementRow = requirementRows.find((row) => canonicalSchoolName(row.school) === canonicalSchoolName(selectedScrSchool));
+  const wizardCompletion = {
+    site: Boolean(selectedScrSchool && selectedSchoolStaff.length),
+    staff: staffProfilesComplete,
+    evidence: staffEvidenceComplete && !evidenceWorkflowItems.some((item) => ["Submitted", "Rejected", "Requested", "Prompt"].includes(item.status)),
+    cover: Boolean(selectedRequirementRow && selectedRequirementRow.gaps === 0),
+    assurance: Boolean(assuranceWorkflow.assuranceReviewed),
+    letter: assuranceWorkflow.letterStatus === "submitted",
+  };
+  const assuranceWizardSections = [
+    { id: "site", label: "Site and assignments", description: "Choose the school and confirm the staff who should appear on its SCR." },
+    { id: "staff", label: "Staff SCR profiles", description: "Complete and approve every assigned employee's safer-recruitment record." },
+    { id: "evidence", label: "Evidence and renewals", description: "Resolve missing, expired, requested or submitted evidence." },
+    { id: "cover", label: "Required site cover", description: "Confirm first aid, EYFS, safeguarding and allergy-awareness cover." },
+    { id: "assurance", label: "Assurance statements", description: "Review what the letter confirms to the school." },
+    { id: "letter", label: "Generate and submit", description: "Create the letter and record how it was supplied to the school." },
+  ];
+  const wizardRequiredComplete = ["site", "staff", "evidence", "cover", "assurance"].every((key) => wizardCompletion[key]);
+
+  function updateAssuranceWorkflowDraft(patch) {
+    setAssuranceWorkflows((current) => ({
+      ...current,
+      [assuranceWorkflowKey]: { ...assuranceWorkflow, ...current[assuranceWorkflowKey], ...patch },
+    }));
+  }
+
+  async function persistAssuranceWorkflow(overrides = {}, stepPatch = {}) {
+    setAssuranceWizardBusy(true);
+    setAssuranceWizardStatus("Saving progress...");
+    try {
+      const current = assuranceWorkflows[assuranceWorkflowKey] || assuranceWorkflow;
+      const payload = {
+        ...current,
+        ...overrides,
+        schoolName: selectedScrSchool,
+        stepStatus: { ...(current.stepStatus || {}), ...stepPatch },
+      };
+      const { saveScrAssuranceWorkflow } = await loadSupabaseModule();
+      const saved = await saveScrAssuranceWorkflow(payload);
+      setAssuranceWorkflows((records) => ({ ...records, [saved.schoolKey]: saved }));
+      setAssuranceWizardStatus("Progress saved.");
+      return saved;
+    } catch (error) {
+      setAssuranceWizardStatus(error.message || "Wizard progress could not be saved.");
+      return null;
+    } finally {
+      setAssuranceWizardBusy(false);
+    }
+  }
+
+  async function advanceAssuranceWizard(skip = false) {
+    const section = assuranceWizardSections[assuranceWizardStep];
+    if (!section) return;
+    const statusValue = wizardCompletion[section.id] ? "complete" : skip ? "skipped" : "incomplete";
+    const saved = await persistAssuranceWorkflow({}, { [section.id]: statusValue });
+    if (saved && assuranceWizardStep < assuranceWizardSections.length - 1) setAssuranceWizardStep((step) => step + 1);
+  }
+
+  async function generateWizardAssuranceLetter() {
+    if (!wizardRequiredComplete) {
+      setAssuranceWizardStatus("Complete the required sections before generating the assurance letter.");
+      return;
+    }
+    const { exportSchoolAssuranceLetter } = await import("./pdfExports.js");
+    exportSchoolAssuranceLetter(selectedSchoolStaff, selectedScrSchool, {
+      includeEvidenceAppendix: Boolean(assuranceWorkflow.includeEvidenceAppendix),
+      evidenceRequests: renewalRequests,
+    });
+    const completeSteps = Object.fromEntries(assuranceWizardSections.slice(0, 5).map((section) => [section.id, "complete"]));
+    const saved = await persistAssuranceWorkflow({ letterStatus: "generated" }, completeSteps);
+    if (saved) setAssuranceWizardStatus("Assurance letter generated. Record its submission when it has been supplied to the school.");
+  }
+
+  async function submitWizardAssuranceLetter() {
+    if (!wizardRequiredComplete) {
+      setAssuranceWizardStatus("Complete every required section before submitting the assurance letter.");
+      return;
+    }
+    if (assuranceWorkflow.letterStatus !== "generated") {
+      setAssuranceWizardStatus("Generate the assurance letter before recording its submission.");
+      return;
+    }
+    if (!assuranceWorkflow.recipientName?.trim() || !assuranceWorkflow.submissionMethod?.trim()) {
+      setAssuranceWizardStatus("Record who received the letter and how it was submitted.");
+      return;
+    }
+    const saved = await persistAssuranceWorkflow({ letterStatus: "submitted" }, { letter: "complete" });
+    if (saved) {
+      setAssuranceWizardStatus("Assurance letter marked as submitted. The submission is recorded in the audit trail.");
+      addAuditLog("SCR assurance letter submitted", `${selectedScrSchool}: ${saved.recipientName} via ${saved.submissionMethod}`);
+    }
+  }
   function openEvidenceStaffProfile(staffId) {
     setProfileTargetId(staffId);
     setSummaryStaffId(staffId);
@@ -9838,6 +9974,50 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
 
   return (
     <div className="stack">
+      {["Admin", "Superadmin"].includes(access?.role) && (
+        <section className="scr-wizard-launch">
+          <div>
+            <p className="eyebrow">Guided compliance workflow</p>
+            <h2>Complete the SCR and assurance letter</h2>
+            <p>Work through each required section for one school. Sections can be skipped and returned to, but only genuine underlying evidence marks them complete.</p>
+          </div>
+          <div className="scr-wizard-launch-actions">
+            <span className={`scr-wizard-state ${assuranceWorkflow.letterStatus}`}>{assuranceWorkflow.letterStatus === "submitted" ? "Letter submitted" : `${Object.values(wizardCompletion).filter(Boolean).length}/6 complete`}</span>
+            <button className="button book" type="button" onClick={() => {
+              const nextStep = assuranceWizardSections.findIndex((section) => !wizardCompletion[section.id]);
+              setAssuranceWizardStep(nextStep === -1 ? assuranceWizardSections.length - 1 : nextStep);
+              setAssuranceWizardOpen(true);
+              setAssuranceWizardStatus("");
+            }}><ClipboardCheck size={17} /> {assuranceWorkflow.letterStatus === "submitted" ? "Review workflow" : assuranceWorkflow.updatedAt ? "Continue wizard" : "Start wizard"}</button>
+          </div>
+        </section>
+      )}
+      {assuranceWizardOpen && (
+        <SCRAssuranceWizard
+          sections={assuranceWizardSections}
+          step={assuranceWizardStep}
+          onStep={setAssuranceWizardStep}
+          completion={wizardCompletion}
+          workflow={assuranceWorkflow}
+          school={selectedScrSchool}
+          schools={schoolOptions}
+          onSelectSchool={selectInspectionSchool}
+          staffRows={selectedStaffEvidenceRows}
+          evidenceItems={evidenceWorkflowItems}
+          requirementRow={selectedRequirementRow}
+          assuranceStatements={assuranceStatements}
+          requiredComplete={wizardRequiredComplete}
+          onOpenStaff={openEvidenceStaffProfile}
+          onUpdateWorkflow={updateAssuranceWorkflowDraft}
+          onContinue={() => advanceAssuranceWizard(false)}
+          onSkip={() => advanceAssuranceWizard(true)}
+          onGenerate={generateWizardAssuranceLetter}
+          onSubmit={submitWizardAssuranceLetter}
+          onClose={() => setAssuranceWizardOpen(false)}
+          busy={assuranceWizardBusy}
+          status={assuranceWizardStatus}
+        />
+      )}
       <section className={`scr-site-focus ${siteFocusMode ? "active" : ""}`} aria-label="Site SCR focus mode">
         <div>
           <p className="eyebrow">Site focus</p>
@@ -10075,6 +10255,60 @@ function SCRDetailsPanel({ title, summary, children }) {
       </summary>
       <div className="scr-details-panel-body">{children}</div>
     </details>
+  );
+}
+
+function SCRAssuranceWizard({
+  sections, step, onStep, completion, workflow, school, schools, onSelectSchool,
+  staffRows, evidenceItems, requirementRow, assuranceStatements, requiredComplete,
+  onOpenStaff, onUpdateWorkflow, onContinue, onSkip, onGenerate, onSubmit,
+  onClose, busy, status,
+}) {
+  const current = sections[step] || sections[0];
+  const currentComplete = Boolean(completion[current.id]);
+  const savedStatus = workflow.stepStatus?.[current.id] || "not-started";
+  const sectionStatus = (section) => completion[section.id]
+    ? "complete"
+    : workflow.stepStatus?.[section.id] === "skipped" ? "skipped" : "incomplete";
+  const evidenceBlockers = staffRows.flatMap((row) => row.checks
+    .filter((check) => check.key !== "adminReview" && !["ready", "neutral"].includes(check.tone))
+    .map((check) => ({ ...check, staffId: row.person.id, staffName: row.person.name })));
+  const profileBlockers = staffRows.filter((row) => !row.checks.some((check) => check.key === "adminReview" && check.tone === "ready"));
+  const actionItems = evidenceItems.filter((item) => ["Submitted", "Rejected", "Requested", "Prompt"].includes(item.status));
+
+  return (
+    <section className="scr-wizard" aria-label="SCR and assurance wizard">
+      <header className="scr-wizard-head">
+        <div><p className="eyebrow">{school || "Select a school"}</p><h2>SCR and assurance wizard</h2><p>Complete the evidence in order, or skip a section and return later. Skipped sections remain incomplete.</p></div>
+        <button className="button light" type="button" onClick={onClose}>Close wizard</button>
+      </header>
+
+      <nav className="scr-wizard-progress" aria-label="Wizard sections">
+        {sections.map((section, index) => {
+          const state = sectionStatus(section);
+          return <button key={section.id} className={`${index === step ? "active" : ""} ${state}`} type="button" onClick={() => onStep(index)}><span>{index + 1}</span><strong>{section.label}</strong><small>{state === "complete" ? "Complete" : state === "skipped" ? "Skipped" : "Incomplete"}</small></button>;
+        })}
+      </nav>
+
+      <div className="scr-wizard-body">
+        <div className="scr-wizard-section-title"><span>Section {step + 1} of {sections.length}</span><h3>{current.label}</h3><p>{current.description}</p></div>
+
+        {current.id === "site" && <div className="scr-wizard-section-content"><label className="scr-wizard-field">School / site<select value={school} onChange={(event) => onSelectSchool(event.target.value)}>{schools.map((item) => <option key={item} value={item}>{item}</option>)}</select></label><div className="scr-wizard-callout"><strong>{staffRows.length} active staff assigned</strong><p>{staffRows.length ? "These employees will be assessed and included in this school's assurance workflow." : "Assign at least one current staff member to this site before continuing."}</p></div></div>}
+
+        {current.id === "staff" && <div className="scr-wizard-record-list">{staffRows.map((row) => { const ready = !profileBlockers.some((item) => item.person.id === row.person.id); return <article key={row.person.id}><div><strong>{row.person.name}</strong><span>{row.person.role || "Role not recorded"}</span></div><span className={`scr-wizard-pill ${ready ? "complete" : "incomplete"}`}>{ready ? "Approved" : "Needs admin review"}</span><button className="button light" type="button" onClick={() => onOpenStaff(row.person.id)}>Open record</button></article>; })}{!staffRows.length && <p className="empty-inline">No active staff are assigned to this site.</p>}</div>}
+
+        {current.id === "evidence" && <div className="scr-wizard-section-content"><div className="scr-wizard-summary-grid"><article><span>Evidence blockers</span><strong>{evidenceBlockers.length}</strong></article><article><span>Workflow actions</span><strong>{actionItems.length}</strong></article></div><div className="scr-wizard-record-list compact">{evidenceBlockers.map((item) => <article key={`${item.staffId}-${item.key}`}><div><strong>{item.staffName}</strong><span>{item.label}: {item.detail}</span></div><span className="scr-wizard-pill incomplete">{item.status}</span><button className="button light" type="button" onClick={() => onOpenStaff(item.staffId)}>Resolve</button></article>)}{actionItems.map((item) => { const { staffId } = splitScrRequestId(item.id); return <article key={`action-${item.id}`}><div><strong>{item.staffName}</strong><span>{item.check}: {item.note || item.status}</span></div><span className={`scr-wizard-pill ${item.status === "Submitted" ? "skipped" : "incomplete"}`}>{item.status}</span><button className="button light" type="button" onClick={() => onOpenStaff(staffId)}>Review</button></article>; })}{!evidenceBlockers.length && !actionItems.length && <div className="scr-wizard-callout success"><strong>Evidence is complete</strong><p>No missing, expired or outstanding SCR evidence remains for this site.</p></div>}</div></div>}
+
+        {current.id === "cover" && <div className="scr-wizard-record-list">{(requirementRow?.checks || []).map((check) => <article key={check.label}><div><strong>{check.label}</strong><span>{check.met ? check.names : "No qualifying staff member is currently recorded."}</span></div><span className={`scr-wizard-pill ${check.met ? "complete" : "incomplete"}`}>{check.met ? "Covered" : "Gap"}</span></article>)}{!requirementRow && <p className="empty-inline">Choose a site to review its required cover.</p>}</div>}
+
+        {current.id === "assurance" && <div className="scr-wizard-section-content"><div className="scr-wizard-statements">{assuranceStatements.map((statement) => <article key={statement}><CheckCircle2 size={18} /><p>{statement}</p></article>)}</div><label className="scr-wizard-confirm"><input type="checkbox" checked={Boolean(workflow.assuranceReviewed)} onChange={(event) => onUpdateWorkflow({ assuranceReviewed: event.target.checked })} /><span>I have reviewed these statements and confirmed that the underlying SCR records support them.</span></label><label className="scr-wizard-confirm"><input type="checkbox" checked={Boolean(workflow.includeEvidenceAppendix)} onChange={(event) => onUpdateWorkflow({ includeEvidenceAppendix: event.target.checked })} /><span>Include the evidence appendix in the assurance letter.</span></label></div>}
+
+        {current.id === "letter" && <div className="scr-wizard-section-content">{!requiredComplete && <div className="scr-wizard-callout warning"><strong>The assurance letter is locked</strong><p>Return to every incomplete or skipped section. The letter cannot be marked as submitted until all five required sections are complete.</p></div>}{requiredComplete && <div className="scr-wizard-callout success"><strong>All required sections are complete</strong><p>Generate the assurance letter, supply it to the school, then record the submission below.</p></div>}<div className="scr-wizard-letter-actions"><button className="button primary" type="button" disabled={busy || !requiredComplete} onClick={onGenerate}>{workflow.letterStatus === "generated" || workflow.letterStatus === "submitted" ? "Generate letter again" : "Generate assurance letter"}</button>{workflow.generatedAt && <span>Generated {formatShortDate(workflow.generatedAt)}</span>}</div><div className="scr-wizard-submission-form"><label>Recipient / school contact<input value={workflow.recipientName || ""} onChange={(event) => onUpdateWorkflow({ recipientName: event.target.value })} placeholder="Name or role of recipient" /></label><label>Submission method<select value={workflow.submissionMethod || ""} onChange={(event) => onUpdateWorkflow({ submissionMethod: event.target.value })}><option value="">Choose method</option><option>Email</option><option>School portal</option><option>Hand delivered</option><option>Other</option></select></label><label className="wide">Submission note<textarea rows="3" value={workflow.submissionNote || ""} onChange={(event) => onUpdateWorkflow({ submissionNote: event.target.value })} placeholder="Optional reference, recipient details or follow-up note" /></label></div><button className="button success" type="button" disabled={busy || !requiredComplete || workflow.letterStatus !== "generated" || !workflow.recipientName?.trim() || !workflow.submissionMethod} onClick={onSubmit}>{workflow.letterStatus === "submitted" ? "Submission recorded" : "Mark letter as submitted"}</button>{workflow.submittedAt && <p className="scr-wizard-submitted">Submitted {formatShortDate(workflow.submittedAt)} to {workflow.recipientName} via {workflow.submissionMethod}.</p>}</div>}
+      </div>
+
+      {status && <p className="scr-wizard-status" role="status">{status}</p>}
+      <footer className="scr-wizard-footer"><button className="button light" type="button" disabled={busy || step === 0} onClick={() => onStep(Math.max(step - 1, 0))}>Back</button><div>{current.id !== "letter" && !currentComplete && <button className="button subtle" type="button" disabled={busy} onClick={onSkip}>Skip for now</button>}{current.id !== "letter" && <button className="button primary" type="button" disabled={busy || !currentComplete} onClick={onContinue}>{busy ? "Saving..." : "Save and continue"}</button>}{current.id === "letter" && savedStatus === "skipped" && <span className="scr-wizard-pill skipped">Skipped</span>}</div></footer>
+    </section>
   );
 }
 

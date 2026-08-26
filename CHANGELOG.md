@@ -11,6 +11,7 @@
 - Removed manager access to colleagues' expense claims and receipts; Managers retain access to their own claims only.
 - Moved expense-notification queueing into the secure submission transaction so a saved claim cannot lose its Superadmin email when a browser closes, changes connection or is running an older page bundle.
 - Added branded approval and denial emails to the employee, including the decision, claim details, reviewer note and a secure link to their own expense history.
+- Added an Admin-only guided SCR and letter-of-assurance workflow with skippable sections, evidence-based completion, saved progress, PDF generation and an auditable submission record.
 
 Notable changes to the Après School website and operations platform are recorded here. This file follows the principles of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The application is deployed continuously, so entries are grouped by production date rather than numbered releases.
 

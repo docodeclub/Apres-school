@@ -2510,6 +2510,51 @@ export async function saveScrChecklist(staffRecordId, checklist = {}) {
   };
 }
 
+function mapScrAssuranceWorkflow(record = {}) {
+  return {
+    id: record.id,
+    schoolKey: record.school_key || "",
+    schoolName: record.school_name || "",
+    stepStatus: record.step_status || {},
+    assuranceReviewed: Boolean(record.assurance_reviewed),
+    includeEvidenceAppendix: Boolean(record.include_evidence_appendix),
+    recipientName: record.recipient_name || "",
+    submissionMethod: record.submission_method || "",
+    submissionNote: record.submission_note || "",
+    letterStatus: record.letter_status || "draft",
+    generatedAt: record.generated_at || "",
+    submittedAt: record.submitted_at || "",
+    submittedBy: record.submitted_by || "",
+    updatedAt: record.updated_at || "",
+  };
+}
+
+export async function fetchScrAssuranceWorkflows() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase
+    .from("scr_assurance_workflows")
+    .select("*")
+    .order("school_name");
+  if (error) throw error;
+  return (data || []).map(mapScrAssuranceWorkflow);
+}
+
+export async function saveScrAssuranceWorkflow(workflow = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("save_scr_assurance_workflow", {
+    p_school_name: workflow.schoolName,
+    p_step_status: workflow.stepStatus || {},
+    p_assurance_reviewed: Boolean(workflow.assuranceReviewed),
+    p_include_evidence_appendix: Boolean(workflow.includeEvidenceAppendix),
+    p_recipient_name: workflow.recipientName || null,
+    p_submission_method: workflow.submissionMethod || null,
+    p_submission_note: workflow.submissionNote || null,
+    p_letter_status: workflow.letterStatus || "draft",
+  });
+  if (error) throw error;
+  return mapScrAssuranceWorkflow(data);
+}
+
 export async function saveScrEvidenceRequest({ id, staffRecordId, evidenceKey, request = {} }) {
   if (!supabase) throw new Error("Supabase is not configured.");
   if (!id || !staffRecordId || !evidenceKey) throw new Error("Evidence request is missing required details.");
