@@ -1021,7 +1021,7 @@ export default function App() {
       setFormerStaffAccess(false);
       if (landOnDashboard) {
         const requestedExpense = new URLSearchParams(window.location.search).get("expense");
-        setTab(requestedExpense && nextAccess.role === "Superadmin" ? "Expenses" : ["Admin", "Superadmin"].includes(nextAccess.role) ? "Admin" : "Staff");
+        setTab(requestedExpense ? "Expenses" : ["Admin", "Superadmin"].includes(nextAccess.role) ? "Admin" : "Staff");
       }
       setPlatformAccessMessage("");
       setPlatformUnlocked(true);

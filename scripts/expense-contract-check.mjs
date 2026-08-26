@@ -10,7 +10,9 @@ const client = read("src/supabaseClient.js");
 const platform = read("src/PlatformModule.jsx");
 const app = read("src/app.jsx");
 const notification = read("supabase/functions/notify-expense-claim/index.ts");
+const decisionNotification = read("supabase/functions/notify-expense-decision/index.ts");
 const serverQueueMigration = read("supabase/migrations/0120_queue_expense_notification_on_submit.sql");
+const decisionQueueMigration = read("supabase/migrations/0121_notify_staff_of_expense_decision.sql");
 
 const checks = [
   ["private receipt bucket", migration.includes("'employee-expense-receipts','employee-expense-receipts',false")],
@@ -28,8 +30,11 @@ const checks = [
   ["branded submission email", notification.includes("buildStaffEmailHtml") && notification.includes("Review expense and evidence") && notification.includes("luke@apres-school.co.uk")],
   ["server-side notification queue", serverQueueMigration.includes("net.http_post") && serverQueueMigration.includes("notification_queued")],
   ["Superadmin notification recovery", notification.includes("isSuperadmin") && platform.includes("Send email notification")],
+  ["staff decision email", decisionNotification.includes("buildStaffEmailHtml") && decisionNotification.includes("employee_expense_decision")],
+  ["decision email queued server-side", decisionQueueMigration.includes("notify-expense-decision") && decisionQueueMigration.includes("decision_notification_queued")],
+  ["staff decision deep link", app.includes('requestedExpense ? "Expenses"')],
   ["notification cannot expose evidence", notification.includes("is not attached to this email") && notification.includes("Sign in before opening the private receipt")],
-  ["email deep link", app.includes("requestedExpense") && app.includes('nextAccess.role === "Superadmin"')],
+  ["email deep link", app.includes("requestedExpense") && app.includes('requestedExpense ? "Expenses"')],
   ["payroll action", platform.includes("addEmployeeExpenseToPayroll") && platform.includes("Add to {formatPayrollPeriod(payrollPeriod)} payroll")],
 ];
 
