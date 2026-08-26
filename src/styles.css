@@ -14741,6 +14741,39 @@ table input[type="text"] {
 .holiday-empty strong { color: #263fa9; }
 .holiday-empty p { margin: 6px 0 0; }
 .holiday-loading { background: rgba(255,255,255,.9); border: 1px solid var(--line); border-radius: 14px; color: #263fa9; font-weight: 900; padding: 14px; text-align: center; }
+.absence-workspace { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.2fr) minmax(300px, .8fr); }
+.absence-workspace .full-width { grid-column: 1 / -1; }
+.absence-guidance { background: #fff8eb; border: 1px solid #f1d9af; border-radius: 12px; color: #765225; line-height: 1.45; margin: 0 0 15px; padding: 11px 13px; }
+.absence-report-form { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.absence-report-form label, .absence-close-form label { color: #263fa9; display: grid; font-size: .79rem; font-weight: 900; gap: 7px; }
+.absence-report-form label span, .absence-close-form label span { color: var(--muted); font-weight: 750; }
+.absence-report-form input, .absence-report-form select, .absence-report-form textarea, .absence-close-form input, .absence-close-form textarea { border: 1px solid #d8e0f3; border-radius: 12px; font: inherit; min-width: 0; padding: 11px 12px; width: 100%; }
+.absence-report-form .wide, .absence-report-preview, .absence-report-form > button { grid-column: 1 / -1; }
+.absence-report-preview { align-items: center; background: #f6f8ff; border: 1px solid #e0e6f7; border-radius: 13px; display: grid; gap: 6px; grid-template-columns: auto auto minmax(0, 1fr); padding: 11px 13px; }
+.absence-report-preview span { color: var(--muted); font-size: .78rem; font-weight: 850; }
+.absence-report-preview strong { color: #263fa9; font-size: 1.2rem; }
+.absence-report-preview small { color: var(--muted); text-align: right; }
+.absence-metrics { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.absence-metrics article { background: #f7f9ff; border: 1px solid #e0e6f7; border-radius: 14px; display: grid; gap: 7px; padding: 14px; }
+.absence-metrics span { color: var(--muted); font-size: .72rem; font-weight: 850; }
+.absence-metrics strong { color: #263fa9; font-size: 1.5rem; }
+.absence-summary-note { color: var(--muted); font-size: .82rem; line-height: 1.45; margin: 13px 0 0; }
+.absence-list { display: grid; gap: 12px; }
+.absence-list > article { background: #fbfcff; border: 1px solid #dfe6f6; border-left: 5px solid #e49a34; border-radius: 16px; display: grid; gap: 13px; padding: 16px; }
+.absence-list > article.closed { border-left-color: #2a925a; }
+.absence-list > article.cancelled { border-left-color: #a0a6b4; opacity: .75; }
+.absence-card-main { align-items: start; display: flex; gap: 18px; justify-content: space-between; }
+.absence-card-main h3 { color: #263fa9; font-size: 1.15rem; margin: 8px 0 3px; }
+.absence-card-main p, .absence-card-main small { color: var(--muted); display: block; line-height: 1.4; margin: 3px 0; }
+.absence-card-main > div:last-child { align-items: end; display: grid; gap: 5px; min-width: 160px; text-align: right; }
+.absence-card-main > div:last-child strong { color: #a76213; font-size: .8rem; }
+.absence-card-main > div:last-child span { color: var(--muted); font-size: .78rem; }
+.absence-state { border-radius: 999px; display: inline-flex; font-size: .67rem; font-weight: 950; letter-spacing: .06em; padding: 6px 9px; text-transform: uppercase; }
+.absence-state.active { background: #fff0d5; color: #98590c; }
+.absence-state.closed { background: #dcf5e6; color: #187647; }
+.absence-state.cancelled { background: #eef0f4; color: #676e7f; }
+.absence-close-form { align-items: end; background: #f4f8ff; border-radius: 13px; display: grid; gap: 10px; grid-template-columns: minmax(170px, .45fr) minmax(260px, 1fr) auto; padding: 12px; }
+.absence-cancel { justify-self: end; }
 
 @media (max-width: 1050px) {
   .holiday-two-column { grid-template-columns: 1fr; }
@@ -14748,6 +14781,8 @@ table input[type="text"] {
   .holiday-settings-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .holiday-entitlement-list > article { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .holiday-entitlement-person { grid-column: 1 / -1; }
+  .absence-workspace { grid-template-columns: 1fr; }
+  .absence-workspace .full-width { grid-column: auto; }
 }
 
 @media (max-width: 650px) {
@@ -14763,6 +14798,14 @@ table input[type="text"] {
   .holiday-approval-actions { justify-content: stretch; }
   .holiday-approval-actions .button { flex: 1; }
   .holiday-entitlement-list > article { grid-template-columns: 1fr; }
+  .absence-report-form, .absence-close-form { grid-template-columns: 1fr; }
+  .absence-report-form .wide, .absence-report-preview, .absence-report-form > button { grid-column: auto; }
+  .absence-report-preview { grid-template-columns: 1fr auto; }
+  .absence-report-preview small { grid-column: 1 / -1; text-align: left; }
+  .absence-metrics { grid-template-columns: 1fr; }
+  .absence-card-main { align-items: stretch; flex-direction: column; }
+  .absence-card-main > div:last-child { align-items: start; min-width: 0; text-align: left; }
+  .absence-cancel { justify-self: stretch; }
 }
 
 .payslip-cell {

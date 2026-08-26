@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const moneylessNumber = (value) => Number(value || 0).toFixed(2).replace(/\.00$/, "");
+const addDaysIso = (value, days) => { const date = new Date(`${value}T12:00:00`); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); };
 
 function displayDate(value) {
   if (!value) return "Date not set";
@@ -70,6 +71,16 @@ function EmptyHoliday({ title, text }) {
   return <div className="holiday-empty"><strong>{title}</strong><p>{text}</p></div>;
 }
 
+const absenceCategories = [
+  ["sickness", "Sickness"],
+  ["medical", "Medical appointment or treatment"],
+  ["dependent_emergency", "Dependent or family emergency"],
+  ["bereavement", "Bereavement"],
+  ["unpaid_leave", "Unpaid leave"],
+  ["other", "Other absence"],
+];
+const absenceCategoryLabel = (value) => absenceCategories.find(([key]) => key === value)?.[1] || "Other absence";
+
 export default function HolidayModule({ access }) {
   const [workspace, setWorkspace] = useState({ staff: [], requests: [], entitlements: [], settings: {}, currentStaffId: "", role: access?.role || "Staff", requestPolicy: "school_holidays_only", policySite: "", allowedWindows: [] });
   const [loading, setLoading] = useState(true);
@@ -80,6 +91,8 @@ export default function HolidayModule({ access }) {
   const [decisionNotes, setDecisionNotes] = useState({});
   const [settingsDraft, setSettingsDraft] = useState({});
   const [entitlementDrafts, setEntitlementDrafts] = useState({});
+  const [absenceDraft, setAbsenceDraft] = useState({ staffRecordId: "", startDate: todayIso(), endDate: todayIso(), category: "sickness", note: "" });
+  const [absenceCloseDrafts, setAbsenceCloseDrafts] = useState({});
 
   const canReview = ["Manager", "Admin", "Superadmin"].includes(access?.role);
   const isAdmin = ["Admin", "Superadmin"].includes(access?.role);
@@ -87,9 +100,11 @@ export default function HolidayModule({ access }) {
   async function loadWorkspace(message = "") {
     setLoading(true);
     try {
-      const { fetchHolidayWorkspace } = await import("./supabaseClient.js");
-      const next = await fetchHolidayWorkspace();
+      const { fetchHolidayWorkspace, fetchAbsenceWorkspace } = await import("./supabaseClient.js");
+      const [holidayWorkspace, absenceWorkspace] = await Promise.all([fetchHolidayWorkspace(), fetchAbsenceWorkspace()]);
+      const next = { ...holidayWorkspace, absences: absenceWorkspace.absences || [] };
       setWorkspace(next);
+      setAbsenceDraft((current) => ({ ...current, staffRecordId: current.staffRecordId || next.currentStaffId || "" }));
       setSettingsDraft(next.settings || {});
       setEntitlementDrafts(Object.fromEntries((next.staff || []).map((person) => {
         const bounds = leaveYearBounds(next.settings);
@@ -226,8 +241,63 @@ export default function HolidayModule({ access }) {
     }
   }
 
+  async function submitAbsence(event) {
+    event.preventDefault();
+    setBusy(true);
+    setStatus("Recording staff absence...");
+    try {
+      const { saveStaffAbsence, notifyStaffAbsence } = await import("./supabaseClient.js");
+      const saved = await saveStaffAbsence(absenceDraft);
+      setAbsenceDraft((current) => ({ ...current, startDate: todayIso(), endDate: todayIso(), category: "sickness", note: "" }));
+      let message = "Absence recorded. Any affected rota assignments now require cover.";
+      try { await notifyStaffAbsence(saved.id); } catch { message += " The record is saved, but the manager email could not be sent."; }
+      await loadWorkspace(message);
+    } catch (error) {
+      setStatus(error.message || "Absence could not be recorded.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function closeAbsence(item) {
+    const draft = absenceCloseDrafts[item.id] || {};
+    setBusy(true);
+    setStatus(`Closing ${item.staffName}'s absence record...`);
+    try {
+      const { closeStaffAbsence } = await import("./supabaseClient.js");
+      await closeStaffAbsence(item.id, draft.returnDate || todayIso(), draft.note || "");
+      await loadWorkspace("Return to work recorded and the absence closed.");
+    } catch (error) {
+      setStatus(error.message || "Absence could not be closed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelAbsence(item) {
+    setBusy(true);
+    setStatus("Cancelling absence record...");
+    try {
+      const { cancelStaffAbsence } = await import("./supabaseClient.js");
+      await cancelStaffAbsence(item.id);
+      await loadWorkspace("Absence cancelled and linked rota assignments restored for review.");
+    } catch (error) {
+      setStatus(error.message || "Absence could not be cancelled.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const visibleAbsences = (workspace.absences || []).filter((item) => canReview || item.staffRecordId === workspace.currentStaffId);
+  const activeAbsences = visibleAbsences.filter((item) => item.status !== "cancelled" && !item.closedAt && item.endDate >= todayIso());
+  const rollingStart = new Date();
+  rollingStart.setFullYear(rollingStart.getFullYear() - 1);
+  const rollingAbsences = visibleAbsences.filter((item) => item.status !== "cancelled" && item.startDate >= rollingStart.toISOString().slice(0, 10));
+  const rollingDays = rollingAbsences.reduce((sum, item) => sum + workingDaysBetween(item.startDate, item.endDate), 0);
+
   const views = [
     ["mine", "My holiday"],
+    ["absences", `Absences${activeAbsences.length ? ` (${activeAbsences.length})` : ""}`],
     ...(canReview ? [["approvals", `Approvals${pendingApprovals.length ? ` (${pendingApprovals.length})` : ""}`], ["calendar", "Team calendar"]] : []),
     ...(isAdmin ? [["settings", "Settings"]] : []),
   ];
@@ -272,6 +342,47 @@ export default function HolidayModule({ access }) {
           <section className="holiday-panel full-width">
             <div className="holiday-panel-head"><div><p className="eyebrow">Your record</p><h2>Requests and decisions</h2></div><span>{ownRequests.length} total</span></div>
             <div className="holiday-request-list">{ownRequests.map((item) => <article key={item.id}><div className="holiday-request-main"><HolidayStatus value={item.status} /><h3>{dateRangeLabel(item.startDate, item.endDate)}</h3><p>{moneylessNumber(item.requestedHours)} hours · {item.dayPortion.replace(/_/g, " ")}</p>{item.note && <small>Your note: {item.note}</small>}{item.decisionNote && <small>Decision note: {item.decisionNote}</small>}</div><div className="holiday-request-side">{item.affectedShifts > 0 && <span>{item.affectedShifts} rota shift{item.affectedShifts === 1 ? "" : "s"} affected</span>}{["requested", "approved"].includes(item.status) && item.startDate >= todayIso() && <button className="button subtle" type="button" disabled={busy} onClick={() => cancelRequest(item)}>Cancel request</button>}</div></article>)}{!ownRequests.length && <EmptyHoliday title="No holiday requests yet" text="Your submitted requests and manager decisions will appear here." />}</div>
+          </section>
+        </div>
+      )}
+
+      {view === "absences" && (
+        <div className="absence-workspace">
+          <section className="holiday-panel absence-report-panel">
+            <div className="holiday-panel-head"><div><p className="eyebrow">Unplanned time away</p><h2>{canReview ? "Record an absence" : "Report an absence"}</h2></div><span>Kept separate from holiday</span></div>
+            <p className="absence-guidance">Record the dates and broad reason only. Detailed medical information should not be entered here.</p>
+            <form className="absence-report-form" onSubmit={submitAbsence}>
+              {canReview && <label>Employee<select required value={absenceDraft.staffRecordId} onChange={(event) => setAbsenceDraft((current) => ({ ...current, staffRecordId: event.target.value }))}><option value="">Choose employee</option>{workspace.staff.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.site || person.role || "No site"}</option>)}</select></label>}
+              <label>First day<input required type="date" value={absenceDraft.startDate} onChange={(event) => setAbsenceDraft((current) => ({ ...current, startDate: event.target.value, endDate: current.endDate < event.target.value ? event.target.value : current.endDate }))} /></label>
+              <label>Last expected day<input required type="date" min={absenceDraft.startDate} value={absenceDraft.endDate} onChange={(event) => setAbsenceDraft((current) => ({ ...current, endDate: event.target.value }))} /></label>
+              <label>Reason<select value={absenceDraft.category} onChange={(event) => setAbsenceDraft((current) => ({ ...current, category: event.target.value }))}>{absenceCategories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <label className="wide">Brief note <span>optional</span><textarea rows="3" maxLength="500" value={absenceDraft.note} onChange={(event) => setAbsenceDraft((current) => ({ ...current, note: event.target.value }))} placeholder="Operational information only — do not include a diagnosis or detailed medical history" /></label>
+              <div className="absence-report-preview"><span>Working days recorded</span><strong>{workingDaysBetween(absenceDraft.startDate, absenceDraft.endDate)}</strong><small>Affected rota shifts will be marked as requiring cover.</small></div>
+              <button className="button primary" type="submit" disabled={busy || !absenceDraft.staffRecordId}>{busy ? "Please wait..." : canReview ? "Record absence" : "Report absence"}</button>
+            </form>
+          </section>
+
+          <section className="holiday-panel absence-summary-panel">
+            <div className="holiday-panel-head"><div><p className="eyebrow">Attendance overview</p><h2>{canReview ? "Visible team records" : "Your record"}</h2></div></div>
+            <div className="absence-metrics"><article><span>Active now</span><strong>{activeAbsences.length}</strong></article><article><span>Events · 12 months</span><strong>{rollingAbsences.length}</strong></article><article><span>Working days · 12 months</span><strong>{rollingDays}</strong></article></div>
+            <p className="absence-summary-note">Holiday is excluded from these figures. Cancelled records are also excluded.</p>
+          </section>
+
+          <section className="holiday-panel full-width absence-history-panel">
+            <div className="holiday-panel-head"><div><p className="eyebrow">Absence history</p><h2>{canReview ? "Staff absence register" : "Your reported absences"}</h2></div><span>{visibleAbsences.length} records</span></div>
+            <div className="absence-list">
+              {visibleAbsences.map((item) => {
+                const closed = Boolean(item.closedAt);
+                const cancelled = item.status === "cancelled";
+                const draft = absenceCloseDrafts[item.id] || { returnDate: item.endDate < todayIso() ? addDaysIso(item.endDate, 1) : item.startDate >= todayIso() ? addDaysIso(item.startDate, 1) : todayIso(), note: "" };
+                return <article className={`${closed ? "closed" : ""} ${cancelled ? "cancelled" : ""}`} key={item.id}>
+                  <div className="absence-card-main"><div><span className={`absence-state ${cancelled ? "cancelled" : closed ? "closed" : "active"}`}>{cancelled ? "Cancelled" : closed ? "Closed" : item.endDate >= todayIso() ? "Active" : "Return review due"}</span><h3>{item.staffName}</h3><p>{absenceCategoryLabel(item.category)} · {dateRangeLabel(item.startDate, item.endDate)}</p><small>{item.site || "Site not recorded"} · {workingDaysBetween(item.startDate, item.endDate)} working day{workingDaysBetween(item.startDate, item.endDate) === 1 ? "" : "s"}</small>{item.note && <small>Operational note: {item.note}</small>}{item.returnToWorkNote && <small>Return-to-work note: {item.returnToWorkNote}</small>}</div><div>{item.affectedShifts > 0 && <strong>{item.affectedShifts} rota shift{item.affectedShifts === 1 ? "" : "s"} affected</strong>}{item.actualReturnDate && <span>Returned {displayDate(item.actualReturnDate)}</span>}</div></div>
+                  {!closed && !cancelled && canReview && <div className="absence-close-form"><label>First day back at work<input type="date" min={addDaysIso(item.startDate, 1)} value={draft.returnDate} onChange={(event) => setAbsenceCloseDrafts((current) => ({ ...current, [item.id]: { ...draft, returnDate: event.target.value } }))} /></label><label>Return-to-work note <span>optional</span><textarea rows="2" maxLength="1000" value={draft.note} onChange={(event) => setAbsenceCloseDrafts((current) => ({ ...current, [item.id]: { ...draft, note: event.target.value } }))} placeholder="Outcome of return-to-work conversation" /></label><button className="button success" type="button" disabled={busy || !draft.returnDate} onClick={() => closeAbsence(item)}>Mark returned</button></div>}
+                  {!closed && !cancelled && item.startDate >= todayIso() && <button className="button subtle absence-cancel" type="button" disabled={busy} onClick={() => cancelAbsence(item)}>Cancel incorrect record</button>}
+                </article>;
+              })}
+              {!visibleAbsences.length && <EmptyHoliday title="No absences recorded" text={canReview ? "Reported staff absence will appear here with rota impact and return-to-work status." : "Your reported sickness or other absence will appear here."} />}
+            </div>
           </section>
         </div>
       )}

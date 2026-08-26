@@ -4017,8 +4017,8 @@ function StaffDashboard({ data, access, userEmail, onOpenRegisters, onOpenExpens
         <span className="staff-holiday-shortcut-icon"><CalendarDays aria-hidden="true" /></span>
         <span>
           <small>Time off</small>
-          <strong>Request holiday</strong>
-          <span>Check your allowance and send a request for approval.</span>
+          <strong>Holiday &amp; absence</strong>
+          <span>Request holiday, report an absence or review your record.</span>
         </span>
         <span className="staff-holiday-shortcut-action">Open holiday <ChevronRight aria-hidden="true" /></span>
       </button>

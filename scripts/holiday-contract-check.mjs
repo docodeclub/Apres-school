@@ -5,11 +5,13 @@ const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const migration = read("supabase/migrations/0123_employee_holiday_management.sql");
 const bookingRules = read("supabase/migrations/0124_site_staff_school_holiday_rule.sql");
+const absenceTracking = read("supabase/migrations/0125_staff_absence_tracking.sql");
 const client = read("src/supabaseClient.js");
 const platform = read("src/PlatformModule.jsx");
 const holiday = read("src/HolidayModule.jsx");
 const styles = read("src/styles.css");
 const notification = read("supabase/functions/notify-holiday-request/index.ts");
+const absenceNotification = read("supabase/functions/notify-staff-absence/index.ts");
 
 const checks = [
   ["staff own-record privacy", migration.includes("sr.profile_id = auth.uid()") && migration.includes("revoke insert, update, delete on public.staff_absences")],
@@ -27,9 +29,15 @@ const checks = [
   ["staff request interface", holiday.includes("Submit holiday request") && holiday.includes("Remaining after request")],
   ["booking rules explained before submission", holiday.includes("Rule 1 · Admin staff") && holiday.includes("Rule 2 · Site staff") && holiday.includes("Available school-holiday windows")],
   ["approval and calendar views", holiday.includes("Holiday approvals") && holiday.includes("Team leave calendar")],
-  ["dashboard shortcut", platform.includes("Request holiday") && platform.includes("onOpenHoliday")],
+  ["dashboard shortcut", platform.includes("Holiday &amp; absence") && platform.includes("onOpenHoliday")],
   ["branded request and decision emails", notification.includes("buildStaffEmailHtml") && notification.includes("Holiday request") && client.includes("notifyHolidayRequest")],
   ["responsive styling", styles.includes(".holiday-workspace") && styles.includes("@media (max-width: 650px)")],
+  ["absence records stay outside holiday allowance", absenceTracking.includes("a.absence_type <> 'annual_leave'") && holiday.includes("Kept separate from holiday")],
+  ["staff and manager absence scope", absenceTracking.includes("Managers can record absence for direct reports only") && absenceTracking.includes("a.staff_record_id=v_staff_id")],
+  ["absence creates rota cover", absenceTracking.includes("staff_absence_id=v_row.id") && absenceTracking.includes("status='cover_required'")],
+  ["return-to-work closure", absenceTracking.includes("absence_close_report") && holiday.includes("First day back at work") && holiday.includes("Mark returned")],
+  ["rolling absence summary", holiday.includes("Events · 12 months") && holiday.includes("Working days · 12 months")],
+  ["absence email notification", absenceNotification.includes("buildStaffEmailHtml") && client.includes("notifyStaffAbsence")],
 ];
 
 let failures = 0;

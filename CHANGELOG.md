@@ -10,6 +10,9 @@
 - Added branded request and decision emails with secure links back to the Holiday area.
 - Added database-enforced privacy so staff see only their own holiday and Managers see only their direct reports.
 - Added the first two booking rules: Admin/Superadmin staff may request leave at any time, while Staff and Managers assigned to a school can only request dates wholly inside that school's published holiday windows.
+- Added staff absence reporting alongside Holiday, with broad reason categories, direct-report visibility, rolling 12-month metrics and return-to-work closure.
+- Connected reported absence to rota cover, automatically restoring or extending affected assignments when a record is cancelled or the actual return date is confirmed.
+- Added branded absence emails to the relevant manager and Superadmin while keeping detailed health information out of email.
 
 ## 2026-08-26 - Employee expenses workflow
 

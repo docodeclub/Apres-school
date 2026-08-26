@@ -440,6 +440,78 @@ export async function notifyHolidayRequest(requestId, event) {
   return data || {};
 }
 
+function mapStaffAbsence(row = {}) {
+  return {
+    id: row.id,
+    staffRecordId: row.staffRecordId || row.staff_record_id || "",
+    staffName: row.staffName || "Staff member",
+    site: row.site || "",
+    category: row.category || row.absence_category || "other",
+    startDate: row.startDate || row.start_date || "",
+    endDate: row.endDate || row.end_date || "",
+    status: row.status || "approved",
+    note: row.note || "",
+    createdAt: row.createdAt || row.created_at || "",
+    closedAt: row.closedAt || row.closed_at || "",
+    actualReturnDate: row.actualReturnDate || row.actual_return_date || "",
+    returnToWorkNote: row.returnToWorkNote || row.return_to_work_note || "",
+    affectedShifts: Number(row.affectedShifts || 0),
+  };
+}
+
+export async function fetchAbsenceWorkspace() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("absence_workspace");
+  if (error) throw error;
+  return {
+    currentStaffId: data?.currentStaffId || "",
+    role: normalizeRole(data?.role),
+    absences: (data?.absences || []).map(mapStaffAbsence),
+  };
+}
+
+export async function saveStaffAbsence({ staffRecordId = "", startDate, endDate, category, note = "" }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("absence_save_report", {
+    p_staff_record_id: staffRecordId || null,
+    p_start_date: startDate,
+    p_end_date: endDate,
+    p_category: category,
+    p_note: note || null,
+  });
+  if (error) throw error;
+  return mapStaffAbsence(data);
+}
+
+export async function closeStaffAbsence(absenceId, actualReturnDate, returnToWorkNote = "") {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("absence_close_report", {
+    p_absence_id: absenceId,
+    p_actual_return_date: actualReturnDate,
+    p_return_to_work_note: returnToWorkNote || null,
+  });
+  if (error) throw error;
+  return mapStaffAbsence(data);
+}
+
+export async function cancelStaffAbsence(absenceId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("absence_cancel_report", { p_absence_id: absenceId });
+  if (error) throw error;
+  return mapStaffAbsence(data);
+}
+
+export async function notifyStaffAbsence(absenceId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.functions.invoke("notify-staff-absence", { body: { absenceId } });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Absence notification could not be sent.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data || {};
+}
+
 export async function saveOwnStaffingAvailability({ weekday, status, availableFrom = "", availableUntil = "", note = "" }) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.rpc("staffing_save_own_availability", {
