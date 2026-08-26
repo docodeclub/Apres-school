@@ -49,5 +49,9 @@ const platform = fs.readFileSync(new URL("../src/PlatformModule.jsx", import.met
 assert.match(platform, /EmployeeDocumentsPanel/);
 assert.match(platform, /"Employee Documents"/);
 assert.match(platform, /"Documents", "Pay", "Sites"/);
+assert.match(platform, /effectiveRole === "Manager"[\s\S]*"Documents", "Pay", "Sessions"/);
+assert.match(platform, /scopePersonalPayData/);
+assert.match(platform, /personalPayOnly: true/);
+assert.match(platform, /hrFiles: \(data\.hrFiles \|\| \[\]\)\.filter/);
 
 console.log("Employee document contract checks passed.");

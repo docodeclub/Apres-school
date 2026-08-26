@@ -1056,10 +1056,16 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
   };
   const targetedScopedData = includeTargetStaff(scopedData);
   const targetedEnrichedData = includeTargetStaff(enrichedData);
+  const payData = effectiveRole === "Manager"
+    ? scopePersonalPayData(targetedScopedData, access.currentUser)
+    : targetedScopedData;
+  const payAccess = effectiveRole === "Manager"
+    ? { ...access, role: "Staff", personalPayOnly: true }
+    : access;
   const visibleTabs = effectiveRole === "Staff"
     ? ["Staff", "Registers", "Documents", "Pay", "Rewards", "Sessions"]
     : effectiveRole === "Manager"
-      ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Employee Documents", "Ofsted", "Documents", "Sessions", "Pricing Groups"]
+      ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Employee Documents", "Ofsted", "Documents", "Pay", "Sessions", "Pricing Groups"]
       : platformTabs;
   const pinnedDashboardTab = ["Staff", "Manager"].includes(effectiveRole) ? "Staff" : "";
   const visibleGroups = platformGroups
@@ -1268,7 +1274,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "SCR" && <SCR data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} inspectionSchoolTarget={scrInspectionTarget} onInspectionTargetHandled={() => setScrInspectionTarget("")} onTargetHandled={() => setStaffProfileTargetId("")} onUpdateStaffPay={updateStaffPayOverride} onOpenHrFiles={(staffId) => { setStaffProfileTargetId(staffId); setTab("HR Files"); }} onOpenPay={(staffId) => { setStaffProfileTargetId(staffId); setTab("Pay"); }} />}
         {tab === "Ofsted" && <OfstedReadiness data={scopedData} />}
         {tab === "Documents" && <Documents data={scopedData} access={access} />}
-        {tab === "Pay" && <Pay data={targetedScopedData} access={access} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
+        {tab === "Pay" && <Pay data={payData} access={payAccess} targetStaffId={effectiveRole === "Manager" ? "" : staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
         {tab === "Rewards" && <Rewards data={scopedData} />}
         {tab === "Sessions" && <Sessions data={scopedData} />}
         {tab === "Incidents" && <Incidents />}
@@ -17349,6 +17355,43 @@ function buildAccessContext(role, userEmail, data, previewUserId = "") {
       staff: scopedStaff,
       sessions: scopedSessions,
     },
+  };
+}
+
+function scopePersonalPayData(data, currentUser) {
+  const ownStaff = (data.staff || []).find((person) => (
+    person.id === currentUser?.staffRecordId
+    || person.profileId === currentUser?.id
+    || String(person.email || "").toLowerCase() === String(currentUser?.email || "").toLowerCase()
+  ));
+  if (!ownStaff) {
+    return { ...data, staff: [], hrFiles: [], payrollHours: {}, payrollRuns: {}, payrollAudit: [] };
+  }
+
+  const ownIds = new Set([ownStaff.id, ownStaff.profileId].filter(Boolean));
+  const payrollHours = Object.fromEntries(Object.entries(data.payrollHours || {}).map(([period, schools]) => [
+    period,
+    Object.fromEntries(Object.entries(schools || {}).map(([school, record]) => [
+      school,
+      { ...record, rows: (record.rows || []).filter((row) => ownIds.has(row.staffId)) },
+    ]).filter(([, record]) => record.rows.length)),
+  ]));
+  const payrollRuns = Object.fromEntries(Object.entries(data.payrollRuns || {}).map(([period, run]) => [
+    period,
+    {
+      ...run,
+      adjustments: Object.fromEntries(Object.entries(run?.adjustments || {}).filter(([staffId]) => ownIds.has(staffId))),
+    },
+  ]));
+
+  return {
+    ...data,
+    staff: [ownStaff],
+    allStaff: [ownStaff],
+    hrFiles: (data.hrFiles || []).filter((file) => ownIds.has(file.staffRecordId)),
+    payrollHours,
+    payrollRuns,
+    payrollAudit: [],
   };
 }
 

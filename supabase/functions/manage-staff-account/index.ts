@@ -126,7 +126,7 @@ serve(async (request) => {
 async function getActor(authHeader: string) {
   if (!authHeader) return null;
   const token = authHeader.replace(/^Bearer\s+/i, "");
-  if (serviceRoleKey && token === serviceRoleKey) {
+  if ((serviceRoleKey && token === serviceRoleKey) || jwtRole(token) === "service_role") {
     return { id: null, role: "superadmin", full_name: "Service automation", email: null };
   }
   const { data: userData, error: userError } = await supabase.auth.getUser(token);
@@ -468,6 +468,17 @@ function normalizeRole(role: string) {
 
 function stringValue(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function jwtRole(token: string) {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return "";
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    return stringValue(decoded?.role);
+  } catch {
+    return "";
+  }
 }
 
 function json(body: Record<string, unknown>, status = 200) {

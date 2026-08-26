@@ -30,6 +30,8 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Fixed
 
+- Restored a personal-only Pay area for Managers so they can open their own payslips without gaining access to any other employee's pay or documents.
+- Updated staff-account service authentication so support-led password resets can securely deliver through the existing staff email workflow.
 - Stopped the public contact and school-enquiry forms from showing success when the server did not accept the enquiry; failed submissions now retain the visitor's text and provide a retry route.
 - Prevented rapid repeat clicks, lost-response retries and concurrent identical submissions from creating duplicate CRM rows or notification emails.
 - Removed robots.txt blocks from HTML routes that already carry `noindex`, allowing crawlers to read and honour the directive while keeping `/api/` blocked.
