@@ -26,6 +26,23 @@ function workingDaysBetween(start, end) {
   return total;
 }
 
+function dateRangeFitsHolidayWindows(start, end, windows = []) {
+  if (!start || !end || end < start) return false;
+  const cursor = new Date(`${start}T12:00:00`);
+  const finish = new Date(`${end}T12:00:00`);
+  let workingDays = 0;
+  while (cursor <= finish) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) {
+      workingDays += 1;
+      const value = cursor.toISOString().slice(0, 10);
+      if (!windows.some((window) => window.startsOn <= value && window.endsOn >= value)) return false;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return workingDays > 0;
+}
+
 function leaveYearBounds(settings, reference = todayIso()) {
   const month = Number(settings?.leaveYearStartMonth || 1);
   const day = Number(settings?.leaveYearStartDay || 1);
@@ -54,7 +71,7 @@ function EmptyHoliday({ title, text }) {
 }
 
 export default function HolidayModule({ access }) {
-  const [workspace, setWorkspace] = useState({ staff: [], requests: [], entitlements: [], settings: {}, currentStaffId: "", role: access?.role || "Staff" });
+  const [workspace, setWorkspace] = useState({ staff: [], requests: [], entitlements: [], settings: {}, currentStaffId: "", role: access?.role || "Staff", requestPolicy: "school_holidays_only", policySite: "", allowedWindows: [] });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
@@ -109,6 +126,8 @@ export default function HolidayModule({ access }) {
   const pendingApprovals = workspace.requests.filter((item) => item.status === "requested" && item.staffRecordId !== workspace.currentStaffId);
   const teamCalendar = workspace.requests.filter((item) => ["requested", "approved"].includes(item.status)).sort((a, b) => a.startDate.localeCompare(b.startDate));
   const standardDayHours = Number(workspace.settings?.standardDayHours || 6);
+  const siteHolidayRule = workspace.requestPolicy === "school_holidays_only";
+  const datesAllowed = !siteHolidayRule || !request.startDate || !request.endDate || dateRangeFitsHolidayWindows(request.startDate, request.endDate, workspace.allowedWindows);
   const suggestedHours = useMemo(() => {
     if (!request.startDate || !request.endDate) return 0;
     if (request.dayPortion === "morning" || request.dayPortion === "afternoon") return standardDayHours / 2;
@@ -227,6 +246,11 @@ export default function HolidayModule({ access }) {
         <div className="holiday-two-column">
           <section className="holiday-panel request-panel">
             <div className="holiday-panel-head"><div><p className="eyebrow">New request</p><h2>Book time off</h2></div><span>{ownStaff?.name || "Your account"}</span></div>
+            <div className={`holiday-booking-rule ${siteHolidayRule ? "site-rule" : "admin-rule"}`}>
+              <strong>{siteHolidayRule ? "Rule 2 · Site staff" : "Rule 1 · Admin staff"}</strong>
+              <p>{siteHolidayRule ? `Holiday must be taken during the published school holidays for ${workspace.policySite || "your usual school"}.` : "You can request holiday at any time, subject to your allowance and approval."}</p>
+            </div>
+            {siteHolidayRule && <div className="holiday-window-list"><span>Available school-holiday windows</span>{workspace.allowedWindows.slice(0, 6).map((window) => <button type="button" key={window.id} onClick={() => updateRequest({ startDate: window.startsOn < todayIso() ? todayIso() : window.startsOn, endDate: window.endsOn })}><strong>{window.label}</strong><small>{dateRangeLabel(window.startsOn, window.endsOn)}</small></button>)}{!workspace.allowedWindows.length && <p>No future calendar windows are linked to this staff record. Ask Admin to check the usual school.</p>}</div>}
             <form className="holiday-request-form" onSubmit={submitRequest}>
               <label>First day<input type="date" required min={todayIso()} value={request.startDate} onChange={(event) => updateRequest({ startDate: event.target.value, endDate: request.endDate && request.endDate >= event.target.value ? request.endDate : event.target.value })} /></label>
               <label>Last day<input type="date" required min={request.startDate || todayIso()} value={request.endDate} disabled={["morning", "afternoon"].includes(request.dayPortion)} onChange={(event) => updateRequest({ endDate: event.target.value })} /></label>
@@ -234,7 +258,8 @@ export default function HolidayModule({ access }) {
               {request.dayPortion === "custom" && <label>Hours requested<input type="number" required min="0.25" step="0.25" value={request.requestedHours} onChange={(event) => updateRequest({ requestedHours: event.target.value })} /></label>}
               <label className="wide">Note <span>optional</span><textarea rows="3" value={request.note} onChange={(event) => updateRequest({ note: event.target.value })} placeholder="Anything your manager should know" /></label>
               <div className="holiday-request-preview"><div><span>Working days</span><strong>{workingDaysBetween(request.startDate, request.endDate)}</strong></div><div><span>Allowance used</span><strong>{moneylessNumber(suggestedHours)} hrs</strong></div><div><span>Remaining after request</span><strong>{currentEntitlement ? `${moneylessNumber(remainingHours - suggestedHours)} hrs` : "Not set"}</strong></div></div>
-              <button className="button primary" type="submit" disabled={busy || !currentEntitlement || suggestedHours <= 0 || suggestedHours > remainingHours}>{busy ? "Please wait..." : "Submit holiday request"}</button>
+              {!datesAllowed && <p className="holiday-date-error">Those dates include term time. Choose one of the published school-holiday windows above.</p>}
+              <button className="button primary" type="submit" disabled={busy || !currentEntitlement || suggestedHours <= 0 || suggestedHours > remainingHours || !datesAllowed}>{busy ? "Please wait..." : "Submit holiday request"}</button>
             </form>
           </section>
 

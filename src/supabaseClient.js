@@ -338,6 +338,15 @@ export async function fetchHolidayWorkspace() {
   return {
     role: normalizeRole(payload.role),
     currentStaffId: payload.currentStaffId || "",
+    requestPolicy: payload.requestPolicy || "school_holidays_only",
+    policySite: payload.policySite || "",
+    allowedWindows: (payload.allowedWindows || []).map((row) => ({
+      id: row.id,
+      label: row.label || "School holiday",
+      startsOn: row.startsOn || "",
+      endsOn: row.endsOn || "",
+      periodKind: row.periodKind || "seasonal_holiday",
+    })),
     staff: (payload.staff || []).map((row) => ({
       id: row.id,
       profileId: row.profileId || "",

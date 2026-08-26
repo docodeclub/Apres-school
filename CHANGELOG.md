@@ -9,6 +9,7 @@
 - Added separate paid-holiday payroll entries and a worked-hours/holiday-hours split in payroll views and exports.
 - Added branded request and decision emails with secure links back to the Holiday area.
 - Added database-enforced privacy so staff see only their own holiday and Managers see only their direct reports.
+- Added the first two booking rules: Admin/Superadmin staff may request leave at any time, while Staff and Managers assigned to a school can only request dates wholly inside that school's published holiday windows.
 
 ## 2026-08-26 - Employee expenses workflow
 
