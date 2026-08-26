@@ -12,6 +12,7 @@ const financeInvoiceFunctionName = import.meta.env.VITE_FINANCE_INVOICE_FUNCTION
 const adminParentCreditFunctionName = import.meta.env.VITE_ADMIN_PARENT_CREDIT_FUNCTION_NAME || "admin-adjust-parent-credit";
 const staffingNotificationFunctionName = import.meta.env.VITE_STAFFING_NOTIFICATION_FUNCTION_NAME || "notify-staffing-publication";
 const employeeDocumentFunctionName = import.meta.env.VITE_EMPLOYEE_DOCUMENT_FUNCTION_NAME || "manage-employee-document";
+const expenseNotificationFunctionName = import.meta.env.VITE_EXPENSE_NOTIFICATION_FUNCTION_NAME || "notify-expense-claim";
 const parentPricingGroupFunctionName = import.meta.env.VITE_PARENT_PRICING_GROUP_FUNCTION_NAME || "manage-parent-pricing-group";
 const staffPhotoBucket = "staff-profile-photos";
 const staffHrFilesBucket = "staff-hr-files";
@@ -103,7 +104,16 @@ export async function submitEmployeeExpenseClaim(payload, receiptFile) {
     p_receipt_path: receiptPath,
   });
   if (error) throw error;
-  return mapEmployeeExpenseClaim(data);
+  const claim = mapEmployeeExpenseClaim(data);
+  try {
+    const { data: notification, error: notificationError } = await supabase.functions.invoke(expenseNotificationFunctionName, { body: { claimId: claim.id } });
+    claim.notification = notificationError
+      ? { emailed: false, emailError: notificationError.message || "Notification failed" }
+      : notification;
+  } catch (notificationError) {
+    claim.notification = { emailed: false, emailError: notificationError?.message || "Notification failed" };
+  }
+  return claim;
 }
 
 export async function reviewEmployeeExpenseClaim(claimId, decision, note = "") {

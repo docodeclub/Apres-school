@@ -12799,14 +12799,16 @@ function expenseStatusTone(status) {
 function Expenses({ data, access, userEmail }) {
   const ownStaff = resolveOwnStaffRecord(data, access, userEmail);
   const role = access?.role || "Staff";
-  const canReview = ["Manager", "Admin", "Superadmin"].includes(role);
+  const canReview = role === "Superadmin";
+  const canViewTeam = ["Admin", "Superadmin"].includes(role);
   const canProcessPayroll = ["Admin", "Superadmin"].includes(role);
+  const requestedClaimId = new URLSearchParams(window.location.search).get("expense") || "";
   const [claims, setClaims] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [busyId, setBusyId] = useState("");
   const [reviewNotes, setReviewNotes] = useState({});
-  const [filter, setFilter] = useState(canReview ? "submitted" : "all");
+  const [filter, setFilter] = useState(requestedClaimId ? "all" : canViewTeam ? "submitted" : "all");
   const [payrollPeriod, setPayrollPeriod] = useState(currentPayrollPeriod());
   const [receiptFile, setReceiptFile] = useState(null);
   const isRolePreview = Boolean(userEmail && access?.currentUser?.email && String(userEmail).toLowerCase() !== String(access.currentUser.email).toLowerCase());
@@ -12841,7 +12843,7 @@ function Expenses({ data, access, userEmail }) {
     setStatus("Uploading your receipt securely...");
     try {
       const { submitEmployeeExpenseClaim } = await loadSupabaseModule();
-      await submitEmployeeExpenseClaim({
+      const saved = await submitEmployeeExpenseClaim({
         staffRecordId: ownStaff.id,
         expenseDate: fields.get("expenseDate"),
         category: fields.get("category"),
@@ -12850,7 +12852,9 @@ function Expenses({ data, access, userEmail }) {
       }, receiptFile);
       form.reset();
       setReceiptFile(null);
-      setStatus("Expense submitted for approval.");
+      setStatus(saved.notification?.emailed
+        ? "Expense submitted. Superadmin has been notified by email."
+        : `Expense submitted.${saved.notification?.emailError ? " The Superadmin notification email could not be sent, so please tell Admin." : ""}`);
       await refreshClaims();
     } catch (error) {
       setStatus(error.message || "The expense could not be submitted.");
@@ -12893,7 +12897,9 @@ function Expenses({ data, access, userEmail }) {
   const ownId = String(ownStaff?.id || "");
   const scopedStaffIds = new Set((data.staff || []).flatMap((person) => [person.id, person.profileId]).filter(Boolean).map(String));
   const scopedClaims = canProcessPayroll ? claims : claims.filter((claim) => scopedStaffIds.has(String(claim.staffRecordId)));
-  const visibleClaims = scopedClaims.filter((claim) => filter === "all" || claim.status === filter);
+  const visibleClaims = scopedClaims
+    .filter((claim) => filter === "all" || claim.status === filter)
+    .sort((left, right) => Number(right.id === requestedClaimId) - Number(left.id === requestedClaimId));
   const ownClaims = scopedClaims.filter((claim) => String(claim.staffRecordId) === ownId);
   const submittedCount = scopedClaims.filter((claim) => claim.status === "submitted").length;
   const approvedCount = scopedClaims.filter((claim) => claim.status === "approved").length;
@@ -12902,6 +12908,21 @@ function Expenses({ data, access, userEmail }) {
     const person = staffLookup.get(String(claim.staffRecordId));
     return person?.preferredName || person?.name || (String(claim.staffRecordId) === ownId ? ownStaff?.name : "Staff member");
   };
+  const claimantTotals = Array.from(scopedClaims.reduce((groups, claim) => {
+    const current = groups.get(claim.staffRecordId) || { id: claim.staffRecordId, name: staffName(claim), count: 0, claimed: 0, approved: 0, payroll: 0, denied: 0 };
+    current.count += 1;
+    current.claimed += claim.amount;
+    if (["approved", "payroll_added"].includes(claim.status)) current.approved += claim.amount;
+    if (claim.status === "payroll_added") current.payroll += claim.amount;
+    if (claim.status === "rejected") current.denied += claim.amount;
+    groups.set(claim.staffRecordId, current);
+    return groups;
+  }, new Map()).values()).sort((left, right) => right.claimed - left.claimed);
+
+  useEffect(() => {
+    if (!requestedClaimId || loading) return;
+    document.getElementById(`expense-${requestedClaimId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [loading, requestedClaimId]);
 
   return (
     <div className="stack expense-console">
@@ -12913,6 +12934,17 @@ function Expenses({ data, access, userEmail }) {
           <article><span>Pending value</span><strong>{formatCurrency(totalPending)}</strong></article>
         </div>
       </section>
+
+      {role === "Superadmin" && (
+        <Panel title="Claims by staff member">
+          <p className="panel-note">All-time submitted value, with approved and payroll totals kept separate for a clear audit trail.</p>
+          <TableWrap>
+            <table className="expense-staff-totals"><thead><tr><th>Staff member</th><th>Claims</th><th>Total claimed</th><th>Approved</th><th>Added to payroll</th><th>Denied</th></tr></thead>
+              <tbody>{claimantTotals.map((row) => <tr key={row.id}><td><strong>{row.name}</strong></td><td>{row.count}</td><td><strong>{formatCurrency(row.claimed)}</strong></td><td>{formatCurrency(row.approved)}</td><td>{formatCurrency(row.payroll)}</td><td>{formatCurrency(row.denied)}</td></tr>)}{!claimantTotals.length && <tr><td colSpan="6">No staff expenses have been submitted yet.</td></tr>}</tbody>
+            </table>
+          </TableWrap>
+        </Panel>
+      )}
 
       {ownStaff && !isRolePreview && (
         <Panel title="Submit an expense">
@@ -12930,7 +12962,7 @@ function Expenses({ data, access, userEmail }) {
 
       <section className="expense-claims-panel">
         <div className="expense-claims-head">
-          <div><p className="eyebrow">Claim history</p><h3>{canReview ? "Expense review queue" : "Your submitted expenses"}</h3></div>
+          <div><p className="eyebrow">Claim history</p><h3>{canViewTeam ? "Expense review queue" : "Your submitted expenses"}</h3></div>
           <div className="expense-filter-row">
             {canProcessPayroll && <label>Payroll month<input type="month" value={payrollPeriod} onChange={(event) => setPayrollPeriod(event.target.value)} /></label>}
             <label>Show<select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">All claims</option><option value="submitted">Awaiting approval</option><option value="approved">Approved</option><option value="rejected">Returned</option><option value="payroll_added">Added to payroll</option></select></label>
@@ -12939,7 +12971,7 @@ function Expenses({ data, access, userEmail }) {
         {status && <p className="expense-status" role="status">{status}</p>}
         <div className="expense-claim-list">
           {visibleClaims.map((claim) => (
-            <article className={`expense-claim-card status-${claim.status}`} key={claim.id}>
+            <article className={`expense-claim-card status-${claim.status}${claim.id === requestedClaimId ? " requested" : ""}`} id={`expense-${claim.id}`} key={claim.id}>
               <div className="expense-claim-main">
                 <div className="expense-claim-title"><div><span>{claim.category}</span><strong>{claim.description}</strong><small>{staffName(claim)} · {formatShortDate(claim.expenseDate)}</small></div><strong>{formatCurrency(claim.amount)}</strong></div>
                 <div className="expense-claim-meta"><Badge value={expenseStatusLabel(claim.status)} tone={expenseStatusTone(claim.status)} />{claim.payrollPeriod && <span>{formatPayrollPeriod(claim.payrollPeriod)} payroll</span>}{claim.reviewerNote && <span>Reviewer: {claim.reviewerNote}</span>}</div>
@@ -12948,13 +12980,13 @@ function Expenses({ data, access, userEmail }) {
               <div className="expense-claim-actions">
                 {claim.receiptUrl ? <a className="button light" href={claim.receiptUrl} target="_blank" rel="noreferrer">View receipt</a> : <Badge value="Receipt secured" />}
                 {canReview && claim.status === "submitted" && (
-                  <><textarea rows="2" value={reviewNotes[claim.id] || ""} onChange={(event) => setReviewNotes((current) => ({ ...current, [claim.id]: event.target.value }))} placeholder="Optional approval note; required if returning" /><div><button className="button success" type="button" disabled={busyId === claim.id} onClick={() => reviewClaim(claim, "approved")}>Approve</button><button className="button subtle" type="button" disabled={busyId === claim.id} onClick={() => reviewClaim(claim, "rejected")}>Return</button></div></>
+                  <><textarea rows="2" value={reviewNotes[claim.id] || ""} onChange={(event) => setReviewNotes((current) => ({ ...current, [claim.id]: event.target.value }))} placeholder="Optional approval note; reason required if denying" /><div><button className="button success" type="button" disabled={busyId === claim.id} onClick={() => reviewClaim(claim, "approved")}>Approve</button><button className="button subtle" type="button" disabled={busyId === claim.id} onClick={() => reviewClaim(claim, "rejected")}>Deny</button></div></>
                 )}
                 {canProcessPayroll && claim.status === "approved" && <button className="button primary" type="button" disabled={busyId === claim.id || !payrollPeriod} onClick={() => addToPayroll(claim)}>Add to {formatPayrollPeriod(payrollPeriod)} payroll</button>}
               </div>
             </article>
           ))}
-          {!loading && !visibleClaims.length && <EmptyList title="No expenses in this view" text={canReview ? "New staff submissions will appear here for review." : "Use the form above to submit your first expense."} />}
+          {!loading && !visibleClaims.length && <EmptyList title="No expenses in this view" text={canViewTeam ? "New staff submissions will appear here for review." : "Use the form above to submit your first expense."} />}
           {loading && <p>Loading expenses...</p>}
         </div>
       </section>

@@ -7,6 +7,8 @@
 - Added manager approval for direct reports and Admin/Superadmin payroll processing.
 - Added private receipt storage, status history and database-enforced role boundaries.
 - Added backend-only maintenance permission for secure operational cleanup; browser roles remain unchanged.
+- Restricted expense approval and denial to Superadmin, added per-employee claim totals and added a branded Superadmin submission email with a secure evidence-review link.
+- Removed manager access to colleagues' expense claims and receipts; Managers retain access to their own claims only.
 
 Notable changes to the Après School website and operations platform are recorded here. This file follows the principles of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The application is deployed continuously, so entries are grouped by production date rather than numbered releases.
 

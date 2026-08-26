@@ -1019,7 +1019,10 @@ export default function App() {
       setRole(nextAccess.role);
       setMustChangePassword(nextAccess.mustChangePassword);
       setFormerStaffAccess(false);
-      if (landOnDashboard) setTab(["Admin", "Superadmin"].includes(nextAccess.role) ? "Admin" : "Staff");
+      if (landOnDashboard) {
+        const requestedExpense = new URLSearchParams(window.location.search).get("expense");
+        setTab(requestedExpense && nextAccess.role === "Superadmin" ? "Expenses" : ["Admin", "Superadmin"].includes(nextAccess.role) ? "Admin" : "Staff");
+      }
       setPlatformAccessMessage("");
       setPlatformUnlocked(true);
       return true;
