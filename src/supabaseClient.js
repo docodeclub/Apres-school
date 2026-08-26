@@ -15,6 +15,7 @@ const employeeDocumentFunctionName = import.meta.env.VITE_EMPLOYEE_DOCUMENT_FUNC
 const parentPricingGroupFunctionName = import.meta.env.VITE_PARENT_PRICING_GROUP_FUNCTION_NAME || "manage-parent-pricing-group";
 const staffPhotoBucket = "staff-profile-photos";
 const staffHrFilesBucket = "staff-hr-files";
+const employeeExpenseReceiptsBucket = "employee-expense-receipts";
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 
@@ -26,6 +27,105 @@ export const supabase = hasSupabaseConfig
       },
     })
   : null;
+
+function mapEmployeeExpenseClaim(record = {}) {
+  return {
+    id: record.id,
+    staffRecordId: record.staff_record_id,
+    expenseDate: record.expense_date,
+    category: record.category,
+    amount: Number(record.amount || 0),
+    description: record.description || "",
+    receiptPath: record.receipt_path || "",
+    receiptName: record.receipt_name || "",
+    receiptMimeType: record.receipt_mime_type || "",
+    receiptUrl: record.receiptUrl || "",
+    status: record.status || "submitted",
+    submittedAt: record.submitted_at || "",
+    reviewedAt: record.reviewed_at || "",
+    reviewerNote: record.reviewer_note || "",
+    payrollPeriod: record.payroll_period || "",
+    payrollAddedAt: record.payroll_added_at || "",
+    createdAt: record.created_at || "",
+    events: (record.employee_expense_events || []).map((event) => ({
+      id: event.id,
+      action: event.action,
+      detail: event.detail || "",
+      createdAt: event.created_at || "",
+    })),
+  };
+}
+
+export async function fetchEmployeeExpenseClaims() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase
+    .from("employee_expense_claims")
+    .select("*, employee_expense_events(id, action, detail, created_at)")
+    .neq("status", "draft")
+    .order("created_at", { ascending: false })
+    .order("created_at", { referencedTable: "employee_expense_events", ascending: false });
+  if (error) throw error;
+  const claims = (data || []).map(mapEmployeeExpenseClaim);
+  await Promise.all(claims.map(async (claim) => {
+    if (!claim.receiptPath) return;
+    const { data: signed, error: signedError } = await supabase.storage
+      .from(employeeExpenseReceiptsBucket)
+      .createSignedUrl(claim.receiptPath, 900);
+    if (!signedError) claim.receiptUrl = signed?.signedUrl || "";
+  }));
+  return claims;
+}
+
+export async function submitEmployeeExpenseClaim(payload, receiptFile) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!receiptFile) throw new Error("Attach a receipt before submitting.");
+  if (receiptFile.size > 10 * 1024 * 1024) throw new Error("Receipts must be 10 MB or smaller.");
+  const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+  if (!allowedTypes.includes(receiptFile.type)) throw new Error("Upload a PDF, JPG, PNG or WebP receipt.");
+  const { data: claimId, error: createError } = await supabase.rpc("create_employee_expense_claim", {
+    p_expense_date: payload.expenseDate,
+    p_category: payload.category,
+    p_amount: Number(payload.amount),
+    p_description: payload.description,
+    p_receipt_name: receiptFile.name,
+    p_receipt_mime_type: receiptFile.type,
+  });
+  if (createError) throw createError;
+  const safeName = receiptFile.name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-120) || "receipt";
+  const staffRecordId = payload.staffRecordId;
+  const receiptPath = `${staffRecordId}/${claimId}/${safeName}`;
+  const { error: uploadError } = await supabase.storage
+    .from(employeeExpenseReceiptsBucket)
+    .upload(receiptPath, receiptFile, { cacheControl: "3600", contentType: receiptFile.type, upsert: false });
+  if (uploadError) throw uploadError;
+  const { data, error } = await supabase.rpc("submit_employee_expense_claim", {
+    p_claim_id: claimId,
+    p_receipt_path: receiptPath,
+  });
+  if (error) throw error;
+  return mapEmployeeExpenseClaim(data);
+}
+
+export async function reviewEmployeeExpenseClaim(claimId, decision, note = "") {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("review_employee_expense_claim", {
+    p_claim_id: claimId,
+    p_decision: decision,
+    p_note: note || null,
+  });
+  if (error) throw error;
+  return mapEmployeeExpenseClaim(data);
+}
+
+export async function addEmployeeExpenseToPayroll(claimId, payrollPeriod) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("add_employee_expense_to_payroll", {
+    p_claim_id: claimId,
+    p_payroll_period: payrollPeriod,
+  });
+  if (error) throw error;
+  return mapEmployeeExpenseClaim(data);
+}
 
 export async function submitStaffApplication(application) {
   if (!supabase) throw new Error("Secure applications are temporarily unavailable.");

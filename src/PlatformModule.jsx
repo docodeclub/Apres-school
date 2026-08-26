@@ -197,13 +197,13 @@ const SendNeeds = makeIcon("SN");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Expenses", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
   ["People", ["Customer Profiles", "Users", "SCR", "HR", "HR Files", "Employee Documents"]],
   ["Sites", ["Schools", "Bookings", "Registers", "Incidents", "Safeguarding", "Staffing", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
-  ["Finance", ["Finance", "Booking Payments", "Pricing Groups", "Pay", "Rewards"]],
+  ["Finance", ["Finance", "Booking Payments", "Pricing Groups", "Expenses", "Pay", "Rewards"]],
   ["System", ["Audit", "Settings"]],
 ];
 const platformTabHints = {
@@ -229,6 +229,7 @@ const platformTabHints = {
   Documents: "Policies, acknowledgements and staff links",
   CRM: "School outreach and enquiries",
   Pay: "Rates, payroll and expenses",
+  Expenses: "Submit expenses, review receipts and add approved claims to payroll",
   Rewards: "Staff recognition and achievements",
   Audit: "Important admin activity",
   Settings: "Platform preferences and controls",
@@ -1063,9 +1064,9 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
     ? { ...access, role: "Staff", personalPayOnly: true }
     : access;
   const visibleTabs = effectiveRole === "Staff"
-    ? ["Staff", "Registers", "Documents", "Pay", "Rewards", "Sessions"]
+    ? ["Staff", "Registers", "Documents", "Expenses", "Pay", "Rewards", "Sessions"]
     : effectiveRole === "Manager"
-      ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Employee Documents", "Ofsted", "Documents", "Pay", "Sessions", "Pricing Groups"]
+      ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Employee Documents", "Ofsted", "Documents", "Expenses", "Pay", "Sessions", "Pricing Groups"]
       : platformTabs;
   const pinnedDashboardTab = ["Admin", "Superadmin"].includes(effectiveRole) ? "Admin" : "Staff";
   const visibleGroups = platformGroups
@@ -1242,7 +1243,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
           data={enrichedData}
           access={access}
         />
-        {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} onOpenRegisters={() => selectNavItem("Sites", "Registers")} />}
+        {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} onOpenRegisters={() => selectNavItem("Sites", "Registers")} onOpenExpenses={() => selectNavItem("Finance", "Expenses")} />}
         {tab === "Staff" && effectiveRole === "Staff" && <MyShifts access={access} />}
         {tab === "Staff" && effectiveRole === "Staff" && scopedData.staff?.[0] && <EmployeeDocumentsPanel person={scopedData.staff[0]} access={access} legacyFiles={scopedData.hrFiles || []} compact />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
@@ -1252,6 +1253,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Booking Payments" && <BookingFinance data={enrichedData} access={access} onOpenBookingFocus={openBookingAdminFocus} />}
         {tab === "Pricing Groups" && ["Manager", "Admin", "Superadmin"].includes(effectiveRole) && <PricingGroupsModule access={access} />}
         {tab === "Finance" && <SchoolFinance data={enrichedData} access={access} />}
+        {tab === "Expenses" && <Expenses data={scopedData} access={access} userEmail={userEmail} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && (
           <HRHierarchy
@@ -3919,7 +3921,7 @@ function FamilyImportReview({ access }) {
   );
 }
 
-function StaffDashboard({ data, access, userEmail, onOpenRegisters }) {
+function StaffDashboard({ data, access, userEmail, onOpenRegisters, onOpenExpenses }) {
   const pendingDocs = data.documents.reduce((total, doc) => total + Math.max(0, Number(doc.assigned || 0) - Number(doc.read || 0)), 0);
   const ownStaff = resolveOwnStaffRecord(data, access, userEmail);
   const [ownSuitabilityDeclarations, setOwnSuitabilityDeclarations] = useState(() => normaliseSuitabilityDeclarations(ownStaff || {}));
@@ -3991,6 +3993,15 @@ function StaffDashboard({ data, access, userEmail, onOpenRegisters }) {
           <span>Check children in and out, record absences and see essential care alerts.</span>
         </span>
         <span className="staff-register-shortcut-action">Open now <ChevronRight aria-hidden="true" /></span>
+      </button>
+      <button className="staff-expense-shortcut" type="button" onClick={onOpenExpenses}>
+        <span className="staff-expense-shortcut-icon"><PoundSterling aria-hidden="true" /></span>
+        <span>
+          <small>Staff expenses</small>
+          <strong>Submit an expense</strong>
+          <span>Upload a receipt and send your claim for approval.</span>
+        </span>
+        <span className="staff-expense-shortcut-action">Start claim <ChevronRight aria-hidden="true" /></span>
       </button>
       {ownStaff && (
         <section className="staff-home-summary">
@@ -4088,6 +4099,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
     .slice(0, 5);
   const quickActions = [
     ["Enquiries", `${newWebsiteEnquiries || websiteEnquiries.length} website contact response${(newWebsiteEnquiries || websiteEnquiries.length) === 1 ? "" : "s"}`, "CRM"],
+    ["Expenses", "Review staff receipts and add approved claims to payroll", "Expenses"],
     ["Site SCR", "Open site-scoped compliance and evidence tools", "Inspection"],
     ["Staffing", "Planning, cover, qualifications and paid windows", "Staffing"],
     ["Ofsted", "Site readiness and inspection window", "Ofsted"],
@@ -12776,6 +12788,176 @@ function Documents({ data, access }) {
   );
 }
 
+function expenseStatusLabel(status) {
+  return ({ submitted: "Awaiting approval", approved: "Approved", rejected: "Returned", payroll_added: "Added to payroll" })[status] || "Draft";
+}
+
+function expenseStatusTone(status) {
+  return status === "payroll_added" || status === "approved" ? "good" : status === "rejected" ? "alert" : "neutral";
+}
+
+function Expenses({ data, access, userEmail }) {
+  const ownStaff = resolveOwnStaffRecord(data, access, userEmail);
+  const role = access?.role || "Staff";
+  const canReview = ["Manager", "Admin", "Superadmin"].includes(role);
+  const canProcessPayroll = ["Admin", "Superadmin"].includes(role);
+  const [claims, setClaims] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("");
+  const [busyId, setBusyId] = useState("");
+  const [reviewNotes, setReviewNotes] = useState({});
+  const [filter, setFilter] = useState(canReview ? "submitted" : "all");
+  const [payrollPeriod, setPayrollPeriod] = useState(currentPayrollPeriod());
+  const [receiptFile, setReceiptFile] = useState(null);
+  const staffLookup = new Map((data.staff || []).flatMap((person) => [
+    [String(person.id), person],
+    [String(person.profileId || ""), person],
+  ]));
+
+  async function refreshClaims() {
+    setLoading(true);
+    try {
+      const { fetchEmployeeExpenseClaims } = await loadSupabaseModule();
+      setClaims(await fetchEmployeeExpenseClaims());
+    } catch (error) {
+      setStatus(error.message || "Expenses could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { refreshClaims(); }, [access?.currentUser?.id, role]);
+
+  async function submitClaim(event) {
+    event.preventDefault();
+    if (!ownStaff?.id) {
+      setStatus("Your login is not linked to an active staff record.");
+      return;
+    }
+    const form = event.currentTarget;
+    const fields = new FormData(form);
+    setBusyId("new");
+    setStatus("Uploading your receipt securely...");
+    try {
+      const { submitEmployeeExpenseClaim } = await loadSupabaseModule();
+      await submitEmployeeExpenseClaim({
+        staffRecordId: ownStaff.id,
+        expenseDate: fields.get("expenseDate"),
+        category: fields.get("category"),
+        amount: fields.get("amount"),
+        description: fields.get("description"),
+      }, receiptFile);
+      form.reset();
+      setReceiptFile(null);
+      setStatus("Expense submitted for approval.");
+      await refreshClaims();
+    } catch (error) {
+      setStatus(error.message || "The expense could not be submitted.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function reviewClaim(claim, decision) {
+    setBusyId(claim.id);
+    setStatus("");
+    try {
+      const { reviewEmployeeExpenseClaim } = await loadSupabaseModule();
+      await reviewEmployeeExpenseClaim(claim.id, decision, reviewNotes[claim.id] || "");
+      setReviewNotes((current) => ({ ...current, [claim.id]: "" }));
+      setStatus(decision === "approved" ? "Expense approved." : "Expense returned to the staff member.");
+      await refreshClaims();
+    } catch (error) {
+      setStatus(error.message || "The expense could not be reviewed.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function addToPayroll(claim) {
+    setBusyId(claim.id);
+    setStatus("");
+    try {
+      const { addEmployeeExpenseToPayroll } = await loadSupabaseModule();
+      await addEmployeeExpenseToPayroll(claim.id, payrollPeriod);
+      setStatus(`Expense added to ${formatPayrollPeriod(payrollPeriod)} payroll.`);
+      await refreshClaims();
+    } catch (error) {
+      setStatus(error.message || "The expense could not be added to payroll.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  const ownId = String(ownStaff?.id || "");
+  const visibleClaims = claims.filter((claim) => filter === "all" || claim.status === filter);
+  const ownClaims = claims.filter((claim) => String(claim.staffRecordId) === ownId);
+  const submittedCount = claims.filter((claim) => claim.status === "submitted").length;
+  const approvedCount = claims.filter((claim) => claim.status === "approved").length;
+  const totalPending = claims.filter((claim) => ["submitted", "approved"].includes(claim.status)).reduce((sum, claim) => sum + claim.amount, 0);
+  const staffName = (claim) => {
+    const person = staffLookup.get(String(claim.staffRecordId));
+    return person?.preferredName || person?.name || (String(claim.staffRecordId) === ownId ? ownStaff?.name : "Staff member");
+  };
+
+  return (
+    <div className="stack expense-console">
+      <section className="expense-hero">
+        <div><p className="eyebrow">Receipts to payroll</p><h2>Expenses</h2><p>Submit receipts securely, approve genuine costs and carry them into the correct payroll month.</p></div>
+        <div className="expense-hero-metrics">
+          <article><span>{canReview ? "Awaiting approval" : "Your claims"}</span><strong>{canReview ? submittedCount : ownClaims.length}</strong></article>
+          <article><span>{canProcessPayroll ? "Ready for payroll" : "Approved"}</span><strong>{canProcessPayroll ? approvedCount : ownClaims.filter((claim) => ["approved", "payroll_added"].includes(claim.status)).length}</strong></article>
+          <article><span>Pending value</span><strong>{formatCurrency(totalPending)}</strong></article>
+        </div>
+      </section>
+
+      {ownStaff && (
+        <Panel title="Submit an expense">
+          <form className="expense-submit-form" onSubmit={submitClaim}>
+            <label>Date<input required name="expenseDate" type="date" max={new Date().toISOString().slice(0, 10)} /></label>
+            <label>Category<select required name="category" defaultValue=""><option value="" disabled>Choose category</option>{["Travel", "Mileage", "Supplies", "Training", "Food", "Other"].map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Amount (£)<input required name="amount" type="number" min="0.01" max="10000" step="0.01" inputMode="decimal" placeholder="0.00" /></label>
+            <label className="expense-description">What was it for?<textarea required name="description" rows="3" minLength="3" maxLength="1000" placeholder="Give enough detail for your manager to approve the expense." /></label>
+            <label className="expense-receipt">Receipt<input required type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(event) => setReceiptFile(event.target.files?.[0] || null)} /><small>PDF, JPG, PNG or WebP · maximum 10 MB</small></label>
+            <button className="button primary" type="submit" disabled={busyId === "new"}>{busyId === "new" ? "Submitting..." : "Submit expense"}</button>
+          </form>
+        </Panel>
+      )}
+
+      <section className="expense-claims-panel">
+        <div className="expense-claims-head">
+          <div><p className="eyebrow">Claim history</p><h3>{canReview ? "Expense review queue" : "Your submitted expenses"}</h3></div>
+          <div className="expense-filter-row">
+            {canProcessPayroll && <label>Payroll month<input type="month" value={payrollPeriod} onChange={(event) => setPayrollPeriod(event.target.value)} /></label>}
+            <label>Show<select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">All claims</option><option value="submitted">Awaiting approval</option><option value="approved">Approved</option><option value="rejected">Returned</option><option value="payroll_added">Added to payroll</option></select></label>
+          </div>
+        </div>
+        {status && <p className="expense-status" role="status">{status}</p>}
+        <div className="expense-claim-list">
+          {visibleClaims.map((claim) => (
+            <article className={`expense-claim-card status-${claim.status}`} key={claim.id}>
+              <div className="expense-claim-main">
+                <div className="expense-claim-title"><div><span>{claim.category}</span><strong>{claim.description}</strong><small>{staffName(claim)} · {formatShortDate(claim.expenseDate)}</small></div><strong>{formatCurrency(claim.amount)}</strong></div>
+                <div className="expense-claim-meta"><Badge value={expenseStatusLabel(claim.status)} tone={expenseStatusTone(claim.status)} />{claim.payrollPeriod && <span>{formatPayrollPeriod(claim.payrollPeriod)} payroll</span>}{claim.reviewerNote && <span>Reviewer: {claim.reviewerNote}</span>}</div>
+                {claim.events?.length > 0 && <details><summary>Activity history</summary><ol>{claim.events.map((item) => <li key={item.id}><strong>{expenseStatusLabel(item.action)}</strong><span>{item.detail || formatShortDate(String(item.createdAt).slice(0, 10))}</span></li>)}</ol></details>}
+              </div>
+              <div className="expense-claim-actions">
+                {claim.receiptUrl ? <a className="button light" href={claim.receiptUrl} target="_blank" rel="noreferrer">View receipt</a> : <Badge value="Receipt secured" />}
+                {canReview && claim.status === "submitted" && (
+                  <><textarea rows="2" value={reviewNotes[claim.id] || ""} onChange={(event) => setReviewNotes((current) => ({ ...current, [claim.id]: event.target.value }))} placeholder="Optional approval note; required if returning" /><div><button className="button success" type="button" disabled={busyId === claim.id} onClick={() => reviewClaim(claim, "approved")}>Approve</button><button className="button subtle" type="button" disabled={busyId === claim.id} onClick={() => reviewClaim(claim, "rejected")}>Return</button></div></>
+                )}
+                {canProcessPayroll && claim.status === "approved" && <button className="button primary" type="button" disabled={busyId === claim.id || !payrollPeriod} onClick={() => addToPayroll(claim)}>Add to {formatPayrollPeriod(payrollPeriod)} payroll</button>}
+              </div>
+            </article>
+          ))}
+          {!loading && !visibleClaims.length && <EmptyList title="No expenses in this view" text={canReview ? "New staff submissions will appear here for review." : "Use the form above to submit your first expense."} />}
+          {loading && <p>Loading expenses...</p>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onOpenStaffProfile }) {
   const usingSupabase = String(data.source || "").startsWith("Supabase");
   const records = usingSupabase ? (data.payrollHours || {}) : readJson(payrollHoursStorageKey, {});
@@ -17919,6 +18101,7 @@ function iconFor(item) {
     Ofsted: <ShieldCheck />,
     Documents: <FileText />,
     Pay: <PoundSterling />,
+    Expenses: <PoundSterling />,
     Finance: <PoundSterling />,
     "Booking Payments": <PoundSterling />,
     "Pricing Groups": <PoundSterling />,

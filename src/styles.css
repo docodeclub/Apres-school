@@ -8162,6 +8162,30 @@ label {
   margin-bottom: 18px;
 }
 
+.staff-expense-shortcut {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  border: 1px solid #d9e0fb;
+  border-radius: 20px;
+  background: linear-gradient(120deg, #fff 0%, #f3f6ff 70%, #fff5e7 100%);
+  padding: 17px 20px;
+  color: #263fa9;
+  text-align: left;
+  box-shadow: 0 10px 24px rgba(38, 63, 169, 0.1);
+  cursor: pointer;
+}
+
+.staff-expense-shortcut > span:nth-child(2) { display: grid; gap: 3px; }
+.staff-expense-shortcut small { color: #e68625; font-size: .7rem; font-weight: 950; letter-spacing: .1em; text-transform: uppercase; }
+.staff-expense-shortcut strong { font-size: 1.22rem; }
+.staff-expense-shortcut span span { color: #626a7e; font-size: .86rem; font-weight: 700; }
+.staff-expense-shortcut-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; color: #fff; background: #263fa9; }
+.staff-expense-shortcut-action { display: flex; align-items: center; gap: 5px; border-radius: 999px; background: #eaf0ff; padding: 9px 12px; font-size: .82rem; font-weight: 900; white-space: nowrap; }
+
 @media (max-width: 760px) {
   .staff-register-shortcut {
     grid-template-columns: auto minmax(0, 1fr);
@@ -8173,6 +8197,9 @@ label {
   .staff-register-shortcut-action {
     display: none;
   }
+
+  .staff-expense-shortcut { grid-template-columns: auto minmax(0, 1fr); padding: 15px; }
+  .staff-expense-shortcut-action { display: none; }
 
   .staff-register-shortcut-icon {
     width: 50px;
@@ -13675,6 +13702,62 @@ label {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.expense-console { gap: 18px; }
+.expense-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(420px, .8fr);
+  gap: 24px;
+  align-items: center;
+  border: 1px solid #dce3fb;
+  border-top: 5px solid #263fa9;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #fff 0%, #f5f7ff 68%, #fff4e4 100%);
+  padding: 26px;
+  box-shadow: 0 14px 32px rgba(38,63,169,.1);
+}
+.expense-hero h2 { margin: 3px 0 8px; color: #17358f; font-size: clamp(2rem, 4vw, 3rem); }
+.expense-hero p { margin: 0; color: #626a7e; }
+.expense-hero-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.expense-hero-metrics article { display: grid; gap: 6px; min-width: 0; border: 1px solid #dce3fb; border-radius: 15px; background: rgba(255,255,255,.82); padding: 14px; }
+.expense-hero-metrics span { color: #697086; font-size: .72rem; font-weight: 850; }
+.expense-hero-metrics strong { color: #263fa9; font-size: 1.35rem; }
+.expense-submit-form { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; align-items: end; }
+.expense-submit-form label, .expense-filter-row label { display: grid; gap: 6px; color: #263fa9; font-size: .8rem; font-weight: 900; }
+.expense-submit-form input, .expense-submit-form select, .expense-submit-form textarea, .expense-filter-row input, .expense-filter-row select, .expense-claim-actions textarea { width: 100%; border: 1px solid #cfd8f5; border-radius: 12px; background: #fff; padding: 11px 12px; color: #20263a; font: inherit; }
+.expense-description { grid-column: span 2; }
+.expense-receipt small { color: #737a8d; font-weight: 650; }
+.expense-claims-panel { border: 1px solid #dce3fb; border-radius: 22px; background: #fff; padding: 22px; box-shadow: 0 12px 28px rgba(38,63,169,.08); }
+.expense-claims-head { display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 16px; }
+.expense-claims-head h3 { margin: 3px 0 0; color: #263fa9; }
+.expense-filter-row { display: flex; gap: 10px; align-items: end; }
+.expense-status { border-radius: 12px; background: #eef4ff; padding: 11px 13px; color: #263fa9; font-weight: 800; }
+.expense-claim-list { display: grid; gap: 12px; }
+.expense-claim-card { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; border: 1px solid #dce3fb; border-left: 5px solid #8ea1df; border-radius: 16px; padding: 17px; }
+.expense-claim-card.status-approved, .expense-claim-card.status-payroll_added { border-left-color: #26935a; }
+.expense-claim-card.status-rejected { border-left-color: #d55b57; }
+.expense-claim-main { display: grid; gap: 10px; min-width: 0; }
+.expense-claim-title { display: flex; justify-content: space-between; gap: 16px; }
+.expense-claim-title > div { display: grid; gap: 3px; min-width: 0; }
+.expense-claim-title span { color: #e68625; font-size: .7rem; font-weight: 950; letter-spacing: .08em; text-transform: uppercase; }
+.expense-claim-title strong { color: #273f9e; }
+.expense-claim-title > strong { color: #172c75; font-size: 1.3rem; white-space: nowrap; }
+.expense-claim-title small { color: #6d7487; }
+.expense-claim-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: #697086; font-size: .78rem; font-weight: 750; }
+.expense-claim-main details { color: #596176; font-size: .8rem; }
+.expense-claim-main details summary { cursor: pointer; color: #263fa9; font-weight: 850; }
+.expense-claim-main details ol { margin: 8px 0 0; padding-left: 20px; }
+.expense-claim-main details li { margin: 5px 0; }
+.expense-claim-main details li span { margin-left: 8px; }
+.expense-claim-actions { display: grid; gap: 10px; align-content: start; }
+.expense-claim-actions > div { display: flex; gap: 8px; }
+
+@media (max-width: 900px) {
+  .expense-hero, .expense-claim-card { grid-template-columns: 1fr; }
+  .expense-hero-metrics, .expense-submit-form { grid-template-columns: 1fr; }
+  .expense-description { grid-column: auto; }
+  .expense-claims-head, .expense-filter-row { align-items: stretch; flex-direction: column; }
 }
 
 .payroll-console {
