@@ -12809,6 +12809,7 @@ function Expenses({ data, access, userEmail }) {
   const [filter, setFilter] = useState(canReview ? "submitted" : "all");
   const [payrollPeriod, setPayrollPeriod] = useState(currentPayrollPeriod());
   const [receiptFile, setReceiptFile] = useState(null);
+  const isRolePreview = Boolean(userEmail && access?.currentUser?.email && String(userEmail).toLowerCase() !== String(access.currentUser.email).toLowerCase());
   const staffLookup = new Map((data.staff || []).flatMap((person) => [
     [String(person.id), person],
     [String(person.profileId || ""), person],
@@ -12890,11 +12891,13 @@ function Expenses({ data, access, userEmail }) {
   }
 
   const ownId = String(ownStaff?.id || "");
-  const visibleClaims = claims.filter((claim) => filter === "all" || claim.status === filter);
-  const ownClaims = claims.filter((claim) => String(claim.staffRecordId) === ownId);
-  const submittedCount = claims.filter((claim) => claim.status === "submitted").length;
-  const approvedCount = claims.filter((claim) => claim.status === "approved").length;
-  const totalPending = claims.filter((claim) => ["submitted", "approved"].includes(claim.status)).reduce((sum, claim) => sum + claim.amount, 0);
+  const scopedStaffIds = new Set((data.staff || []).flatMap((person) => [person.id, person.profileId]).filter(Boolean).map(String));
+  const scopedClaims = canProcessPayroll ? claims : claims.filter((claim) => scopedStaffIds.has(String(claim.staffRecordId)));
+  const visibleClaims = scopedClaims.filter((claim) => filter === "all" || claim.status === filter);
+  const ownClaims = scopedClaims.filter((claim) => String(claim.staffRecordId) === ownId);
+  const submittedCount = scopedClaims.filter((claim) => claim.status === "submitted").length;
+  const approvedCount = scopedClaims.filter((claim) => claim.status === "approved").length;
+  const totalPending = scopedClaims.filter((claim) => ["submitted", "approved"].includes(claim.status)).reduce((sum, claim) => sum + claim.amount, 0);
   const staffName = (claim) => {
     const person = staffLookup.get(String(claim.staffRecordId));
     return person?.preferredName || person?.name || (String(claim.staffRecordId) === ownId ? ownStaff?.name : "Staff member");
@@ -12911,7 +12914,7 @@ function Expenses({ data, access, userEmail }) {
         </div>
       </section>
 
-      {ownStaff && (
+      {ownStaff && !isRolePreview && (
         <Panel title="Submit an expense">
           <form className="expense-submit-form" onSubmit={submitClaim}>
             <label>Date<input required name="expenseDate" type="date" max={new Date().toISOString().slice(0, 10)} /></label>
@@ -12923,6 +12926,7 @@ function Expenses({ data, access, userEmail }) {
           </form>
         </Panel>
       )}
+      {ownStaff && isRolePreview && <p className="expense-status">Submission is disabled while previewing another staff member. Their real account will see the expense form here.</p>}
 
       <section className="expense-claims-panel">
         <div className="expense-claims-head">

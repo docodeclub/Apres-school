@@ -16,6 +16,7 @@ const checks = [
   ["receipt type and size validation", client.includes("Receipts must be 10 MB or smaller") && client.includes("Upload a PDF, JPG, PNG or WebP receipt")],
   ["short-lived receipt link", client.includes("createSignedUrl(claim.receiptPath, 900)")],
   ["staff dashboard shortcut", platform.includes("Submit an expense") && platform.includes("onOpenExpenses")],
+  ["role preview stays scoped", platform.includes("const scopedClaims = canProcessPayroll ? claims : claims.filter") && platform.includes("Submission is disabled while previewing")],
   ["manager review actions", platform.includes("reviewEmployeeExpenseClaim") && platform.includes("Approve")],
   ["payroll action", platform.includes("addEmployeeExpenseToPayroll") && platform.includes("Add to {formatPayrollPeriod(payrollPeriod)} payroll")],
 ];
