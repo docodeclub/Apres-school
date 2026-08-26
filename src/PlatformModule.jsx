@@ -1067,7 +1067,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
     : effectiveRole === "Manager"
       ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Employee Documents", "Ofsted", "Documents", "Pay", "Sessions", "Pricing Groups"]
       : platformTabs;
-  const pinnedDashboardTab = ["Staff", "Manager"].includes(effectiveRole) ? "Staff" : "";
+  const pinnedDashboardTab = ["Admin", "Superadmin"].includes(effectiveRole) ? "Admin" : "Staff";
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item) && item !== pinnedDashboardTab)])
     .filter(([, items]) => items.length);
@@ -4221,6 +4221,15 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
   }
   return (
     <>
+      <button className="staff-register-shortcut admin-register-shortcut" type="button" onClick={() => onOpenTab("Registers")}>
+        <span className="staff-register-shortcut-icon"><ClipboardCheck aria-hidden="true" /></span>
+        <span className="staff-register-shortcut-copy">
+          <small>Live attendance</small>
+          <strong>Open Registers</strong>
+          <span>Go straight to today's sessions, check children in and out, and review essential care alerts.</span>
+        </span>
+        <span className="staff-register-shortcut-action">Open now <ChevronRight aria-hidden="true" /></span>
+      </button>
       <section className="admin-engine-room">
         <div className="admin-engine-copy">
           <p className="eyebrow">Admin dashboard</p>

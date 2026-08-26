@@ -951,9 +951,9 @@ export default function App() {
       const { supabase } = await loadSupabaseModule();
       const { data } = await supabase.auth.getSession();
       if (!active) return;
-      await applySession(data.session);
-      listener = supabase.auth.onAuthStateChange((_event, session) => {
-        applySession(session);
+      await applySession(data.session, { landOnDashboard: true });
+      listener = supabase.auth.onAuthStateChange((event, session) => {
+        applySession(session, { landOnDashboard: event === "SIGNED_IN" || event === "INITIAL_SESSION" });
       }).data.subscription;
       if (active) setAuthLoading(false);
     }
@@ -970,7 +970,7 @@ export default function App() {
     };
   }, [platform]);
 
-  async function applySession(session) {
+  async function applySession(session, { landOnDashboard = false } = {}) {
     const user = session?.user || null;
 
     if (!user) {
@@ -1019,7 +1019,7 @@ export default function App() {
       setRole(nextAccess.role);
       setMustChangePassword(nextAccess.mustChangePassword);
       setFormerStaffAccess(false);
-      setTab(["Admin", "Superadmin"].includes(nextAccess.role) ? getInitialPlatformTab() : "Staff");
+      if (landOnDashboard) setTab(["Admin", "Superadmin"].includes(nextAccess.role) ? "Admin" : "Staff");
       setPlatformAccessMessage("");
       setPlatformUnlocked(true);
       return true;
@@ -1037,11 +1037,11 @@ export default function App() {
   async function handleForcedPasswordChanged(user) {
     setMustChangePassword(false);
     setFormerStaffAccess(false);
-    await applySession({ user });
+    await applySession({ user }, { landOnDashboard: true });
   }
 
   async function handleAuthenticated(user) {
-    const staffAccessGranted = await applySession({ user });
+    const staffAccessGranted = await applySession({ user }, { landOnDashboard: true });
     setPasswordRecovery(false);
     if (staffAccessGranted) window.scrollTo({ top: 0, behavior: "smooth" });
   }

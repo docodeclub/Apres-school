@@ -8158,6 +8158,10 @@ label {
   height: 18px;
 }
 
+.admin-register-shortcut {
+  margin-bottom: 18px;
+}
+
 @media (max-width: 760px) {
   .staff-register-shortcut {
     grid-template-columns: auto minmax(0, 1fr);

@@ -30,6 +30,7 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Fixed
 
+- Made the role dashboard the post-login landing page, pinned Dashboard in every staff/admin navigation and added the prominent live Registers shortcut to the Admin/Superadmin dashboard as well as the Staff dashboard.
 - Restored a personal-only Pay area for Managers so they can open their own payslips without gaining access to any other employee's pay or documents.
 - Updated staff-account service authentication so support-led password resets can securely deliver through the existing staff email workflow.
 - Stopped the public contact and school-enquiry forms from showing success when the server did not accept the enquiry; failed submissions now retain the visitor's text and provide a retry route.
