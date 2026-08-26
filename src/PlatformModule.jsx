@@ -4134,20 +4134,6 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
     setRenewalRequests((current) => ({ ...current, ...data.scrRenewalRequests }));
   }, [data.scrRenewalRequests]);
   useEffect(() => {
-    let active = true;
-    if (!["Admin", "Superadmin"].includes(access?.role)) return () => { active = false; };
-    loadSupabaseModule()
-      .then(({ fetchScrAssuranceWorkflows }) => fetchScrAssuranceWorkflows())
-      .then((records) => {
-        if (!active) return;
-        setAssuranceWorkflows(Object.fromEntries(records.map((record) => [record.schoolKey, record])));
-      })
-      .catch((error) => {
-        if (active) setAssuranceWizardStatus(error.message || "Assurance wizard progress could not be loaded.");
-      });
-    return () => { active = false; };
-  }, [access?.currentUser?.id, access?.role]);
-  useEffect(() => {
     let cancelled = false;
     async function loadDashboardLedger() {
       if (!hasLiveBookingLedger) {
@@ -9489,6 +9475,20 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
     if (!data.scrRenewalRequests || !Object.keys(data.scrRenewalRequests).length) return;
     setRenewalRequests((current) => ({ ...current, ...data.scrRenewalRequests }));
   }, [data.scrRenewalRequests]);
+  useEffect(() => {
+    let active = true;
+    if (!["Admin", "Superadmin"].includes(access?.role)) return () => { active = false; };
+    loadSupabaseModule()
+      .then(({ fetchScrAssuranceWorkflows }) => fetchScrAssuranceWorkflows())
+      .then((records) => {
+        if (!active) return;
+        setAssuranceWorkflows(Object.fromEntries(records.map((record) => [record.schoolKey, record])));
+      })
+      .catch((error) => {
+        if (active) setAssuranceWizardStatus(error.message || "Assurance wizard progress could not be loaded.");
+      });
+    return () => { active = false; };
+  }, [access?.currentUser?.id, access?.role]);
   useEffect(() => {
     if (!schoolOptions.length) return;
     if (!selectedScrSchool || !schoolOptions.includes(selectedScrSchool)) {
