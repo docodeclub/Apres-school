@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-26 - Employee holiday management
+
+- Added a staff holiday workspace for allowance balances, full-day, part-day and custom-hour requests, and decision history.
+- Added direct-report approval queues and a team leave calendar for Managers, with organisation-wide controls for Admin and Superadmin.
+- Added Admin leave-year settings and employee entitlement records, including carry-forward and auditable adjustments.
+- Connected approved holiday to the staffing planner so affected assignments are marked as requiring cover and restored if the leave is cancelled.
+- Added separate paid-holiday payroll entries and a worked-hours/holiday-hours split in payroll views and exports.
+- Added branded request and decision emails with secure links back to the Holiday area.
+- Added database-enforced privacy so staff see only their own holiday and Managers see only their direct reports.
+
 ## 2026-08-26 - Employee expenses workflow
 
 - Added a prominent staff-dashboard shortcut for submitting expenses.

@@ -295,6 +295,142 @@ export async function acknowledgeStaffingAssignment(assignmentId, status = "ackn
   return data;
 }
 
+function mapHolidayRequest(row = {}) {
+  return {
+    id: row.id,
+    staffRecordId: row.staffRecordId || row.staff_record_id || "",
+    staffName: row.staffName || "",
+    startDate: row.startDate || row.start_date || "",
+    endDate: row.endDate || row.end_date || "",
+    requestedHours: Number(row.requestedHours ?? row.requested_hours ?? 0),
+    dayPortion: row.dayPortion || row.day_portion || "full_day",
+    paid: row.paid !== false,
+    status: row.status || "requested",
+    note: row.note || "",
+    decisionNote: row.decisionNote || row.decision_note || "",
+    createdAt: row.createdAt || row.created_at || "",
+    reviewedAt: row.reviewedAt || row.reviewed_at || "",
+    cancelledAt: row.cancelledAt || row.cancelled_at || "",
+    affectedShifts: Number(row.affectedShifts || 0),
+  };
+}
+
+function mapHolidayEntitlement(row = {}) {
+  return {
+    id: row.id,
+    staffRecordId: row.staffRecordId || row.staff_record_id || "",
+    leaveYearStart: row.leaveYearStart || row.leave_year_start || "",
+    leaveYearEnd: row.leaveYearEnd || row.leave_year_end || "",
+    allowanceHours: Number(row.allowanceHours ?? row.allowance_hours ?? 0),
+    carriedForwardHours: Number(row.carriedForwardHours ?? row.carried_forward_hours ?? 0),
+    adjustmentHours: Number(row.adjustmentHours ?? row.adjustment_hours ?? 0),
+    note: row.note || "",
+    updatedAt: row.updatedAt || row.updated_at || "",
+  };
+}
+
+export async function fetchHolidayWorkspace() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("holiday_workspace");
+  if (error) throw error;
+  const payload = data || {};
+  const settings = payload.settings || {};
+  return {
+    role: normalizeRole(payload.role),
+    currentStaffId: payload.currentStaffId || "",
+    staff: (payload.staff || []).map((row) => ({
+      id: row.id,
+      profileId: row.profileId || "",
+      name: row.name || "Staff member",
+      email: row.email || "",
+      role: row.role || "Staff",
+      site: row.site || "",
+      contractHours: row.contractHours == null ? null : Number(row.contractHours),
+    })),
+    requests: (payload.requests || []).map(mapHolidayRequest),
+    entitlements: (payload.entitlements || []).map(mapHolidayEntitlement),
+    settings: {
+      leaveYearStartMonth: Number(settings.leave_year_start_month || 1),
+      leaveYearStartDay: Number(settings.leave_year_start_day || 1),
+      standardDayHours: Number(settings.standard_day_hours || 6),
+      defaultAllowanceHours: Number(settings.default_allowance_hours || 0),
+      carryForwardLimitHours: Number(settings.carry_forward_limit_hours || 0),
+    },
+  };
+}
+
+export async function submitHolidayRequest(request = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("holiday_submit_request", {
+    p_start_date: request.startDate,
+    p_end_date: request.endDate,
+    p_requested_hours: Number(request.requestedHours || 0),
+    p_day_portion: request.dayPortion || "full_day",
+    p_note: request.note || null,
+  });
+  if (error) throw error;
+  return mapHolidayRequest(data);
+}
+
+export async function reviewHolidayRequest(requestId, decision, decisionNote = "") {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("holiday_review_request", {
+    p_request_id: requestId,
+    p_decision: decision,
+    p_decision_note: decisionNote || null,
+  });
+  if (error) throw error;
+  return mapHolidayRequest(data);
+}
+
+export async function cancelHolidayRequest(requestId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("holiday_cancel_request", { p_request_id: requestId });
+  if (error) throw error;
+  return mapHolidayRequest(data);
+}
+
+export async function saveHolidayEntitlement(entitlement = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("holiday_save_entitlement", {
+    p_staff_record_id: entitlement.staffRecordId,
+    p_leave_year_start: entitlement.leaveYearStart,
+    p_leave_year_end: entitlement.leaveYearEnd,
+    p_allowance_hours: Number(entitlement.allowanceHours || 0),
+    p_carried_forward_hours: Number(entitlement.carriedForwardHours || 0),
+    p_adjustment_hours: Number(entitlement.adjustmentHours || 0),
+    p_note: entitlement.note || null,
+  });
+  if (error) throw error;
+  return mapHolidayEntitlement(data);
+}
+
+export async function saveHolidaySettings(settings = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("holiday_save_settings", {
+    p_leave_year_start_month: Number(settings.leaveYearStartMonth || 1),
+    p_leave_year_start_day: Number(settings.leaveYearStartDay || 1),
+    p_standard_day_hours: Number(settings.standardDayHours || 6),
+    p_default_allowance_hours: Number(settings.defaultAllowanceHours || 0),
+    p_carry_forward_limit_hours: Number(settings.carryForwardLimitHours || 0),
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function notifyHolidayRequest(requestId, event) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.functions.invoke("notify-holiday-request", {
+    body: { requestId, event },
+  });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Holiday email notification could not be sent.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data || {};
+}
+
 export async function saveOwnStaffingAvailability({ weekday, status, availableFrom = "", availableUntil = "", note = "" }) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.rpc("staffing_save_own_availability", {
@@ -866,6 +1002,12 @@ export async function fetchPlatformData({ userId, role }) {
     `)
     .order("payroll_period", { ascending: false });
 
+  const holidayPayrollQuery = supabase
+    .from("holiday_payroll_entries")
+    .select("id, absence_id, staff_record_id, payroll_period, paid_hours, status")
+    .eq("status", "approved")
+    .order("payroll_period", { ascending: false });
+
   const payrollRunsQuery = supabase
     .from("payroll_runs")
     .select(`
@@ -950,7 +1092,7 @@ export async function fetchPlatformData({ userId, role }) {
         .order("created_at", { ascending: false })
         .limit(200);
 
-  const [staffResult, sessionsResult, documentsResult, documentChaseEventsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, payrollRunsResult, payrollAuditResult, hrReportingResult, staffProfileNotesResult, scrEvidenceRequestsResult, suitabilityDeclarationsResult, auditLogResult] = await Promise.all([
+  const [staffResult, sessionsResult, documentsResult, documentChaseEventsResult, enquiriesResult, hrFilesResult, hrCategoriesResult, payrollHoursResult, holidayPayrollResult, payrollRunsResult, payrollAuditResult, hrReportingResult, staffProfileNotesResult, scrEvidenceRequestsResult, suitabilityDeclarationsResult, auditLogResult] = await Promise.all([
     staffQuery,
     sessionsQuery,
     documentsQuery,
@@ -959,6 +1101,7 @@ export async function fetchPlatformData({ userId, role }) {
     hrFilesQuery,
     hrCategoriesQuery,
     payrollHoursQuery,
+    holidayPayrollQuery,
     payrollRunsQuery,
     payrollAuditQuery,
     hrReportingQuery,
@@ -977,6 +1120,7 @@ export async function fetchPlatformData({ userId, role }) {
     ["HR files", hrFilesResult.error],
     ["HR file categories", hrCategoriesResult.error],
     ["Payroll hours", payrollHoursResult.error],
+    ["Holiday payroll", holidayPayrollResult.error?.code === "42P01" ? null : holidayPayrollResult.error],
     ["Payroll runs", payrollRunsResult.error],
     ["Payroll audit", payrollAuditResult.error],
     ["HR hierarchy", hrReportingResult.error],
@@ -1005,6 +1149,14 @@ export async function fetchPlatformData({ userId, role }) {
     hrFiles,
     hrFileCategories: hrCategoriesResult.error ? [] : hrCategoriesResult.data || [],
     payrollHours: payrollHoursResult.error ? {} : mapPayrollHours(payrollHoursResult.data || []),
+    holidayPayroll: holidayPayrollResult.error ? [] : (holidayPayrollResult.data || []).map((row) => ({
+      id: row.id,
+      absenceId: row.absence_id,
+      staffRecordId: row.staff_record_id,
+      period: row.payroll_period,
+      paidHours: Number(row.paid_hours || 0),
+      status: row.status || "approved",
+    })),
     payrollRuns: payrollRunsResult.error ? {} : mapPayrollRuns(payrollRunsResult.data || []),
     payrollAudit: payrollAuditResult.error ? [] : mapPayrollAudit(payrollAuditResult.data || []),
     hrReportingLines: hrReportingResult.error ? {} : mapHrReportingLines(hrReportingResult.data || []),

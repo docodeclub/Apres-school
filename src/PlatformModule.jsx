@@ -36,6 +36,7 @@ import { REWARD_BADGES, rewardBadge } from "./rewardBadges.js";
 import { MyShifts, Staffing } from "./StaffingModule.jsx";
 import { EmployeeDocumentsDirectory, EmployeeDocumentsPanel } from "./EmployeeDocumentsModule.jsx";
 import PricingGroupsModule from "./PricingGroupsModule.jsx";
+import HolidayModule from "./HolidayModule.jsx";
 import {
   blockingPeriods,
   bookingGroups,
@@ -197,10 +198,10 @@ const SendNeeds = makeIcon("SN");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Expenses", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Expenses", "Holiday", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
-  ["People", ["Customer Profiles", "Users", "SCR", "HR", "HR Files", "Employee Documents"]],
+  ["People", ["Customer Profiles", "Users", "Holiday", "SCR", "HR", "HR Files", "Employee Documents"]],
   ["Sites", ["Schools", "Bookings", "Registers", "Incidents", "Safeguarding", "Staffing", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
   ["Finance", ["Finance", "Booking Payments", "Pricing Groups", "Expenses", "Pay", "Rewards"]],
@@ -230,6 +231,7 @@ const platformTabHints = {
   CRM: "School outreach and enquiries",
   Pay: "Rates, payroll and expenses",
   Expenses: "Submit expenses, review receipts and add approved claims to payroll",
+  Holiday: "Request leave, approve team holiday and manage allowances",
   Rewards: "Staff recognition and achievements",
   Audit: "Important admin activity",
   Settings: "Platform preferences and controls",
@@ -1071,9 +1073,9 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
     ? { ...access, role: "Staff", personalPayOnly: true }
     : access;
   const visibleTabs = effectiveRole === "Staff"
-    ? ["Staff", "Registers", "Documents", "Expenses", "Pay", "Rewards", "Sessions"]
+    ? ["Staff", "Registers", "Documents", "Expenses", "Holiday", "Pay", "Rewards", "Sessions"]
     : effectiveRole === "Manager"
-      ? ["Staff", "Registers", "Safeguarding", "Staffing", "SCR", "Employee Documents", "Ofsted", "Documents", "Expenses", "Pay", "Sessions", "Pricing Groups"]
+      ? ["Staff", "Registers", "Safeguarding", "Staffing", "Holiday", "SCR", "Employee Documents", "Ofsted", "Documents", "Expenses", "Pay", "Sessions", "Pricing Groups"]
       : platformTabs;
   const pinnedDashboardTab = ["Admin", "Superadmin"].includes(effectiveRole) ? "Admin" : "Staff";
   const visibleGroups = platformGroups
@@ -1250,7 +1252,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
           data={enrichedData}
           access={access}
         />
-        {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} onOpenRegisters={() => selectNavItem("Sites", "Registers")} onOpenExpenses={() => selectNavItem("Finance", "Expenses")} />}
+        {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} onOpenRegisters={() => selectNavItem("Sites", "Registers")} onOpenExpenses={() => selectNavItem("Finance", "Expenses")} onOpenHoliday={() => selectNavItem("People", "Holiday")} />}
         {tab === "Staff" && effectiveRole === "Staff" && <MyShifts access={access} />}
         {tab === "Staff" && effectiveRole === "Staff" && scopedData.staff?.[0] && <EmployeeDocumentsPanel person={scopedData.staff[0]} access={access} legacyFiles={scopedData.hrFiles || []} compact />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
@@ -1261,6 +1263,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
         {tab === "Pricing Groups" && ["Manager", "Admin", "Superadmin"].includes(effectiveRole) && <PricingGroupsModule access={access} />}
         {tab === "Finance" && <SchoolFinance data={enrichedData} access={access} />}
         {tab === "Expenses" && <Expenses data={scopedData} access={access} userEmail={userEmail} />}
+        {tab === "Holiday" && <HolidayModule access={access} />}
         {tab === "Users" && <UserManagement data={enrichedData} />}
         {tab === "HR" && (
           <HRHierarchy
@@ -3928,7 +3931,7 @@ function FamilyImportReview({ access }) {
   );
 }
 
-function StaffDashboard({ data, access, userEmail, onOpenRegisters, onOpenExpenses }) {
+function StaffDashboard({ data, access, userEmail, onOpenRegisters, onOpenExpenses, onOpenHoliday }) {
   const pendingDocs = data.documents.reduce((total, doc) => total + Math.max(0, Number(doc.assigned || 0) - Number(doc.read || 0)), 0);
   const ownStaff = resolveOwnStaffRecord(data, access, userEmail);
   const [ownSuitabilityDeclarations, setOwnSuitabilityDeclarations] = useState(() => normaliseSuitabilityDeclarations(ownStaff || {}));
@@ -4009,6 +4012,15 @@ function StaffDashboard({ data, access, userEmail, onOpenRegisters, onOpenExpens
           <span>Upload a receipt and send your claim for approval.</span>
         </span>
         <span className="staff-expense-shortcut-action">Start claim <ChevronRight aria-hidden="true" /></span>
+      </button>
+      <button className="staff-holiday-shortcut" type="button" onClick={onOpenHoliday}>
+        <span className="staff-holiday-shortcut-icon"><CalendarDays aria-hidden="true" /></span>
+        <span>
+          <small>Time off</small>
+          <strong>Request holiday</strong>
+          <span>Check your allowance and send a request for approval.</span>
+        </span>
+        <span className="staff-holiday-shortcut-action">Open holiday <ChevronRight aria-hidden="true" /></span>
       </button>
       {ownStaff && (
         <section className="staff-home-summary">
@@ -13274,7 +13286,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
       .filter(validPayrollPeriod),
   )).sort().reverse();
   const availablePeriods = Array.from(new Set(
-    [...Object.keys(records), ...payslipPeriods].filter(validPayrollPeriod),
+    [...Object.keys(records), ...payslipPeriods, ...(data.holidayPayroll || []).map((entry) => entry.period)].filter(validPayrollPeriod),
   )).sort().reverse();
   const [period, setPeriod] = useState(availablePeriods[0] || currentPayrollPeriod());
   const isStaff = access?.role === "Staff";
@@ -13317,8 +13329,13 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
     const schoolRows = Object.entries(periodRecords).flatMap(([schoolName, record]) => (record.rows || [])
       .filter((row) => row.staffId === person.id || row.staffId === person.profileId)
       .map((row) => ({ ...row, schoolName, status: record.status || "Draft" })));
-    const hours = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
-    const hourlyGross = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? person.payRate ?? 0), 0);
+    const holidayEntries = (data.holidayPayroll || []).filter((entry) => entry.period === period && (entry.staffRecordId === person.id || entry.staffRecordId === person.profileId));
+    const workedHours = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
+    const holidayHours = holidayEntries.reduce((sum, entry) => sum + Number(entry.paidHours || 0), 0);
+    const hours = workedHours + holidayHours;
+    const workedGross = schoolRows.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? person.payRate ?? 0), 0);
+    const holidayGross = person.annualSalary ? 0 : holidayHours * Number(person.payRate || 0);
+    const hourlyGross = workedGross + holidayGross;
     const monthlySalary = showStaffPayCalculation ? monthlySalaryFromAnnual(person.annualSalary) : 0;
     const calculatedGross = monthlySalary + hourlyGross;
     const gross = payslipPay ? payslipPay.gross : calculatedGross;
@@ -13326,7 +13343,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
     const expenses = Number(adjustment.expenses || 0);
     const deductions = Number(adjustment.deductions || 0);
     const net = payslipPay ? payslipPay.net : gross + expenses - deductions;
-    return { ...person, payrollEntries: schoolRows, hours, monthlySalary, hourlyGross, calculatedGross, gross, net, expenses, deductions, payrollNote: adjustment.note || "", payslips, allPayslips, payslipPay };
+    return { ...person, payrollEntries: schoolRows, holidayEntries, workedHours, holidayHours, hours, monthlySalary, hourlyGross, calculatedGross, gross, net, expenses, deductions, payrollNote: adjustment.note || "", payslips, allPayslips, payslipPay };
   });
   const totalHours = payrollRows.reduce((sum, row) => sum + row.hours, 0);
   const totalGross = payrollRows.reduce((sum, row) => sum + row.gross, 0);
@@ -13501,8 +13518,10 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
     const payrollEntries = Object.entries(historyRecords).flatMap(([schoolName, record]) => (record.rows || [])
       .filter((row) => row.staffId === currentStaffMember.id || row.staffId === currentStaffMember.profileId)
       .map((row) => ({ ...row, schoolName, status: record.status || "Draft" })));
-    const hours = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
-    const hourlyGross = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? currentStaffMember.payRate ?? 0), 0);
+    const workedHours = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
+    const holidayHours = (data.holidayPayroll || []).filter((entry) => entry.period === historyPeriod && (entry.staffRecordId === currentStaffMember.id || entry.staffRecordId === currentStaffMember.profileId)).reduce((sum, entry) => sum + Number(entry.paidHours || 0), 0);
+    const hours = workedHours + holidayHours;
+    const hourlyGross = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? currentStaffMember.payRate ?? 0), 0) + (currentStaffMember.annualSalary ? 0 : holidayHours * Number(currentStaffMember.payRate || 0));
     const monthlySalary = historyPublished ? monthlySalaryFromAnnual(currentStaffMember.annualSalary) : 0;
     const adjustment = historyPublished ? (historyRun.adjustments?.[currentStaffMember.id] || {}) : {};
     const expenses = Number(adjustment.expenses || 0);
@@ -13516,6 +13535,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
       status: historyPublished ? historyRun.status || "Paid" : "Payslip issued",
       schools,
       hours,
+      holidayHours,
       hourlyGross,
       monthlySalary,
       gross,
@@ -13548,8 +13568,10 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
     const payrollEntries = Object.entries(historyRecords).flatMap(([schoolName, record]) => (record.rows || [])
       .filter((row) => row.staffId === selectedHistoryStaff.id || row.staffId === selectedHistoryStaff.profileId)
       .map((row) => ({ ...row, schoolName, status: record.status || "Draft" })));
-    const hours = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
-    const hourlyGross = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? selectedHistoryStaff.payRate ?? 0), 0);
+    const workedHours = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
+    const holidayHours = (data.holidayPayroll || []).filter((entry) => entry.period === historyPeriod && (entry.staffRecordId === selectedHistoryStaff.id || entry.staffRecordId === selectedHistoryStaff.profileId)).reduce((sum, entry) => sum + Number(entry.paidHours || 0), 0);
+    const hours = workedHours + holidayHours;
+    const hourlyGross = payrollEntries.reduce((sum, row) => sum + Number(row.hours || 0) * Number(row.rate ?? selectedHistoryStaff.payRate ?? 0), 0) + (selectedHistoryStaff.annualSalary ? 0 : holidayHours * Number(selectedHistoryStaff.payRate || 0));
     const monthlySalary = monthlySalaryFromAnnual(selectedHistoryStaff.annualSalary);
     const adjustment = historyRun.adjustments?.[selectedHistoryStaff.id] || {};
     const expenses = Number(adjustment.expenses || 0);
@@ -13563,6 +13585,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
       status: historyRun.status || "Draft",
       schools: Array.from(new Set(payrollEntries.map((entry) => entry.schoolName).filter(Boolean))),
       hours,
+      holidayHours,
       monthlySalary,
       gross,
       expenses,
@@ -13683,7 +13706,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
 
   function exportPayroll(rowsToExport = payrollRows, scopeLabel = "full payroll") {
     const rows = [
-      ["Period", "Run status", "Export scope", "Staff", "Email", "Schools", "Additional hours", "Hourly rate", "Hourly gross", "Annual salary", "Monthly salary", "Gross", "Expenses", "Deductions", "Net", "Payslip status", "Payslip count", "Notes"],
+      ["Period", "Run status", "Export scope", "Staff", "Email", "Schools", "Worked hours", "Holiday hours", "Total paid hours", "Hourly rate", "Hourly gross", "Annual salary", "Monthly salary", "Gross", "Expenses", "Deductions", "Net", "Payslip status", "Payslip count", "Notes"],
       ...rowsToExport.map((row) => {
         const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName))).join("; ");
         const submittedEntries = row.payrollEntries.filter((entry) => ["Submitted", "Approved"].includes(entry.status));
@@ -13696,6 +13719,8 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
           row.name,
           row.email || "",
           schools || "No hours submitted",
+          row.workedHours.toFixed(2),
+          row.holidayHours.toFixed(2),
           row.hours.toFixed(2),
           Number(row.payRate || 0).toFixed(2),
           row.hourlyGross.toFixed(2),
@@ -14269,7 +14294,7 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
           </div>
           <TableWrap>
             <table>
-              <thead><tr><th>Staff</th><th>Submitted schools</th><th>Additional hours</th><th>Pay basis</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th><th>Payslip</th><th>Payroll note</th></tr></thead>
+              <thead><tr><th>Staff</th><th>Submitted schools</th><th>Paid hours</th><th>Pay basis</th><th>Gross</th><th>Expenses</th><th>Deductions</th><th>Net</th><th>Payslip</th><th>Payroll note</th></tr></thead>
               <tbody>{visiblePayrollRows.map((row) => {
                 const submittedEntries = row.payrollEntries.filter((entry) => ["Submitted", "Approved"].includes(entry.status));
                 const schools = Array.from(new Set(row.payrollEntries.map((entry) => entry.schoolName)));
@@ -14281,13 +14306,13 @@ function Pay({ data, access, targetStaffId = "", onTargetHandled, onOpenTab, onO
                       <br /><small>{row.email || "No email"}</small>
                     </td>
                     <td>{schools.length ? schools.join(", ") : "No hours submitted"}</td>
-                    <td><strong>{row.hours.toFixed(2)}</strong></td>
+                    <td><strong>{row.hours.toFixed(2)}</strong>{row.holidayHours ? <><br /><small>{row.workedHours.toFixed(2)} worked · {row.holidayHours.toFixed(2)} holiday</small></> : null}</td>
                     <td>
                       {row.payslipPay ? <><strong>Payslip record</strong><br /></> : null}
                       {row.annualSalary ? <><strong>{formatCurrency(row.monthlySalary)}/mo</strong><br /><small>{formatCurrency(row.annualSalary)} annual salary</small></> : null}
                       {row.payRate ? <><br /><small>{formatCurrency(row.payRate)}/hr extra hours</small></> : !row.annualSalary ? "No rate" : null}
                     </td>
-                    <td>{formatCurrency(row.gross)}{row.hourlyGross ? <><br /><small>{formatCurrency(row.hourlyGross)} extra hours</small></> : null}</td>
+                    <td>{formatCurrency(row.gross)}{row.hourlyGross ? <><br /><small>{formatCurrency(row.hourlyGross)} hourly pay incl. holiday</small></> : null}</td>
                     <td><input type="number" min="0" step="0.01" value={row.expenses || ""} onChange={(event) => updateAdjustment(row.id, { expenses: event.target.value })} aria-label={`${row.name} expenses`} disabled={runLocked} /></td>
                     <td><input type="number" min="0" step="0.01" value={row.deductions || ""} onChange={(event) => updateAdjustment(row.id, { deductions: event.target.value })} aria-label={`${row.name} deductions`} disabled={runLocked} /></td>
                   <td><strong>{formatCurrency(net)}</strong></td>
@@ -17867,6 +17892,7 @@ function scopePersonalPayData(data, currentUser) {
     staff: [ownStaff],
     allStaff: [ownStaff],
     hrFiles: (data.hrFiles || []).filter((file) => ownIds.has(file.staffRecordId)),
+    holidayPayroll: (data.holidayPayroll || []).filter((entry) => ownIds.has(entry.staffRecordId)),
     payrollHours,
     payrollRuns,
     payrollAudit: [],
@@ -18389,6 +18415,7 @@ function iconFor(item) {
     Documents: <FileText />,
     Pay: <PoundSterling />,
     Expenses: <PoundSterling />,
+    Holiday: <CalendarDays />,
     Finance: <PoundSterling />,
     "Booking Payments": <PoundSterling />,
     "Pricing Groups": <PoundSterling />,
