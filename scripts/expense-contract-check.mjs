@@ -10,6 +10,7 @@ const client = read("src/supabaseClient.js");
 const platform = read("src/PlatformModule.jsx");
 const app = read("src/app.jsx");
 const notification = read("supabase/functions/notify-expense-claim/index.ts");
+const serverQueueMigration = read("supabase/migrations/0120_queue_expense_notification_on_submit.sql");
 
 const checks = [
   ["private receipt bucket", migration.includes("'employee-expense-receipts','employee-expense-receipts',false")],
@@ -25,6 +26,8 @@ const checks = [
   ["Superadmin-only decision", approvalMigration.includes("Only Superadmin can approve or deny an expense") && platform.includes('const canReview = role === "Superadmin"')],
   ["staff claim totals", platform.includes('title="Claims by staff member"') && platform.includes("Total claimed")],
   ["branded submission email", notification.includes("buildStaffEmailHtml") && notification.includes("Review expense and evidence") && notification.includes("luke@apres-school.co.uk")],
+  ["server-side notification queue", serverQueueMigration.includes("net.http_post") && serverQueueMigration.includes("notification_queued")],
+  ["Superadmin notification recovery", notification.includes("isSuperadmin") && platform.includes("Send email notification")],
   ["notification cannot expose evidence", notification.includes("is not attached to this email") && notification.includes("Sign in before opening the private receipt")],
   ["email deep link", app.includes("requestedExpense") && app.includes('nextAccess.role === "Superadmin"')],
   ["payroll action", platform.includes("addEmployeeExpenseToPayroll") && platform.includes("Add to {formatPayrollPeriod(payrollPeriod)} payroll")],

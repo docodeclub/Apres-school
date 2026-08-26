@@ -12852,9 +12852,9 @@ function Expenses({ data, access, userEmail }) {
       }, receiptFile);
       form.reset();
       setReceiptFile(null);
-      setStatus(saved.notification?.emailed
-        ? "Expense submitted. Superadmin has been notified by email."
-        : `Expense submitted.${saved.notification?.emailError ? " The Superadmin notification email could not be sent, so please tell Admin." : ""}`);
+      setStatus(saved.notification?.queued
+        ? "Expense submitted. The Superadmin notification has been queued securely."
+        : "Expense submitted.");
       await refreshClaims();
     } catch (error) {
       setStatus(error.message || "The expense could not be submitted.");
@@ -12874,6 +12874,22 @@ function Expenses({ data, access, userEmail }) {
       await refreshClaims();
     } catch (error) {
       setStatus(error.message || "The expense could not be reviewed.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function resendNotification(claim) {
+    setBusyId(`notify-${claim.id}`);
+    setStatus("");
+    try {
+      const { notifyEmployeeExpenseClaim } = await loadSupabaseModule();
+      const result = await notifyEmployeeExpenseClaim(claim.id);
+      setStatus(result?.alreadyNotified
+        ? "The Superadmin notification had already been sent."
+        : "The Superadmin notification email has been sent.");
+    } catch (error) {
+      setStatus(error.message || "The notification email could not be sent.");
     } finally {
       setBusyId("");
     }
@@ -12979,6 +12995,7 @@ function Expenses({ data, access, userEmail }) {
               </div>
               <div className="expense-claim-actions">
                 {claim.receiptUrl ? <a className="button light" href={claim.receiptUrl} target="_blank" rel="noreferrer">View receipt</a> : <Badge value="Receipt secured" />}
+                {canReview && claim.status === "submitted" && <button className="button light" type="button" disabled={busyId === `notify-${claim.id}`} onClick={() => resendNotification(claim)}>{busyId === `notify-${claim.id}` ? "Sending..." : "Send email notification"}</button>}
                 {canReview && claim.status === "submitted" && (
                   <><textarea rows="2" value={reviewNotes[claim.id] || ""} onChange={(event) => setReviewNotes((current) => ({ ...current, [claim.id]: event.target.value }))} placeholder="Optional approval note; reason required if denying" /><div><button className="button success" type="button" disabled={busyId === claim.id} onClick={() => reviewClaim(claim, "approved")}>Approve</button><button className="button subtle" type="button" disabled={busyId === claim.id} onClick={() => reviewClaim(claim, "rejected")}>Deny</button></div></>
                 )}

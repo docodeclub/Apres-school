@@ -105,14 +105,10 @@ export async function submitEmployeeExpenseClaim(payload, receiptFile) {
   });
   if (error) throw error;
   const claim = mapEmployeeExpenseClaim(data);
-  try {
-    const { data: notification, error: notificationError } = await supabase.functions.invoke(expenseNotificationFunctionName, { body: { claimId: claim.id } });
-    claim.notification = notificationError
-      ? { emailed: false, emailError: notificationError.message || "Notification failed" }
-      : notification;
-  } catch (notificationError) {
-    claim.notification = { emailed: false, emailError: notificationError?.message || "Notification failed" };
-  }
+  // The submission RPC queues the Superadmin notification server-side. Keeping
+  // this out of the browser prevents a saved claim from losing its email when a
+  // tab closes, a device changes connection, or an older cached bundle is used.
+  claim.notification = { queued: true };
   return claim;
 }
 
@@ -125,6 +121,14 @@ export async function reviewEmployeeExpenseClaim(claimId, decision, note = "") {
   });
   if (error) throw error;
   return mapEmployeeExpenseClaim(data);
+}
+
+export async function notifyEmployeeExpenseClaim(claimId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.functions.invoke(expenseNotificationFunctionName, { body: { claimId } });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
 }
 
 export async function addEmployeeExpenseToPayroll(claimId, payrollPeriod) {

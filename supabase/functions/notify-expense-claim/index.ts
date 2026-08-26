@@ -27,7 +27,9 @@ serve(async (request) => {
     if (!claimId) return json({ error: "Expense claim id is required" }, 400);
     const claim = await getClaim(claimId);
     if (!claim) return json({ error: "Expense claim not found" }, 404);
-    if (claim.profileId !== actor.id) return json({ error: "You can only notify an expense you submitted" }, 403);
+    const isOwner = claim.profileId === actor.id;
+    const isSuperadmin = String(actor.role || "").toLowerCase() === "superadmin";
+    if (!isOwner && !isSuperadmin) return json({ error: "You can only notify an expense you submitted" }, 403);
     if (claim.status !== "submitted") return json({ error: "Only submitted expenses can trigger a notification" }, 400);
 
     const existing = await findNotification(claim.id);
