@@ -4,7 +4,7 @@
 
 - Connected the Staff Onboarding review area to the protected `staff_applications` database records instead of the legacy browser-only list.
 - Added full-application viewing, live reviewing, shortlisting and rejection decisions, Admin notes and clear loading/error states.
-- Restricted saved review decisions to active Admin and Superadmin accounts and recorded each decision in the audit log.
+- Restricted application viewing and saved review decisions to active Admin and Superadmin accounts and recorded each decision in the audit log.
 
 ## 2026-08-26 - Employee holiday management
 
