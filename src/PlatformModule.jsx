@@ -8088,7 +8088,7 @@ function StaffOfferWizard({ application, offer, draft, step, setStep, updateDraf
             <h3>{application.name} · {draft.jobTitle}</h3>
             <dl className="staff-offer-import-summary">
               <div><dt>Workplace</dt><dd>{draft.schoolName || "Organisation-wide / to be assigned"}</dd></div>
-              <div><dt>Start date</dt><dd>{draft.startDate ? formatDate(draft.startDate) : "Not recorded"}</dd></div>
+              <div><dt>Start date</dt><dd>{draft.startDate ? formatShortDate(draft.startDate) : "Not recorded"}</dd></div>
               <div><dt>Contract</dt><dd>{draft.contractType || "Not recorded"} · {draft.employmentType || "Not recorded"}</dd></div>
               <div><dt>Pay</dt><dd>{draft.payAmount === "" ? "Not recorded" : `${formatCurrency(Number(draft.payAmount))}${draft.payBasis === "hourly" ? " per hour" : " per year"}`}</dd></div>
               <div><dt>Account</dt><dd>{draft.accountEmail}</dd></div>
