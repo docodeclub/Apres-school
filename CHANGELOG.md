@@ -1,12 +1,12 @@
 # Changelog
 
-## 2026-08-27 - Job offers and candidate onboarding
+## 2026-08-27 - Application-led employee onboarding
 
-- Added an Admin offer wizard directly to each protected staff application, covering role, workplace, manager, contract, pay, start date and response deadline.
-- Added branded secure offer emails with personal accept and decline links and an internal response notification.
+- Added an Admin onboarding wizard directly to each protected staff application for candidates who have already accepted the role and signed their contract.
+- Added explicit signed-contract confirmation before an application can become an employee record.
 - Carried application answers into onboarding as unverified declarations, while keeping identity, right-to-work, DBS, references and other safer-recruitment checks incomplete until evidence is reviewed.
-- Added one-step creation of the accepted candidate's staff login, staff record, SCR checklist and formal offer document for signature.
-- Protected candidate links with hashed tokens, no-index/no-store responses and family-account collision checks.
+- Added one-step creation of the new employee's staff login, staff record and SCR checklist, followed by the existing evidence and site-assurance journey.
+- Added a branded onboarding email containing the secure staff login once the employee record is created.
 
 ## 2026-08-27 - Live staff application review
 

@@ -7466,6 +7466,7 @@ function UserManagement({ data }) {
   const [offerWizardApplication, setOfferWizardApplication] = useState(null);
   const [offerWizardStep, setOfferWizardStep] = useState(0);
   const [offerDraft, setOfferDraft] = useState(() => defaultStaffOfferDraft());
+  const [signedContractConfirmed, setSignedContractConfirmed] = useState(false);
   const [offerWizardBusy, setOfferWizardBusy] = useState(false);
   const [offerWizardStatus, setOfferWizardStatus] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState(data.staff[0]?.id || "");
@@ -7546,6 +7547,7 @@ function UserManagement({ data }) {
     setOfferWizardApplication(application);
     setOfferDraft(defaultStaffOfferDraft(application, existing));
     setOfferWizardStep(existing?.status === "accepted" ? 3 : 0);
+    setSignedContractConfirmed(Boolean(existing?.accountCreatedAt));
     setOfferWizardStatus("");
   }
 
@@ -7560,46 +7562,52 @@ function UserManagement({ data }) {
     return records;
   }
 
-  async function persistOffer({ send = false, continueToNext = false } = {}) {
+  async function persistOffer({ continueToNext = false } = {}) {
     if (!offerWizardApplication) return;
     setOfferWizardBusy(true);
-    setOfferWizardStatus(send ? "Preparing and sending the secure offer…" : "Saving offer draft…");
+    setOfferWizardStatus("Saving onboarding setup…");
     try {
-      const { saveStaffOffer, sendStaffOffer } = await loadSupabaseModule();
+      const { saveStaffOffer } = await loadSupabaseModule();
+      const expiresAt = offerDraft.expiresOn ? new Date(`${offerDraft.expiresOn}T23:59:00`).toISOString() : "";
+      await saveStaffOffer({
+        ...offerDraft,
+        expiresAt,
+        renderedOffer: staffOfferText(offerWizardApplication, offerDraft),
+      });
+      setOfferWizardStatus("Onboarding setup saved securely.");
+      await reloadOffers();
+      if (continueToNext && offerWizardStep < 3) setOfferWizardStep((step) => step + 1);
+    } catch (error) {
+      setOfferWizardStatus(error?.message || "The onboarding setup could not be saved.");
+    } finally {
+      setOfferWizardBusy(false);
+    }
+  }
+
+  async function startApplicationOnboarding() {
+    if (!offerWizardApplication) return;
+    if (!signedContractConfirmed) {
+      setOfferWizardStatus("Confirm that the applicant has accepted the role and signed their contract.");
+      return;
+    }
+    setOfferWizardBusy(true);
+    setOfferWizardStatus("Creating the employee record and importing their application…");
+    try {
+      const { saveStaffOffer, startOnboardingFromApplication } = await loadSupabaseModule();
       const expiresAt = offerDraft.expiresOn ? new Date(`${offerDraft.expiresOn}T23:59:00`).toISOString() : "";
       const saved = await saveStaffOffer({
         ...offerDraft,
         expiresAt,
         renderedOffer: staffOfferText(offerWizardApplication, offerDraft),
       });
-      if (send) {
-        const result = await sendStaffOffer(saved.id);
-        setOfferWizardStatus(result.emailed ? "Offer sent successfully." : `Offer saved, but the email was not sent: ${result.emailError || "email provider unavailable"}`);
-        setApplications((current) => current.map((item) => item.id === offerWizardApplication.id ? { ...item, status: "shortlisted" } : item));
-      } else {
-        setOfferWizardStatus("Offer draft saved securely.");
-      }
+      const result = await startOnboardingFromApplication(saved.id, true);
       await reloadOffers();
-      if (continueToNext && offerWizardStep < 3) setOfferWizardStep((step) => step + 1);
-    } catch (error) {
-      setOfferWizardStatus(error?.message || "The offer could not be saved.");
-    } finally {
-      setOfferWizardBusy(false);
-    }
-  }
-
-  async function activateOfferOnboarding(offer) {
-    setOfferWizardBusy(true);
-    setOfferWizardStatus("Creating the secure staff account and onboarding record…");
-    try {
-      const { activateCandidateOnboarding } = await loadSupabaseModule();
-      const result = await activateCandidateOnboarding(offer.id);
-      await reloadOffers();
+      setApplications((current) => current.map((item) => item.id === offerWizardApplication.id ? { ...item, status: "hired" } : item));
       setOfferWizardStatus(result.alreadyCreated
-        ? "The onboarding account already exists."
-        : result.emailed ? "Onboarding opened and the staff login email was sent." : `Onboarding opened, but the login email was not sent: ${result.emailError || "email provider unavailable"}`);
+        ? "This employee’s onboarding account already exists."
+        : result.emailed ? "Onboarding started and the employee login email was sent." : `Onboarding started, but the login email was not sent: ${result.emailError || "email provider unavailable"}`);
     } catch (error) {
-      setOfferWizardStatus(error?.message || "Onboarding could not be activated.");
+      setOfferWizardStatus(error?.message || "Onboarding could not be started.");
     } finally {
       setOfferWizardBusy(false);
     }
@@ -7911,7 +7919,9 @@ function UserManagement({ data }) {
             busy={offerWizardBusy}
             status={offerWizardStatus}
             onSave={(options) => persistOffer(options)}
-            onActivate={activateOfferOnboarding}
+            onStartOnboarding={startApplicationOnboarding}
+            signedContractConfirmed={signedContractConfirmed}
+            setSignedContractConfirmed={setSignedContractConfirmed}
             onClose={() => { setOfferWizardApplication(null); setOfferWizardStatus(""); }}
           />
         )}
@@ -7930,7 +7940,7 @@ function UserManagement({ data }) {
                 </div>
                 <div className="status-stack">
                   <Badge value={humaniseStatus(application.status)} />
-                  {offer && <Badge value={`Offer: ${humaniseStatus(offer.status)}`} />}
+                  {offer && <Badge value={`Onboarding: ${humaniseStatus(offer.status === "draft" ? "setup" : offer.status)}`} />}
                 </div>
               </div>
               <p>{application.preferredSchool || "No preferred school"} · {application.availability || "Availability not provided"}</p>
@@ -7960,7 +7970,7 @@ function UserManagement({ data }) {
               <div className="hero-actions">
                 <button className="button light" type="button" disabled={applicationActionId === application.id || application.status === "reviewing"} onClick={() => setApplicationStatus(application, "reviewing")}>Mark reviewing</button>
                 <button className="button book" type="button" disabled={applicationActionId === application.id || application.status === "shortlisted"} onClick={() => setApplicationStatus(application, "shortlisted")}>Shortlist</button>
-                <button className="button book" type="button" disabled={application.status === "rejected" || application.status === "withdrawn"} onClick={() => openOfferWizard(application)}>{offer ? "Open offer journey" : "Offer job"}</button>
+                <button className="button book" type="button" disabled={application.status === "rejected" || application.status === "withdrawn"} onClick={() => openOfferWizard(application)}>{offer ? "Continue onboarding" : "Start onboarding"}</button>
                 <button className="button light" type="button" disabled={applicationActionId === application.id || application.status === "rejected"} onClick={() => setApplicationStatus(application, "rejected")}>Reject</button>
               </div>
             </article>
@@ -8002,22 +8012,22 @@ function UserManagement({ data }) {
   );
 }
 
-function StaffOfferWizard({ application, offer, draft, step, setStep, updateDraft, schoolOptions, managerOptions, busy, status, onSave, onActivate, onClose }) {
+function StaffOfferWizard({ application, offer, draft, step, setStep, updateDraft, schoolOptions, managerOptions, busy, status, onSave, onStartOnboarding, signedContractConfirmed, setSignedContractConfirmed, onClose }) {
   const steps = [
-    ["Role", "Confirm the role, workplace and access level."],
-    ["Terms", "Add the proposed start date, contract, hours and pay."],
+    ["Role", "Confirm the agreed role, workplace and access level."],
+    ["Terms", "Record the signed contract’s start date, hours and pay."],
     ["Application", "Review what will carry into onboarding as unverified declarations."],
-    ["Send", "Review the offer and send the secure accept or decline link."],
+    ["Start", "Confirm the signed contract and create the employee onboarding record."],
   ];
-  const readyToSend = Boolean(draft.jobTitle && draft.accountEmail && draft.startDate && draft.payAmount !== "" && draft.expiresOn);
+  const readyToStart = Boolean(draft.jobTitle && draft.accountEmail && draft.startDate && draft.payAmount !== "" && signedContractConfirmed);
   const offerSections = offer?.onboarding?.sectionStatus || {};
   return (
-    <section className="scr-wizard staff-offer-wizard" aria-label="Job offer and onboarding wizard">
+    <section className="scr-wizard staff-offer-wizard" aria-label="Application onboarding wizard">
       <div className="scr-wizard-head">
         <div>
           <p className="eyebrow">{application.name}</p>
-          <h2>Offer and onboarding wizard</h2>
-          <p>Prepare the offer, receive the candidate’s response and then open their secure evidence journey.</p>
+          <h2>Application onboarding wizard</h2>
+          <p>The role is already accepted and contracted. Turn the application into an employee record and begin the secure evidence journey.</p>
         </div>
         <button className="button light" type="button" onClick={onClose}>Close wizard</button>
       </div>
@@ -8048,8 +8058,7 @@ function StaffOfferWizard({ application, offer, draft, step, setStep, updateDraf
           <label>{draft.payBasis === "hourly" ? "Hourly rate (£)" : "Annual salary (£)"}<input type="number" min="0" step="0.01" value={draft.payAmount} onChange={(event) => updateDraft({ payAmount: event.target.value })} /></label>
           <label>Contracted hours<input type="number" min="0" step="0.25" value={draft.contractHours} onChange={(event) => updateDraft({ contractHours: event.target.value })} placeholder="Weekly hours, if fixed" /></label>
           <label>Proposed start date<input type="date" value={draft.startDate} onChange={(event) => updateDraft({ startDate: event.target.value })} /></label>
-          <label>Offer response deadline<input type="date" value={draft.expiresOn} onChange={(event) => updateDraft({ expiresOn: event.target.value })} /></label>
-          <label className="full">Personal message<textarea rows="4" value={draft.personalMessage} onChange={(event) => updateDraft({ personalMessage: event.target.value })} /></label>
+          <label className="full">Welcome note for the onboarding email<textarea rows="4" value={draft.personalMessage} onChange={(event) => updateDraft({ personalMessage: event.target.value })} /></label>
         </div>
       )}
 
@@ -8070,16 +8079,29 @@ function StaffOfferWizard({ application, offer, draft, step, setStep, updateDraf
       {step === 3 && (
         <div className="staff-offer-review">
           <div className="staff-offer-preview">
-            <p className="eyebrow">Offer preview</p>
-            <pre>{staffOfferText(application, draft)}</pre>
+            <p className="eyebrow">Employee record preview</p>
+            <h3>{application.name} · {draft.jobTitle}</h3>
+            <dl className="staff-offer-import-summary">
+              <div><dt>Workplace</dt><dd>{draft.schoolName || "Organisation-wide / to be assigned"}</dd></div>
+              <div><dt>Start date</dt><dd>{draft.startDate ? formatDate(draft.startDate) : "Not recorded"}</dd></div>
+              <div><dt>Contract</dt><dd>{draft.contractType || "Not recorded"} · {draft.employmentType || "Not recorded"}</dd></div>
+              <div><dt>Pay</dt><dd>{draft.payAmount === "" ? "Not recorded" : `${formatMoney(Number(draft.payAmount))}${draft.payBasis === "hourly" ? " per hour" : " per year"}`}</dd></div>
+              <div><dt>Account</dt><dd>{draft.accountEmail}</dd></div>
+              <div><dt>Imported application</dt><dd>Saved as unverified declarations for Admin evidence checks.</dd></div>
+            </dl>
           </div>
+          {offer?.status !== "onboarding" && (
+            <label className="staff-contract-confirmation">
+              <input type="checkbox" checked={signedContractConfirmed} onChange={(event) => setSignedContractConfirmed(event.target.checked)} />
+              <span><strong>I confirm this applicant has accepted the role and signed their contract.</strong><small>This does not mark DBS, identity, right-to-work, references or qualifications as verified.</small></span>
+            </label>
+          )}
           {offer && (
             <div className={`staff-offer-state ${offer.status}`}>
-              <strong>{humaniseStatus(offer.status)}</strong>
-              <span>{offer.status === "sent" ? `Sent ${offer.sentAt ? formatDateTime(offer.sentAt) : ""}. Waiting for a response.` : offer.status === "accepted" ? "The candidate accepted. You can now create their secure staff account and SCR onboarding record." : offer.status === "onboarding" ? "The staff account and onboarding record have been created." : "Offer progress is saved."}</span>
+              <strong>{offer.status === "onboarding" ? "Onboarding in progress" : "Onboarding setup saved"}</strong>
+              <span>{offer.status === "onboarding" ? "The staff account and onboarding record have been created." : "The agreed employment details are saved and ready to become the employee record."}</span>
             </div>
           )}
-          {offer?.status === "accepted" && <button className="button book" type="button" disabled={busy} onClick={() => onActivate(offer)}>{busy ? "Creating account…" : "Create account & start onboarding"}</button>}
           {offer?.status === "onboarding" && (
             <div className="staff-onboarding-section-grid">
               {Object.entries(offerSections).map(([key, value]) => <span key={key}><strong>{humaniseStatus(key)}</strong>{humaniseStatus(value)}</span>)}
@@ -8094,8 +8116,8 @@ function StaffOfferWizard({ application, offer, draft, step, setStep, updateDraf
         <span />
         {step < 3 ? <button className="button book" type="button" disabled={busy} onClick={() => onSave({ continueToNext: true })}>{busy ? "Saving…" : "Save & continue"}</button> : (
           <>
-            <button className="button light" type="button" disabled={busy} onClick={() => onSave({})}>Save draft</button>
-            {!['accepted', 'onboarding'].includes(offer?.status) && <button className="button book" type="button" disabled={busy || !readyToSend} onClick={() => onSave({ send: true })}>{busy ? "Sending…" : offer?.status === "sent" ? "Resend secure offer" : "Send secure offer"}</button>}
+            <button className="button light" type="button" disabled={busy} onClick={() => onSave({})}>Save setup</button>
+            {offer?.status !== "onboarding" && <button className="button book" type="button" disabled={busy || !readyToStart} onClick={onStartOnboarding}>{busy ? "Creating employee…" : "Create employee & start onboarding"}</button>}
           </>
         )}
       </div>

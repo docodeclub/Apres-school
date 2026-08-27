@@ -18,7 +18,6 @@ const routes = [
   "policies",
   "contact",
   "staff-application",
-  "staff-offer",
   "staff-login",
   "tutor",
   "booking/success",
@@ -85,12 +84,6 @@ const routeMeta = {
     title: "Work With Après School | Staff Applications",
     description: "Apply to join the Après School team and support children through wraparound care and holiday programmes.",
     keywords: "Après School jobs, wraparound care jobs, holiday club jobs, childcare staff application",
-  },
-  "staff-offer": {
-    title: "Your Job Offer | Après School",
-    description: "Review and respond to your secure Après School job offer.",
-    keywords: "Après School job offer",
-    robots: "noindex,nofollow",
   },
   tutor: {
     title: "Admin Dashboard | Après School",

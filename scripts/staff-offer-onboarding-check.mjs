@@ -5,8 +5,7 @@ const files = {
   edge: await readFile("supabase/functions/manage-staff-offer/index.ts", "utf8"),
   client: await readFile("src/supabaseClient.js", "utf8"),
   platform: await readFile("src/PlatformModule.jsx", "utf8"),
-  publicApp: await readFile("src/app.jsx", "utf8"),
-  vercel: await readFile("vercel.json", "utf8"),
+  directMigration: await readFile("supabase/migrations/0129_direct_application_onboarding.sql", "utf8"),
 };
 
 const checks = [
@@ -14,15 +13,15 @@ const checks = [
   ["candidate onboarding table", /create table if not exists public\.staff_candidate_onboarding/i.test(files.migration)],
   ["admin-only offer reads", /Admins can read staff offers[\s\S]*role in \('admin','superadmin'\)/i.test(files.migration)],
   ["application answers marked unverified", /imported_unverified/.test(files.migration) && /verified: false/.test(files.edge)],
-  ["offer tokens stored only as hashes", /response_token_hash/.test(files.migration) && /sha256\(token\)/.test(files.edge) && !/response_token\s+text/i.test(files.migration)],
-  ["secure accept and decline flow", /action === "respond"/.test(files.edge) && /\["accept", "decline"\]/.test(files.edge)],
+  ["signed contract confirmation is audited", /contract_signed_confirmed_at/.test(files.directMigration) && /staff_signed_contract_confirmed/.test(files.edge)],
+  ["direct application activation", /action === "activate-application"/.test(files.edge) && /activateApplicationOnboarding/.test(files.edge)],
   ["family-account collision guard", /belongs to a family account/.test(files.edge)],
   ["SCR checks remain incomplete", /identity_checks: \{ status: "incomplete"/.test(files.edge) && /dbs: \{ status: "incomplete"/.test(files.edge)],
-  ["formal offer document awaits signature", /status: "awaiting_signature"/.test(files.edge) && /requires_signature: true/.test(files.edge)],
-  ["admin offer wizard", /function StaffOfferWizard/.test(files.platform) && /"Offer job"/.test(files.platform)],
-  ["candidate response page", /function StaffOfferResponse/.test(files.publicApp) && /"Accept offer"/.test(files.publicApp)],
-  ["candidate route is noindex and no-store", /"Staff Offer"/.test(files.publicApp) && /"source": "\/staff-offer"[\s\S]*"noindex, nofollow"[\s\S]*"no-store"/.test(files.vercel)],
-  ["frontend offer service", /fetchPublicStaffOffer/.test(files.client) && /respondToStaffOffer/.test(files.client) && /activateCandidateOnboarding/.test(files.client)],
+  ["signed contract is not re-issued", /if \(!signedContractAlreadyHeld\) await createOfferDocument/.test(files.edge)],
+  ["Admin onboarding wizard", /Application onboarding wizard/.test(files.platform) && /"Start onboarding"/.test(files.platform)],
+  ["contract confirmation required in UI", /I confirm this applicant has accepted the role and signed their contract/.test(files.platform)],
+  ["frontend direct onboarding service", /startOnboardingFromApplication/.test(files.client) && /activate-application/.test(files.client)],
+  ["no candidate accept-decline UI", !/StaffOfferResponse/.test(files.platform) && !/"Accept offer"/.test(files.platform)],
 ];
 
 let failed = 0;

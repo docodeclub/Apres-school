@@ -268,20 +268,8 @@ async function manageStaffOffer(body) {
   return data || {};
 }
 
-export async function sendStaffOffer(offerId) {
-  return manageStaffOffer({ action: "send", offerId });
-}
-
-export async function activateCandidateOnboarding(offerId) {
-  return manageStaffOffer({ action: "activate", offerId });
-}
-
-export async function fetchPublicStaffOffer(token) {
-  return manageStaffOffer({ action: "view", token });
-}
-
-export async function respondToStaffOffer(token, decision) {
-  return manageStaffOffer({ action: "respond", token, decision });
+export async function startOnboardingFromApplication(offerId, signedContractConfirmed) {
+  return manageStaffOffer({ action: "activate-application", offerId, signedContractConfirmed });
 }
 
 export async function signInStaff(email, password) {

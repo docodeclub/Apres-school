@@ -23,13 +23,9 @@ serve(async (request) => {
   try {
     const payload = await request.json().catch(() => ({}));
     const action = text(payload.action, 40);
-    if (action === "view") return json(await viewOffer(text(payload.token, 500)));
-    if (action === "respond") return json(await respondToOffer(text(payload.token, 500), text(payload.decision, 20), request));
-
     const actor = await getActor(request.headers.get("Authorization") || "");
-    if (!actor || !["admin", "superadmin"].includes(actor.role)) return json({ error: "Only Admin can manage job offers." }, 403);
-    if (action === "send") return json(await sendOffer(actor, text(payload.offerId, 60)));
-    if (action === "activate") return json(await activateOnboarding(actor, text(payload.offerId, 60)));
+    if (!actor || !["admin", "superadmin"].includes(actor.role)) return json({ error: "Only Admin can start candidate onboarding." }, 403);
+    if (action === "activate-application") return json(await activateApplicationOnboarding(actor, text(payload.offerId, 60), payload.signedContractConfirmed === true));
     return json({ error: "Unknown staff offer action" }, 400);
   } catch (error) {
     console.error(error);
@@ -157,7 +153,7 @@ async function respondToOffer(token: string, decision: string, request: Request)
   };
 }
 
-async function activateOnboarding(actor: any, offerId: string) {
+async function activateOnboarding(actor: any, offerId: string, signedContractAlreadyHeld = false) {
   const offer = await loadOfferById(offerId);
   if (offer.status !== "accepted") throw new Error("The candidate must accept the offer before an account is created.");
   if (offer.staff_record_id) return { staffRecordId: offer.staff_record_id, alreadyCreated: true };
@@ -201,19 +197,53 @@ async function activateOnboarding(actor: any, offerId: string) {
     });
     if (error) throw error;
   }
-  await createOfferDocument(actor, offer, application, staffRecord.id);
+  if (!signedContractAlreadyHeld) await createOfferDocument(actor, offer, application, staffRecord.id);
   const now = new Date().toISOString();
   await supabase.from("staff_offers").update({ status: "onboarding", staff_record_id: staffRecord.id, account_created_at: now, response_token_hash: null, updated_by: actor.id, updated_at: now }).eq("id", offer.id);
-  await supabase.from("staff_candidate_onboarding").update({ staff_record_id: staffRecord.id, status: "in_progress", section_status: mergeJson(await onboardingSections(offer.id), { offer: "accepted", personal: "imported_unverified", documents: "offer_sent_for_signature" }), updated_by: actor.id, updated_at: now }).eq("offer_id", offer.id);
+  await supabase.from("staff_candidate_onboarding").update({ staff_record_id: staffRecord.id, status: "in_progress", section_status: mergeJson(await onboardingSections(offer.id), signedContractAlreadyHeld
+    ? { offer: "accepted_externally", contract: "signed_confirmed", personal: "imported_unverified", documents: "signed_contract_to_file" }
+    : { offer: "accepted", personal: "imported_unverified", documents: "offer_sent_for_signature" }), updated_by: actor.id, updated_at: now }).eq("offer_id", offer.id);
   const email = await safeSendEmail(offer.account_email, "Welcome to the Après School staff platform", buildStaffEmailHtml({
     preheader: "Your secure staff onboarding account is ready.", eyebrow: "Après School Staff", title: "Your onboarding account is ready", greeting: `Hi ${firstName(application.name)},`,
-    paragraphs: ["Your staff account has been created so you can continue your onboarding securely.", "Your application answers have been carried across as unverified declarations. Please use the platform to review documents and complete the evidence requested by our team."],
+    paragraphs: [
+      "Your staff account has been created so you can continue your onboarding securely.",
+      ...(offer.personal_message ? [offer.personal_message] : []),
+      "Your application answers have been carried across to save you re-entering them. They remain unverified until the relevant evidence has been reviewed by our team.",
+    ],
     details: [{ label: "Login email", value: offer.account_email }, { label: "Temporary password", value: temporaryPassword, monospace: true }, { label: "Role", value: offer.job_title }],
     action: { label: "Open staff onboarding", url: staffPortalUrl }, notice: "Change your temporary password when prompted. Do not send identity, DBS or right-to-work evidence by ordinary email.", portalLabel: "Staff onboarding", footerText: "Secure employee records and safer recruitment.",
   }));
   await logEmail({ offer, actorId: actor.id, recipient: offer.account_email, subject: "Welcome to the Après School staff platform", status: email.sent ? "sent" : "queued_without_provider", providerMessageId: email.id, staffRecordId: staffRecord.id });
   await audit(actor.id, "staff_onboarding_activated", offer.id, { staffRecordId: staffRecord.id, userId, emailSent: email.sent });
   return { staffRecordId: staffRecord.id, userId, emailed: email.sent, emailError: email.sent ? "" : "Email provider is not configured." };
+}
+
+async function activateApplicationOnboarding(actor: any, offerId: string, signedContractConfirmed: boolean) {
+  if (!signedContractConfirmed) throw new Error("Confirm that the candidate has accepted the role and signed their contract.");
+  const offer = await loadOfferById(offerId);
+  if (offer.status === "onboarding" && offer.staff_record_id) return { staffRecordId: offer.staff_record_id, alreadyCreated: true };
+  if (["declined", "withdrawn", "expired"].includes(offer.status)) throw new Error("This application cannot be onboarded from its current status.");
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("staff_offers").update({
+    status: "accepted",
+    accepted_at: offer.accepted_at || now,
+    contract_signed_confirmed_at: now,
+    contract_signed_confirmed_by: actor.id,
+    response_token_hash: null,
+    updated_by: actor.id,
+    updated_at: now,
+  }).eq("id", offer.id);
+  if (error) throw error;
+  await supabase.from("staff_applications").update({ status: "hired", reviewed_at: now, reviewed_by: actor.id, updated_at: now }).eq("id", offer.application_id);
+  await supabase.from("staff_candidate_onboarding").update({
+    status: "accepted",
+    accepted_at: now,
+    section_status: mergeJson(await onboardingSections(offer.id), { offer: "accepted_externally", contract: "signed_confirmed" }),
+    updated_by: actor.id,
+    updated_at: now,
+  }).eq("offer_id", offer.id);
+  await audit(actor.id, "staff_signed_contract_confirmed", offer.id, { applicationId: offer.application_id });
+  return activateOnboarding(actor, offer.id, true);
 }
 
 async function createOfferDocument(actor: any, offer: any, application: any, staffRecordId: string) {

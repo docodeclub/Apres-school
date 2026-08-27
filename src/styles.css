@@ -4658,7 +4658,7 @@ label {
 }
 
 .staff-offer-import-review dl,
-.staff-offer-public-terms {
+.staff-offer-import-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -4666,7 +4666,7 @@ label {
 }
 
 .staff-offer-import-review dl > div,
-.staff-offer-public-terms > div {
+.staff-offer-import-summary > div {
   padding: 16px;
   border: 1px solid rgba(49, 75, 184, 0.14);
   border-radius: 16px;
@@ -4674,7 +4674,7 @@ label {
 }
 
 .staff-offer-import-review dt,
-.staff-offer-public-terms dt {
+.staff-offer-import-summary dt {
   color: #68718b;
   font-size: 12px;
   font-weight: 900;
@@ -4683,7 +4683,7 @@ label {
 }
 
 .staff-offer-import-review dd,
-.staff-offer-public-terms dd {
+.staff-offer-import-summary dd {
   margin: 7px 0 0;
   color: #1d2d66;
   font-weight: 800;
@@ -4697,8 +4697,7 @@ label {
   background: #fff;
 }
 
-.staff-offer-preview pre,
-.staff-offer-full-terms pre {
+.staff-offer-preview pre {
   margin: 12px 0 0;
   white-space: pre-wrap;
   color: #37415d;
@@ -4706,8 +4705,7 @@ label {
   line-height: 1.65;
 }
 
-.staff-offer-state,
-.staff-offer-response-state {
+.staff-offer-state {
   display: grid;
   gap: 5px;
   padding: 16px 18px;
@@ -4718,9 +4716,7 @@ label {
 }
 
 .staff-offer-state.accepted,
-.staff-offer-state.onboarding,
-.staff-offer-response-state.accepted,
-.staff-offer-response-state.onboarding {
+.staff-offer-state.onboarding {
   border-color: #bfe7cf;
   background: #effbf4;
   color: #17683d;
@@ -4754,144 +4750,49 @@ label {
   gap: 7px;
 }
 
-.staff-offer-response-page {
-  min-height: calc(100vh - 112px);
-  padding: clamp(28px, 6vw, 72px) 20px;
-  background:
-    radial-gradient(circle at 12% 8%, rgba(245, 157, 45, 0.16), transparent 30%),
-    radial-gradient(circle at 90% 18%, rgba(72, 101, 220, 0.2), transparent 32%),
-    #f4f6fc;
-}
-
-.staff-offer-response-card {
-  width: min(780px, 100%);
-  margin: 0 auto;
-  padding: clamp(24px, 5vw, 48px);
-  border: 1px solid rgba(49, 75, 184, 0.16);
-  border-top: 6px solid #3655c5;
-  border-radius: 28px;
-  background: #fff;
-  box-shadow: 0 30px 80px rgba(30, 48, 115, 0.16);
-}
-
-.staff-offer-response-heading {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  padding-bottom: 22px;
-  border-bottom: 1px solid #e3e7f3;
-}
-
-.staff-offer-response-heading h1,
-.staff-offer-response-heading p,
-.staff-offer-welcome h2,
-.staff-offer-welcome p {
-  margin: 0;
-}
-
-.staff-offer-response-heading h1 {
-  color: #243d9d;
-  font-size: clamp(26px, 5vw, 40px);
-}
-
-.staff-offer-lock {
-  display: grid;
-  flex: 0 0 auto;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 17px;
-  background: #edf2ff;
-  color: #3150bf;
-}
-
-.staff-offer-welcome {
-  display: grid;
-  gap: 12px;
-  padding: 28px 0 20px;
-}
-
-.staff-offer-welcome h2 {
-  color: #1f2f69;
-  font-size: clamp(22px, 4vw, 31px);
-}
-
-.staff-offer-full-terms {
-  margin-top: 18px;
-  padding: 16px 18px;
-  border: 1px solid #dce3f7;
-  border-radius: 16px;
-  background: #fbfcff;
-}
-
-.staff-offer-full-terms summary {
-  cursor: pointer;
-  color: #2945aa;
-  font-weight: 900;
-}
-
-.staff-offer-safer-note {
+.staff-contract-confirmation {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 12px;
   align-items: start;
-  margin-top: 18px;
-  padding: 16px;
-  border: 1px solid #ead7b9;
+  padding: 18px;
+  border: 1px solid #c9d5f4;
   border-radius: 16px;
-  background: #fff9ef;
-  color: #5f4723;
+  background: #f5f8ff;
+  color: #243a86;
+  cursor: pointer;
 }
 
-.staff-offer-safer-note p {
-  margin: 0;
+.staff-contract-confirmation input {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  accent-color: #3150bf;
 }
 
-.staff-offer-response-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
+.staff-contract-confirmation span {
+  display: grid;
+  gap: 5px;
 }
 
-.staff-offer-response-state,
-.staff-offer-response-card > .form-status {
-  margin-top: 20px;
+.staff-contract-confirmation small {
+  color: #68718b;
+  line-height: 1.45;
 }
 
-.staff-offer-security-footer {
-  margin: 24px 0 0;
-  padding-top: 18px;
-  border-top: 1px solid #e3e7f3;
-  color: #727b93;
-  font-size: 13px;
-  line-height: 1.5;
+.staff-offer-import-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0 0;
 }
 
 @media (max-width: 720px) {
   .staff-offer-fields,
   .staff-offer-import-review dl,
-  .staff-offer-public-terms,
+  .staff-offer-import-summary,
   .staff-onboarding-section-grid {
     grid-template-columns: 1fr;
-  }
-
-  .staff-offer-response-page {
-    padding: 18px 12px 36px;
-  }
-
-  .staff-offer-response-card {
-    padding: 22px 18px;
-    border-radius: 22px;
-  }
-
-  .staff-offer-response-actions {
-    align-items: stretch;
-    flex-direction: column-reverse;
-  }
-
-  .staff-offer-response-actions .button {
-    width: 100%;
   }
 }
 
