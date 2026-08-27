@@ -20,6 +20,7 @@ const checks = [
   ["admin approval gate", migration.includes("review_staff_onboarding") && platform.includes("onboardingOnly")],
   ["direct email link", offer.includes("?section=onboarding") && offer.includes("Complete your onboarding")],
   ["direct link survives sign-in", app.includes("const requestedTab = platformTabsBySlug[requestedSection]") && app.includes('nextAccess.onboardingOnly ? "Onboarding"')],
+  ["start date reacts to browser date entry", platform.includes('value={draft.startDate} onInput={(event) => updateDraft({ startDate: event.currentTarget.value })}')],
   ["no Docode wording", !module.includes("Docode") && !migration.includes("Docode")],
 ];
 

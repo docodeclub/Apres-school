@@ -8062,7 +8062,7 @@ function StaffOfferWizard({ application, offer, draft, step, setStep, updateDraf
           <label>Pay basis<select value={draft.payBasis} onChange={(event) => updateDraft({ payBasis: event.target.value })}><option value="hourly">Hourly</option><option value="salary">Annual salary</option></select></label>
           <label>{draft.payBasis === "hourly" ? "Hourly rate (£)" : "Annual salary (£)"}<input type="number" min="0" step="0.01" value={draft.payAmount} onChange={(event) => updateDraft({ payAmount: event.target.value })} /></label>
           <label>Contracted hours<input type="number" min="0" step="0.25" value={draft.contractHours} onChange={(event) => updateDraft({ contractHours: event.target.value })} placeholder="Weekly hours, if fixed" /></label>
-          <label>Proposed start date<input type="date" value={draft.startDate} onChange={(event) => updateDraft({ startDate: event.target.value })} /></label>
+          <label>Proposed start date<input type="date" value={draft.startDate} onInput={(event) => updateDraft({ startDate: event.currentTarget.value })} onChange={(event) => updateDraft({ startDate: event.currentTarget.value })} /></label>
           <label className="full">Welcome note for the onboarding email<textarea rows="4" value={draft.personalMessage} onChange={(event) => updateDraft({ personalMessage: event.target.value })} /></label>
         </div>
       )}
