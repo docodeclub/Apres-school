@@ -24,12 +24,15 @@ serve(async (request) => {
     const payload = await request.json().catch(() => ({}));
     const action = text(payload.action, 40);
     const actor = await getActor(request.headers.get("Authorization") || "");
-    if (!actor || !["admin", "superadmin"].includes(actor.role)) return json({ error: "Only Admin can start candidate onboarding." }, 403);
+    const actorRole = text(actor?.role, 40).toLowerCase();
+    if (!actor || !["admin", "superadmin"].includes(actorRole)) return json({ error: "Only Admin can start candidate onboarding." });
     if (action === "activate-application") return json(await activateApplicationOnboarding(actor, text(payload.offerId, 60), payload.signedContractConfirmed === true));
     return json({ error: "Unknown staff offer action" }, 400);
   } catch (error) {
     console.error(error);
-    return json({ error: error instanceof Error ? error.message : "Unable to manage the staff offer." }, 400);
+    // Keep application errors in the response body so the staff portal can show
+    // the precise onboarding problem instead of Supabase's generic non-2xx error.
+    return json({ error: errorMessage(error) });
   }
 });
 
@@ -316,6 +319,11 @@ async function audit(actorId: string | null, action: string, recordId: string, m
 }
 
 function relation(value: any) { return Array.isArray(value) ? value[0] : value; }
+function errorMessage(value: unknown) {
+  if (value instanceof Error) return value.message;
+  if (value && typeof value === "object" && "message" in value && typeof value.message === "string") return value.message;
+  return "Unable to manage the staff offer.";
+}
 function text(value: unknown, max = 5000) { return typeof value === "string" ? value.trim().slice(0, max) : ""; }
 function firstName(value: string) { return text(value, 120).split(/\s+/)[0] || "there"; }
 function displayDate(value: string) { if (!value) return "To be agreed"; return new Date(`${value}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }); }
