@@ -1026,7 +1026,9 @@ export default function App() {
       setOnboardingOnly(nextAccess.onboardingOnly);
       if (landOnDashboard) {
         const requestedExpense = new URLSearchParams(window.location.search).get("expense");
-        setTab(nextAccess.onboardingOnly ? "Onboarding" : requestedExpense ? "Expenses" : ["Admin", "Superadmin"].includes(nextAccess.role) ? "Admin" : "Staff");
+        const requestedSection = new URLSearchParams(window.location.search).get("section");
+        const requestedTab = platformTabsBySlug[requestedSection];
+        setTab(nextAccess.onboardingOnly ? "Onboarding" : requestedTab || (requestedExpense ? "Expenses" : ["Admin", "Superadmin"].includes(nextAccess.role) ? "Admin" : "Staff"));
       }
       setPlatformAccessMessage("");
       setPlatformUnlocked(true);

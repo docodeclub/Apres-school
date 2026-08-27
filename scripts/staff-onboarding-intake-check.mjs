@@ -5,6 +5,7 @@ const migration = read("supabase/migrations/0130_staff_onboarding_intake.sql");
 const module = read("src/StaffOnboardingModule.jsx");
 const offer = read("supabase/functions/manage-staff-offer/index.ts");
 const platform = read("src/PlatformModule.jsx");
+const app = read("src/app.jsx");
 const client = read("src/supabaseClient.js");
 
 const checks = [
@@ -18,6 +19,7 @@ const checks = [
   ["save and return", module.includes("Save progress") && client.includes("save_my_staff_onboarding")],
   ["admin approval gate", migration.includes("review_staff_onboarding") && platform.includes("onboardingOnly")],
   ["direct email link", offer.includes("?section=onboarding") && offer.includes("Complete your onboarding")],
+  ["direct link survives sign-in", app.includes("const requestedTab = platformTabsBySlug[requestedSection]") && app.includes('nextAccess.onboardingOnly ? "Onboarding"')],
   ["no Docode wording", !module.includes("Docode") && !migration.includes("Docode")],
 ];
 
