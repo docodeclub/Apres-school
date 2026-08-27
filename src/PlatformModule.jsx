@@ -37,6 +37,7 @@ import { MyShifts, Staffing } from "./StaffingModule.jsx";
 import { EmployeeDocumentsDirectory, EmployeeDocumentsPanel } from "./EmployeeDocumentsModule.jsx";
 import PricingGroupsModule from "./PricingGroupsModule.jsx";
 import HolidayModule from "./HolidayModule.jsx";
+import StaffOnboardingModule from "./StaffOnboardingModule.jsx";
 import {
   blockingPeriods,
   bookingGroups,
@@ -198,10 +199,10 @@ const SendNeeds = makeIcon("SN");
 const X = makeIcon("X");
 
 
-const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Expenses", "Holiday", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Onboarding", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Expenses", "Holiday", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
   ["Today", ["Admin", "Staff"]],
-  ["People", ["Customer Profiles", "Users", "Holiday", "SCR", "HR", "HR Files", "Employee Documents"]],
+  ["People", ["Onboarding", "Customer Profiles", "Users", "Holiday", "SCR", "HR", "HR Files", "Employee Documents"]],
   ["Sites", ["Schools", "Bookings", "Registers", "Incidents", "Safeguarding", "Staffing", "Sessions", "Ofsted"]],
   ["Comms", ["Documents", "CRM"]],
   ["Finance", ["Finance", "Booking Payments", "Pricing Groups", "Expenses", "Pay", "Rewards"]],
@@ -219,6 +220,7 @@ const platformTabHints = {
   "Pricing Groups": "Parent concessions, staff benefits and booking price rules",
   Finance: "School invoices, customers, payments and credit notes",
   Users: "Invite staff and reset access",
+  Onboarding: "Complete or review secure employee onboarding",
   HR: "Reporting lines and manager structure",
   "HR Files": "Contracts, payslips and staff documents",
   "Employee Documents": "Contracts, variations, signatures and employment history",
@@ -1014,7 +1016,7 @@ function FormerStaffPortal({ data = {}, userEmail = "", onSignOut }) {
   );
 }
 
-function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
+function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data, onboardingOnly = false }) {
   const [staffProfileTargetId, setStaffProfileTargetId] = useState("");
   const [scrInspectionTarget, setScrInspectionTarget] = useState("");
   const [bookingAdminFocus, setBookingAdminFocus] = useState("");
@@ -1072,12 +1074,14 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
   const payAccess = effectiveRole === "Manager"
     ? { ...access, role: "Staff", personalPayOnly: true }
     : access;
-  const visibleTabs = effectiveRole === "Staff"
+  const visibleTabs = onboardingOnly
+    ? ["Onboarding"]
+    : effectiveRole === "Staff"
     ? ["Staff", "Registers", "Documents", "Expenses", "Holiday", "Pay", "Rewards", "Sessions"]
     : effectiveRole === "Manager"
       ? ["Staff", "Registers", "Safeguarding", "Staffing", "Holiday", "SCR", "Employee Documents", "Ofsted", "Documents", "Expenses", "Pay", "Sessions", "Pricing Groups"]
       : platformTabs;
-  const pinnedDashboardTab = ["Admin", "Superadmin"].includes(effectiveRole) ? "Admin" : "Staff";
+  const pinnedDashboardTab = onboardingOnly ? "" : ["Admin", "Superadmin"].includes(effectiveRole) ? "Admin" : "Staff";
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => visibleTabs.includes(item) && item !== pinnedDashboardTab)])
     .filter(([, items]) => items.length);
@@ -1253,6 +1257,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data }) {
           access={access}
         />
         {tab === "Staff" && <StaffDashboard data={scopedData} access={access} userEmail={userEmail} onOpenRegisters={() => selectNavItem("Sites", "Registers")} onOpenExpenses={() => selectNavItem("Finance", "Expenses")} onOpenHoliday={() => selectNavItem("People", "Holiday")} />}
+        {tab === "Onboarding" && <StaffOnboardingModule role={effectiveRole} onboardingOnly={onboardingOnly} onApproved={() => window.location.reload()} />}
         {tab === "Staff" && effectiveRole === "Staff" && <MyShifts access={access} />}
         {tab === "Staff" && effectiveRole === "Staff" && scopedData.staff?.[0] && <EmployeeDocumentsPanel person={scopedData.staff[0]} access={access} legacyFiles={scopedData.hrFiles || []} compact />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
@@ -18718,6 +18723,7 @@ function iconFor(item) {
   const map = {
     Staff: <LayoutDashboard />,
     Admin: <LockKeyhole />,
+    Onboarding: <ClipboardCheck />,
     SCR: <ShieldCheck />,
     Ofsted: <ShieldCheck />,
     Documents: <FileText />,

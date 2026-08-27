@@ -205,7 +205,7 @@ const HOLIDAY_RESPONSIVE_IMAGES = {
 };
 
 const nav = ["Home", "Holiday Clubs", "Wraparound", "Schools", "Contact"];
-const platformTabs = ["Staff", "Admin", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
+const platformTabs = ["Staff", "Admin", "Onboarding", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformTabStorageKey = "apres-platform-active-tab";
 const storageConsentKey = "apres-storage-consent";
 const storageConsentVersion = 1;
@@ -849,6 +849,7 @@ export default function App() {
   const [authUser, setAuthUser] = useState(null);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [formerStaffAccess, setFormerStaffAccess] = useState(false);
+  const [onboardingOnly, setOnboardingOnly] = useState(false);
   const [platformAccessMessage, setPlatformAccessMessage] = useState("");
   const [role, setRole] = useState("Admin");
   const [tab, setTab] = useState(getInitialPlatformTab);
@@ -978,6 +979,7 @@ export default function App() {
       setAuthUser(null);
       setMustChangePassword(false);
       setFormerStaffAccess(false);
+      setOnboardingOnly(false);
       setPlatformAccessMessage("");
       setPlatformUnlocked(false);
       setRole("Staff");
@@ -996,6 +998,7 @@ export default function App() {
         setRole("Staff");
         setMustChangePassword(false);
         setFormerStaffAccess(true);
+        setOnboardingOnly(false);
         setTab("Staff");
         setPlatformAccessMessage("");
         setPlatformUnlocked(true);
@@ -1006,6 +1009,7 @@ export default function App() {
         setPlatformUnlocked(false);
         setMustChangePassword(false);
         setFormerStaffAccess(false);
+        setOnboardingOnly(false);
         setRole("Staff");
         setTab("Staff");
         setPlatformAccessMessage(
@@ -1019,9 +1023,10 @@ export default function App() {
       setRole(nextAccess.role);
       setMustChangePassword(nextAccess.mustChangePassword);
       setFormerStaffAccess(false);
+      setOnboardingOnly(nextAccess.onboardingOnly);
       if (landOnDashboard) {
         const requestedExpense = new URLSearchParams(window.location.search).get("expense");
-        setTab(requestedExpense ? "Expenses" : ["Admin", "Superadmin"].includes(nextAccess.role) ? "Admin" : "Staff");
+        setTab(nextAccess.onboardingOnly ? "Onboarding" : requestedExpense ? "Expenses" : ["Admin", "Superadmin"].includes(nextAccess.role) ? "Admin" : "Staff");
       }
       setPlatformAccessMessage("");
       setPlatformUnlocked(true);
@@ -1031,6 +1036,7 @@ export default function App() {
       setRole("Staff");
       setMustChangePassword(false);
       setFormerStaffAccess(false);
+      setOnboardingOnly(false);
       setTab("Staff");
       setPlatformAccessMessage("We could not verify staff access for this account. Please sign in with your Après School work account.");
       return false;
@@ -1040,6 +1046,7 @@ export default function App() {
   async function handleForcedPasswordChanged(user) {
     setMustChangePassword(false);
     setFormerStaffAccess(false);
+    setOnboardingOnly(false);
     await applySession({ user }, { landOnDashboard: true });
   }
 
@@ -1054,6 +1061,7 @@ export default function App() {
     setAuthUser({ id: `demo-${demoUser.role.toLowerCase()}`, email: demoUser.email, app_metadata: { demo: true } });
     setMustChangePassword(false);
     setFormerStaffAccess(false);
+    setOnboardingOnly(false);
     setRole(demoUser.role);
     setTab(demoUser.role === "Staff" ? "Staff" : "Admin");
     setPlatformData({
@@ -1176,7 +1184,7 @@ export default function App() {
             ? <ForcedPasswordChange userEmail={authUser?.email} onChanged={handleForcedPasswordChanged} onSignOut={handleSignOut} />
             : (
               <Suspense fallback={<main className="login-page" id="main-content"><section className="login-card"><p className="eyebrow">Internal platform</p><h1>Loading workspace...</h1></section></main>}>
-                <Platform role={role} tab={tab} setTab={setTab} userEmail={authUser?.email} onSignOut={handleSignOut} data={platformData} formerStaff={formerStaffAccess} />
+                <Platform role={role} tab={tab} setTab={setTab} userEmail={authUser?.email} onSignOut={handleSignOut} data={platformData} formerStaff={formerStaffAccess} onboardingOnly={onboardingOnly} />
               </Suspense>
             )
           : <PlatformLogin authLoading={authLoading} accessMessage={platformAccessMessage} setPlatform={setPlatform} onAuthenticated={handleAuthenticated} onDemoAuthenticated={handleDemoAuthenticated} />

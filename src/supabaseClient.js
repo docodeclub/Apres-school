@@ -18,6 +18,7 @@ const staffOfferFunctionName = import.meta.env.VITE_STAFF_OFFER_FUNCTION_NAME ||
 const staffPhotoBucket = "staff-profile-photos";
 const staffHrFilesBucket = "staff-hr-files";
 const employeeExpenseReceiptsBucket = "employee-expense-receipts";
+const staffOnboardingEvidenceBucket = "staff-onboarding-evidence";
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 
@@ -29,6 +30,94 @@ export const supabase = hasSupabaseConfig
       },
     })
   : null;
+
+function mapStaffOnboarding(record = {}) {
+  return {
+    id: record.id || "",
+    staffRecordId: record.staff_record_id || "",
+    status: record.status || "draft",
+    personalDetails: record.personal_details || {},
+    identityDocuments: record.identity_documents || { documents: [] },
+    dbsDetails: record.dbs_details || {},
+    safeguardingTraining: record.safeguarding_training || {},
+    professionalDetails: record.professional_details || {},
+    referencesDetails: record.references_details || [],
+    annualDeclarations: record.annual_declarations || {},
+    overseasCheck: record.overseas_check || {},
+    sectionStatus: record.section_status || {},
+    adminReview: record.admin_review || {},
+    submittedAt: record.submitted_at || "",
+    reviewedAt: record.reviewed_at || "",
+    updatedAt: record.updated_at || "",
+    staffName: record.staffName || "",
+    staffEmail: record.staffEmail || "",
+  };
+}
+
+export async function fetchMyStaffOnboarding() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.from("staff_onboarding_submissions").select("*").maybeSingle();
+  if (error) throw error;
+  if (data) return mapStaffOnboarding(data);
+  const { data: created, error: createError } = await supabase.rpc("save_my_staff_onboarding", { p_payload: {}, p_submit: false });
+  if (createError) throw createError;
+  return mapStaffOnboarding(created);
+}
+
+export async function saveMyStaffOnboarding(payload, submit = false) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("save_my_staff_onboarding", { p_payload: payload, p_submit: submit });
+  if (error) throw error;
+  return mapStaffOnboarding(data);
+}
+
+export async function uploadStaffOnboardingEvidence(file, section) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const allowedTypes = new Set(["application/pdf", "image/png", "image/jpeg", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]);
+  if (!file || !allowedTypes.has(file.type)) throw new Error("Upload a PDF, PNG, JPG, DOC or DOCX file.");
+  if (file.size > 10 * 1024 * 1024) throw new Error("Files must be 10 MB or smaller.");
+  const { data: staffId, error: staffError } = await supabase.rpc("current_user_staff_record_id");
+  if (staffError || !staffId) throw staffError || new Error("No staff record is linked to this account.");
+  const safeName = String(file.name || "evidence").replace(/[^a-zA-Z0-9._-]+/g, "-");
+  const path = `${staffId}/${String(section || "evidence").replace(/[^a-z0-9-]+/gi, "-")}/${crypto.randomUUID()}-${safeName}`;
+  const { error } = await supabase.storage.from(staffOnboardingEvidenceBucket).upload(path, file, { contentType: file.type, upsert: false });
+  if (error) throw error;
+  return { path, name: file.name, mimeType: file.type };
+}
+
+export async function fetchAdminStaffOnboarding() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.from("staff_onboarding_submissions").select("*").order("updated_at", { ascending: false });
+  if (error) throw error;
+  const rows = data || [];
+  const ids = rows.map((row) => row.staff_record_id);
+  let staff = [];
+  if (ids.length) {
+    const result = await supabase.from("staff_records").select("id, preferred_name, profile_id, profiles!staff_records_profile_id_fkey(full_name,email)").in("id", ids);
+    if (result.error) throw result.error;
+    staff = result.data || [];
+  }
+  const byId = Object.fromEntries(staff.map((person) => [person.id, person]));
+  return rows.map((row) => {
+    const person = byId[row.staff_record_id] || {};
+    const profile = Array.isArray(person.profiles) ? person.profiles[0] : person.profiles;
+    return mapStaffOnboarding({ ...row, staffName: profile?.full_name || person.preferred_name || "Staff member", staffEmail: profile?.email || "" });
+  });
+}
+
+export async function reviewStaffOnboarding(submissionId, decision, note = "") {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("review_staff_onboarding", { p_submission_id: submissionId, p_decision: decision, p_note: note || null });
+  if (error) throw error;
+  return mapStaffOnboarding(data);
+}
+
+export async function createStaffOnboardingEvidenceUrl(path) {
+  if (!supabase || !path) return "";
+  const { data, error } = await supabase.storage.from(staffOnboardingEvidenceBucket).createSignedUrl(path, 900);
+  if (error) throw error;
+  return data?.signedUrl || "";
+}
 
 function mapEmployeeExpenseClaim(record = {}) {
   return {
@@ -758,19 +847,19 @@ export async function getProfileRole(userId) {
 }
 
 export async function getProfileAccess(userId) {
-  if (!supabase || !userId) return { role: "Staff", mustChangePassword: false, active: false, staffAccess: false, formerStaff: false };
+  if (!supabase || !userId) return { role: "Staff", mustChangePassword: false, active: false, staffAccess: false, formerStaff: false, onboardingOnly: false };
   const { data, error } = await supabase
     .from("profiles")
-    .select("role, active, must_change_password, staff_access_status")
+    .select("role, active, must_change_password, staff_access_status, onboarding_only")
     .eq("id", userId)
     .maybeSingle();
 
   if (error) throw error;
   const formerStaff = data?.staff_access_status === "former";
   if (formerStaff) {
-    return { role: "Staff", mustChangePassword: false, active: false, staffAccess: true, formerStaff: true };
+    return { role: "Staff", mustChangePassword: false, active: false, staffAccess: true, formerStaff: true, onboardingOnly: false };
   }
-  if (!data?.active) return { role: "Staff", mustChangePassword: false, active: false, staffAccess: false, formerStaff: false };
+  if (!data?.active) return { role: "Staff", mustChangePassword: false, active: false, staffAccess: false, formerStaff: false, onboardingOnly: false };
 
   const storedRole = String(data.role || "").toLowerCase();
   const staffAccess = ["staff", "manager", "admin", "superadmin"].includes(storedRole);
@@ -781,6 +870,7 @@ export async function getProfileAccess(userId) {
     active: true,
     staffAccess,
     formerStaff: false,
+    onboardingOnly: Boolean(data.onboarding_only),
   };
 }
 

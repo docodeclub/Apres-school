@@ -172,7 +172,7 @@ async function activateOnboarding(actor: any, offerId: string, signedContractAlr
     if (error || !data.user) throw error || new Error("Unable to create the staff login.");
     userId = data.user.id;
   }
-  const { error: profileError } = await supabase.from("profiles").upsert({ id: userId, email: offer.account_email, full_name: application.name, phone: application.phone || null, role: offer.access_role, active: true, must_change_password: true, updated_at: new Date().toISOString() }, { onConflict: "id" });
+  const { error: profileError } = await supabase.from("profiles").upsert({ id: userId, email: offer.account_email, full_name: application.name, phone: application.phone || null, role: offer.access_role, active: true, must_change_password: true, onboarding_only: true, updated_at: new Date().toISOString() }, { onConflict: "id" });
   if (profileError) throw profileError;
   let { data: staffRecord, error: staffReadError } = await supabase.from("staff_records").select("id").eq("profile_id", userId).maybeSingle();
   if (staffReadError) throw staffReadError;
@@ -198,6 +198,13 @@ async function activateOnboarding(actor: any, offerId: string, signedContractAlr
     if (error) throw error;
   }
   if (!signedContractAlreadyHeld) await createOfferDocument(actor, offer, application, staffRecord.id);
+  const personal = {
+    legalName: application.name || "", preferredName: firstName(application.name), dateOfBirth: application.date_of_birth || "",
+    email: offer.account_email || "", phone: application.phone || "", nationalInsuranceNumber: "", address: application.address || "",
+    nationality: "", emergencyContactName: "", emergencyContactPhone: "", startDate: offer.start_date || "",
+  };
+  const { error: intakeError } = await supabase.from("staff_onboarding_submissions").upsert({ staff_record_id: staffRecord.id, personal_details: personal, status: "draft", updated_at: new Date().toISOString() }, { onConflict: "staff_record_id" });
+  if (intakeError) throw intakeError;
   const now = new Date().toISOString();
   await supabase.from("staff_offers").update({ status: "onboarding", staff_record_id: staffRecord.id, account_created_at: now, response_token_hash: null, updated_by: actor.id, updated_at: now }).eq("id", offer.id);
   await supabase.from("staff_candidate_onboarding").update({ staff_record_id: staffRecord.id, status: "in_progress", section_status: mergeJson(await onboardingSections(offer.id), signedContractAlreadyHeld
@@ -211,7 +218,7 @@ async function activateOnboarding(actor: any, offerId: string, signedContractAlr
       "Your application answers have been carried across to save you re-entering them. They remain unverified until the relevant evidence has been reviewed by our team.",
     ],
     details: [{ label: "Login email", value: offer.account_email }, { label: "Temporary password", value: temporaryPassword, monospace: true }, { label: "Role", value: offer.job_title }],
-    action: { label: "Open staff onboarding", url: staffPortalUrl }, notice: "Change your temporary password when prompted. Do not send identity, DBS or right-to-work evidence by ordinary email.", portalLabel: "Staff onboarding", footerText: "Secure employee records and safer recruitment.",
+    action: { label: "Complete your onboarding", url: `${staffPortalUrl}?section=onboarding` }, notice: "Change your temporary password when prompted. Your link opens a private form for your DBS, identity, right-to-work, training, references and declarations. Do not send this evidence by ordinary email.", portalLabel: "Staff onboarding", footerText: "Secure employee records and safer recruitment.",
   }));
   await logEmail({ offer, actorId: actor.id, recipient: offer.account_email, subject: "Welcome to the Après School staff platform", status: email.sent ? "sent" : "queued_without_provider", providerMessageId: email.id, staffRecordId: staffRecord.id });
   await audit(actor.id, "staff_onboarding_activated", offer.id, { staffRecordId: staffRecord.id, userId, emailSent: email.sent });
