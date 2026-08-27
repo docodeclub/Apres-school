@@ -149,6 +149,46 @@ export async function submitStaffApplication(application) {
   return data.application;
 }
 
+function mapStaffApplication(record = {}) {
+  return {
+    id: record.id,
+    name: record.name || "",
+    email: record.email || "",
+    phone: record.phone || "",
+    dateOfBirth: record.date_of_birth || "",
+    address: record.address || "",
+    ...(record.application_data || {}),
+    status: record.status || "new",
+    adminNote: record.admin_note || "",
+    reviewedAt: record.reviewed_at || "",
+    reviewedBy: record.reviewed_by || "",
+    createdAt: record.created_at || "",
+    updatedAt: record.updated_at || "",
+    source: "supabase",
+  };
+}
+
+export async function fetchStaffApplications() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase
+    .from("staff_applications")
+    .select("id,name,email,phone,date_of_birth,address,application_data,status,admin_note,reviewed_at,reviewed_by,created_at,updated_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapStaffApplication);
+}
+
+export async function reviewStaffApplication(applicationId, status, adminNote = "") {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("review_staff_application", {
+    p_application_id: applicationId,
+    p_status: status,
+    p_admin_note: adminNote || null,
+  });
+  if (error) throw error;
+  return mapStaffApplication(Array.isArray(data) ? data[0] : data);
+}
+
 export async function signInStaff(email, password) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });

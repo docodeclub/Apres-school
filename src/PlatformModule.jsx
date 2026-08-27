@@ -7414,7 +7414,10 @@ function csvCell(value) {
 
 function UserManagement({ data }) {
   const [state, setState] = useState(() => readUserAdminState());
-  const [applications, setApplications] = useState(() => readJson(staffApplicationsStorageKey, []));
+  const [applications, setApplications] = useState(() => hasSupabaseConfig ? [] : readJson(staffApplicationsStorageKey, []));
+  const [applicationsLoading, setApplicationsLoading] = useState(hasSupabaseConfig);
+  const [applicationsError, setApplicationsError] = useState("");
+  const [applicationActionId, setApplicationActionId] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState(data.staff[0]?.id || "");
   const [accountMessage, setAccountMessage] = useState("");
   const [busyAccountId, setBusyAccountId] = useState("");
@@ -7459,6 +7462,25 @@ function UserManagement({ data }) {
     if (rolloutFilter === "Staff") return row.role === "Staff";
     return true;
   });
+
+  useEffect(() => {
+    if (!hasSupabaseConfig) return undefined;
+    let active = true;
+    setApplicationsLoading(true);
+    setApplicationsError("");
+    loadSupabaseModule()
+      .then(({ fetchStaffApplications }) => fetchStaffApplications())
+      .then((records) => {
+        if (active) setApplications(records);
+      })
+      .catch((error) => {
+        if (active) setApplicationsError(error?.message || "Unable to load staff applications.");
+      })
+      .finally(() => {
+        if (active) setApplicationsLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   function saveState(next) {
     setState(next);
@@ -7611,33 +7633,26 @@ function UserManagement({ data }) {
 
   function saveApplications(next) {
     setApplications(next);
-    localStorage.setItem(staffApplicationsStorageKey, JSON.stringify(next));
+    if (!hasSupabaseConfig) localStorage.setItem(staffApplicationsStorageKey, JSON.stringify(next));
   }
 
-  function approveApplication(application) {
-    const id = `onboarded-${Date.now()}`;
-    const staffProfile = staffProfileFromApplication(application, id);
-    saveState({
-      ...state,
-      [id]: {
-        id,
-        name: application.name,
-        email: application.email,
-        role: application.preferredRole?.includes("Manager") || application.preferredRole?.includes("Lead") ? "Manager" : "Staff",
-        status: "Invited",
-        source: "approved onboarding",
-        scope: application.preferredSchool || "Assignment needed",
-        invitedAt: new Date().toISOString(),
-      },
-    });
-    saveOnboardedStaffProfile(staffProfile);
-    saveApplications(applications.map((item) => item.id === application.id ? { ...item, status: "Approved", approvedAt: new Date().toISOString(), staffProfileId: id } : item));
-    addAuditLog("Staff application approved", `${application.name} approved, SCR profile opened and account invite created`);
-  }
-
-  function rejectApplication(application) {
-    saveApplications(applications.map((item) => item.id === application.id ? { ...item, status: "Rejected", rejectedAt: new Date().toISOString() } : item));
-    addAuditLog("Staff application rejected", `${application.name} marked as rejected`);
+  async function setApplicationStatus(application, status) {
+    if (!hasSupabaseConfig) {
+      saveApplications(applications.map((item) => item.id === application.id ? { ...item, status } : item));
+      return;
+    }
+    setApplicationActionId(application.id);
+    setApplicationsError("");
+    try {
+      const { reviewStaffApplication } = await loadSupabaseModule();
+      const updated = await reviewStaffApplication(application.id, status, application.adminNote || "");
+      setApplications((current) => current.map((item) => item.id === updated.id ? updated : item));
+      addAuditLog("Staff application reviewed", `${application.name} marked as ${humaniseStatus(status)}`);
+    } catch (error) {
+      setApplicationsError(error?.message || "Unable to save the application decision.");
+    } finally {
+      setApplicationActionId("");
+    }
   }
 
   return (
@@ -7756,11 +7771,13 @@ function UserManagement({ data }) {
           <div>
             <p className="eyebrow">Staff onboarding</p>
             <h2>Review applications before accounts are created.</h2>
-            <p>Submitted forms stay pending until an admin approves them. Approval creates an invited platform account ready for site and hours assignment.</p>
+            <p>Submitted forms are loaded from protected storage. Review or shortlist an application here before creating the staff record and account.</p>
           </div>
-          <Badge value={`${applications.filter((item) => item.status === "Pending approval").length} pending`} />
+          <Badge value={`${applications.filter((item) => ["new", "reviewing", "Pending approval"].includes(item.status)).length} pending`} />
         </div>
         <div className="onboarding-list">
+          {applicationsLoading && <EmptyList title="Loading applications" text="Retrieving protected application records…" />}
+          {applicationsError && <div className="form-status error" role="alert">{applicationsError}</div>}
           {applications.map((application) => (
             <article className="onboarding-card" key={application.id}>
               <div className="crm-card-head">
@@ -7769,18 +7786,40 @@ function UserManagement({ data }) {
                   <h3>{application.name}</h3>
                   <p>{application.email} · {application.phone}</p>
                 </div>
-                <Badge value={application.status} />
+                <Badge value={humaniseStatus(application.status)} />
               </div>
               <p>{application.preferredSchool || "No preferred school"} · {application.availability || "Availability not provided"}</p>
-              <small>Qualification: {application.hasQualification} · Right to work: {application.rightToWork}</small>
+              <small>Qualification: {application.hasQualification || "Not recorded"} · Right to work: {application.rightToWork || "Not recorded"}</small>
+              <details className="onboarding-application-details">
+                <summary>View full application</summary>
+                <dl>
+                  <div><dt>Submitted</dt><dd>{application.createdAt ? formatDateTime(application.createdAt) : "Not recorded"}</dd></div>
+                  <div><dt>Date of birth</dt><dd>{application.dateOfBirth || "Not recorded"}</dd></div>
+                  <div><dt>Address</dt><dd>{application.address || "Not recorded"}</dd></div>
+                  <div><dt>Employment history</dt><dd>{application.employmentHistory || "Not provided"}</dd></div>
+                  <div><dt>Employment gaps</dt><dd>{application.employmentGaps || "Not recorded"}</dd></div>
+                  <div><dt>References</dt><dd>{application.references || "Not provided"}</dd></div>
+                  <div><dt>Qualifications</dt><dd>{application.qualifications || "Not provided"}</dd></div>
+                  <div><dt>First aid</dt><dd>{application.firstAidDetails || "Not provided"}</dd></div>
+                  <div><dt>DBS Update Service</dt><dd>{application.dbsUpdateService || "Not recorded"}</dd></div>
+                  <div><dt>Criminal disclosure</dt><dd>{application.criminalDisclosure || "Not recorded"}</dd></div>
+                  <div><dt>Barred-list disclosure</dt><dd>{application.barredListDisclosure || "Not recorded"}</dd></div>
+                  <div><dt>Lived abroad</dt><dd>{application.livedAbroad || "Not recorded"}{application.overseasDetails ? ` — ${application.overseasDetails}` : ""}</dd></div>
+                  <div><dt>Right to work type</dt><dd>{application.rightToWorkType || "Not recorded"}</dd></div>
+                  <div><dt>Medical fitness</dt><dd>{application.medicalFitness || "Not recorded"}</dd></div>
+                  <div><dt>Personal statement</dt><dd>{application.personalStatement || "Not provided"}</dd></div>
+                  <div><dt>Safeguarding declaration</dt><dd>{application.safeguardingStatement || "Not recorded"}</dd></div>
+                </dl>
+              </details>
               <label>Admin note<textarea rows="2" value={application.adminNote || ""} onChange={(event) => saveApplications(applications.map((item) => item.id === application.id ? { ...item, adminNote: event.target.value } : item))} /></label>
               <div className="hero-actions">
-                <button className="button book" type="button" disabled={application.status === "Approved"} onClick={() => approveApplication(application)}>Approve & Invite</button>
-                <button className="button light" type="button" disabled={application.status === "Rejected"} onClick={() => rejectApplication(application)}>Reject</button>
+                <button className="button light" type="button" disabled={applicationActionId === application.id || application.status === "reviewing"} onClick={() => setApplicationStatus(application, "reviewing")}>Mark reviewing</button>
+                <button className="button book" type="button" disabled={applicationActionId === application.id || application.status === "shortlisted"} onClick={() => setApplicationStatus(application, "shortlisted")}>Shortlist</button>
+                <button className="button light" type="button" disabled={applicationActionId === application.id || application.status === "rejected"} onClick={() => setApplicationStatus(application, "rejected")}>Reject</button>
               </div>
             </article>
           ))}
-          {!applications.length && <EmptyList title="No applications yet" text="Public staff application submissions will appear here for approval." />}
+          {!applicationsLoading && !applicationsError && !applications.length && <EmptyList title="No applications yet" text="Public staff application submissions will appear here for review." />}
         </div>
       </section>
       <section className="user-grid">
