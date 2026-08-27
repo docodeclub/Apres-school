@@ -32,6 +32,7 @@
     "check:scr-assurance": "node scripts/scr-assurance-wizard-check.mjs",
     "check:holiday": "node scripts/holiday-contract-check.mjs",
     "check:staff-applications": "node scripts/staff-application-contract-check.mjs",
+    "check:staff-offers": "node scripts/staff-offer-onboarding-check.mjs",
     "check:pricing-groups": "node scripts/pricing-groups-contract-check.mjs",
     "check:booking-live": "node scripts/booking-live-readiness.mjs",
     "check:booking-live:strict": "node scripts/booking-live-readiness.mjs --strict",

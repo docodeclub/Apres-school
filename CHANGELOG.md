@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-27 - Job offers and candidate onboarding
+
+- Added an Admin offer wizard directly to each protected staff application, covering role, workplace, manager, contract, pay, start date and response deadline.
+- Added branded secure offer emails with personal accept and decline links and an internal response notification.
+- Carried application answers into onboarding as unverified declarations, while keeping identity, right-to-work, DBS, references and other safer-recruitment checks incomplete until evidence is reviewed.
+- Added one-step creation of the accepted candidate's staff login, staff record, SCR checklist and formal offer document for signature.
+- Protected candidate links with hashed tokens, no-index/no-store responses and family-account collision checks.
+
 ## 2026-08-27 - Live staff application review
 
 - Connected the Staff Onboarding review area to the protected `staff_applications` database records instead of the legacy browser-only list.

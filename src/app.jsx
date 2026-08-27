@@ -272,6 +272,7 @@ const pagePaths = {
   Policies: "/policies",
   "Launch Booking": "/launch-booking",
   "Booking Lab": "/booking-lab",
+  "Staff Offer": "/staff-offer",
 };
 const pathPages = Object.fromEntries(Object.entries(pagePaths).map(([page, path]) => [path, page]));
 const legacyBookingPaths = new Set(["/bookings", "/magicbooking", "/book-pebble"]);
@@ -436,6 +437,7 @@ const pageMeta = {
   Policies: ["Policies | Après School", "Safeguarding, behaviour, health and safety, privacy and complaints policy summaries."],
   "Launch Booking": ["Family Booking | Après School", "Book Après School wraparound care and holiday clubs securely online."],
   "Booking Lab": ["Booking Lab | Après School", "Private booking system lab for Après School testing."],
+  "Staff Offer": ["Your Job Offer | Après School", "Review and respond to your secure Après School job offer."],
 };
 const pageKeywords = {
   Home: "Après School, wraparound care for schools, holiday camps, extended school provision, after school club, breakfast club, school partnerships",
@@ -447,6 +449,7 @@ const pageKeywords = {
   "Booking Lab": "Après School booking lab",
 };
 const privatePrototypePages = new Set(["Booking Lab", "Launch Booking"]);
+const privateNoindexPages = new Set([...privatePrototypePages, "Staff Offer"]);
 
 function ensureMetaTag(selector, attributes) {
   let element = document.querySelector(selector);
@@ -885,7 +888,7 @@ export default function App() {
     if (twitterTitle) twitterTitle.setAttribute("content", meta[0]);
     if (twitterDescription) twitterDescription.setAttribute("content", meta[1]);
     if (keywords) keywords.setAttribute("content", pageKeywords[page] || pageKeywords.Home);
-    robots.setAttribute("content", privatePrototypePages.has(page) ? "noindex, nofollow" : "index, follow");
+    robots.setAttribute("content", privateNoindexPages.has(page) ? "noindex, nofollow" : "index, follow");
     const keepPaymentReturnPath = page === "Launch Booking" && isBookingPaymentReturnPath(window.location.pathname);
     const nextPath = pagePaths[page] || "/";
     const canonicalUrl = `https://www.apres-school.co.uk${nextPath}`;
@@ -897,7 +900,7 @@ export default function App() {
 
   useEffect(() => {
     const existing = document.getElementById("apres-structured-data");
-    const data = !platform && !passwordRecovery && !privatePrototypePages.has(page) ? structuredDataForPage(page) : null;
+    const data = !platform && !passwordRecovery && !privateNoindexPages.has(page) ? structuredDataForPage(page) : null;
     if (!data) {
       existing?.remove();
       return;
@@ -1297,9 +1300,96 @@ function PublicSite({ page, setPage, setPlatform }) {
           <BookingLab setPage={setPage} mode="launch" />
         </Suspense>
       )}
-      <Footer setPage={setPage} />
-      <MobileCTA page={page} setPage={setPage} />
+      {page === "Staff Offer" && <StaffOfferResponse />}
+      {page !== "Staff Offer" && <Footer setPage={setPage} />}
+      {page !== "Staff Offer" && <MobileCTA page={page} setPage={setPage} />}
     </main>
+  );
+}
+
+function StaffOfferResponse() {
+  const token = new URLSearchParams(window.location.search).get("token") || "";
+  const [offer, setOffer] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    if (!token) {
+      setError("This offer link is incomplete. Please use the personal link in your offer email.");
+      setLoading(false);
+      return undefined;
+    }
+    loadSupabaseModule()
+      .then(({ fetchPublicStaffOffer }) => fetchPublicStaffOffer(token))
+      .then((result) => { if (active) setOffer(result.offer); })
+      .catch((loadError) => { if (active) setError(loadError?.message || "This offer could not be opened."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [token]);
+
+  async function respond(decision) {
+    setBusy(decision);
+    setError("");
+    try {
+      const { respondToStaffOffer } = await loadSupabaseModule();
+      const result = await respondToStaffOffer(token, decision);
+      setOffer((current) => ({ ...current, status: result.status }));
+      setMessage(result.message);
+    } catch (responseError) {
+      setError(responseError?.message || "Your response could not be saved. Please try again.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const canRespond = offer?.status === "sent";
+  return (
+    <section className="staff-offer-response-page">
+      <div className="staff-offer-response-card">
+        <div className="staff-offer-response-heading">
+          <span className="staff-offer-lock" aria-hidden="true"><LockKeyhole size={24} /></span>
+          <div><p className="eyebrow">Secure recruitment</p><h1>Your Après School job offer</h1></div>
+        </div>
+        {loading && <div className="staff-offer-response-state"><strong>Opening your offer…</strong><span>We are checking your secure personal link.</span></div>}
+        {error && <div className="form-status error" role="alert">{error}</div>}
+        {offer && (
+          <>
+            <div className="staff-offer-welcome">
+              <p>Dear {offer.candidateName},</p>
+              <h2>We would love you to join us as {offer.jobTitle}.</h2>
+              {offer.personalMessage && <p>{offer.personalMessage}</p>}
+            </div>
+            <dl className="staff-offer-public-terms">
+              <div><dt>Role</dt><dd>{offer.jobTitle}</dd></div>
+              {offer.schoolName && <div><dt>Primary workplace</dt><dd>{offer.schoolName}</dd></div>}
+              <div><dt>Start date</dt><dd>{offer.startDate ? new Date(`${offer.startDate}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }) : "To be agreed"}</dd></div>
+              <div><dt>{offer.payBasis === "salary" ? "Annual salary" : "Hourly rate"}</dt><dd>{new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(offer.payAmount || 0)}{offer.payBasis === "salary" ? " per year" : " per hour"}</dd></div>
+              {offer.contractHours != null && <div><dt>Contracted hours</dt><dd>{offer.contractHours} hours</dd></div>}
+              {offer.contractType && <div><dt>Contract</dt><dd>{offer.contractType}</dd></div>}
+              {offer.managerName && <div><dt>Line manager</dt><dd>{offer.managerName}</dd></div>}
+              <div><dt>Respond by</dt><dd>{offer.expiresAt ? new Date(offer.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }) : "As soon as possible"}</dd></div>
+            </dl>
+            <details className="staff-offer-full-terms">
+              <summary>Read the complete offer</summary>
+              <pre>{offer.renderedOffer}</pre>
+            </details>
+            <div className="staff-offer-safer-note"><ShieldCheck size={24} /><p><strong>Safer recruitment still applies.</strong> Accepting this offer starts onboarding. Identity, right-to-work, references and DBS checks remain subject to evidence and approval.</p></div>
+            {message && <div className="form-status success" role="status">{message}</div>}
+            {canRespond && !message && (
+              <div className="staff-offer-response-actions">
+                <button className="button light" type="button" disabled={Boolean(busy)} onClick={() => respond("decline")}>{busy === "decline" ? "Recording…" : "Decline offer"}</button>
+                <button className="button book" type="button" disabled={Boolean(busy)} onClick={() => respond("accept")}>{busy === "accept" ? "Accepting…" : "Accept offer"}</button>
+              </div>
+            )}
+            {!canRespond && !message && <div className={`staff-offer-response-state ${offer.status}`}><strong>{offer.status === "accepted" || offer.status === "onboarding" ? "Offer accepted" : offer.status === "declined" ? "Offer declined" : "This offer is no longer awaiting a response"}</strong><span>{offer.status === "expired" ? "Please contact Après School if you would still like to discuss this role." : "Your response is securely recorded."}</span></div>}
+          </>
+        )}
+        <p className="staff-offer-security-footer">This personal page contains employment information. Do not forward its link. If anything looks incorrect, reply to the offer email before responding.</p>
+      </div>
+    </section>
   );
 }
 

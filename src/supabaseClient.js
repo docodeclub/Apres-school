@@ -14,6 +14,7 @@ const staffingNotificationFunctionName = import.meta.env.VITE_STAFFING_NOTIFICAT
 const employeeDocumentFunctionName = import.meta.env.VITE_EMPLOYEE_DOCUMENT_FUNCTION_NAME || "manage-employee-document";
 const expenseNotificationFunctionName = import.meta.env.VITE_EXPENSE_NOTIFICATION_FUNCTION_NAME || "notify-expense-claim";
 const parentPricingGroupFunctionName = import.meta.env.VITE_PARENT_PRICING_GROUP_FUNCTION_NAME || "manage-parent-pricing-group";
+const staffOfferFunctionName = import.meta.env.VITE_STAFF_OFFER_FUNCTION_NAME || "manage-staff-offer";
 const staffPhotoBucket = "staff-profile-photos";
 const staffHrFilesBucket = "staff-hr-files";
 const employeeExpenseReceiptsBucket = "employee-expense-receipts";
@@ -187,6 +188,100 @@ export async function reviewStaffApplication(applicationId, status, adminNote = 
   });
   if (error) throw error;
   return mapStaffApplication(Array.isArray(data) ? data[0] : data);
+}
+
+function mapStaffOffer(row = {}) {
+  const onboarding = Array.isArray(row.staff_candidate_onboarding) ? row.staff_candidate_onboarding[0] : row.staff_candidate_onboarding;
+  return {
+    id: row.id,
+    applicationId: row.application_id,
+    status: row.status || "draft",
+    jobTitle: row.job_title || "",
+    schoolName: row.school_name || "",
+    managerName: row.manager_name || "",
+    employmentType: row.employment_type || "",
+    contractType: row.contract_type || "",
+    payBasis: row.pay_basis || "hourly",
+    payAmount: row.pay_amount == null ? "" : Number(row.pay_amount),
+    contractHours: row.contract_hours == null ? "" : Number(row.contract_hours),
+    startDate: row.start_date || "",
+    expiresAt: row.offer_expires_at || "",
+    accountEmail: row.account_email || "",
+    accessRole: row.access_role || "staff",
+    personalMessage: row.personal_message || "",
+    renderedOffer: row.rendered_offer || "",
+    sentAt: row.sent_at || "",
+    acceptedAt: row.accepted_at || "",
+    declinedAt: row.declined_at || "",
+    staffRecordId: row.staff_record_id || "",
+    accountCreatedAt: row.account_created_at || "",
+    onboarding: onboarding ? {
+      id: onboarding.id,
+      status: onboarding.status,
+      sectionStatus: onboarding.section_status || {},
+      staffRecordId: onboarding.staff_record_id || "",
+    } : null,
+  };
+}
+
+export async function fetchStaffOffers() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase
+    .from("staff_offers")
+    .select("id,application_id,status,job_title,school_name,manager_name,employment_type,contract_type,pay_basis,pay_amount,contract_hours,start_date,offer_expires_at,account_email,access_role,personal_message,rendered_offer,sent_at,accepted_at,declined_at,staff_record_id,account_created_at,staff_candidate_onboarding(id,status,section_status,staff_record_id)")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapStaffOffer);
+}
+
+export async function saveStaffOffer(payload) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("save_staff_offer", {
+    p_application_id: payload.applicationId,
+    p_job_title: payload.jobTitle,
+    p_school_name: payload.schoolName || null,
+    p_manager_name: payload.managerName || null,
+    p_employment_type: payload.employmentType || null,
+    p_contract_type: payload.contractType || null,
+    p_pay_basis: payload.payBasis || "hourly",
+    p_pay_amount: payload.payAmount === "" ? null : Number(payload.payAmount),
+    p_contract_hours: payload.contractHours === "" ? null : Number(payload.contractHours),
+    p_start_date: payload.startDate || null,
+    p_offer_expires_at: payload.expiresAt || null,
+    p_account_email: payload.accountEmail,
+    p_access_role: payload.accessRole || "staff",
+    p_personal_message: payload.personalMessage || null,
+    p_rendered_offer: payload.renderedOffer,
+  });
+  if (error) throw error;
+  return mapStaffOffer(Array.isArray(data) ? data[0] : data);
+}
+
+async function manageStaffOffer(body) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.functions.invoke(staffOfferFunctionName, { body });
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail || error.message || "Staff offer request failed.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data || {};
+}
+
+export async function sendStaffOffer(offerId) {
+  return manageStaffOffer({ action: "send", offerId });
+}
+
+export async function activateCandidateOnboarding(offerId) {
+  return manageStaffOffer({ action: "activate", offerId });
+}
+
+export async function fetchPublicStaffOffer(token) {
+  return manageStaffOffer({ action: "view", token });
+}
+
+export async function respondToStaffOffer(token, decision) {
+  return manageStaffOffer({ action: "respond", token, decision });
 }
 
 export async function signInStaff(email, password) {
