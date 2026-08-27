@@ -7433,7 +7433,7 @@ function defaultStaffOfferDraft(application = {}, offer = null) {
 }
 
 function staffOfferText(application, offer) {
-  const pay = offer.payAmount === "" ? "To be confirmed" : `${formatMoney(Number(offer.payAmount))}${offer.payBasis === "hourly" ? " per hour" : " per year"}`;
+  const pay = offer.payAmount === "" ? "To be confirmed" : `${formatCurrency(Number(offer.payAmount))}${offer.payBasis === "hourly" ? " per hour" : " per year"}`;
   const date = offer.startDate ? new Date(`${offer.startDate}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "To be agreed";
   return [
     `Dear ${application.name || "Candidate"},`,
@@ -8085,7 +8085,7 @@ function StaffOfferWizard({ application, offer, draft, step, setStep, updateDraf
               <div><dt>Workplace</dt><dd>{draft.schoolName || "Organisation-wide / to be assigned"}</dd></div>
               <div><dt>Start date</dt><dd>{draft.startDate ? formatDate(draft.startDate) : "Not recorded"}</dd></div>
               <div><dt>Contract</dt><dd>{draft.contractType || "Not recorded"} · {draft.employmentType || "Not recorded"}</dd></div>
-              <div><dt>Pay</dt><dd>{draft.payAmount === "" ? "Not recorded" : `${formatMoney(Number(draft.payAmount))}${draft.payBasis === "hourly" ? " per hour" : " per year"}`}</dd></div>
+              <div><dt>Pay</dt><dd>{draft.payAmount === "" ? "Not recorded" : `${formatCurrency(Number(draft.payAmount))}${draft.payBasis === "hourly" ? " per hour" : " per year"}`}</dd></div>
               <div><dt>Account</dt><dd>{draft.accountEmail}</dd></div>
               <div><dt>Imported application</dt><dd>Saved as unverified declarations for Admin evidence checks.</dd></div>
             </dl>
