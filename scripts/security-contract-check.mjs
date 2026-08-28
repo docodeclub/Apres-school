@@ -20,6 +20,7 @@ expect("Registration requires email verification", registration.includes('type: 
 expect("Registration is rate limited", registration.includes('"parent-registration"'));
 expect("Reset URL is server controlled", reset.includes("const loginUrl = defaultLoginUrl") && !reset.includes("input.loginUrl"));
 expect("Reset is rate limited", reset.includes('"parent-password-reset"'));
+expect("Reset uses direct Auth lookup", reset.includes('.rpc("find_auth_user_id_by_email"') && !reset.includes("auth.admin.listUsers"));
 expect("Registration passwords are not persisted", bookingLab.includes("...safeDraft") && !bookingLab.includes('JSON.stringify(next));\n      return next;\n    });\n  }\n\n  function updateChildRegistration'));
 expect("Staff application uses protected function", staffApplication.includes("submitStaffApplication(application)") && !staffApplication.includes('localStorage.setItem(staffApplicationsStorageKey'));
 expect("Prospect list is not bundled into CRM", !crm.includes('import("./outreachProspects.js")'));

@@ -256,25 +256,20 @@ async function resolveParentUser(email: string) {
 }
 
 async function findAuthUserByEmail(email: string) {
-  const targetEmail = email.toLowerCase();
-  let page = 1;
-  while (page <= 20) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
-    if (error) return findAuthUserByEmailFromDatabase(email, error.message);
-    const found = data.users.find((user) => user.email?.toLowerCase() === targetEmail);
-    if (found) return found;
-    if (data.users.length < 1000) break;
-    page += 1;
-  }
+  // Resolve the user directly in Postgres. Paging through the complete Auth
+  // directory is slow and can exhaust an Edge Function's compute allowance as
+  // the parent base grows.
+  const databaseUser = await findAuthUserByEmailFromDatabase(email);
+  if (databaseUser) return databaseUser;
   return null;
 }
 
-async function findAuthUserByEmailFromDatabase(email: string, adminApiError: string) {
+async function findAuthUserByEmailFromDatabase(email: string) {
   const { data, error } = await supabase
     .rpc("find_auth_user_id_by_email", { p_email: email })
     .maybeSingle();
 
-  if (error) throw new Error(`Supabase Auth could not inspect existing users: ${adminApiError}`);
+  if (error) throw error;
   if (!data?.id) return null;
   return { id: data.id, email: data.email, user_metadata: {} };
 }
