@@ -1953,9 +1953,37 @@ function Notice({ title, text }) {
 }
 
 function HolidayClubs({ setPage }) {
+  const [campSchedule, setCampSchedule] = useState([]);
+  const [campScheduleState, setCampScheduleState] = useState(hasSupabaseConfig ? "loading" : "unavailable");
   const holidaySites = bookingSites
     .filter((site) => site.category === "Holiday Camps")
     .map((site) => ({ ...site, url: holidayCampBookingUrl(site) }));
+
+  useEffect(() => {
+    let active = true;
+    if (!hasSupabaseConfig) return () => { active = false; };
+    loadSupabaseModule()
+      .then(({ fetchPublicHolidayCampSchedule }) => fetchPublicHolidayCampSchedule())
+      .then((rows) => {
+        if (!active) return;
+        setCampSchedule(rows);
+        setCampScheduleState("ready");
+      })
+      .catch(() => {
+        if (active) setCampScheduleState("error");
+      });
+    return () => { active = false; };
+  }, []);
+
+  const normaliseVenue = (value) => String(value || "")
+    .toLowerCase().replace(/holiday (camp|enrichment) at|school|prep|the|[^a-z0-9]/g, "");
+  const scheduleForSite = (site) => campSchedule.filter((row) => {
+    const cardVenue = normaliseVenue(site.title);
+    const scheduleVenue = normaliseVenue(row.siteName);
+    return cardVenue === scheduleVenue || cardVenue.includes(scheduleVenue) || scheduleVenue.includes(cardVenue);
+  });
+  const formatCampDate = (value) => new Date(`${value}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+  const formatCampTime = (value) => new Date(value).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
   return (
     <PageShell eyebrow="Holiday Clubs" title="Holiday clubs across five school venues.">
@@ -2005,8 +2033,11 @@ function HolidayClubs({ setPage }) {
           </article>
         </div>
         <div className="camp-site-grid">
-          {holidaySites.map((site) => (
-            <article className="camp-site-card" key={site.title}>
+          {holidaySites.map((site) => {
+            const liveDates = scheduleForSite(site);
+            const firstDate = liveDates[0];
+            return (
+            <article className={`camp-site-card ${liveDates.length ? "has-live-dates" : "awaiting-dates"}`} key={site.title}>
               <HolidayResponsiveImage
                 className="camp-site-image"
                 src={site.image}
@@ -2024,13 +2055,26 @@ function HolidayClubs({ setPage }) {
                   <span>{site.area}</span>
                   <span>{site.ages}</span>
                 </div>
+                <div className="camp-site-schedule" aria-live="polite">
+                  {campScheduleState === "loading" && <span>Checking upcoming dates…</span>}
+                  {campScheduleState === "error" && <span>Open booking to check current availability.</span>}
+                  {campScheduleState === "ready" && liveDates.length > 0 && <>
+                    <strong>{liveDates.length} upcoming date{liveDates.length === 1 ? "" : "s"}</strong>
+                    <div>{liveDates.slice(0, 4).map((row) => <span key={row.sessionId}>{formatCampDate(row.sessionDate)}</span>)}</div>
+                    <small>{formatCampTime(firstDate.startsAt)}–{formatCampTime(firstDate.endsAt)} · £{firstDate.price.toFixed(2)} per day</small>
+                  </>}
+                  {campScheduleState === "ready" && !liveDates.length && <><strong>Dates not yet published</strong><small>We will show bookable dates here as soon as they are released.</small></>}
+                  {campScheduleState === "unavailable" && <span>Open booking to check current availability.</span>}
+                </div>
                 <p className="camp-site-context-links">
                   Read our <a href="/policies" onClick={(event) => handlePublicPageLink(event, "Policies", setPage)}>holiday-club policies and safeguarding information</a>, then <a href={site.url}>book {holidayVenueName(site.title)} through your family account</a>.
                 </p>
-                <a className="button book" href={site.url} aria-label={`Start an Après School booking for ${site.title}`}>Book {holidayVenueName(site.title)}</a>
+                {liveDates.length
+                  ? <a className="button book" href={site.url} aria-label={`Start an Après School booking for ${site.title}`}>Book {holidayVenueName(site.title)}</a>
+                  : <button className="button light" type="button" onClick={() => setPage("Contact")}>Ask about future dates</button>}
               </div>
             </article>
-          ))}
+          );})}
         </div>
       </section>
       <section className="camp-promise">

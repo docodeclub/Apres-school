@@ -923,6 +923,71 @@ export async function fetchBookableSessions({ from = new Date(), to = null, site
   return (data || []).map(mapBookableSession);
 }
 
+export async function fetchHolidayCampSchedule() {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("public_holiday_camp_schedule");
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    sessionId: row.session_id,
+    sessionBlockId: row.session_block_id,
+    siteName: row.site_name,
+    area: row.area || "",
+    campName: row.camp_name || "Holiday Camp",
+    ageRange: row.age_range || "Primary-age children",
+    sessionDate: row.session_date,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    price: Number(row.price || 0),
+    capacity: Number(row.capacity || 0),
+    eligibility: row.eligibility || {},
+  }));
+}
+
+export async function upsertHolidayCamp(camp = {}) {
+  assertSupabase();
+  const { data, error } = await supabase.rpc("admin_upsert_holiday_camp", { p_camp: camp });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+export async function fetchAdminHolidayCampSchedule() {
+  assertSupabase();
+  const { data, error } = await supabase
+    .from("sessions")
+    .select(`
+      id, starts_at, ends_at, capacity, status, booking_label, parent_bookable,
+      price, eligibility, booking_metadata,
+      programmes!inner(name, category, age_range, locations!inner(name, area)),
+      session_blocks(id, label, starts_at, ends_at, price, capacity, parent_bookable)
+    `)
+    .eq("programmes.category", "holiday_camp")
+    .gte("starts_at", new Date().toISOString())
+    .order("starts_at", { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row) => {
+    const programme = row.programmes || {};
+    const site = programme.locations || {};
+    const block = (row.session_blocks || [])[0] || {};
+    return {
+      sessionId: row.id,
+      sessionBlockId: block.id || "",
+      siteName: site.name || "Holiday venue",
+      area: site.area || "",
+      campName: row.booking_label || programme.name || "Holiday Camp",
+      ageRange: programme.age_range || "Primary-age children",
+      sessionDate: String(row.starts_at || "").slice(0, 10),
+      startsAt: block.starts_at || row.starts_at,
+      endsAt: block.ends_at || row.ends_at,
+      price: Number(block.price ?? row.price ?? 0),
+      capacity: Number(block.capacity ?? row.capacity ?? 0),
+      eligibility: row.eligibility || {},
+      published: row.parent_bookable === true && row.status === "open" && block.parent_bookable !== false,
+      notes: row.booking_metadata?.notes || "",
+    };
+  });
+}
+
 export async function fetchParentAccount() {
   assertSupabase();
   const user = await currentUser();

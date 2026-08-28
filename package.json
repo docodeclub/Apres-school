@@ -31,6 +31,7 @@
     "check:expenses": "node scripts/expense-contract-check.mjs",
     "check:scr-assurance": "node scripts/scr-assurance-wizard-check.mjs",
     "check:holiday": "node scripts/holiday-contract-check.mjs",
+    "check:holiday-camps": "node scripts/holiday-camp-planner-check.mjs",
     "check:staff-applications": "node scripts/staff-application-contract-check.mjs",
     "check:staff-offers": "node scripts/staff-offer-onboarding-check.mjs",
     "check:staff-onboarding": "node scripts/staff-onboarding-intake-check.mjs",

@@ -31,6 +31,26 @@ export const supabase = hasSupabaseConfig
     })
   : null;
 
+export async function fetchPublicHolidayCampSchedule() {
+  if (!supabase) return [];
+  const { data, error } = await supabase.rpc("public_holiday_camp_schedule");
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    sessionId: row.session_id,
+    sessionBlockId: row.session_block_id,
+    siteName: row.site_name,
+    area: row.area || "",
+    campName: row.camp_name || "Holiday Camp",
+    ageRange: row.age_range || "Primary-age children",
+    sessionDate: row.session_date,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    price: Number(row.price || 0),
+    capacity: Number(row.capacity || 0),
+    eligibility: row.eligibility || {},
+  }));
+}
+
 function mapStaffOnboarding(record = {}) {
   return {
     id: record.id || "",

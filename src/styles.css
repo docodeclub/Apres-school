@@ -2670,6 +2670,73 @@ summary {
   align-self: flex-start;
 }
 
+.camp-site-schedule {
+  display: grid;
+  gap: .45rem;
+  padding: .85rem;
+  border: 1px solid #dce5f7;
+  border-radius: 14px;
+  background: #f7f9ff;
+  color: #26345a;
+}
+
+.camp-site-card.has-live-dates .camp-site-schedule {
+  border-color: #bfe5cd;
+  background: #f0fbf4;
+}
+
+.camp-site-schedule > div { display: flex; flex-wrap: wrap; gap: .35rem; }
+.camp-site-schedule > div span { padding: .32rem .55rem; border-radius: 999px; background: #fff; border: 1px solid #d7e0f2; font-size: .78rem; font-weight: 800; }
+.camp-site-schedule small { color: #5a6680; }
+
+.holiday-camp-planner {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 1.2rem;
+  border: 1px solid #d5def0;
+  border-top: 5px solid #f2a12d;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #fff 0%, #f7f9ff 100%);
+  box-shadow: 0 12px 30px rgba(36, 52, 96, .08);
+}
+
+.holiday-camp-planner > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.holiday-camp-planner h2, .holiday-camp-planner h3 { margin: .15rem 0; color: #233f9f; }
+.holiday-camp-planner p { margin: .25rem 0; }
+.holiday-camp-planner form { display: grid; gap: 1rem; }
+.holiday-camp-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; }
+.holiday-camp-form-grid label { display: grid; gap: .3rem; color: #26345a; font-size: .78rem; font-weight: 800; }
+.holiday-camp-form-grid input, .holiday-camp-form-grid textarea { width: 100%; border: 1px solid #ccd8ee; border-radius: 10px; padding: .72rem; background: #fff; color: #17233f; font: inherit; font-weight: 600; }
+.holiday-camp-form-grid .holiday-camp-wide { grid-column: span 2; }
+.holiday-camp-weekdays { margin: 0; padding: .8rem; border: 1px solid #d9e2f3; border-radius: 12px; }
+.holiday-camp-weekdays legend { padding: 0 .4rem; color: #26345a; font-size: .78rem; font-weight: 900; }
+.holiday-camp-weekdays > div { display: flex; flex-wrap: wrap; gap: .45rem; }
+.holiday-camp-weekdays button { border: 1px solid #cbd7ec; border-radius: 999px; padding: .5rem .75rem; background: #fff; color: #2745a6; font-weight: 800; }
+.holiday-camp-weekdays button.active { border-color: #3557cc; background: #4165dc; color: #fff; }
+.holiday-camp-publish-row { display: flex; align-items: center; flex-wrap: wrap; gap: .8rem 1.2rem; }
+.holiday-camp-publish-row label { display: flex; align-items: center; gap: .45rem; font-weight: 750; color: #33405e; }
+.holiday-camp-publish-row .button { margin-left: auto; }
+.holiday-camp-message { padding: .75rem 1rem; border-radius: 10px; background: #edf4ff; color: #2442a0; font-weight: 750; }
+.holiday-camp-schedule-list { display: grid; gap: .7rem; padding-top: .4rem; border-top: 1px solid #e0e7f4; }
+.holiday-camp-schedule-list > article { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 2fr) auto; align-items: center; gap: 1rem; padding: .8rem; border: 1px solid #dce4f2; border-radius: 12px; background: #fff; }
+.holiday-camp-schedule-list > article > div:first-child { display: grid; gap: .15rem; }
+.holiday-camp-schedule-list > article small, .holiday-camp-schedule-list > article span { color: #68738a; }
+.holiday-camp-date-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.holiday-camp-date-chips span { padding: .3rem .48rem; border-radius: 999px; background: #f0f4ff; color: #2745a6 !important; font-size: .75rem; font-weight: 800; }
+
+@media (max-width: 900px) {
+  .holiday-camp-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .holiday-camp-schedule-list > article { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .holiday-camp-form-grid { grid-template-columns: 1fr; }
+  .holiday-camp-form-grid .holiday-camp-wide { grid-column: auto; }
+  .holiday-camp-publish-row { align-items: stretch; flex-direction: column; }
+  .holiday-camp-publish-row .button { margin-left: 0; width: 100%; }
+}
+
 .camp-site-context-links {
   border-top: 1px solid var(--line);
   padding-top: 12px;

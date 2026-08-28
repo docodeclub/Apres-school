@@ -56,6 +56,7 @@ import {
   createParentCreditTopUp,
   createParentBooking,
   fetchBookableSessions,
+  fetchHolidayCampSchedule,
   fetchCurrentProfile,
   fetchParentAccount,
   fetchParentBadgeBook,
@@ -846,8 +847,11 @@ function sessionBlockKey(block, index = 0) {
   return block.id || `${block.label || "session"}-${block.start || ""}-${block.end || ""}-${index}`;
 }
 
-function normaliseSessionBlocks(session) {
-  const blocks = Array.isArray(session?.sessionBlocks) && session.sessionBlocks.length
+function normaliseSessionBlocks(session, day = "") {
+  const dayBlocks = day && Array.isArray(session?.dayBlocks?.[day]) ? session.dayBlocks[day] : null;
+  const blocks = dayBlocks?.length
+    ? dayBlocks
+    : Array.isArray(session?.sessionBlocks) && session.sessionBlocks.length
     ? session.sessionBlocks
     : [{
         label: session?.title || "Session",
@@ -861,6 +865,52 @@ function normaliseSessionBlocks(session) {
     label: block.label || `${block.start || "Start"}-${block.end || "End"}`,
     price: Number(block.price || 0),
   }));
+}
+
+function liveHolidayCampCatalog(rows = []) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = `${row.siteName}::${row.campName}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: `live-camp-${safeDomId(key)}`,
+        site: row.siteName,
+        area: row.area || "London and Surrey",
+        type: "Holiday Camp",
+        title: row.campName || "Holiday Camp",
+        academicYear: "live",
+        days: [],
+        dayBlocks: {},
+        sessionBlocks: [],
+        time: "",
+        price: Number(row.price || 0),
+        capacity: Number(row.capacity || 0),
+        paymentRoute: "PonchoPay card + vouchers",
+        eligibility: row.eligibility || {},
+      });
+    }
+    const camp = groups.get(key);
+    const day = formatSessionDay(new Date(`${row.sessionDate}T12:00:00`));
+    const start = new Date(row.startsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    const end = new Date(row.endsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    const block = {
+      id: row.sessionBlockId,
+      sessionBlockId: row.sessionBlockId,
+      liveSessionId: row.sessionId,
+      label: "Full day",
+      start,
+      end,
+      price: Number(row.price || 0),
+      capacity: Number(row.capacity || 0),
+    };
+    camp.days.push(day);
+    camp.dayBlocks[day] = [block];
+    if (!camp.sessionBlocks.length) camp.sessionBlocks = [block];
+    if (!camp.time) camp.time = `${start}-${end}`;
+    camp.price = Math.min(camp.price, Number(row.price || 0));
+    camp.capacity = Math.min(camp.capacity, Number(row.capacity || 0));
+  });
+  return [...groups.values()].map((camp) => ({ ...camp, days: [...new Set(camp.days)] }));
 }
 
 function parentActivityLabel(session) {
@@ -1262,6 +1312,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const launchStateCheckedRef = useRef(false);
   const [labView, setLabView] = useState("Parent");
   const [customSessions, setCustomSessions] = useState(() => readJson("apres-booking-lab-activities", []));
+  const [liveCampSessions, setLiveCampSessions] = useState([]);
   const [launchPlans, setLaunchPlans] = useState(() => readJson("apres-booking-lab-launch-plans", []));
   const [launchDateImports, setLaunchDateImports] = useState(() => readJson("apres-booking-lab-launch-date-imports", {}));
   const [rules, setRules] = useState(() => {
@@ -1562,7 +1613,32 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const resetTimer = window.setTimeout(() => window.scrollTo({ top: 0, behavior: "auto" }), 180);
     return () => window.clearTimeout(resetTimer);
   }, [isLaunchMode]);
-  const sessions = [...labSessions, ...customSessions];
+  useEffect(() => {
+    let active = true;
+    if (!isLaunchMode || !bookingSystemConfigured()) return () => { active = false; };
+    fetchHolidayCampSchedule()
+      .then((rows) => {
+        if (!active) return;
+        setLiveCampSessions(liveHolidayCampCatalog(rows));
+      })
+      .catch(() => {
+        if (active) setLiveCampSessions([]);
+      });
+    return () => { active = false; };
+  }, [isLaunchMode]);
+  const sessions = [
+    ...(isLaunchMode ? labSessions.filter((session) => session.type !== "Holiday Camp") : labSessions),
+    ...liveCampSessions,
+    ...customSessions,
+  ];
+  useEffect(() => {
+    if (!isLaunchMode || !launchRequestedSchool || !liveCampSessions.length) return;
+    const requestedCamp = liveCampSessions.find((session) => session.site === launchRequestedSchool);
+    if (!requestedCamp || activeId === requestedCamp.id) return;
+    setSelectedSchool(requestedCamp.site);
+    setCareType(requestedCamp.type);
+    setActiveId(requestedCamp.id);
+  }, [isLaunchMode, launchRequestedSchool, liveCampSessions]);
   const launchParentEmail = normaliseEmailAddress(parentLogin.username || launchAccountSessionEmail || parentRegistration.email);
   const launchSignedInEmail = parentAccountSignedIn ? launchParentEmail : "";
   const launchAccountFamily = isLaunchMode && launchParentEmail
@@ -1657,7 +1733,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const activePricingBenefit = isLaunchMode && parentAccountSignedIn
     ? pricingBenefitForSession(activeSession, liveParentLedger.pricing)
     : null;
-  const activeSessionBlocks = normaliseSessionBlocks(activeSession);
+  const activeSessionBlocks = normaliseSessionBlocks(activeSession, daysForSession(activeSession)[0]);
   const activeBlockKeys = activeSessionBlocks.map((block) => block.key);
   const selectedBlockKeysForDay = (day, session = activeSession, blocks = activeSessionBlocks) => {
     const validKeys = new Set(blocks.map((block) => block.key));
@@ -1692,8 +1768,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const activeDayRows = activeSessionDays.map((day) => {
     const key = `${activeSession.id}-${day}`;
     const override = setupDayOverrides[key] || {};
-    const selectedBlockKeys = selectedBlockKeysForDay(day);
-    const selectedBlocks = activeSessionBlocks
+    const dayBlocks = normaliseSessionBlocks(activeSession, day);
+    const selectedBlockKeys = selectedBlockKeysForDay(day, activeSession, dayBlocks);
+    const selectedBlocks = dayBlocks
       .filter((block) => selectedBlockKeys.includes(block.key))
       .map((block) => {
         const blockOverride = capacityScheduleOverrides[`${activeSession.id}::${day}::${block.key}`] || {};
@@ -1723,11 +1800,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       price: Number(override.price ?? (blockTotal || activeSession.price)),
       paymentRoute: override.paymentRoute || activeSession.paymentRoute || "PonchoPay card + vouchers",
       note: override.note || "",
-      blocks: activeSessionBlocks,
+      blocks: dayBlocks,
       selectedBlocks,
       selectedBlockKeys,
       blockSummary: selectedBlocks.map((block) => `${block.start}-${block.end}`).join(", "),
-      fullPrice: activeSessionBlocks.reduce((sum, block) => sum + Number(block.price || 0), 0) || Number(activeSession.price || 0),
+      fullPrice: dayBlocks.reduce((sum, block) => sum + Number(block.price || 0), 0) || Number(activeSession.price || 0),
     };
   });
   const bookableSessionDays = activeDayRows.filter((row) => row.enabled);
@@ -7850,6 +7927,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const blockStoreKey = `${activeSession.id}::${day}`;
     const removing = pickedDays.includes(day);
     const row = activeDayRows.find((item) => item.day === day);
+    const rowBlockKeys = (row?.blocks || []).map((block) => block.key);
     const noBookableSessions = Boolean(row?.blocks?.length) && row.blocks.every((block) => pickerBookingStateForBlock(row, block).allBooked);
     if (!removing && noBookableSessions) {
       setStatus("Every selected child already has these sessions booked or awaiting payment.");
@@ -7877,7 +7955,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         const { [blockStoreKey]: removed, ...rest } = blockState;
         return rest;
       }
-      return blockState[blockStoreKey]?.length ? blockState : { ...blockState, [blockStoreKey]: activeBlockKeys };
+      return blockState[blockStoreKey]?.length ? blockState : { ...blockState, [blockStoreKey]: rowBlockKeys };
     });
     setLaunchExpandedDay(removing ? "" : day);
     if (bookingMode === "Ad-hoc") setBookingMode("Ad-hoc");
@@ -7895,6 +7973,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const currentKeysForDay = selectedBlockKeysForDay(day);
     const addingBlock = !pickedDays.includes(day) || !currentKeysForDay.includes(blockKey);
     const row = activeDayRows.find((item) => item.day === day);
+    const rowBlockKeys = (row?.blocks || []).map((item) => item.key);
     const existingState = row ? bookingStateForBlock(row, block) : null;
     const pickerState = row ? pickerBookingStateForBlock(row, block) : null;
     if (addingBlock && pickerState?.allBooked) {
@@ -7915,7 +7994,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     });
     setSelectedDayBlocks((current) => {
       const dayIsPicked = pickedDays.includes(day);
-      const currentKeys = current[blockStoreKey]?.filter((key) => activeBlockKeys.includes(key)) || (dayIsPicked ? activeBlockKeys : []);
+      const currentKeys = current[blockStoreKey]?.filter((key) => rowBlockKeys.includes(key)) || (dayIsPicked ? rowBlockKeys : []);
       const nextKeys = currentKeys.includes(blockKey)
         ? currentKeys.filter((key) => key !== blockKey)
         : [...currentKeys, blockKey];
@@ -8067,7 +8146,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       return { day, enabled: override.enabled !== false };
     });
     const firstOpenDay = sessionRows.find((row) => row.enabled)?.day || sessionDays[0];
-    const sessionBlockKeys = normaliseSessionBlocks(session).map((block) => block.key);
+    const sessionBlockKeys = normaliseSessionBlocks(session, firstOpenDay).map((block) => block.key);
     setSelectedSchool(session.site);
     setCareType(session.type);
     setActiveId(session.id);
@@ -8241,7 +8320,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         childId: child.id,
         childName: child.name,
         childSchool: child.school || activeSession.site,
-        sessionId: activeSession.id,
+        sessionId: block.liveSessionId || activeSession.id,
+        catalogSessionId: activeSession.id,
         site: activeSession.site,
         activity: activeSession.title,
         careType: activeSession.type,
@@ -8280,15 +8360,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   function loadBasketGroup(groupId, duplicate = false) {
     const group = draftBookingBasket.filter((item) => item.groupId === groupId);
     if (!group.length) return;
-    const session = sessions.find((item) => item.id === group[0].sessionId);
+    const catalogSessionId = group[0].catalogSessionId || group[0].sessionId;
+    const session = sessions.find((item) => item.id === catalogSessionId);
     if (session) chooseSession(session, { advance: false });
     const groupDays = [...new Set(group.map((item) => item.day))];
     const groupChildIds = [...new Set(group.map((item) => item.childId))];
-    setSelectedDays((current) => ({ ...current, [group[0].sessionId]: groupDays }));
+    setSelectedDays((current) => ({ ...current, [catalogSessionId]: groupDays }));
     setSelectedDayBlocks((current) => {
       const next = { ...current };
       groupDays.forEach((day) => {
-        next[`${group[0].sessionId}::${day}`] = [...new Set(group.filter((item) => item.day === day).map((item) => item.blockKey))];
+        next[`${catalogSessionId}::${day}`] = [...new Set(group.filter((item) => item.day === day).map((item) => item.blockKey))];
       });
       return next;
     });

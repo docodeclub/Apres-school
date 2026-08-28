@@ -10,6 +10,7 @@ import {
   createStaffRegisterReport,
   createStaffRegisterReward,
   fetchAdminBookingLedger,
+  fetchAdminHolidayCampSchedule,
   fetchAdminRewardsDashboard,
   fetchRegisterPupilReports,
   fetchSafeguardingCase,
@@ -31,6 +32,7 @@ import {
   uploadChildProfilePhoto,
   upsertLiveBookingSessionOverride,
   upsertLiveBookingSessionSetup,
+  upsertHolidayCamp,
 } from "./bookingSystem.js";
 import { REWARD_BADGES, rewardBadge } from "./rewardBadges.js";
 import { MyShifts, Staffing } from "./StaffingModule.jsx";
@@ -1293,7 +1295,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data, onboard
         {tab === "Documents" && <Documents data={scopedData} access={access} />}
         {tab === "Pay" && <Pay data={payData} access={payAccess} targetStaffId={effectiveRole === "Manager" ? "" : staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
         {tab === "Rewards" && <Rewards data={scopedData} />}
-        {tab === "Sessions" && <Sessions data={scopedData} />}
+        {tab === "Sessions" && <Sessions data={scopedData} access={access} />}
         {tab === "Incidents" && <Incidents />}
         {tab === "Safeguarding" && ["Manager", "Admin", "Superadmin"].includes(effectiveRole) && (
           <SafeguardingCases canManageAll={effectiveRole === "Superadmin"} />
@@ -14826,8 +14828,134 @@ function Rewards() {
   );
 }
 
-function Sessions({ data }) {
-  return <Panel title="Scheduling & Sessions"><SessionList data={data} detailed /></Panel>;
+const holidayCampWeekdays = [
+  [1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [7, "Sun"],
+];
+
+function holidayCampDateTime(value, options = {}) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("en-GB", options);
+}
+
+function Sessions({ data, access }) {
+  const canManageCamps = ["Admin", "Superadmin"].includes(access?.role);
+  const [campRows, setCampRows] = useState([]);
+  const [campLoading, setCampLoading] = useState(canManageCamps && bookingSystemConfigured());
+  const [campMessage, setCampMessage] = useState("");
+  const [savingCamp, setSavingCamp] = useState(false);
+  const [campDraft, setCampDraft] = useState({
+    site: "", area: "", campName: "Holiday Camp", ageRange: "Primary-age children",
+    eligibility: "Open to children from all schools", schoolOnly: false,
+    dateFrom: "", dateTo: "", weekdays: [1, 2, 3, 4, 5],
+    startTime: "08:30", endTime: "17:30", price: "", capacity: "",
+    cancellationHours: "24", notes: "", published: false,
+  });
+
+  async function loadCampRows() {
+    if (!canManageCamps || !bookingSystemConfigured()) return;
+    setCampLoading(true);
+    try {
+      setCampRows(await fetchAdminHolidayCampSchedule());
+      setCampMessage("");
+    } catch (error) {
+      setCampMessage(error.message || "Holiday camp dates could not be loaded.");
+    } finally {
+      setCampLoading(false);
+    }
+  }
+
+  useEffect(() => { loadCampRows(); }, [canManageCamps]);
+
+  function updateCampDraft(field, value) {
+    setCampDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function toggleCampWeekday(day) {
+    setCampDraft((current) => ({
+      ...current,
+      weekdays: current.weekdays.includes(day)
+        ? current.weekdays.filter((item) => item !== day)
+        : [...current.weekdays, day].sort(),
+    }));
+  }
+
+  async function saveCamp(event) {
+    event.preventDefault();
+    if (!campDraft.site || !campDraft.dateFrom || !campDraft.dateTo || !campDraft.price || !campDraft.capacity) {
+      setCampMessage("Add the venue, date range, price and capacity before saving.");
+      return;
+    }
+    setSavingCamp(true);
+    setCampMessage("");
+    try {
+      const result = await upsertHolidayCamp(campDraft);
+      setCampMessage(`${result.sessionsUpserted} camp date${result.sessionsUpserted === 1 ? "" : "s"} ${campDraft.published ? "published" : "saved as draft"}.`);
+      await loadCampRows();
+    } catch (error) {
+      setCampMessage(error.message || "The camp could not be saved.");
+    } finally {
+      setSavingCamp(false);
+    }
+  }
+
+  const groupedCamps = campRows.reduce((groups, row) => {
+    const key = `${row.siteName}::${row.campName}::${row.published}`;
+    const existing = groups.find((group) => group.key === key);
+    if (existing) existing.rows.push(row);
+    else groups.push({ key, siteName: row.siteName, campName: row.campName, published: row.published, rows: [row] });
+    return groups;
+  }, []);
+
+  return (
+    <Panel title="Scheduling & Sessions">
+      {canManageCamps && (
+        <section className="holiday-camp-planner">
+          <header>
+            <div><p className="eyebrow">Holiday Camps planner</p><h2>Publish camp dates once</h2><p>The public Holiday Clubs page and family booking journey use this same schedule.</p></div>
+            <Badge value={`${campRows.filter((row) => row.published).length} live dates`} />
+          </header>
+          <form onSubmit={saveCamp}>
+            <div className="holiday-camp-form-grid">
+              <label>Venue<input value={campDraft.site} onChange={(event) => updateCampDraft("site", event.target.value)} placeholder="e.g. King's House School" /></label>
+              <label>Area<input value={campDraft.area} onChange={(event) => updateCampDraft("area", event.target.value)} placeholder="e.g. Richmond" /></label>
+              <label>Camp name<input value={campDraft.campName} onChange={(event) => updateCampDraft("campName", event.target.value)} /></label>
+              <label>Age range<input value={campDraft.ageRange} onChange={(event) => updateCampDraft("ageRange", event.target.value)} /></label>
+              <label>First date<input type="date" value={campDraft.dateFrom} onChange={(event) => updateCampDraft("dateFrom", event.target.value)} /></label>
+              <label>Last date<input type="date" value={campDraft.dateTo} onChange={(event) => updateCampDraft("dateTo", event.target.value)} /></label>
+              <label>Start time<input type="time" value={campDraft.startTime} onChange={(event) => updateCampDraft("startTime", event.target.value)} /></label>
+              <label>End time<input type="time" value={campDraft.endTime} onChange={(event) => updateCampDraft("endTime", event.target.value)} /></label>
+              <label>Price per day (£)<input type="number" min="0" step="0.01" value={campDraft.price} onChange={(event) => updateCampDraft("price", event.target.value)} /></label>
+              <label>Capacity<input type="number" min="1" step="1" value={campDraft.capacity} onChange={(event) => updateCampDraft("capacity", event.target.value)} /></label>
+              <label className="holiday-camp-wide">Who can attend?<input value={campDraft.eligibility} onChange={(event) => updateCampDraft("eligibility", event.target.value)} /></label>
+              <label className="holiday-camp-wide">Internal/public note<textarea rows="2" value={campDraft.notes} onChange={(event) => updateCampDraft("notes", event.target.value)} placeholder="Optional useful detail for this camp" /></label>
+            </div>
+            <fieldset className="holiday-camp-weekdays"><legend>Days running</legend><div>{holidayCampWeekdays.map(([day, label]) => <button className={campDraft.weekdays.includes(day) ? "active" : ""} key={day} type="button" onClick={() => toggleCampWeekday(day)}>{label}</button>)}</div></fieldset>
+            <div className="holiday-camp-publish-row">
+              <label><input type="checkbox" checked={campDraft.schoolOnly} onChange={(event) => updateCampDraft("schoolOnly", event.target.checked)} /> Restricted to pupils from this school</label>
+              <label><input type="checkbox" checked={campDraft.published} onChange={(event) => updateCampDraft("published", event.target.checked)} /> Publish immediately for parents</label>
+              <button className="button book" type="submit" disabled={savingCamp}>{savingCamp ? "Saving dates…" : campDraft.published ? "Publish camp dates" : "Save camp as draft"}</button>
+            </div>
+          </form>
+          {campMessage && <p className="holiday-camp-message" role="status">{campMessage}</p>}
+          <div className="holiday-camp-schedule-list">
+            <h3>Upcoming camp schedule</h3>
+            {campLoading && <p>Loading holiday camp dates…</p>}
+            {!campLoading && !groupedCamps.length && <EmptyList title="No future camp dates yet" text="Create dates above. Drafts stay internal; published dates appear for families automatically." />}
+            {groupedCamps.map((camp) => (
+              <article key={camp.key}>
+                <div><span>{camp.siteName}</span><strong>{camp.campName}</strong><small>{camp.rows.length} date{camp.rows.length === 1 ? "" : "s"} · {formatCurrency(camp.rows[0].price)} per day</small></div>
+                <div className="holiday-camp-date-chips">{camp.rows.slice(0, 8).map((row) => <span key={row.sessionId}>{holidayCampDateTime(row.startsAt, { weekday: "short", day: "numeric", month: "short" })}</span>)}{camp.rows.length > 8 && <span>+{camp.rows.length - 8} more</span>}</div>
+                <Badge value={camp.published ? "Published" : "Draft"} />
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      <SessionList data={data} detailed />
+    </Panel>
+  );
 }
 
 const registerReportTypeLabels = {
