@@ -2034,8 +2034,10 @@ function HolidayClubs({ setPage }) {
         </div>
         <div className="camp-site-grid">
           {holidaySites.map((site) => {
-            const liveDates = scheduleForSite(site);
+            const liveBlocks = scheduleForSite(site);
+            const liveDates = liveBlocks.filter((row) => row.blockLabel === "Holiday Camp");
             const firstDate = liveDates[0];
+            const earlyDropOff = liveBlocks.find((row) => row.blockLabel === "Early Drop-Off");
             return (
             <article className={`camp-site-card ${liveDates.length ? "has-live-dates" : "awaiting-dates"}`} key={site.title}>
               <HolidayResponsiveImage
@@ -2061,7 +2063,8 @@ function HolidayClubs({ setPage }) {
                   {campScheduleState === "ready" && liveDates.length > 0 && <>
                     <strong>{liveDates.length} upcoming date{liveDates.length === 1 ? "" : "s"}</strong>
                     <div>{liveDates.slice(0, 4).map((row) => <span key={row.sessionId}>{formatCampDate(row.sessionDate)}</span>)}</div>
-                    <small>{formatCampTime(firstDate.startsAt)}–{formatCampTime(firstDate.endsAt)} · £{firstDate.price.toFixed(2)} per day</small>
+                    <small>{formatCampTime(firstDate.startsAt)}–{formatCampTime(firstDate.endsAt)} · £{firstDate.price.toFixed(2)} per day · Book the full week and save 10%.</small>
+                    {earlyDropOff && <small>Early Drop-Off {formatCampTime(earlyDropOff.startsAt)}–{formatCampTime(earlyDropOff.endsAt)} · +£{earlyDropOff.price.toFixed(2)} per day</small>}
                   </>}
                   {campScheduleState === "ready" && !liveDates.length && <><strong>Dates not yet published</strong><small>We will show bookable dates here as soon as they are released.</small></>}
                   {campScheduleState === "unavailable" && <span>Open booking to check current availability.</span>}

@@ -883,10 +883,12 @@ function liveHolidayCampCatalog(rows = []) {
         dayBlocks: {},
         sessionBlocks: [],
         time: "",
-        price: Number(row.price || 0),
+        price: Number(row.pricing?.dayPrice || row.price || 0),
         capacity: Number(row.capacity || 0),
         paymentRoute: "PonchoPay card + vouchers",
         eligibility: row.eligibility || {},
+        pricing: row.pricing || {},
+        features: ["Book individual days", "Full-week saving applied automatically", "Early Drop-Off available per day"],
       });
     }
     const camp = groups.get(key);
@@ -897,20 +899,26 @@ function liveHolidayCampCatalog(rows = []) {
       id: row.sessionBlockId,
       sessionBlockId: row.sessionBlockId,
       liveSessionId: row.sessionId,
-      label: "Full day",
+      label: row.blockLabel || "Holiday Camp",
       start,
       end,
       price: Number(row.price || 0),
       capacity: Number(row.capacity || 0),
     };
     camp.days.push(day);
-    camp.dayBlocks[day] = [block];
-    if (!camp.sessionBlocks.length) camp.sessionBlocks = [block];
-    if (!camp.time) camp.time = `${start}-${end}`;
-    camp.price = Math.min(camp.price, Number(row.price || 0));
+    if (!camp.dayBlocks[day]) camp.dayBlocks[day] = [];
+    camp.dayBlocks[day].push(block);
+    camp.dayBlocks[day].sort((a, b) => a.start.localeCompare(b.start));
+    if (block.label === "Holiday Camp") {
+      camp.time = `${start}-${end}`;
+      camp.price = Number(row.price || camp.price || 0);
+    }
     camp.capacity = Math.min(camp.capacity, Number(row.capacity || 0));
   });
-  return [...groups.values()].map((camp) => ({ ...camp, days: [...new Set(camp.days)] }));
+  return [...groups.values()].map((camp) => {
+    const days = [...new Set(camp.days)];
+    return { ...camp, days, sessionBlocks: camp.dayBlocks[days[0]] || [] };
+  });
 }
 
 function parentActivityLabel(session) {
@@ -1734,6 +1742,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ? pricingBenefitForSession(activeSession, liveParentLedger.pricing)
     : null;
   const activeSessionBlocks = normaliseSessionBlocks(activeSession, daysForSession(activeSession)[0]);
+  const activeCampDayBlock = activeSession.type === "Holiday Camp" ? activeSessionBlocks.find((block) => block.label === "Holiday Camp") : null;
+  const activeCampEarlyBlock = activeSession.type === "Holiday Camp" ? activeSessionBlocks.find((block) => block.label === "Early Drop-Off") : null;
   const activeBlockKeys = activeSessionBlocks.map((block) => block.key);
   const selectedBlockKeysForDay = (day, session = activeSession, blocks = activeSessionBlocks) => {
     const validKeys = new Set(blocks.map((block) => block.key));
@@ -5433,7 +5443,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         if (resolvedItems.some((item, index) => item.sessionBlockId !== draftBookingBasket[index]?.sessionBlockId)) {
           setDraftBookingBasket(resolvedItems);
         }
-        const quote = await quoteParentBookingPricing(resolvedItems.map((item) => ({ sessionBlockId: item.sessionBlockId, quantity: 1 })));
+        const quote = await quoteParentBookingPricing(resolvedItems.map((item) => ({ sessionBlockId: item.sessionBlockId, childId: item.childId, quantity: 1 })));
         if (cancelled) return;
         if (!quote) throw new Error("No bookable sessions were found in the basket.");
         setPricingQuote({ ...quote, signature: basketPricingSignatureForItems(resolvedItems) });
@@ -8420,7 +8430,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           setDraftBookingBasket(resolvedItems);
         }
         const signature = basketPricingSignatureForItems(resolvedItems);
-        const quote = basketPricingQuote || await quoteParentBookingPricing(resolvedItems.map((item) => ({ sessionBlockId: item.sessionBlockId, quantity: 1 })));
+        const quote = basketPricingQuote || await quoteParentBookingPricing(resolvedItems.map((item) => ({ sessionBlockId: item.sessionBlockId, childId: item.childId, quantity: 1 })));
         if (!quote) throw new Error("No bookable sessions were found in the basket.");
         setPricingQuote({ ...quote, signature });
       } catch (pricingError) {
@@ -23490,6 +23500,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             </div>
             <strong>{pickedDayRows.length && new Set(pickedDayRows.map((row) => row.price)).size > 1 ? `${money(Math.min(...pickedDayRows.map((row) => row.price)))}-${money(Math.max(...pickedDayRows.map((row) => row.price)))}` : money(pickedDayRows[0]?.price ?? activeSession.price)}<span>per child/session</span></strong>
           </div>
+          {activeSession.type === "Holiday Camp" && activeCampDayBlock && (
+            <section className="lab-camp-pricing-summary" aria-label="Holiday Camp pricing">
+              <article><span>Holiday Camp</span><strong>{activeCampDayBlock.start}–{activeCampDayBlock.end}</strong><small>{money(activeCampDayBlock.price)} per day</small></article>
+              <article className="saving"><span>Full-week pricing</span><strong>Book the full week and save 10%</strong><small>4 operating days {money(activeSession.pricing?.fullWeek4Price || 180)} · 5 operating days {money(activeSession.pricing?.fullWeek5Price || 225)}</small></article>
+              {activeCampEarlyBlock && <article><span>Early Drop-Off</span><strong>{activeCampEarlyBlock.start}–{activeCampEarlyBlock.end}</strong><small>+{money(activeCampEarlyBlock.price)} per day · choose separately</small></article>}
+            </section>
+          )}
           <div className="lab-purchase-snapshot">
             <article>
               <span>Current plan</span>
@@ -23813,7 +23830,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                             const availableNames = pickerState.availableChildren.map((child) => child.name).filter(Boolean).join(", ");
                             return (
                             <button className={`${blockSelected ? "active" : ""} ${blockDisabled ? "full" : ""} ${pickerState.conflicts.length ? "already-booked" : ""} ${pickerState.pending ? "payment-pending" : ""}`} key={block.key} type="button" aria-pressed={blockSelected} disabled={blockDisabled} onClick={() => toggleDayBlock(row.day, block)}>
-                              <span>{`Session ${index + 1}`}</span>
+                              <span>{isLaunchMode ? block.label : `Session ${index + 1}`}</span>
                               <small>{isLaunchMode ? `${block.start}-${block.end}` : `${block.label} · ${block.start}-${block.end}`}</small>
                               <strong>{money(block.price)}</strong>
                               {isLaunchMode && <em>{pickerState.allBooked ? (pickerState.pending ? "Payment pending for all children" : "Already booked for all children") : existingNames ? `${existingNames} booked · Available for ${availableNames}` : blockDisabled ? "Full" : blockSelected ? `Selected for ${bookingStateForBlock(row, block).availableChildren.map((child) => child.name).join(", ") || "chosen child"}` : availableNames ? `Available for ${availableNames}` : "Add"}</em>}
@@ -23857,7 +23874,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <strong>{money(draftBasketTotal)}</strong>
                   {draftBasketTotal !== basketSubtotal && <small>{money(basketSubtotal)} before discounts</small>}
                   {pricingQuoteLoading && <small>Checking your tier price…</small>}
-                  {!pricingQuoteLoading && basketPricingQuote && Number(basketPricingQuote.discountTotal || 0) > 0 && <small>{basketPricingQuote.pricingGroupName || "Tier"} applied · {money(basketPricingQuote.discountTotal)} saved</small>}
+                  {!pricingQuoteLoading && basketPricingQuote && Number(basketPricingQuote.discountTotal || 0) > 0 && <small>{Number(basketPricingQuote.fullWeekDiscountTotal || 0) > 0 ? "Full-week pricing applied" : `${basketPricingQuote.pricingGroupName || "Tier"} applied`} · {money(basketPricingQuote.discountTotal)} saved</small>}
                   {!pricingQuoteLoading && basketPricingQuote && Number(basketPricingQuote.discountTotal || 0) === 0 && <small>{basketPricingQuote.pricingGroupName || "Standard"} checked · no tier discount for these sessions</small>}
                   {!pricingQuoteLoading && pricingQuoteError && <small>Tier price needs rechecking at checkout</small>}
                 </div>
@@ -23871,7 +23888,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     {draftBasketGroups.map((group) => (
                       <section className="lab-draft-basket-group" key={group.id}>
                         {group.items.map((item) => {
-                          const quotedLine = basketPricingQuote?.items?.find((quotedItem) => quotedItem.sessionBlockId === item.sessionBlockId);
+                          const quotedLine = basketPricingQuote?.items?.find((quotedItem) => quotedItem.sessionBlockId === item.sessionBlockId && (!quotedItem.childId || quotedItem.childId === item.childId));
                           const quotedPrice = quotedLine ? Number(quotedLine.finalUnitAmount ?? quotedLine.lineTotal ?? item.price) : Number(item.price || 0);
                           return (
                             <div className="lab-draft-basket-row" role="row" key={item.id}>
@@ -23890,6 +23907,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                       </section>
                     ))}
                   </div>
+                  {Number(basketPricingQuote?.fullWeekDiscountTotal || 0) > 0 && (
+                    <div className="lab-draft-basket-adjustment">
+                      <span>Full Week Discount</span>
+                      <strong>-{money(basketPricingQuote.fullWeekDiscountTotal)}</strong>
+                      <small>Applied automatically because every operating Holiday Camp day in the week is booked for the same child.</small>
+                    </div>
+                  )}
                   <div className="lab-draft-basket-actions">
                     <button type="button" onClick={clearDraftBasket}>Clear basket</button>
                     <button className="primary" type="button" onClick={proceedBasketCheckout}>{pricingQuoteLoading ? "Checking tier price…" : `Proceed to checkout · ${money(draftBasketTotal)}`}</button>

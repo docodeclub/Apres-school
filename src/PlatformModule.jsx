@@ -14849,7 +14849,9 @@ function Sessions({ data, access }) {
     site: "", area: "", campName: "Holiday Camp", ageRange: "Primary-age children",
     eligibility: "Open to children from all schools", schoolOnly: false,
     dateFrom: "", dateTo: "", weekdays: [1, 2, 3, 4, 5],
-    startTime: "08:30", endTime: "17:30", price: "", capacity: "",
+    startTime: "09:00", endTime: "17:00", price: "50", capacity: "",
+    earlyDropOffEnabled: true, earlyDropOffStart: "08:00", earlyDropOffEnd: "09:00", earlyDropOffPrice: "5",
+    fullWeek4Price: "180", fullWeek5Price: "225",
     cancellationHours: "24", notes: "", published: false,
   });
 
@@ -14928,11 +14930,19 @@ function Sessions({ data, access }) {
               <label>End time<input type="time" value={campDraft.endTime} onChange={(event) => updateCampDraft("endTime", event.target.value)} /></label>
               <label>Price per day (£)<input type="number" min="0" step="0.01" value={campDraft.price} onChange={(event) => updateCampDraft("price", event.target.value)} /></label>
               <label>Capacity<input type="number" min="1" step="1" value={campDraft.capacity} onChange={(event) => updateCampDraft("capacity", event.target.value)} /></label>
+              <label>4-day full week (£)<input type="number" min="0" step="0.01" value={campDraft.fullWeek4Price} onChange={(event) => updateCampDraft("fullWeek4Price", event.target.value)} /></label>
+              <label>5-day full week (£)<input type="number" min="0" step="0.01" value={campDraft.fullWeek5Price} onChange={(event) => updateCampDraft("fullWeek5Price", event.target.value)} /></label>
+              {campDraft.earlyDropOffEnabled && <>
+                <label>Early Drop-Off starts<input type="time" value={campDraft.earlyDropOffStart} onChange={(event) => updateCampDraft("earlyDropOffStart", event.target.value)} /></label>
+                <label>Early Drop-Off ends<input type="time" value={campDraft.earlyDropOffEnd} onChange={(event) => updateCampDraft("earlyDropOffEnd", event.target.value)} /></label>
+                <label>Early Drop-Off (£)<input type="number" min="0" step="0.01" value={campDraft.earlyDropOffPrice} onChange={(event) => updateCampDraft("earlyDropOffPrice", event.target.value)} /></label>
+              </>}
               <label className="holiday-camp-wide">Who can attend?<input value={campDraft.eligibility} onChange={(event) => updateCampDraft("eligibility", event.target.value)} /></label>
               <label className="holiday-camp-wide">Internal/public note<textarea rows="2" value={campDraft.notes} onChange={(event) => updateCampDraft("notes", event.target.value)} placeholder="Optional useful detail for this camp" /></label>
             </div>
             <fieldset className="holiday-camp-weekdays"><legend>Days running</legend><div>{holidayCampWeekdays.map(([day, label]) => <button className={campDraft.weekdays.includes(day) ? "active" : ""} key={day} type="button" onClick={() => toggleCampWeekday(day)}>{label}</button>)}</div></fieldset>
             <div className="holiday-camp-publish-row">
+              <label><input type="checkbox" checked={campDraft.earlyDropOffEnabled} onChange={(event) => updateCampDraft("earlyDropOffEnabled", event.target.checked)} /> Offer Early Drop-Off separately</label>
               <label><input type="checkbox" checked={campDraft.schoolOnly} onChange={(event) => updateCampDraft("schoolOnly", event.target.checked)} /> Restricted to pupils from this school</label>
               <label><input type="checkbox" checked={campDraft.published} onChange={(event) => updateCampDraft("published", event.target.checked)} /> Publish immediately for parents</label>
               <button className="button book" type="submit" disabled={savingCamp}>{savingCamp ? "Saving dates…" : campDraft.published ? "Publish camp dates" : "Save camp as draft"}</button>

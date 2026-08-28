@@ -2725,6 +2725,43 @@ summary {
 .holiday-camp-date-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
 .holiday-camp-date-chips span { padding: .3rem .48rem; border-radius: 999px; background: #f0f4ff; color: #2745a6 !important; font-size: .75rem; font-weight: 800; }
 
+.lab-camp-pricing-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .65rem;
+  margin: .75rem 0;
+}
+
+.lab-camp-pricing-summary article {
+  display: grid;
+  gap: .2rem;
+  padding: .9rem;
+  border: 1px solid #d8e1f2;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.lab-camp-pricing-summary article.saving { border-color: #f0c575; background: #fff8ea; }
+.lab-camp-pricing-summary span { color: #68738a; font-size: .72rem; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; }
+.lab-camp-pricing-summary strong { color: #213f9c; }
+.lab-camp-pricing-summary small { color: #5a6680; }
+
+.lab-draft-basket-adjustment {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: .2rem 1rem;
+  align-items: center;
+  margin-top: .7rem;
+  padding: .8rem 1rem;
+  border: 1px solid #efc36c;
+  border-radius: 12px;
+  background: #fff8e9;
+  color: #263b86;
+}
+
+.lab-draft-basket-adjustment strong { color: #15804c; font-size: 1.05rem; }
+.lab-draft-basket-adjustment small { grid-column: 1 / -1; color: #697184; }
+
 @media (max-width: 900px) {
   .holiday-camp-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .holiday-camp-schedule-list > article { grid-template-columns: 1fr; }
@@ -2735,6 +2772,7 @@ summary {
   .holiday-camp-form-grid .holiday-camp-wide { grid-column: auto; }
   .holiday-camp-publish-row { align-items: stretch; flex-direction: column; }
   .holiday-camp-publish-row .button { margin-left: 0; width: 100%; }
+  .lab-camp-pricing-summary { grid-template-columns: 1fr; }
 }
 
 .camp-site-context-links {

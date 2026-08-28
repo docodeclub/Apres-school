@@ -930,16 +930,19 @@ export async function fetchHolidayCampSchedule() {
   return (data || []).map((row) => ({
     sessionId: row.session_id,
     sessionBlockId: row.session_block_id,
+    programmeId: row.programme_id,
     siteName: row.site_name,
     area: row.area || "",
     campName: row.camp_name || "Holiday Camp",
     ageRange: row.age_range || "Primary-age children",
     sessionDate: row.session_date,
+    blockLabel: row.block_label || "Holiday Camp",
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     price: Number(row.price || 0),
     capacity: Number(row.capacity || 0),
     eligibility: row.eligibility || {},
+    pricing: row.pricing || {},
   }));
 }
 
@@ -968,15 +971,17 @@ export async function fetchAdminHolidayCampSchedule() {
   return (data || []).map((row) => {
     const programme = row.programmes || {};
     const site = programme.locations || {};
-    const block = (row.session_blocks || [])[0] || {};
+    const block = (row.session_blocks || []).find((item) => item.label === "Holiday Camp") || (row.session_blocks || [])[0] || {};
     return {
       sessionId: row.id,
       sessionBlockId: block.id || "",
+      programmeId: programme.id || "",
       siteName: site.name || "Holiday venue",
       area: site.area || "",
       campName: row.booking_label || programme.name || "Holiday Camp",
       ageRange: programme.age_range || "Primary-age children",
       sessionDate: String(row.starts_at || "").slice(0, 10),
+      blockLabel: block.label || "Holiday Camp",
       startsAt: block.starts_at || row.starts_at,
       endsAt: block.ends_at || row.ends_at,
       price: Number(block.price ?? row.price ?? 0),
@@ -984,6 +989,12 @@ export async function fetchAdminHolidayCampSchedule() {
       eligibility: row.eligibility || {},
       published: row.parent_bookable === true && row.status === "open" && block.parent_bookable !== false,
       notes: row.booking_metadata?.notes || "",
+      pricing: {
+        dayPrice: Number(row.price || 0),
+        fullWeek4Price: Number(row.booking_metadata?.fullWeek4Price || 0),
+        fullWeek5Price: Number(row.booking_metadata?.fullWeek5Price || 0),
+        earlyDropOffEnabled: row.booking_metadata?.earlyDropOffEnabled === true,
+      },
     };
   });
 }
@@ -1120,7 +1131,7 @@ export async function quoteParentBookingPricing(items = []) {
   assertSupabase();
   await currentUser();
   const pricingItems = items
-    .map((item) => ({ sessionBlockId: item.sessionBlockId || item.session_block_id, quantity: Number(item.quantity || 1) }))
+    .map((item) => ({ sessionBlockId: item.sessionBlockId || item.session_block_id, childId: item.childId || item.child_id || null, quantity: Number(item.quantity || 1) }))
     .filter((item) => item.sessionBlockId);
   if (!pricingItems.length) return null;
   let { data, error } = await supabase.rpc("quote_current_parent_pricing", { p_items: pricingItems });

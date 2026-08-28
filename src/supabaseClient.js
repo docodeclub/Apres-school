@@ -38,16 +38,19 @@ export async function fetchPublicHolidayCampSchedule() {
   return (data || []).map((row) => ({
     sessionId: row.session_id,
     sessionBlockId: row.session_block_id,
+    programmeId: row.programme_id,
     siteName: row.site_name,
     area: row.area || "",
     campName: row.camp_name || "Holiday Camp",
     ageRange: row.age_range || "Primary-age children",
     sessionDate: row.session_date,
+    blockLabel: row.block_label || "Holiday Camp",
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     price: Number(row.price || 0),
     capacity: Number(row.capacity || 0),
     eligibility: row.eligibility || {},
+    pricing: row.pricing || {},
   }));
 }
 
