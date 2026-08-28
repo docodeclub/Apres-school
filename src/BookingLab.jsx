@@ -930,6 +930,13 @@ function parentActivityLabel(session) {
   return title || "Care";
 }
 
+function parentActivityChoiceLabel(session) {
+  if (session?.type === "Holiday Camp" && session?.academicYear === "live") {
+    return session.title || "Holiday Camp";
+  }
+  return parentActivityLabel(session);
+}
+
 function pricingServiceKeyForSession(session) {
   const label = `${session?.type || ""} ${session?.title || ""} ${parentActivityLabel(session)}`.toLowerCase();
   if (label.includes("breakfast")) return "breakfast_club";
@@ -22278,7 +22285,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                           const benefitPrice = priceAfterBenefit(session.price, benefit);
                           return <button className={activeSession.id === session.id ? "active" : ""} key={session.id} type="button" aria-pressed={activeSession.id === session.id} onClick={() => chooseSession(session, { advance: false })}>
                             {benefit && <span className="lab-activity-benefit">{pricingBenefitLabel(benefit)}</span>}
-                            <strong>{parentActivityLabel(session)}</strong>
+                            <strong>{parentActivityChoiceLabel(session)}</strong>
                             <small>{session.time} · {benefit ? <><s>{money(session.price)}</s> <b>{money(benefitPrice)}</b></> : money(session.price)}</small>
                           </button>;
                         })}
@@ -22288,7 +22295,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   {activePricingBenefit && (
                     <div className="lab-active-pricing-benefit" role="status">
                       <span>{liveParentLedger.pricing?.pricingGroupName || "Your pricing group"}</span>
-                      <strong>{pricingBenefitLabel(activePricingBenefit)} {parentActivityLabel(activeSession)}</strong>
+                      <strong>{pricingBenefitLabel(activePricingBenefit)} {parentActivityChoiceLabel(activeSession)}</strong>
                       <small>Standard {money(activeSession.price)} · your price from {money(priceAfterBenefit(activeSession.price, activePricingBenefit))}. Final price is confirmed after you choose dates and sessions.</small>
                     </div>
                   )}
