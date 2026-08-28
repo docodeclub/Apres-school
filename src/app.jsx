@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Component, lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   faqs,
   services,
@@ -125,6 +125,28 @@ const Users = makeIcon("US");
 const X = makeIcon("X");
 const Platform = lazy(() => import("./PlatformModule.jsx"));
 const BookingLab = lazy(() => import("./BookingLab.jsx"));
+
+class BookingJourneyErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <section className="launch-booking-loading" role="alert">
+        <strong>We could not open booking.</strong>
+        <p>Please refresh the page. If this continues, contact us and we will help you book.</p>
+        {import.meta.env.DEV && <pre>{String(this.state.error?.stack || this.state.error?.message || this.state.error)}</pre>}
+      </section>
+    );
+  }
+}
 
 const FAMILY_BOOKING_URL = "/launch-booking";
 const launchBookingPath = (school) => `/launch-booking?school=${encodeURIComponent(school)}`;
@@ -750,11 +772,11 @@ const bookingSites = [
     beforeBooking: "King's House School will already be selected when the booking journey opens.",
   },
   {
-    title: "Holiday Enrichment at Willington Prep",
+    title: "Holiday Camp at Willington Prep",
     type: "Holiday enrichment",
     category: "Holiday Camps",
     area: "Wimbledon",
-    description: "Creative holiday enrichment at Willington Prep.",
+    description: "Holiday camp at Willington Prep, open to children from all schools.",
     provider: "Après School",
     url: launchBookingPath("Willington Prep"),
     image: APRES_IMG.willingtonTile,
@@ -1303,9 +1325,11 @@ function PublicSite({ page, setPage, setPlatform }) {
         </Suspense>
       )}
       {page === "Launch Booking" && previewAllowed && (
-        <Suspense fallback={<LaunchBookingLoading />}>
-          <BookingLab setPage={setPage} mode="launch" />
-        </Suspense>
+        <BookingJourneyErrorBoundary>
+          <Suspense fallback={<LaunchBookingLoading />}>
+            <BookingLab setPage={setPage} mode="launch" />
+          </Suspense>
+        </BookingJourneyErrorBoundary>
       )}
       <Footer setPage={setPage} />
       <MobileCTA page={page} setPage={setPage} />

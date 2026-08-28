@@ -1741,6 +1741,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const activePricingBenefit = isLaunchMode && parentAccountSignedIn
     ? pricingBenefitForSession(activeSession, liveParentLedger.pricing)
     : null;
+  const daysForSession = (session) => {
+    const importedDays = launchDateImports[session.id]?.days;
+    const proposedDays = Array.isArray(importedDays) && importedDays.length
+      ? importedDays
+      : session.days;
+    return canonicalSessionDays(session, proposedDays);
+  };
   const activeSessionBlocks = normaliseSessionBlocks(activeSession, daysForSession(activeSession)[0]);
   const activeCampDayBlock = activeSession.type === "Holiday Camp" ? activeSessionBlocks.find((block) => block.label === "Holiday Camp") : null;
   const activeCampEarlyBlock = activeSession.type === "Holiday Camp" ? activeSessionBlocks.find((block) => block.label === "Early Drop-Off") : null;
@@ -1751,13 +1758,6 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const filtered = Array.isArray(stored) ? stored.filter((key) => validKeys.has(key)) : [];
     if (Array.isArray(stored)) return filtered;
     return isLaunchMode ? [] : blocks.map((block) => block.key);
-  };
-  const daysForSession = (session) => {
-    const importedDays = launchDateImports[session.id]?.days;
-    const proposedDays = Array.isArray(importedDays) && importedDays.length
-      ? importedDays
-      : session.days;
-    return canonicalSessionDays(session, proposedDays);
   };
   const activeSessionDays = daysForSession(activeSession);
   const launchSchoolSites = [
