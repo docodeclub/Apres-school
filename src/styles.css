@@ -14613,6 +14613,68 @@ label {
   margin-top: 2px;
 }
 
+.crm-close-ticket-option {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  border: 1px solid rgba(49, 75, 184, 0.22);
+  border-radius: 15px;
+  background: #f6f8ff;
+  padding: 13px;
+  color: var(--ink);
+}
+
+.crm-close-ticket-option input {
+  width: auto;
+  margin-top: 3px;
+}
+
+.crm-close-ticket-option span,
+.crm-close-ticket-option small {
+  display: block;
+}
+
+.crm-close-ticket-option strong {
+  color: var(--royal-dark);
+  font-size: 0.86rem;
+}
+
+.crm-close-ticket-option small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.support-ticket-closed-panel {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #f1cf91;
+  border-radius: 16px;
+  background: #fff8e9;
+  padding: 14px 16px;
+}
+
+.support-ticket-closed-panel div,
+.support-ticket-closed-panel strong,
+.support-ticket-closed-panel span {
+  display: block;
+}
+
+.support-ticket-closed-panel strong {
+  color: #815200;
+}
+
+.support-ticket-closed-panel span {
+  margin-top: 3px;
+  color: #786646;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
 .crm-reply-actions {
   display: flex;
   gap: 12px;

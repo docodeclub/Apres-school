@@ -1272,7 +1272,7 @@ export async function fetchPlatformData({ userId, role }) {
     ? Promise.resolve({ data: [], error: null })
     : supabase
         .from("enquiries")
-        .select("id, name, email, organisation, type, subject, message, status, classification, duplicate_of, classified_at, classified_by, owner_id, first_opened_at, first_opened_by, archived_at, archived_by, internal_notes, created_at, owner_profile:profiles!enquiries_owner_id_fkey(full_name,email), first_opened_profile:profiles!enquiries_first_opened_by_fkey(full_name,email), archived_profile:profiles!enquiries_archived_by_fkey(full_name,email), enquiry_replies(id, recipient_email, subject, body, status, provider_message_id, sent_by, sent_at, created_at), email_logs(id, email_type, status, provider, provider_message_id, error_message, sent_at, created_at)")
+        .select("id, name, email, organisation, type, subject, message, status, classification, duplicate_of, classified_at, classified_by, owner_id, first_opened_at, first_opened_by, closed_at, closed_by, parent_reopened_at, archived_at, archived_by, internal_notes, created_at, owner_profile:profiles!enquiries_owner_id_fkey(full_name,email), first_opened_profile:profiles!enquiries_first_opened_by_fkey(full_name,email), closed_profile:profiles!enquiries_closed_by_fkey(full_name,email), archived_profile:profiles!enquiries_archived_by_fkey(full_name,email), enquiry_replies(id, recipient_email, subject, body, status, provider_message_id, sent_by, sent_at, created_at), email_logs(id, email_type, status, provider, provider_message_id, error_message, sent_at, created_at)")
         .order("created_at", { ascending: false })
         .limit(250);
 
@@ -1961,6 +1961,10 @@ function mapEnquiries(records) {
       firstOpenedAt: record.first_opened_at || "",
       firstOpenedBy: record.first_opened_by || "",
       firstOpenedByName: record.first_opened_profile?.full_name || "",
+      closedAt: record.closed_at || "",
+      closedBy: record.closed_by || "",
+      closedByName: record.closed_profile?.full_name || "",
+      parentReopenedAt: record.parent_reopened_at || "",
       archivedAt: record.archived_at || "",
       archivedBy: record.archived_by || "",
       archivedByName: record.archived_profile?.full_name || "",
@@ -2280,10 +2284,20 @@ export async function setSupportTicketArchived(enquiryId, archived = true) {
   return data || {};
 }
 
-export async function sendEnquiryReply({ enquiryId, subject, body }) {
+export async function setSupportTicketClosed(enquiryId, closed = true) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("set_support_ticket_closed", {
+    p_enquiry_id: enquiryId,
+    p_closed: Boolean(closed),
+  });
+  if (error) throw error;
+  return data || {};
+}
+
+export async function sendEnquiryReply({ enquiryId, subject, body, closeTicket = false }) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.functions.invoke("send-enquiry-reply", {
-    body: { enquiryId, subject, body },
+    body: { enquiryId, subject, body, closeTicket: Boolean(closeTicket) },
   });
   if (error) {
     let message = error.message || "The reply could not be sent.";

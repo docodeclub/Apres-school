@@ -15761,9 +15761,10 @@ function CRM({ data, access }) {
   const enquiryRecords = mergeCrmRecords(data.enquiries, updates);
   const records = [...enquiryRecords, ...outreach];
   const websiteEnquiries = enquiryRecords.filter(isWebsiteEnquiryRecord);
-  const activeWebsiteEnquiries = websiteEnquiries.filter((record) => !record.archivedAt);
-  const newWebsiteEnquiries = activeWebsiteEnquiries.filter((record) => ["New", "Reviewing", "Follow up"].includes(record.status || "New"));
-  const recentWebsiteEnquiries = [...activeWebsiteEnquiries]
+  const currentWebsiteEnquiries = websiteEnquiries.filter((record) => !record.archivedAt);
+  const openWebsiteEnquiries = currentWebsiteEnquiries.filter((record) => record.status !== "Closed");
+  const closedWebsiteEnquiries = currentWebsiteEnquiries.filter((record) => record.status === "Closed");
+  const recentWebsiteEnquiries = [...openWebsiteEnquiries]
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
     .slice(0, 3);
   const queryText = query.trim().toLowerCase();
@@ -15776,8 +15777,9 @@ function CRM({ data, access }) {
       return false;
     }
     const matchesType = typeFilter === "Archived"
+      || (typeFilter === "Closed tickets" && isWebsite && record.status === "Closed")
       || typeFilter === "All"
-      || (typeFilter === "Website enquiries" && isWebsite)
+      || (typeFilter === "Website enquiries" && isWebsite && record.status !== "Closed")
       || (typeFilter === "Outreach" && record.type === "Outreach")
       || record.type === typeFilter
       || record.stage === typeFilter
@@ -15989,6 +15991,61 @@ function updateRecord(id, patch) {
         });
       });
   }
+  function setTicketClosed(record, closed) {
+    const closePatch = {
+      status: closed ? "Closed" : "Reviewing",
+      closedAt: closed ? new Date().toISOString() : "",
+      closedByName: closed ? access?.currentUser?.name || access?.currentUser?.email || "Administrator" : "",
+      parentReopenedAt: "",
+      syncState: isSupabaseCrmRecord(record.id, record) ? "saving" : "local",
+    };
+    setUpdates((current) => {
+      const next = { ...current, [record.id]: { ...current[record.id], ...closePatch } };
+      saveCrmUpdates(next);
+      return next;
+    });
+    if (!isSupabaseCrmRecord(record.id, record)) return Promise.resolve(closePatch);
+    return loadSupabaseModule()
+      .then(({ setSupportTicketClosed }) => setSupportTicketClosed(record.id, closed))
+      .then((result) => {
+        setUpdates((current) => {
+          const next = {
+            ...current,
+            [record.id]: {
+              ...current[record.id],
+              status: result.status === "closed" ? "Closed" : "Reviewing",
+              closedAt: result.closedAt || "",
+              closedBy: result.closedBy || "",
+              closedByName: result.closedByName || closePatch.closedByName,
+              parentReopenedAt: result.parentReopenedAt || "",
+              syncState: "saved",
+              syncError: "",
+            },
+          };
+          saveCrmUpdates(next);
+          return next;
+        });
+        return result;
+      })
+      .catch((error) => {
+        setUpdates((current) => {
+          const next = {
+            ...current,
+            [record.id]: {
+              ...current[record.id],
+              status: record.status,
+              closedAt: record.closedAt || "",
+              closedByName: record.closedByName || "",
+              syncState: "error",
+              syncError: error.message || "The ticket status could not be changed.",
+            },
+          };
+          saveCrmUpdates(next);
+          return next;
+        });
+        throw error;
+      });
+  }
   function toggleRow(id) {
     setSelectedRows((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   }
@@ -16032,7 +16089,7 @@ function updateRecord(id, patch) {
         <div className="crm-toolbar-controls">
           <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contact responses, school, email..." /></label>
           <label>Filter<select aria-label="Filter enquiries" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-            {["Website enquiries", "Archived", "All", "Parent", "School", "Staff", "Outreach", "Prospect", "Contacted", "Follow up", "Partner school", "Closed"].map((item) => <option key={item}>{item}</option>)}
+            {["Website enquiries", "Closed tickets", "Archived", "All", "Parent", "School", "Staff", "Outreach", "Prospect", "Contacted", "Follow up", "Partner school"].map((item) => <option key={item}>{item}</option>)}
           </select></label>
           <label>Per page<select aria-label="Rows per page" value={rowLimit} onChange={(event) => setRowLimit(event.target.value)}>
             {["15", "25", "50"].map((item) => <option key={item}>{item}</option>)}
@@ -16040,8 +16097,9 @@ function updateRecord(id, patch) {
         </div>
       </div>
       <div className="crm-summary">
-        <Metric icon={<Mail />} label="Website tickets" value={activeWebsiteEnquiries.length} tone={activeWebsiteEnquiries.length ? "blue" : "green"} />
-        <Metric icon={<Bell />} label="Open tickets" value={newWebsiteEnquiries.length} tone={newWebsiteEnquiries.length ? "amber" : "green"} />
+        <Metric icon={<Mail />} label="Website tickets" value={currentWebsiteEnquiries.length} tone={currentWebsiteEnquiries.length ? "blue" : "green"} />
+        <Metric icon={<Bell />} label="Open tickets" value={openWebsiteEnquiries.length} tone={openWebsiteEnquiries.length ? "amber" : "green"} />
+        <Metric icon={<ShieldCheck />} label="Closed tickets" value={closedWebsiteEnquiries.length} tone="green" />
         <Metric icon={<Users />} label="Outreach prospects" value={outreachCount} tone="blue" />
         <Metric icon={<CalendarDays />} label="Follow-ups" value={followUpCount} tone="amber" />
         <Metric icon={<ShieldCheck />} label="Partner schools" value={partnerCount} tone="green" />
@@ -16118,7 +16176,7 @@ function updateRecord(id, patch) {
                     <small>{record.createdAt ? new Date(record.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : ""}</small>
                   </td>
                   <td><span className={`support-ticket-age ${age.key}`}>{age.label}</span></td>
-                  <td><select value={record.status || "New"} onChange={(event) => updateRecord(record.id, { status: event.target.value })}>{crmStatuses.map((item) => <option key={item}>{item}</option>)}</select></td>
+                  <td>{record.status === "Closed" ? <Badge value="Closed" /> : <select value={record.status || "New"} onChange={(event) => updateRecord(record.id, { status: event.target.value })}>{crmStatuses.filter((item) => item !== "Closed").map((item) => <option key={item}>{item}</option>)}</select>}</td>
                   <td><strong>{record.owner || "Unassigned"}</strong><small>{record.firstOpenedAt ? `Opened ${new Date(record.firstOpenedAt).toLocaleString("en-GB")}` : "Opener recorded when ticket is opened"}</small></td>
                   <td>
                     <input type="date" value={record.followUpDate || ""} onChange={(event) => updateRecord(record.id, { followUpDate: event.target.value })} aria-label={`${record.name} follow-up date`} />
@@ -16138,7 +16196,7 @@ function updateRecord(id, patch) {
           <button className="button light" type="button" disabled={safePage >= pageCount} onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}>Next</button>
         </nav>
       )}
-      {selectedRecord && <CrmDetailDrawer record={selectedRecord} onChange={updateRecord} onClose={() => setSelectedId("")} onArchive={(archived) => setTicketArchived(selectedRecord, archived)} />}
+      {selectedRecord && <CrmDetailDrawer record={selectedRecord} onChange={updateRecord} onClose={() => setSelectedId("")} onArchive={(archived) => setTicketArchived(selectedRecord, archived)} onClosed={(closed) => setTicketClosed(selectedRecord, closed)} />}
       {!visibleRecords.length && <EmptyList title="No matching support tickets" text="Change the filter or wait for a new website ticket." />}
     </div>
   );
@@ -16182,7 +16240,7 @@ function CrmBulkActions({ selectedCount, visibleCount, allVisibleSelected, onSel
         <span>{visibleCount} selected on this page</span>
       </div>
       <button className="button light" type="button" onClick={onSelectVisible}>{allVisibleSelected ? "Unselect visible" : "Select visible"}</button>
-      <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">No change</option>{crmStatuses.map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">No change</option>{crmStatuses.filter((item) => item !== "Closed").map((item) => <option key={item}>{item}</option>)}</select></label>
       <label>Owner<select value={owner} onChange={(event) => setOwner(event.target.value)}><option value="">No change</option>{crmOwners.map((item) => <option key={item}>{item}</option>)}</select></label>
       <label>Contacted<input type="date" value={dateContacted} onChange={(event) => setDateContacted(event.target.value)} /></label>
       <label>Follow-up<input type="date" value={followUpDate} onChange={(event) => setFollowUpDate(event.target.value)} /></label>
@@ -16192,7 +16250,7 @@ function CrmBulkActions({ selectedCount, visibleCount, allVisibleSelected, onSel
   );
 }
 
-function CrmDetailDrawer({ record, onChange, onClose, onArchive }) {
+function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
   const isOutreach = record.type === "Outreach";
   const age = supportTicketAge(record);
   const firstName = String(record.name || "there").trim().split(/\s+/)[0] || "there";
@@ -16201,6 +16259,8 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive }) {
   const [replyReviewed, setReplyReviewed] = useState(false);
   const [replyState, setReplyState] = useState({ status: "idle", message: "" });
   const [lastSentReply, setLastSentReply] = useState(null);
+  const [closeAfterReply, setCloseAfterReply] = useState(false);
+  const [reopenBusy, setReopenBusy] = useState(false);
   const replyHistory = [lastSentReply, ...(record.replies || [])].filter(Boolean).filter((reply, index, items) => items.findIndex((item) => item.id === reply.id) === index);
   const notificationEvidence = crmNotificationEvidence(record);
 
@@ -16210,6 +16270,7 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive }) {
     setReplyReviewed(false);
     setReplyState({ status: "idle", message: "" });
     setLastSentReply(null);
+    setCloseAfterReply(false);
   }, [record.id]);
 
   useEffect(() => {
@@ -16225,11 +16286,13 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive }) {
     setReplyState({ status: "sending", message: "Sending your approved reply…" });
     try {
       const { sendEnquiryReply } = await loadSupabaseModule();
-      const result = await sendEnquiryReply({ enquiryId: record.id, subject: replySubject.trim(), body: replyBody.trim() });
+      const result = await sendEnquiryReply({ enquiryId: record.id, subject: replySubject.trim(), body: replyBody.trim(), closeTicket: closeAfterReply });
       setLastSentReply(result.reply || null);
       setReplyReviewed(false);
-      setReplyState({ status: "sent", message: `Reply sent to ${record.email}.` });
-      onChange(record.id, { status: "Responded", nextAction: "Monitor for parent reply" });
+      setReplyState({ status: "sent", message: closeAfterReply ? `Reply sent and ticket closed. ${record.email} can re-open it from the email.` : `Reply sent to ${record.email}.` });
+      onChange(record.id, closeAfterReply
+        ? { status: "Closed", closedAt: new Date().toISOString(), nextAction: "Closed — parent can re-open from the email" }
+        : { status: "Responded", closedAt: "", nextAction: "Monitor for parent reply" });
       addAuditLog("Enquiry reply sent", `${record.name} · ${record.email} · ${replySubject.trim()}`, {
         tableName: "enquiries",
         crmRecord: record.name,
@@ -16237,6 +16300,20 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive }) {
       });
     } catch (error) {
       setReplyState({ status: "error", message: error?.message || "The reply could not be sent." });
+    }
+  }
+
+  async function reopenTicket() {
+    if (reopenBusy) return;
+    setReopenBusy(true);
+    setReplyState({ status: "sending", message: "Re-opening ticket…" });
+    try {
+      await onClosed(false);
+      setReplyState({ status: "sent", message: "Ticket re-opened and returned to the open ticket list." });
+    } catch (error) {
+      setReplyState({ status: "error", message: error.message || "The ticket could not be re-opened." });
+    } finally {
+      setReopenBusy(false);
     }
   }
 
@@ -16272,7 +16349,7 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive }) {
         </div>
       </div>
       <div className="crm-detail-grid">
-        <label>Status<select value={record.status || "New"} onChange={(event) => onChange(record.id, { status: event.target.value })}>{crmStatuses.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label>Status{record.status === "Closed" ? <input value="Closed" readOnly /> : <select value={record.status || "New"} onChange={(event) => onChange(record.id, { status: event.target.value })}>{crmStatuses.filter((item) => item !== "Closed").map((item) => <option key={item}>{item}</option>)}</select>}</label>
         <label>Ticket owner<input value={record.owner || "Unassigned"} readOnly title="The first staff member to open an unassigned ticket becomes its owner." /></label>
         {isOutreach && <label>Date contacted<input type="date" value={record.dateContacted || ""} onChange={(event) => onChange(record.id, { dateContacted: event.target.value })} /></label>}
         <label>Follow-up date<input type="date" value={record.followUpDate || ""} onChange={(event) => onChange(record.id, { followUpDate: event.target.value })} /></label>
@@ -16280,6 +16357,12 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive }) {
         <label className="full">Next action<input value={record.nextAction || ""} onChange={(event) => onChange(record.id, { nextAction: event.target.value })} placeholder="Call, email, prepare proposal..." /></label>
         <label className="full">Notes<textarea rows="4" value={record.note || ""} onChange={(event) => onChange(record.id, { note: event.target.value })} placeholder="Call notes, context, objections or next steps." /></label>
       </div>
+      {record.status === "Closed" && !record.archivedAt && (
+        <section className="support-ticket-closed-panel">
+          <div><strong>Ticket Closed</strong><span>{record.closedAt ? `Closed ${new Date(record.closedAt).toLocaleString("en-GB")}` : "This ticket is in the closed ticket section."}{record.closedByName ? ` by ${record.closedByName}` : ""}</span></div>
+          <button className="button light" type="button" disabled={reopenBusy} onClick={reopenTicket}>{reopenBusy ? "Re-opening…" : "Re-open ticket"}</button>
+        </section>
+      )}
       {!isOutreach && (
         <section className="crm-delivery-evidence" aria-label="Enquiry delivery evidence">
           <div>
@@ -16313,6 +16396,10 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive }) {
           </div>
           <label>Subject<input value={replySubject} onChange={(event) => { setReplySubject(event.target.value); setReplyReviewed(false); }} maxLength="180" /></label>
           <label>Reply<textarea rows="9" value={replyBody} onChange={(event) => { setReplyBody(event.target.value); setReplyReviewed(false); }} maxLength="8000" placeholder="Write or paste the approved reply here." /></label>
+          <label className="crm-close-ticket-option">
+            <input type="checkbox" checked={closeAfterReply} onChange={(event) => setCloseAfterReply(event.target.checked)} disabled={record.status === "Closed"} />
+            <span><strong>Close Ticket</strong><small>Move this ticket into Closed tickets after sending. The email will show “Ticket Closed” and include a secure re-open button.</small></span>
+          </label>
           <label className="crm-reply-approval">
             <input type="checkbox" checked={replyReviewed} onChange={(event) => setReplyReviewed(event.target.checked)} />
             <span>I have reviewed the recipient, subject and message and approve this email for sending.</span>

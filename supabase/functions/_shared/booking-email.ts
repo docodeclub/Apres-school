@@ -140,7 +140,7 @@ export function paragraphsToHtml(lines: string[], options: BookingEmailHtmlOptio
     .map((line) => line.trim())
     .filter(Boolean);
   const actionLine = cleanedLines.find((line) =>
-    /^(Secure payment link:|Sign in here:|Create or sign in here:|Parent portal:)/i.test(line)
+    /^(Secure payment link:|Sign in here:|Create or sign in here:|Parent portal:|Re-open this ticket:)/i.test(line)
   ) || "";
   const actionUrl = firstUrl(actionLine);
   const title = stringValue(options.title) || emailTitleFromLines(cleanedLines);
@@ -229,11 +229,18 @@ function lineToEmailHtml(line: string, index: number, actionUrl: string) {
     const [label, ...rest] = line.split(":");
     return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 8px;background:#f7f9ff;border:1px solid #e3ebff;border-radius:14px;"><tr><td style="padding:12px 14px;"><p style="margin:0;font-size:15px;line-height:1.45;color:${brandNavy};"><strong style="color:${brandBlue};">${escapeHtml(label)}:</strong>${escapeHtml(rest.join(":"))}</p></td></tr></table>`;
   }
-  if (/^(Secure payment link:|Sign in here:|Create or sign in here:|Parent portal:)/i.test(line) && actionUrl) {
+  if (/^(Secure payment link:|Sign in here:|Create or sign in here:|Parent portal:|Re-open this ticket:)/i.test(line) && actionUrl) {
+    const lineActionUrl = firstUrl(line) || actionUrl;
     const isPayment = /^Secure payment link:/i.test(line);
-    const label = isPayment ? "Complete secure payment" : "Open parent portal";
+    const isTicketReopen = /^Re-open this ticket:/i.test(line);
+    const label = isPayment ? "Complete secure payment" : isTicketReopen ? "Re-open ticket" : "Open parent portal";
     const prefix = line.split(":")[0] || (isPayment ? "Secure payment link" : "Parent portal");
-    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 20px;"><tr><td align="center" style="border-radius:999px;background:${actionBlue};"><a href="${escapeHtml(actionUrl)}" style="display:block;padding:15px 22px;color:#ffffff;text-decoration:none;font-size:17px;line-height:1.35;font-weight:900;border-radius:999px;">${escapeHtml(label)}</a></td></tr></table><p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#66708a;word-break:break-word;">If the button does not work, use this secure link:<br><a href="${escapeHtml(actionUrl)}" style="color:${brandBlue};font-weight:800;">${escapeHtml(actionUrl)}</a></p>`;
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 20px;"><tr><td align="center" style="border-radius:999px;background:${actionBlue};"><a href="${escapeHtml(lineActionUrl)}" style="display:block;padding:15px 22px;color:#ffffff;text-decoration:none;font-size:17px;line-height:1.35;font-weight:900;border-radius:999px;">${escapeHtml(label)}</a></td></tr></table><p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#66708a;word-break:break-word;">If the button does not work, use this secure link:<br><a href="${escapeHtml(lineActionUrl)}" style="color:${brandBlue};font-weight:800;">${escapeHtml(lineActionUrl)}</a></p>`;
+  }
+  if (/^Ticket status:/i.test(line)) {
+    const status = line.split(":").slice(1).join(":").trim();
+    const closed = /closed/i.test(status);
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:18px 0;background:${closed ? "#fff7e8" : "#edf9f2"};border:1px solid ${closed ? "#f1cf91" : "#bde8ce"};border-radius:14px;"><tr><td style="padding:13px 15px;"><p style="margin:0;font-size:14px;line-height:1.45;color:${closed ? "#815200" : "#167344"};font-weight:900;">Ticket status: ${escapeHtml(status)}</p></td></tr></table>`;
   }
   if (/^Stop account setup reminders:/i.test(line)) {
     const unsubscribeUrl = firstUrl(line);

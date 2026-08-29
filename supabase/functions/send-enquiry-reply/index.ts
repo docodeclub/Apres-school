@@ -28,13 +28,14 @@ serve(async (request) => {
     const enquiryId = stringValue(payload?.enquiryId);
     const subject = stringValue(payload?.subject);
     const body = stringValue(payload?.body);
+    const closeTicket = payload?.closeTicket === true;
     if (!enquiryId) return json({ error: "Choose an enquiry before replying." }, 400);
     if (!subject || subject.length > 180) return json({ error: "Enter a subject of no more than 180 characters." }, 400);
     if (!body || body.length > 8000) return json({ error: "Enter a reply of no more than 8,000 characters." }, 400);
 
     const { data: enquiry, error: enquiryError } = await supabase
       .from("enquiries")
-      .select("id,name,email,type,subject,message,status")
+      .select("id,name,email,type,subject,message,status,reopen_token")
       .eq("id", enquiryId)
       .maybeSingle();
     if (enquiryError) throw enquiryError;
@@ -53,7 +54,7 @@ serve(async (request) => {
       .eq("email_type", "enquiry_reply")
       .eq("subject", subject)
       .eq("status", "sent")
-      .contains("metadata", { body })
+      .contains("metadata", { approvedBody: body, closeTicket })
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -66,21 +67,33 @@ serve(async (request) => {
         body,
         actorId: actor.id,
         emailLog: existingLog,
+        closeTicket,
       });
-      return json({ sent: true, recovered: true, reply }, 200);
+      return json({ sent: true, recovered: true, reply, ticketStatus: closeTicket ? "closed" : "open" }, 200);
     }
 
     const lines = body.split(/\r?\n/);
+    const ticketStatus = closeTicket ? "Ticket Closed" : "Ticket Open";
+    const reopenUrl = closeTicket
+      ? `${supabaseUrl}/functions/v1/manage-support-ticket?action=reopen&ticket=${encodeURIComponent(enquiryId)}&token=${encodeURIComponent(stringValue(enquiry.reopen_token))}`
+      : "";
+    const emailLines = [
+      ...lines,
+      "",
+      `Ticket status: ${ticketStatus}`,
+      ...(reopenUrl ? [`Re-open this ticket: ${reopenUrl}`] : []),
+    ];
+    const emailText = emailLines.join("\n");
     const emailLog = await sendBookingEmail(supabase, {
       recipientEmail,
       recipientName: stringValue(enquiry.name),
       emailType: "enquiry_reply",
       subject,
-      text: body,
-      html: paragraphsToHtml(lines, {
+      text: emailText,
+      html: paragraphsToHtml(emailLines, {
         title: subject.replace(/^re:\s*/i, ""),
         preheader: `A reply from Après School about your ${stringValue(enquiry.type).toLowerCase() || "enquiry"}.`,
-        badge: "Customer care",
+        badge: ticketStatus,
         eyebrow: "A reply from Après School",
       }),
       sentBy: actor.id,
@@ -89,6 +102,8 @@ serve(async (request) => {
         enquiryId,
         originalSubject: stringValue(enquiry.subject),
         replyApprovedBy: actor.email,
+        approvedBody: body,
+        closeTicket,
       },
     });
 
@@ -112,7 +127,16 @@ serve(async (request) => {
     if (replyError) throw replyError;
 
     if (sent) {
-      const { error: statusError } = await supabase.from("enquiries").update({ status: "responded" }).eq("id", enquiryId);
+      const { error: statusError } = await supabase.from("enquiries").update(closeTicket ? {
+        status: "closed",
+        closed_at: new Date().toISOString(),
+        closed_by: actor.id,
+        parent_reopened_at: null,
+      } : {
+        status: "responded",
+        closed_at: null,
+        closed_by: null,
+      }).eq("id", enquiryId);
       if (statusError) throw statusError;
     }
 
@@ -121,11 +145,11 @@ serve(async (request) => {
       action: sent ? "enquiry_reply_sent" : "enquiry_reply_failed",
       table_name: "enquiries",
       record_id: enquiryId,
-      metadata: { recipientEmail, subject, replyId: reply.id, emailLogId: emailLog?.id, status },
+      metadata: { recipientEmail, subject, replyId: reply.id, emailLogId: emailLog?.id, status, closeTicket },
     });
 
     if (!sent) return json({ error: "The reply was saved but the email provider did not send it.", reply }, 502);
-    return json({ sent: true, reply }, 200);
+    return json({ sent: true, reply, ticketStatus: closeTicket ? "closed" : "open" }, 200);
   } catch (error) {
     console.error(error);
     const status = error instanceof AccessError ? error.status : 500;
@@ -140,6 +164,7 @@ async function recoverSentReply({
   body,
   actorId,
   emailLog,
+  closeTicket,
 }: {
   enquiryId: string;
   recipientEmail: string;
@@ -147,6 +172,7 @@ async function recoverSentReply({
   body: string;
   actorId: string;
   emailLog: Record<string, unknown>;
+  closeTicket: boolean;
 }) {
   const emailLogId = stringValue(emailLog.id);
   const { data: existingReply, error: existingReplyError } = await supabase
@@ -177,7 +203,16 @@ async function recoverSentReply({
     reply = data;
   }
 
-  const { error: statusError } = await supabase.from("enquiries").update({ status: "responded" }).eq("id", enquiryId);
+  const { error: statusError } = await supabase.from("enquiries").update(closeTicket ? {
+    status: "closed",
+    closed_at: new Date().toISOString(),
+    closed_by: actorId,
+    parent_reopened_at: null,
+  } : {
+    status: "responded",
+    closed_at: null,
+    closed_by: null,
+  }).eq("id", enquiryId);
   if (statusError) throw statusError;
   return reply;
 }
