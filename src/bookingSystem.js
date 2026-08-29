@@ -1141,11 +1141,48 @@ export async function fetchParentSupportTickets({ limit = 50 } = {}) {
     p_limit: limit,
   });
   if (error) throw error;
+  const tickets = Array.isArray(data?.tickets) ? data.tickets : [];
+  await Promise.all(tickets.flatMap((ticket) => (ticket.attachments || []).map(async (attachment) => {
+    const { data: signed, error: signedError } = await supabase.storage.from("support-ticket-private").createSignedUrl(attachment.storagePath, 900);
+    attachment.url = signedError ? "" : signed?.signedUrl || "";
+  })));
   return {
     parentAccountId: data?.parentAccountId || "",
-    tickets: Array.isArray(data?.tickets) ? data.tickets : [],
+    tickets,
+    unreadCount: Number(data?.unreadCount || 0),
     fetchedAt: data?.fetchedAt || new Date().toISOString(),
   };
+}
+
+export async function markParentSupportTicketRead(ticketId) {
+  assertSupabase();
+  if (!ticketId) return null;
+  const { data, error } = await supabase.rpc("mark_support_ticket_read", { p_enquiry_id: ticketId, p_reader_type: "parent" });
+  if (error) throw error;
+  return data;
+}
+
+export async function uploadParentSupportAttachments({ ticketId, files = [] } = {}) {
+  assertSupabase();
+  const allowed = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+  if (!ticketId) throw new Error("Choose a support ticket first.");
+  if (files.length > 3) throw new Error("Attach no more than three files at a time.");
+  const uploaded = [];
+  for (const file of files) {
+    if (!allowed.has(file.type)) throw new Error("Use a JPG, PNG, WebP or PDF attachment.");
+    if (!file.size || file.size > 8 * 1024 * 1024) throw new Error("Each attachment must be no larger than 8MB.");
+    const safeName = String(file.name || "attachment").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(-120) || "attachment";
+    const path = `${ticketId}/${crypto.randomUUID()}-${safeName}`;
+    const { error: uploadError } = await supabase.storage.from("support-ticket-private").upload(path, file, { contentType: file.type, upsert: false });
+    if (uploadError) throw uploadError;
+    const { data, error } = await supabase.rpc("record_support_ticket_attachment", { p_enquiry_id: ticketId, p_storage_path: path, p_file_name: file.name || safeName, p_media_type: file.type, p_byte_size: file.size });
+    if (error) {
+      await supabase.storage.from("support-ticket-private").remove([path]);
+      throw error;
+    }
+    uploaded.push(data);
+  }
+  return uploaded;
 }
 
 export async function createParentSupportTicket({ subject, message } = {}) {

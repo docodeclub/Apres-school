@@ -53,6 +53,8 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Added
 
+- Per-user unread support-ticket badges for parents and administrators, cleared only when that signed-in person opens the ticket.
+- Private support-ticket attachments for families and administrators, with restricted storage, validated image/PDF uploads and short-lived download links.
 - A secure Support Tickets area in the parent portal where signed-in families can raise requests, view their own conversation history, add follow-up messages and re-open closed tickets with a required explanation.
 - Parent and helpdesk email notifications for portal ticket creation, follow-up and reopening, with secure deep links back to the relevant account or staff ticket.
 - A time-limited, single-use re-opening form for support contacts who do not yet have a family account, replacing the previous one-click email mutation.

@@ -19,6 +19,7 @@ const staffPhotoBucket = "staff-profile-photos";
 const staffHrFilesBucket = "staff-hr-files";
 const employeeExpenseReceiptsBucket = "employee-expense-receipts";
 const staffOnboardingEvidenceBucket = "staff-onboarding-evidence";
+const supportTicketAttachmentBucket = "support-ticket-private";
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 
@@ -1272,7 +1273,7 @@ export async function fetchPlatformData({ userId, role }) {
     ? Promise.resolve({ data: [], error: null })
     : supabase
         .from("enquiries")
-        .select("id, name, email, organisation, type, subject, message, status, parent_account_id, classification, duplicate_of, classified_at, classified_by, owner_id, first_opened_at, first_opened_by, closed_at, closed_by, parent_reopened_at, archived_at, archived_by, internal_notes, created_at, owner_profile:profiles!enquiries_owner_id_fkey(full_name,email), first_opened_profile:profiles!enquiries_first_opened_by_fkey(full_name,email), closed_profile:profiles!enquiries_closed_by_fkey(full_name,email), archived_profile:profiles!enquiries_archived_by_fkey(full_name,email), enquiry_replies(id, recipient_email, subject, body, status, provider_message_id, sent_by, sent_at, created_at), support_ticket_messages(id, body, sender_type, sender_profile_id, created_at), email_logs(id, email_type, status, provider, provider_message_id, error_message, sent_at, created_at)")
+        .select("id, name, email, organisation, type, subject, message, status, parent_account_id, classification, duplicate_of, classified_at, classified_by, owner_id, first_opened_at, first_opened_by, closed_at, closed_by, parent_reopened_at, archived_at, archived_by, internal_notes, created_at, owner_profile:profiles!enquiries_owner_id_fkey(full_name,email), first_opened_profile:profiles!enquiries_first_opened_by_fkey(full_name,email), closed_profile:profiles!enquiries_closed_by_fkey(full_name,email), archived_profile:profiles!enquiries_archived_by_fkey(full_name,email), enquiry_replies(id, recipient_email, subject, body, status, provider_message_id, sent_by, sent_at, created_at), support_ticket_messages(id, body, sender_type, sender_profile_id, created_at), support_ticket_reads(reader_profile_id, reader_type, last_read_at), support_ticket_attachments(id, file_name, media_type, byte_size, storage_path, uploader_type, created_at), email_logs(id, email_type, status, provider, provider_message_id, error_message, sent_at, created_at)")
         .order("created_at", { ascending: false })
         .limit(250);
 
@@ -1458,12 +1459,14 @@ export async function fetchPlatformData({ userId, role }) {
   await attachStaffPhotoUrls(staff);
   const hrFiles = hrFilesResult.error ? [] : mapHrFiles(hrFilesResult.data || []);
   await attachHrFileUrls(hrFiles);
+  const enquiries = mapEnquiries(enquiriesResult.data || []);
+  await attachSupportTicketUrls(enquiries);
 
   return {
     staff,
     sessions: mapSessions(sessionsResult.data || []),
     documents: mapDocuments(documentsResult.data || [], documentChaseEventsResult.error ? [] : documentChaseEventsResult.data || []),
-    enquiries: mapEnquiries(enquiriesResult.data || []),
+    enquiries,
     hrFiles,
     hrFileCategories: hrCategoriesResult.error ? [] : hrCategoriesResult.data || [],
     payrollHours: payrollHoursResult.error ? {} : mapPayrollHours(payrollHoursResult.data || []),
@@ -1943,6 +1946,8 @@ function mapEnquiries(records) {
       .filter((item) => item.email_type === "enquiry_notification")
       .sort((left, right) => String(right.created_at || "").localeCompare(String(left.created_at || "")));
     const notificationLog = notificationLogs[0] || null;
+    const readAt = (record.support_ticket_reads || []).find((receipt) => receipt.reader_type === "staff")?.last_read_at || "";
+    const latestInboundAt = [record.created_at, ...(record.support_ticket_messages || []).filter((message) => message.sender_type === "parent").map((message) => message.created_at)].filter(Boolean).sort().at(-1) || "";
     return {
       id: record.id,
       name: record.name,
@@ -1999,9 +2004,29 @@ function mapEnquiries(records) {
         senderProfileId: message.sender_profile_id || "",
         createdAt: message.created_at || "",
       })).sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt))),
+      unread: !readAt || String(latestInboundAt) > String(readAt),
+      lastReadAt: readAt,
+      attachments: (record.support_ticket_attachments || []).map((attachment) => ({
+        id: attachment.id,
+        fileName: attachment.file_name,
+        mediaType: attachment.media_type,
+        byteSize: Number(attachment.byte_size || 0),
+        storagePath: attachment.storage_path,
+        uploaderType: attachment.uploader_type,
+        createdAt: attachment.created_at,
+        url: "",
+      })),
       source: "supabase",
     };
   });
+}
+
+async function attachSupportTicketUrls(enquiries = []) {
+  await Promise.all(enquiries.flatMap((enquiry) => (enquiry.attachments || []).map(async (attachment) => {
+    if (!attachment.storagePath) return;
+    const { data, error } = await supabase.storage.from(supportTicketAttachmentBucket).createSignedUrl(attachment.storagePath, 900);
+    if (!error) attachment.url = data?.signedUrl || "";
+  })));
 }
 
 function mapPayrollHours(records) {
@@ -2283,6 +2308,37 @@ export async function claimSupportTicket(enquiryId) {
   });
   if (error) throw error;
   return data || {};
+}
+
+export async function markStaffSupportTicketRead(enquiryId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("mark_support_ticket_read", { p_enquiry_id: enquiryId, p_reader_type: "staff" });
+  if (error) throw error;
+  return data;
+}
+
+export async function uploadStaffSupportTicketAttachments(enquiryId, files = []) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const allowed = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+  if (!enquiryId) throw new Error("Choose a support ticket first.");
+  if (files.length > 3) throw new Error("Attach no more than three files at a time.");
+  const uploaded = [];
+  for (const file of files) {
+    if (!allowed.has(file.type)) throw new Error("Use a JPG, PNG, WebP or PDF attachment.");
+    if (!file.size || file.size > 8 * 1024 * 1024) throw new Error("Each attachment must be no larger than 8MB.");
+    const safeName = String(file.name || "attachment").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(-120) || "attachment";
+    const storagePath = `${enquiryId}/${crypto.randomUUID()}-${safeName}`;
+    const { error: uploadError } = await supabase.storage.from(supportTicketAttachmentBucket).upload(storagePath, file, { contentType: file.type, upsert: false });
+    if (uploadError) throw uploadError;
+    const { data, error } = await supabase.rpc("record_support_ticket_attachment", { p_enquiry_id: enquiryId, p_storage_path: storagePath, p_file_name: file.name || safeName, p_media_type: file.type, p_byte_size: file.size });
+    if (error) {
+      await supabase.storage.from(supportTicketAttachmentBucket).remove([storagePath]);
+      throw error;
+    }
+    const { data: signed } = await supabase.storage.from(supportTicketAttachmentBucket).createSignedUrl(storagePath, 900);
+    uploaded.push({ ...data, url: signed?.signedUrl || "" });
+  }
+  return uploaded;
 }
 
 export async function setSupportTicketArchived(enquiryId, archived = true) {

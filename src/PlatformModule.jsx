@@ -15781,6 +15781,7 @@ function CRM({ data, access }) {
   const currentWebsiteEnquiries = websiteEnquiries.filter((record) => !record.archivedAt);
   const openWebsiteEnquiries = currentWebsiteEnquiries.filter((record) => record.status !== "Closed");
   const closedWebsiteEnquiries = currentWebsiteEnquiries.filter((record) => record.status === "Closed");
+  const unreadWebsiteEnquiries = currentWebsiteEnquiries.filter((record) => record.unread);
   const recentWebsiteEnquiries = [...openWebsiteEnquiries]
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
     .slice(0, 3);
@@ -15923,7 +15924,10 @@ function updateRecord(id, patch) {
       return;
     }
     loadSupabaseModule()
-      .then(({ claimSupportTicket }) => claimSupportTicket(record.id))
+      .then(async ({ claimSupportTicket, markStaffSupportTicketRead }) => {
+        const [claim] = await Promise.all([claimSupportTicket(record.id), markStaffSupportTicketRead(record.id)]);
+        return claim;
+      })
       .then((claim) => {
         setUpdates((current) => {
           const next = {
@@ -15936,6 +15940,7 @@ function updateRecord(id, patch) {
               firstOpenedAt: claim.firstOpenedAt || record.firstOpenedAt || "",
               firstOpenedBy: claim.firstOpenedBy || record.firstOpenedBy || "",
               firstOpenedByName: claim.firstOpenedByName || record.firstOpenedByName || claim.ownerName || "",
+              unread: false,
               syncState: "saved",
               updatedAt: new Date().toISOString(),
             },
@@ -16114,6 +16119,7 @@ function updateRecord(id, patch) {
         </div>
       </div>
       <div className="crm-summary">
+        <Metric icon={<Mail />} label="Unread" value={unreadWebsiteEnquiries.length} tone={unreadWebsiteEnquiries.length ? "amber" : "green"} />
         <Metric icon={<Mail />} label="Website tickets" value={currentWebsiteEnquiries.length} tone={currentWebsiteEnquiries.length ? "blue" : "green"} />
         <Metric icon={<Bell />} label="Open tickets" value={openWebsiteEnquiries.length} tone={openWebsiteEnquiries.length ? "amber" : "green"} />
         <Metric icon={<ShieldCheck />} label="Closed tickets" value={closedWebsiteEnquiries.length} tone="green" />
@@ -16130,7 +16136,7 @@ function updateRecord(id, patch) {
           <div className="crm-enquiry-strip-grid">
             {recentWebsiteEnquiries.map((record) => (
               <button key={record.id} type="button" onClick={() => openTicket(record)}>
-                <span>{record.type || "Enquiry"}</span>
+                <span>{record.unread ? "New · Unread" : record.type || "Enquiry"}</span>
                 <strong>{record.name || "Unnamed contact"}</strong>
                 <small>{record.email || "No email"}{record.createdAt ? ` · ${formatShortDate(record.createdAt)}` : ""}</small>
                 <p>{record.subject || record.message || "No message preview"}</p>
@@ -16169,10 +16175,10 @@ function updateRecord(id, patch) {
               const notificationEvidence = crmNotificationEvidence(record);
               const age = supportTicketAge(record);
               return (
-                <tr key={record.id} className={`${selectedRecord?.id === record.id ? "selected " : ""}support-ticket-${age.key}`}>
+                <tr key={record.id} className={`${selectedRecord?.id === record.id ? "selected " : ""}${record.unread ? "support-ticket-unread " : ""}support-ticket-${age.key}`}>
                   <td><input type="checkbox" checked={selectedRows.includes(record.id)} onChange={() => toggleRow(record.id)} aria-label={`Select ${record.name}`} /></td>
                   <td>
-                    <strong>{record.name}</strong>
+                    <strong>{record.name}{record.unread && <span className="support-ticket-unread-badge">Unread</span>}</strong>
                     <small>{record.type}{record.stage ? ` · ${record.stage}` : ""}</small>
                     {record.classification && <small className={`crm-classification ${record.classification}`}>{record.classification}</small>}
                     <small>{isOutreach ? [record.area, record.location, record.contactType].filter(Boolean).join(" · ") : record.organisation || "No organisation"}</small>
@@ -16279,6 +16285,9 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
   const [closeAfterReply, setCloseAfterReply] = useState(false);
   const [closeBusy, setCloseBusy] = useState(false);
   const [reopenBusy, setReopenBusy] = useState(false);
+  const [attachmentFiles, setAttachmentFiles] = useState([]);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentMessage, setAttachmentMessage] = useState("");
   const parentFollowUps = (record.parentMessages || [])
     .filter((message) => !(message.body === record.message && Math.abs(new Date(message.createdAt || 0).getTime() - new Date(record.createdAt || 0).getTime()) < 10000))
     .map((message) => ({ ...message, subject: "Parent follow-up", status: "Received", sentAt: message.createdAt }));
@@ -16289,6 +16298,23 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
   const notificationEvidence = crmNotificationEvidence(record);
   const replyAddress = String(record.contactEmail || record.email || "").trim();
   const replyAddressValid = validSupportReplyEmail(replyAddress);
+
+  async function uploadTicketAttachments() {
+    if (!attachmentFiles.length || attachmentBusy) return;
+    setAttachmentBusy(true);
+    setAttachmentMessage("");
+    try {
+      const { uploadStaffSupportTicketAttachments } = await loadSupabaseModule();
+      const uploaded = await uploadStaffSupportTicketAttachments(record.id, attachmentFiles);
+      onChange(record.id, { attachments: [...(record.attachments || []), ...uploaded] });
+      setAttachmentFiles([]);
+      setAttachmentMessage(`${uploaded.length} private attachment${uploaded.length === 1 ? "" : "s"} added.`);
+    } catch (error) {
+      setAttachmentMessage(error?.message || "The attachment could not be uploaded.");
+    } finally {
+      setAttachmentBusy(false);
+    }
+  }
 
   useEffect(() => {
     setReplySubject(`Re: ${record.subject || "Your Après School enquiry"}`);
@@ -16448,6 +16474,23 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
             <strong>{record.subject || `${record.type || "Website"} enquiry`}</strong>
             <p>{record.message || "No message was supplied."}</p>
           </div>
+          {!!record.attachments?.length && (
+            <section className="crm-ticket-attachments" aria-label="Private ticket attachments">
+              <div><strong>Private attachments</strong><small>Visible only to this family and authorised administrators.</small></div>
+              <div>{record.attachments.map((attachment) => (
+                <a key={attachment.id} href={attachment.url || undefined} target="_blank" rel="noreferrer" aria-disabled={!attachment.url}>
+                  <span>{attachment.fileName}</span>
+                  <small>{Math.max(1, Math.round(Number(attachment.byteSize || 0) / 1024))} KB · {attachment.uploaderType === "staff" ? "Staff" : "Parent"}</small>
+                </a>
+              ))}</div>
+            </section>
+          )}
+          <section className="crm-ticket-attachment-upload" aria-label="Add a private ticket attachment">
+            <label>Add private attachments<input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setAttachmentFiles(Array.from(event.target.files || []).slice(0, 3))} /></label>
+            <small>Up to 3 JPG, PNG, WebP or PDF files · 8MB each. Only this family and authorised administrators can open them.</small>
+            <button className="button light" type="button" onClick={uploadTicketAttachments} disabled={!attachmentFiles.length || attachmentBusy}>{attachmentBusy ? "Uploading…" : "Add attachments"}</button>
+            {attachmentMessage && <span role="status">{attachmentMessage}</span>}
+          </section>
           {!replyAddressValid && <p className="crm-reply-address-warning" role="alert">The parent entered an incomplete email address. Correct the Contact field above before sending a reply.</p>}
           <label>Subject<input value={replySubject} onChange={(event) => { setReplySubject(event.target.value); setReplyReviewed(false); }} maxLength="180" /></label>
           <label>Reply<textarea rows="9" value={replyBody} onChange={(event) => { setReplyBody(event.target.value); setReplyReviewed(false); }} maxLength="8000" placeholder="Write or paste the approved reply here." /></label>

@@ -63,6 +63,7 @@ import {
   fetchParentBadgeBook,
   fetchParentBookingLedger,
   fetchParentSupportTickets,
+  markParentSupportTicketRead,
   quoteParentBookingPricing,
   fetchStaffRegister,
   graduateParentChild,
@@ -74,6 +75,7 @@ import {
   removeParentAccountHolder,
   removeParentBookingItems,
   replyToParentSupportTicket,
+  uploadParentSupportAttachments,
   requestParentPasswordReset as requestParentPasswordResetCode,
   signInParentAccount as signInRealParentAccount,
   signOutParentAccount as signOutRealParentAccount,
@@ -1494,6 +1496,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [parentSupportReply, setParentSupportReply] = useState("");
   const [parentSupportBusy, setParentSupportBusy] = useState(false);
   const [parentSupportNotice, setParentSupportNotice] = useState("");
+  const [parentSupportUnreadCount, setParentSupportUnreadCount] = useState(0);
+  const [parentSupportDraftFiles, setParentSupportDraftFiles] = useState([]);
+  const [parentSupportReplyFiles, setParentSupportReplyFiles] = useState([]);
   const [parentBadgeFilter, setParentBadgeFilter] = useState("all");
   const [parentBadgeChildFilter, setParentBadgeChildFilter] = useState("all");
   const [launchFinanceSection, setLaunchFinanceSection] = useState("Overview");
@@ -5586,6 +5591,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentSupportReply("");
     setParentSupportError("");
     setParentSupportNotice("");
+    setParentSupportUnreadCount(0);
+    setParentSupportDraftFiles([]);
+    setParentSupportReplyFiles([]);
     setLiveParentLedger({ invoices: [], bookings: [], creditEntries: [], creditBalance: 0, fetchedAt: "", loading: false, error: "" });
     localStorage.setItem("apres-parent-account-signed-in", "false");
     localStorage.setItem("apres-parent-account-mode", JSON.stringify(isLaunchMode ? "live" : "demo"));
@@ -5736,10 +5744,22 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }, [realBookingServiceReady, parentAccountSignedIn, parentAccountMode, launchParentPortalOpen]);
 
   useEffect(() => {
-    if (!isLaunchMode || launchAccountSection !== "Support" || !realBookingServiceReady || !parentAccountSignedIn || parentAccountMode !== "live") return;
+    if (!isLaunchMode || !launchParentPortalOpen || !realBookingServiceReady || !parentAccountSignedIn || parentAccountMode !== "live") return;
     const requestedTicketId = new URLSearchParams(window.location.search).get("ticket") || "";
-    refreshParentSupportTickets({ selectId: requestedTicketId });
-  }, [isLaunchMode, launchAccountSection, realBookingServiceReady, parentAccountSignedIn, parentAccountMode]);
+    refreshParentSupportTickets({ quiet: launchAccountSection !== "Support", selectId: requestedTicketId });
+  }, [isLaunchMode, launchParentPortalOpen, launchAccountSection, realBookingServiceReady, parentAccountSignedIn, parentAccountMode]);
+
+  useEffect(() => {
+    if (!parentSupportSelectedId || launchAccountSection !== "Support" || parentAccountMode !== "live") return;
+    const selected = parentSupportTickets.find((ticket) => ticket.id === parentSupportSelectedId);
+    if (!selected?.unread) return;
+    markParentSupportTicketRead(parentSupportSelectedId)
+      .then(() => {
+        setParentSupportTickets((current) => current.map((ticket) => ticket.id === parentSupportSelectedId ? { ...ticket, unread: false } : ticket));
+        setParentSupportUnreadCount((count) => Math.max(0, count - 1));
+      })
+      .catch(() => {});
+  }, [parentSupportSelectedId, launchAccountSection, parentAccountMode, parentSupportTickets]);
 
   function openLaunchParentPortal() {
     setLaunchBookingActive(false);
@@ -16678,6 +16698,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       const workspace = await fetchParentSupportTickets();
       const tickets = workspace.tickets || [];
       setParentSupportTickets(tickets);
+      setParentSupportUnreadCount(Number(workspace.unreadCount || 0));
       setParentSupportSelectedId((current) => {
         const preferred = selectId || current;
         return tickets.some((ticket) => ticket.id === preferred) ? preferred : tickets[0]?.id || "";
@@ -16701,8 +16722,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentSupportNotice("");
     try {
       const result = await createParentSupportTicket({ subject, message });
+      let attachmentWarning = "";
+      if (parentSupportDraftFiles.length) {
+        try { await uploadParentSupportAttachments({ ticketId: result.id, files: parentSupportDraftFiles }); }
+        catch (attachmentError) { attachmentWarning = attachmentError?.message || "One or more attachments could not be uploaded."; }
+      }
       setParentSupportDraft({ subject: "", message: "" });
-      setParentSupportNotice(result.notificationWarning
+      setParentSupportDraftFiles([]);
+      setParentSupportNotice(attachmentWarning
+        ? `Your ticket was created, but the attachment was not added: ${attachmentWarning}`
+        : result.notificationWarning
         ? "Your support ticket has been created. The email confirmation is delayed, but our team can see your ticket here."
         : "Your support ticket has been created and our helpdesk has been notified.");
       await refreshParentSupportTickets({ quiet: true, selectId: result.id });
@@ -16724,8 +16753,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentSupportNotice("");
     try {
       const result = await replyToParentSupportTicket({ ticketId: ticket.id, message, reopen });
+      let attachmentWarning = "";
+      if (parentSupportReplyFiles.length) {
+        try { await uploadParentSupportAttachments({ ticketId: ticket.id, files: parentSupportReplyFiles }); }
+        catch (attachmentError) { attachmentWarning = attachmentError?.message || "One or more attachments could not be uploaded."; }
+      }
       setParentSupportReply("");
-      setParentSupportNotice(result.notificationWarning
+      setParentSupportReplyFiles([]);
+      setParentSupportNotice(attachmentWarning
+        ? `Your message was saved, but the attachment was not added: ${attachmentWarning}`
+        : result.notificationWarning
         ? `${reopen ? "Your ticket has been re-opened" : "Your message has been added"}. The email confirmation is delayed.`
         : reopen ? "Your ticket has been re-opened with your message." : "Your message has been added to the ticket.");
       await refreshParentSupportTickets({ quiet: true, selectId: ticket.id });
@@ -16770,6 +16807,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           <form onSubmit={submitParentSupportTicket}>
             <label>Subject<input value={parentSupportDraft.subject} onChange={(event) => setParentSupportDraft((current) => ({ ...current, subject: event.target.value }))} maxLength="180" placeholder="What do you need help with?" required /></label>
             <label>Message<textarea rows="5" value={parentSupportDraft.message} onChange={(event) => setParentSupportDraft((current) => ({ ...current, message: event.target.value }))} maxLength="8000" placeholder="Include the child, school, booking or payment details that will help us investigate." required /></label>
+            <label>Attachments <small>Up to 3 JPG, PNG, WebP or PDF files · 8MB each</small><input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setParentSupportDraftFiles(Array.from(event.target.files || []).slice(0, 3))} /></label>
             <button type="submit" disabled={parentSupportBusy || parentSupportDraft.subject.trim().length < 3 || parentSupportDraft.message.trim().length < 10}>{parentSupportBusy ? "Sending…" : "Send to Après School"}</button>
           </form>
         </details>
@@ -16780,7 +16818,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             <nav className="lab-parent-support-list" aria-label="Support ticket list">
               {parentSupportTickets.map((ticket) => (
                 <button type="button" key={ticket.id} className={ticket.id === selected?.id ? "active" : ""} onClick={() => { setParentSupportSelectedId(ticket.id); setParentSupportReply(""); setParentSupportNotice(""); }}>
-                  <span className={`status-${String(ticket.status || "new").toLowerCase()}`}>{statusLabel(ticket.status)}</span>
+                  <span className={`status-${String(ticket.status || "new").toLowerCase()}`}>{ticket.unread ? "New reply" : statusLabel(ticket.status)}</span>
                   <strong>{ticket.subject || "Support request"}</strong>
                   <small>{formatSupportDate(ticket.parentReopenedAt || ticket.createdAt)}</small>
                 </button>
@@ -16799,8 +16837,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     </div>
                   ))}
                 </div>
+                {!!selected.attachments?.length && <div className="lab-parent-support-attachments"><strong>Private attachments</strong>{selected.attachments.map((attachment) => <a key={attachment.id} href={attachment.url || undefined} target="_blank" rel="noreferrer" aria-disabled={!attachment.url}><span>{attachment.fileName}</span><small>{Math.max(1, Math.round(Number(attachment.byteSize || 0) / 1024))} KB · {attachment.uploaderType === "staff" ? "Après School" : "You"}</small></a>)}</div>}
                 <form className="lab-parent-support-reply" onSubmit={submitParentSupportReply}>
                   <label>{selectedClosed ? "What do you still need help with?" : "Add a message"}<textarea rows="4" value={parentSupportReply} onChange={(event) => setParentSupportReply(event.target.value)} maxLength="8000" placeholder={selectedClosed ? "Explain what remains unresolved. A message is required to re-open the ticket." : "Add any useful information for our helpdesk."} required /></label>
+                  <label>Attachments <small>Optional · up to 3 private files</small><input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setParentSupportReplyFiles(Array.from(event.target.files || []).slice(0, 3))} /></label>
                   {selectedClosed && <p><strong>This ticket is closed.</strong> Sending this message will re-open it and notify our helpdesk.</p>}
                   <button type="submit" disabled={parentSupportBusy || parentSupportReply.trim().length < 10}>{parentSupportBusy ? "Sending…" : selectedClosed ? "Re-open ticket and send message" : "Send message"}</button>
                 </form>
@@ -23042,7 +23082,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   onClick={() => setLaunchAccountMenuOpen((current) => !current)}
                 >
                   <span>Account menu</span>
-                  <strong>{launchAccountSection === "Payments" ? "Payments & credit" : launchAccountSection === "Badges" ? "Children’s rewards" : launchAccountSection === "Support" ? "Support tickets" : launchAccountSection === "Account" ? "Account settings" : launchAccountSection}</strong>
+                  <strong>{launchAccountSection === "Payments" ? "Payments & credit" : launchAccountSection === "Badges" ? "Children’s rewards" : launchAccountSection === "Support" ? "Support tickets" : launchAccountSection === "Account" ? "Account settings" : launchAccountSection}{parentSupportUnreadCount > 0 && <span className="lab-parent-tab-unread" aria-label={`${parentSupportUnreadCount} unread support replies`}>{parentSupportUnreadCount}</span>}</strong>
                   <b aria-hidden="true">{launchAccountMenuOpen ? "Close" : "Open"}</b>
                 </button>
                 <nav id="parent-account-sections" className={`lab-parent-account-sections${launchAccountMenuOpen ? " is-open" : ""}`} aria-label="Parent account sections">
@@ -23066,7 +23106,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         setLaunchAccountMenuOpen(false);
                       }}
                     >
-                      {label}
+                      {label}{section === "Support" && parentSupportUnreadCount > 0 && <span className="lab-parent-tab-unread" aria-label={`${parentSupportUnreadCount} unread support replies`}>{parentSupportUnreadCount}</span>}
                     </button>
                   ))}
                 </nav>
