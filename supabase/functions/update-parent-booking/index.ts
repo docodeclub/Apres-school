@@ -101,15 +101,17 @@ serve(async (request) => {
     }
 
     if (action === "cancel" || action === "cancel_booking") {
+      const cancellationTarget = await bookingChangeTarget(actor, bookingId);
       const { data, error } = await supabase.rpc("cancel_parent_booking", {
-        p_parent_id: actor.id,
+        p_parent_id: cancellationTarget.parentId,
         p_booking_id: bookingId,
         p_reason: stringValue(body.reason),
         p_actor_role: actor.role || "parent",
       });
       if (error) throw error;
       const email = await sendBookingChangeEmail({
-        actor,
+        actor: cancellationTarget.recipient,
+        sentBy: actor.id,
         action: "cancel",
         result: data as Record<string, unknown>,
         reason: stringValue(body.reason),
@@ -454,6 +456,31 @@ async function getActor(authHeader: string): Promise<Actor | null> {
   return profile as Actor;
 }
 
+async function bookingChangeTarget(actor: Actor, bookingId: string) {
+  const role = String(actor.role || "").toLowerCase();
+  if (!["admin", "superadmin", "manager"].includes(role)) {
+    return { parentId: actor.id, recipient: actor };
+  }
+
+  const { data: booking, error } = await supabase
+    .from("bookings")
+    .select("parent_id, parent_name, parent_email")
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!booking?.parent_id) throw new Error("Booking parent could not be identified.");
+
+  return {
+    parentId: stringValue(booking.parent_id),
+    recipient: {
+      id: stringValue(booking.parent_id),
+      email: stringValue(booking.parent_email),
+      full_name: stringValue(booking.parent_name),
+      role: "parent",
+    },
+  };
+}
+
 async function queuePaymentEmail({ actor, invoice, emailType, subject, body }: {
   actor: Actor;
   invoice: Record<string, unknown>;
@@ -481,11 +508,13 @@ async function queuePaymentEmail({ actor, invoice, emailType, subject, body }: {
 
 async function sendBookingChangeEmail({
   actor,
+  sentBy,
   action,
   result,
   reason,
 }: {
   actor: Actor;
+  sentBy?: string;
   action: "cancel" | "remove_items" | "add_items";
   result: Record<string, unknown>;
   reason: string;
@@ -596,7 +625,7 @@ async function sendBookingChangeEmail({
     subject,
     text: lines.join("\n"),
     html: paragraphsToHtml(lines, { title: subject }),
-    sentBy: actor.id,
+    sentBy: sentBy || actor.id,
     metadata: {
       bookingId: stringValue(booking.id),
       bookingReference,

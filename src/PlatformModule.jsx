@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   bookingSystemConfigured,
+  cancelParentBooking,
   cancelStaffAdHocBooking,
   appendSafeguardingCaseEntry,
   completeSafeguardingCaseTask,
@@ -4648,6 +4649,7 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
   const [focusFilter, setFocusFilter] = useState(initialFocus || "");
   const [selectedId, setSelectedId] = useState("");
   const [actionPending, setActionPending] = useState("");
+  const [cancelConfirmId, setCancelConfirmId] = useState("");
   const [adminNote, setAdminNote] = useState("");
   const [setupDraft, setSetupDraft] = useState(() => readJson(bookingAdminSetupStorageKey, {
     school: "Willington Prep",
@@ -4779,6 +4781,36 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
     } catch (actionError) {
       setError(actionError?.message || "Payment action failed.");
       setStatus("Payment action could not be completed.");
+    } finally {
+      setActionPending("");
+    }
+  }
+
+  async function cancelSelectedBooking() {
+    if (!selected) return;
+    if (cancelConfirmId !== selected.id) {
+      setCancelConfirmId(selected.id);
+      setError("");
+      setStatus(`Confirm cancellation for ${selected.reference}. This will email ${selected.email || "the parent"}.`);
+      return;
+    }
+
+    setActionPending("cancel_booking");
+    try {
+      const result = await cancelParentBooking({
+        bookingId: selected.id,
+        reason: adminNote || "Test booking cancelled by Superadmin.",
+      });
+      const nextLedger = await fetchAdminBookingLedger({ limit: 120 });
+      setLedger({ ...nextLedger, liveRequested: true });
+      setCancelConfirmId("");
+      setAdminNote("");
+      setError("");
+      addAuditLog("Booking cancelled", `${selected.reference} · ${selected.parent}`);
+      setStatus(`Booking ${selected.reference} cancelled. ${result?.email?.status ? `Confirmation email ${result.email.status}.` : "Confirmation email recorded."}`);
+    } catch (cancelError) {
+      setError(cancelError?.message || "Booking cancellation failed.");
+      setStatus("Booking cancellation could not be completed.");
     } finally {
       setActionPending("");
     }
@@ -5019,6 +5051,9 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
                 <button type="button" onClick={() => runPaymentAction("resend_payment_link")} disabled={actionPending || !selected.invoiceId || selected.balance <= 0}>{actionPending === "resend_payment_link" ? "Sending..." : "Resend payment link"}</button>
                 <button type="button" onClick={() => runPaymentAction("resend_receipt")} disabled={actionPending || !selected.invoiceId}>{actionPending === "resend_receipt" ? "Sending..." : "Resend receipt"}</button>
                 <button type="button" onClick={() => runPaymentAction("mark_finance_review")} disabled={actionPending || !selected.invoiceId}>{actionPending === "mark_finance_review" ? "Saving..." : "Mark finance review"}</button>
+                <button type="button" onClick={cancelSelectedBooking} disabled={actionPending || String(selected.status || "").toLowerCase() === "cancelled" || !selected.items.some((item) => !["cancelled", "refunded"].includes(String(item.status || "").toLowerCase()))}>
+                  {actionPending === "cancel_booking" ? "Cancelling..." : cancelConfirmId === selected.id ? "Confirm cancellation" : "Cancel booking"}
+                </button>
               </div>
             </>
           ) : (
