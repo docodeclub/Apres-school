@@ -18348,7 +18348,6 @@ function mergeCrmRecords(demoRecords, updates, localRecords = getLocalEnquiries(
       ...record,
       id,
       status: record.status || "New",
-      owner: record.owner || "Unassigned",
       nextAction: record.nextAction || "call/email follow-up",
       ...localUpdate,
       owner: record.ownerId ? record.owner : localUpdate.owner || record.owner || "Unassigned",
