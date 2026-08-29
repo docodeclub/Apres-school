@@ -38914,18 +38914,26 @@ th {
   margin-top: 4px;
   border: 1px solid #fff;
   border-radius: 999px;
-  background: #fff;
-  color: #233f9f;
+  background: #fff !important;
+  color: #233f9f !important;
   padding: 7px 9px;
   font-size: 0.8rem;
   font-weight: 950;
+  opacity: 1 !important;
   text-align: center;
+  box-shadow: 0 6px 14px rgba(13, 25, 78, 0.2);
+}
+
+.booking-launch-page .lab-camp-catalog-price > button:hover,
+.booking-launch-page .lab-camp-catalog-price > button:focus-visible {
+  background: #fff7e9 !important;
+  color: #8b5103 !important;
 }
 
 .booking-launch-page .lab-camp-catalog article.active .lab-camp-catalog-price > button {
   border-color: #fff;
-  background: #fff;
-  color: #8b5103;
+  background: #fff !important;
+  color: #8b5103 !important;
 }
 
 .booking-launch-page .lab-camp-pricing-summary-top {
