@@ -4955,6 +4955,7 @@ function BookingAdmin({ data, access, initialFocus = "", onClearInitialFocus }) 
                 <option value="pending">Needs payment</option>
                 <option value="guaranteed">Guaranteed</option>
                 <option value="paid">Paid</option>
+                <option value="cancelled">Cancelled</option>
                 <option value="attention">Needs admin</option>
               </select>
             </label>
@@ -7310,7 +7311,8 @@ function demoBookingRow(id, reference, parent, email, child, site, startsAt, ses
 
 function bookingStatusGroup(paymentStatus, financeStatus, balance) {
   const combined = `${paymentStatus || ""} ${financeStatus || ""}`.toLowerCase();
-  if (combined.includes("review") || combined.includes("failed") || combined.includes("cancel")) return "attention";
+  if (combined.includes("cancel")) return "cancelled";
+  if (combined.includes("review") || combined.includes("failed")) return "attention";
   if (combined.includes("guarantee") || combined.includes("voucher") || combined.includes("reconciliation")) return "guaranteed";
   if (combined.includes("paid") || combined.includes("captured") || combined.includes("complete") || balance <= 0) return "paid";
   return "pending";
@@ -7318,6 +7320,7 @@ function bookingStatusGroup(paymentStatus, financeStatus, balance) {
 
 function bookingStatusLabel(paymentStatus, financeStatus, balance) {
   const group = bookingStatusGroup(paymentStatus, financeStatus, balance);
+  if (group === "cancelled") return "Cancelled";
   if (group === "attention") return "Needs admin";
   if (group === "guaranteed") return "Guaranteed";
   if (group === "paid") return "Paid";
@@ -18928,7 +18931,7 @@ function DashboardGrid({ children, className = "" }) {
 
 
 function Badge({ value }) {
-  const className = value.toLowerCase().includes("gap") || value.toLowerCase().includes("missing") || value.toLowerCase().includes("alert") || value.toLowerCase().includes("rejected") || value.toLowerCase().includes("overdue") || value.toLowerCase().includes("failed") ? "bad" : value.toLowerCase().includes("soon") || value.toLowerCase().includes("chase") || value.toLowerCase().includes("pending") ? "warn" : "good";
+  const className = value.toLowerCase().includes("gap") || value.toLowerCase().includes("missing") || value.toLowerCase().includes("alert") || value.toLowerCase().includes("rejected") || value.toLowerCase().includes("overdue") || value.toLowerCase().includes("failed") ? "bad" : value.toLowerCase().includes("soon") || value.toLowerCase().includes("chase") || value.toLowerCase().includes("pending") || value.toLowerCase().includes("cancel") ? "warn" : "good";
   return <span className={`badge ${className}`}>{value}</span>;
 }
 
