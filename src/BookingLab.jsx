@@ -16749,7 +16749,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     event.preventDefault();
     const ticket = parentSupportTickets.find((item) => item.id === parentSupportSelectedId);
     const message = parentSupportReply.trim();
-    if (!ticket || message.length < 10 || parentSupportBusy) return;
+    if (!ticket || !message || parentSupportBusy) return;
     const reopen = String(ticket.status || "").toLowerCase() === "closed";
     setParentSupportBusy(true);
     setParentSupportError("");
@@ -16846,7 +16846,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <label>{selectedClosed ? "What do you still need help with?" : "Add a message"}<textarea rows="4" value={parentSupportReply} onChange={(event) => setParentSupportReply(event.target.value)} maxLength="8000" placeholder={selectedClosed ? "Explain what remains unresolved. A message is required to re-open the ticket." : "Add any useful information for our helpdesk."} required /></label>
                   <label>Attachments <small>Optional · up to 3 private files</small><input ref={parentSupportReplyFileRef} type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setParentSupportReplyFiles(Array.from(event.target.files || []).slice(0, 3))} /></label>
                   {selectedClosed && <p><strong>This ticket is closed.</strong> Sending this message will re-open it and notify our helpdesk.</p>}
-                  <button type="submit" disabled={parentSupportBusy || parentSupportReply.trim().length < 10}>{parentSupportBusy ? "Sending…" : selectedClosed ? "Re-open ticket and send message" : "Send message"}</button>
+                  <button type="submit" disabled={parentSupportBusy || !parentSupportReply.trim()}>{parentSupportBusy ? "Sending…" : selectedClosed ? "Re-open ticket and send message" : "Send message"}</button>
                 </form>
               </article>
             )}

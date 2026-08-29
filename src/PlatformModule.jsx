@@ -15765,23 +15765,24 @@ function validSupportReplyEmail(value) {
 
 function CRM({ data, access }) {
   const [updates, setUpdates] = useState(() => readCrmUpdates());
-  const [typeFilter, setTypeFilter] = useState("Website enquiries");
+  const [typeFilter, setTypeFilter] = useState("Open tickets");
   const [query, setQuery] = useState("");
   const [rowLimit, setRowLimit] = useState("15");
   const [currentPage, setCurrentPage] = useState(1);
   const [sort, setSort] = useState({ key: "created", direction: "desc" });
   const [selectedId, setSelectedId] = useState("");
   const [selectedRows, setSelectedRows] = useState([]);
+  const [liveEnquiries, setLiveEnquiries] = useState(() => data.enquiries || []);
+  const [ticketRefreshBusy, setTicketRefreshBusy] = useState(false);
 
   const outreachSource = data.outreach?.length ? data.outreach : [];
   const outreach = outreachSource.map((record) => ({ ...record, ...updates[record.id] }));
-  const enquiryRecords = mergeCrmRecords(data.enquiries, updates);
+  const enquiryRecords = mergeCrmRecords(liveEnquiries, updates);
   const records = [...enquiryRecords, ...outreach];
   const websiteEnquiries = enquiryRecords.filter(isWebsiteEnquiryRecord);
   const currentWebsiteEnquiries = websiteEnquiries.filter((record) => !record.archivedAt);
   const openWebsiteEnquiries = currentWebsiteEnquiries.filter((record) => record.status !== "Closed");
   const closedWebsiteEnquiries = currentWebsiteEnquiries.filter((record) => record.status === "Closed");
-  const unreadWebsiteEnquiries = currentWebsiteEnquiries.filter((record) => record.unread);
   const recentWebsiteEnquiries = [...openWebsiteEnquiries]
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
     .slice(0, 3);
@@ -15795,9 +15796,9 @@ function CRM({ data, access }) {
       return false;
     }
     const matchesType = typeFilter === "Archived"
+      || (typeFilter === "Open tickets" && isWebsite && record.status !== "Closed")
       || (typeFilter === "Closed tickets" && isWebsite && record.status === "Closed")
       || typeFilter === "All"
-      || (typeFilter === "Website enquiries" && isWebsite && record.status !== "Closed")
       || (typeFilter === "Outreach" && record.type === "Outreach")
       || record.type === typeFilter
       || record.stage === typeFilter
@@ -15832,9 +15833,28 @@ function CRM({ data, access }) {
   const visibleRowIds = rowsToShow.map((record) => record.id);
   const selectedVisibleCount = selectedRows.filter((id) => visibleRowIds.includes(id)).length;
   const allVisibleSelected = Boolean(visibleRowIds.length) && visibleRowIds.every((id) => selectedRows.includes(id));
-  const outreachCount = outreach.length;
-  const partnerCount = outreach.filter((record) => (record.status || record.stage) === "Partner school").length;
-  const followUpCount = outreach.filter((record) => record.followUpDate || ["Follow up", "Responded", "Meeting", "Proposal"].includes(record.status)).length;
+
+  async function refreshTickets({ quiet = false } = {}) {
+    if (!quiet) setTicketRefreshBusy(true);
+    try {
+      const { fetchSupportTickets } = await loadSupabaseModule();
+      setLiveEnquiries(await fetchSupportTickets());
+    } catch {
+      // Keep the last successfully loaded ticket list if a background refresh fails.
+    } finally {
+      if (!quiet) setTicketRefreshBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    setLiveEnquiries(data.enquiries || []);
+  }, [data.enquiries]);
+
+  useEffect(() => {
+    refreshTickets({ quiet: true });
+    const timer = window.setInterval(() => refreshTickets({ quiet: true }), 15000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -16109,9 +16129,10 @@ function updateRecord(id, patch) {
           <p className="panel-note">Review customer questions, see who owns each ticket and respond without leaving the ticket drawer.</p>
         </div>
         <div className="crm-toolbar-controls">
+          <button className="button light" type="button" onClick={() => refreshTickets()} disabled={ticketRefreshBusy}>{ticketRefreshBusy ? "Refreshing…" : "Refresh"}</button>
           <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contact responses, school, email..." /></label>
           <label>Filter<select aria-label="Filter enquiries" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-            {["Website enquiries", "Closed tickets", "Archived", "All", "Parent", "School", "Staff", "Outreach", "Prospect", "Contacted", "Follow up", "Partner school"].map((item) => <option key={item}>{item}</option>)}
+            {["Open tickets", "Closed tickets", "Archived", "All", "Parent", "School", "Staff", "Outreach", "Prospect", "Contacted", "Follow up", "Partner school"].map((item) => <option key={item}>{item}</option>)}
           </select></label>
           <label>Per page<select aria-label="Rows per page" value={rowLimit} onChange={(event) => setRowLimit(event.target.value)}>
             {["15", "25", "50"].map((item) => <option key={item}>{item}</option>)}
@@ -16119,15 +16140,10 @@ function updateRecord(id, patch) {
         </div>
       </div>
       <div className="crm-summary">
-        <Metric icon={<Mail />} label="Unread" value={unreadWebsiteEnquiries.length} tone={unreadWebsiteEnquiries.length ? "amber" : "green"} />
-        <Metric icon={<Mail />} label="Website tickets" value={currentWebsiteEnquiries.length} tone={currentWebsiteEnquiries.length ? "blue" : "green"} />
         <Metric icon={<Bell />} label="Open tickets" value={openWebsiteEnquiries.length} tone={openWebsiteEnquiries.length ? "amber" : "green"} />
         <Metric icon={<ShieldCheck />} label="Closed tickets" value={closedWebsiteEnquiries.length} tone="green" />
-        <Metric icon={<Users />} label="Outreach prospects" value={outreachCount} tone="blue" />
-        <Metric icon={<CalendarDays />} label="Follow-ups" value={followUpCount} tone="amber" />
-        <Metric icon={<ShieldCheck />} label="Partner schools" value={partnerCount} tone="green" />
       </div>
-      {typeFilter === "Website enquiries" && recentWebsiteEnquiries.length > 0 && (
+      {typeFilter === "Open tickets" && recentWebsiteEnquiries.length > 0 && (
         <section className="crm-enquiry-strip" aria-label="Recent website contact responses">
           <div>
             <p className="eyebrow">Newest support tickets</p>

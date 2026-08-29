@@ -1489,6 +1489,19 @@ export async function fetchPlatformData({ userId, role }) {
   };
 }
 
+export async function fetchSupportTickets() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase
+    .from("enquiries")
+    .select("id, name, email, organisation, type, subject, message, status, parent_account_id, classification, duplicate_of, classified_at, classified_by, owner_id, first_opened_at, first_opened_by, closed_at, closed_by, parent_reopened_at, archived_at, archived_by, internal_notes, created_at, owner_profile:profiles!enquiries_owner_id_fkey(full_name,email), first_opened_profile:profiles!enquiries_first_opened_by_fkey(full_name,email), closed_profile:profiles!enquiries_closed_by_fkey(full_name,email), archived_profile:profiles!enquiries_archived_by_fkey(full_name,email), enquiry_replies(id, recipient_email, subject, body, status, provider_message_id, sent_by, sent_at, created_at), support_ticket_messages(id, body, sender_type, sender_profile_id, created_at), support_ticket_reads(reader_profile_id, reader_type, last_read_at), support_ticket_attachments(id, file_name, media_type, byte_size, storage_path, uploader_type, created_at), email_logs(id, email_type, status, provider, provider_message_id, error_message, sent_at, created_at)")
+    .order("created_at", { ascending: false })
+    .limit(250);
+  if (error) throw error;
+  const enquiries = mapEnquiries(data || []);
+  await attachSupportTicketUrls(enquiries);
+  return enquiries;
+}
+
 export async function fetchFormerStaffPortalData() {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data: portal, error: portalError } = await supabase.rpc("former_staff_portal");
