@@ -1272,7 +1272,7 @@ export async function fetchPlatformData({ userId, role }) {
     ? Promise.resolve({ data: [], error: null })
     : supabase
         .from("enquiries")
-        .select("id, name, email, organisation, type, subject, message, status, classification, duplicate_of, classified_at, classified_by, owner_id, internal_notes, created_at, enquiry_replies(id, recipient_email, subject, body, status, provider_message_id, sent_by, sent_at, created_at), email_logs(id, email_type, status, provider, provider_message_id, error_message, sent_at, created_at)")
+        .select("id, name, email, organisation, type, subject, message, status, classification, duplicate_of, classified_at, classified_by, owner_id, first_opened_at, first_opened_by, internal_notes, created_at, owner_profile:profiles!enquiries_owner_id_fkey(full_name,email), first_opened_profile:profiles!enquiries_first_opened_by_fkey(full_name,email), enquiry_replies(id, recipient_email, subject, body, status, provider_message_id, sent_by, sent_at, created_at), email_logs(id, email_type, status, provider, provider_message_id, error_message, sent_at, created_at)")
         .order("created_at", { ascending: false })
         .limit(250);
 
@@ -1956,7 +1956,11 @@ function mapEnquiries(records) {
       duplicateOf: record.duplicate_of || "",
       classifiedAt: record.classified_at || "",
       classifiedBy: record.classified_by || "",
-      owner: notes.owner || (record.owner_id ? "Assigned" : "Unassigned"),
+      owner: record.owner_profile?.full_name || notes.owner || (record.owner_id ? "Assigned" : "Unassigned"),
+      ownerId: record.owner_id || "",
+      firstOpenedAt: record.first_opened_at || "",
+      firstOpenedBy: record.first_opened_by || "",
+      firstOpenedByName: record.first_opened_profile?.full_name || "",
       note: notes.note || "",
       nextAction: notes.nextAction || "call/email follow-up",
       createdAt: record.created_at || "",
@@ -2252,6 +2256,15 @@ export async function updateCrmEnquiry(id, patch) {
 
   if (error) throw error;
   return { id, ...patch };
+}
+
+export async function claimSupportTicket(enquiryId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("claim_support_ticket", {
+    p_enquiry_id: enquiryId,
+  });
+  if (error) throw error;
+  return data || {};
 }
 
 export async function sendEnquiryReply({ enquiryId, subject, body }) {

@@ -13,7 +13,7 @@ const serviceRoleKey =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("APRES_SERVICE_ROLE_KEY") ??
   "";
-const notificationTo = Deno.env.get("ENQUIRY_NOTIFICATION_TO") ?? "hello@apres-school.co.uk";
+const notificationTo = Deno.env.get("ENQUIRY_NOTIFICATION_TO") ?? "helpdesk@apres-school.co.uk";
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
 const resendFrom =
   Deno.env.get("APRES_EMAIL_FROM") ??
@@ -128,7 +128,8 @@ async function enquiryFingerprint(enquiry: ReturnType<typeof normalizeEnquiry>) 
 }
 
 async function notifyByEmail(enquiry: ReturnType<typeof normalizeEnquiry>, enquiryId: string) {
-  const subject = `New Après School enquiry: ${enquiry.type}`;
+  const subject = `New support ticket: ${enquiry.name}`;
+  const supportTicketsUrl = "https://www.apres-school.co.uk/staff-login?section=support-tickets";
   const text = [
     `Name: ${enquiry.name}`,
     `Email: ${enquiry.email}`,
@@ -138,7 +139,10 @@ async function notifyByEmail(enquiry: ReturnType<typeof normalizeEnquiry>, enqui
     `Role: ${enquiry.role || "N/A"}`,
     "",
     enquiry.message,
+    "",
+    `Open support tickets: ${supportTicketsUrl}`,
   ].join("\n");
+  const html = supportTicketEmailHtml(enquiry, supportTicketsUrl);
 
   if (!resendApiKey) {
     await logEmail({
@@ -165,6 +169,7 @@ async function notifyByEmail(enquiry: ReturnType<typeof normalizeEnquiry>, enqui
       reply_to: enquiry.email || resendReplyTo,
       subject,
       text,
+      html,
     }),
   });
 
@@ -195,6 +200,53 @@ async function notifyByEmail(enquiry: ReturnType<typeof normalizeEnquiry>, enqui
     enquiryId,
     metadata: { enquiryType: enquiry.type, senderEmail: enquiry.email, senderName: enquiry.name },
   });
+}
+
+function supportTicketEmailHtml(enquiry: ReturnType<typeof normalizeEnquiry>, supportTicketsUrl: string) {
+  const safe = (value: string) => escapeHtml(value || "N/A");
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;background:#f4f7ff;font-family:Arial,sans-serif;color:#202a44">
+    <div style="display:none;max-height:0;overflow:hidden">A new support ticket from ${safe(enquiry.name)} is waiting for review.</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7ff;padding:28px 14px">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border-radius:22px;overflow:hidden;box-shadow:0 14px 38px rgba(38,63,169,.12)">
+          <tr><td style="background:#2f49b7;padding:28px 32px;color:#ffffff">
+            <div style="font-size:24px;font-weight:800">Apres School</div>
+            <div style="margin-top:4px;color:#ffb44d;font-size:13px;font-weight:700;letter-spacing:.08em">SUPPORT TICKETS</div>
+          </td></tr>
+          <tr><td style="padding:32px">
+            <div style="color:#ef9f28;font-size:12px;font-weight:800;letter-spacing:.12em">NEW TICKET</div>
+            <h1 style="margin:8px 0 8px;color:#263fa9;font-size:28px;line-height:1.2">A customer needs support</h1>
+            <p style="margin:0 0 24px;color:#68718a;line-height:1.55">A new ticket has been raised through the public website and is ready for the helpdesk team to review.</p>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #dfe5f5;border-radius:16px;background:#f9fbff">
+              <tr><td style="padding:18px 20px;line-height:1.7">
+                <strong style="color:#263fa9">${safe(enquiry.name)}</strong><br>
+                <span>${safe(enquiry.email)}</span><br>
+                <span>${safe(enquiry.organisation || "No organisation")}</span><br>
+                <span>${safe(enquiry.type)}${enquiry.subject ? ` · ${safe(enquiry.subject)}` : ""}</span>
+              </td></tr>
+              <tr><td style="border-top:1px solid #dfe5f5;padding:18px 20px;color:#3f4860;white-space:pre-wrap;line-height:1.55">${safe(enquiry.message)}</td></tr>
+            </table>
+            <div style="padding-top:26px">
+              <a href="${supportTicketsUrl}" style="display:inline-block;border-radius:999px;background:#2f49b7;color:#ffffff;text-decoration:none;font-weight:800;padding:14px 24px">Open Support Tickets</a>
+            </div>
+            <p style="margin:24px 0 0;color:#7b8398;font-size:12px;line-height:1.5">Opening an unassigned ticket records who is handling it, helping the team avoid duplicate responses.</p>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 async function logEmail(entry: {

@@ -271,6 +271,7 @@ function hasExperienceStorageConsent() {
 const platformTabSlugs = Object.fromEntries(platformTabs.map((item) => [item, item.toLowerCase().replace(/[^a-z0-9]+/g, "-")]));
 const platformTabsBySlug = {
   ...Object.fromEntries(Object.entries(platformTabSlugs).map(([item, slug]) => [slug, item])),
+  "support-tickets": "CRM",
   rota: "Staffing",
   hours: "Staffing",
 };

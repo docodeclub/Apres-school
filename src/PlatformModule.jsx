@@ -233,7 +233,7 @@ const platformTabHints = {
   Sessions: "Programmes, locations and assignments",
   Ofsted: "Inspection windows and site evidence",
   Documents: "Policies, acknowledgements and staff links",
-  CRM: "School outreach and enquiries",
+  CRM: "Customer support tickets, replies and ownership",
   Pay: "Rates, payroll and expenses",
   Expenses: "Submit expenses, review receipts and add approved claims to payroll",
   Holiday: "Request leave, approve team holiday and manage allowances",
@@ -241,6 +241,7 @@ const platformTabHints = {
   Audit: "Important admin activity",
   Settings: "Platform preferences and controls",
 };
+const platformTabLabel = (item) => item === "CRM" ? "Support Tickets" : item;
 const payrollHoursStorageKey = "apres-payroll-hours";
 const payrollRunsStorageKey = "apres-payroll-runs";
 const staffPayOverridesStorageKey = "apres-staff-pay-overrides";
@@ -769,7 +770,7 @@ function mergeStaffProfiles(staff, localStaff) {
 }
 
 
-const crmStatuses = ["New", "Prospect", "Contacted", "Follow up", "Responded", "Meeting", "Proposal", "Partner school", "Closed"];
+const crmStatuses = ["New", "Reviewing", "Prospect", "Contacted", "Follow up", "Responded", "Meeting", "Proposal", "Partner school", "Closed"];
 const crmOwners = ["Unassigned", "Ops Lead", "School Partnerships", "Recruitment", "Finance"];
 const crmStorageKey = "apres-crm-updates";
 const userStorageKey = "apres-user-admin";
@@ -1234,7 +1235,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data, onboard
                 <div>
                   {items.map((item) => (
                     <button key={item} type="button" aria-current={tab === item ? "page" : undefined} className={tab === item ? "active" : ""} title={platformTabHints[item] || item} onClick={() => selectNavItem(group, item)}>
-                      {iconFor(item)} <span>{item}</span>
+                      {iconFor(item)} <span>{platformTabLabel(item)}</span>
                     </button>
                   ))}
                 </div>
@@ -1301,7 +1302,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data, onboard
         {tab === "Safeguarding" && ["Manager", "Admin", "Superadmin"].includes(effectiveRole) && (
           <SafeguardingCases canManageAll={effectiveRole === "Superadmin"} />
         )}
-        {tab === "CRM" && <CRM data={enrichedData} />}
+        {tab === "CRM" && <CRM data={enrichedData} access={access} />}
         {tab === "Audit" && <AuditLog data={scopedData} />}
         {tab === "Settings" && <Settings />}
       </section>
@@ -4125,7 +4126,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
     .filter((person) => !String(person.compliance).toLowerCase().includes("compliant"))
     .slice(0, 5);
   const quickActions = [
-    ["Enquiries", `${newWebsiteEnquiries || websiteEnquiries.length} website contact response${(newWebsiteEnquiries || websiteEnquiries.length) === 1 ? "" : "s"}`, "CRM"],
+    ["Support Tickets", `${newWebsiteEnquiries || websiteEnquiries.length} website ticket${(newWebsiteEnquiries || websiteEnquiries.length) === 1 ? "" : "s"} awaiting attention`, "CRM"],
     ["Expenses", "Review staff receipts and add approved claims to payroll", "Expenses"],
     ["Site SCR", "Open site-scoped compliance and evidence tools", "Inspection"],
     ["Staffing", "Planning, cover, qualifications and paid windows", "Staffing"],
@@ -4341,7 +4342,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
         </article>
         <article className={dashboardMetrics.websiteEnquiries ? "amber" : ""}>
           <span>{dashboardMetrics.websiteEnquiries}</span>
-          <strong>Open enquiries</strong>
+          <strong>Open support tickets</strong>
           <small>New parent or school contact follow-ups</small>
         </article>
         <article className={dashboardMetrics.scrRisk ? "red" : ""}>
@@ -15697,11 +15698,24 @@ function crmNotificationEvidence(record) {
   return { key: "unknown", label: "Notification unknown", detail: "No notification delivery log is linked to this enquiry." };
 }
 
-function CRM({ data }) {
+function supportTicketAge(record, now = Date.now()) {
+  const created = new Date(record?.createdAt || "").getTime();
+  if (!Number.isFinite(created)) return { key: "unknown", label: "Age unknown", hours: 0 };
+  const hours = Math.max(0, Math.floor((now - created) / 3600000));
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  const label = days ? `${days}d ${remainingHours}h old` : `${hours}h old`;
+  if (hours >= 72) return { key: "overdue", label, hours };
+  if (hours >= 48) return { key: "due", label, hours };
+  return { key: "new", label, hours };
+}
+
+function CRM({ data, access }) {
   const [updates, setUpdates] = useState(() => readCrmUpdates());
   const [typeFilter, setTypeFilter] = useState("Website enquiries");
   const [query, setQuery] = useState("");
-  const [rowLimit, setRowLimit] = useState("25");
+  const [rowLimit, setRowLimit] = useState("15");
+  const [currentPage, setCurrentPage] = useState(1);
   const [sort, setSort] = useState({ key: "created", direction: "desc" });
   const [selectedId, setSelectedId] = useState("");
   const [selectedRows, setSelectedRows] = useState([]);
@@ -15745,7 +15759,11 @@ function CRM({ data }) {
     ].filter(Boolean).join(" ").toLowerCase().includes(queryText);
   });
   const sortedRecords = sortCrmRecords(visibleRecords, sort);
-  const rowsToShow = rowLimit === "All" ? sortedRecords : sortedRecords.slice(0, Number(rowLimit));
+  const pageSize = Number(rowLimit);
+  const pageCount = Math.max(1, Math.ceil(sortedRecords.length / pageSize));
+  const safePage = Math.min(currentPage, pageCount);
+  const pageStart = (safePage - 1) * pageSize;
+  const rowsToShow = sortedRecords.slice(pageStart, pageStart + pageSize);
   const selectedRecord = records.find((record) => record.id === selectedId) || null;
   const visibleRowIds = rowsToShow.map((record) => record.id);
   const selectedVisibleCount = selectedRows.filter((id) => visibleRowIds.includes(id)).length;
@@ -15753,6 +15771,14 @@ function CRM({ data }) {
   const outreachCount = outreach.length;
   const partnerCount = outreach.filter((record) => (record.status || record.stage) === "Partner school").length;
   const followUpCount = outreach.filter((record) => record.followUpDate || ["Follow up", "Responded", "Meeting", "Proposal"].includes(record.status)).length;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [typeFilter, query, rowLimit, sort.key, sort.direction]);
+
+  useEffect(() => {
+    if (currentPage > pageCount) setCurrentPage(pageCount);
+  }, [currentPage, pageCount]);
 
 function updateRecord(id, patch) {
     const existing = records.find((record) => record.id === id) || {};
@@ -15778,7 +15804,7 @@ function updateRecord(id, patch) {
       return next;
     });
 
-    addAuditLog("CRM updated", `${existing.name || existing.school || id}: ${Object.keys(patch).join(", ")}${existing.contactEmail || existing.email ? ` · ${existing.contactEmail || existing.email}` : ""}${existing.type || existing.status ? ` · ${existing.type || existing.status}` : ""}`);
+    addAuditLog("Support ticket updated", `${existing.name || existing.school || id}: ${Object.keys(patch).join(", ")}${existing.contactEmail || existing.email ? ` · ${existing.contactEmail || existing.email}` : ""}${existing.type || existing.status ? ` · ${existing.type || existing.status}` : ""}`);
     if (!isSupabaseCrmRecord(id, existing)) return;
 
     loadSupabaseModule()
@@ -15820,6 +15846,53 @@ function updateRecord(id, patch) {
       direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
     }));
   }
+  function openTicket(record) {
+    setSelectedId(record.id);
+    if (!isSupabaseCrmRecord(record.id, record)) {
+      if (!record.owner || record.owner === "Unassigned") {
+        updateRecord(record.id, {
+          owner: access?.currentUser?.name || access?.currentUser?.email || "Support team",
+          status: record.status === "New" ? "Reviewing" : record.status,
+          firstOpenedAt: record.firstOpenedAt || new Date().toISOString(),
+          firstOpenedByName: record.firstOpenedByName || access?.currentUser?.name || access?.currentUser?.email || "Support team",
+        });
+      }
+      return;
+    }
+    loadSupabaseModule()
+      .then(({ claimSupportTicket }) => claimSupportTicket(record.id))
+      .then((claim) => {
+        setUpdates((current) => {
+          const next = {
+            ...current,
+            [record.id]: {
+              ...current[record.id],
+              owner: claim.ownerName || record.owner || "Assigned",
+              ownerId: claim.ownerId || record.ownerId || "",
+              status: claim.status === "reviewing" ? "Reviewing" : record.status,
+              firstOpenedAt: claim.firstOpenedAt || record.firstOpenedAt || "",
+              firstOpenedBy: claim.firstOpenedBy || record.firstOpenedBy || "",
+              firstOpenedByName: claim.firstOpenedByName || record.firstOpenedByName || claim.ownerName || "",
+              syncState: "saved",
+              updatedAt: new Date().toISOString(),
+            },
+          };
+          saveCrmUpdates(next);
+          return next;
+        });
+      })
+      .catch((error) => {
+        console.warn("Unable to claim support ticket", error);
+        setUpdates((current) => ({
+          ...current,
+          [record.id]: {
+            ...current[record.id],
+            syncState: "error",
+            syncError: error.message || "The ticket opened, but ownership could not be recorded.",
+          },
+        }));
+      });
+  }
   function toggleRow(id) {
     setSelectedRows((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   }
@@ -15850,29 +15923,29 @@ function updateRecord(id, patch) {
       saveCrmUpdates(next);
       return next;
     });
-    addAuditLog("CRM bulk update", `${ids.length} rows: ${Object.keys(patch).join(", ")}${patch.status ? ` · status ${patch.status}` : ""}${patch.owner ? ` · owner ${patch.owner}` : ""}`);
+    addAuditLog("Support ticket bulk update", `${ids.length} rows: ${Object.keys(patch).join(", ")}${patch.status ? ` · status ${patch.status}` : ""}${patch.owner ? ` · owner ${patch.owner}` : ""}`);
   }
 
   return (
     <div className="crm-workspace">
       <div className="toolbar">
         <div>
-          <h2>Enquiries CRM</h2>
-          <p className="panel-note">Website contact responses are shown first. Outreach is still available as a separate filter when you need it.</p>
+          <h2>Support Tickets</h2>
+          <p className="panel-note">Review customer questions, see who owns each ticket and respond without leaving the ticket drawer.</p>
         </div>
         <div className="crm-toolbar-controls">
           <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contact responses, school, email..." /></label>
           <label>Filter<select aria-label="Filter enquiries" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
             {["Website enquiries", "All", "Parent", "School", "Staff", "Outreach", "Prospect", "Contacted", "Follow up", "Partner school", "Closed"].map((item) => <option key={item}>{item}</option>)}
           </select></label>
-          <label>Rows<select aria-label="Rows per page" value={rowLimit} onChange={(event) => setRowLimit(event.target.value)}>
-            {["25", "50", "100", "All"].map((item) => <option key={item}>{item}</option>)}
+          <label>Per page<select aria-label="Rows per page" value={rowLimit} onChange={(event) => setRowLimit(event.target.value)}>
+            {["15", "25", "50"].map((item) => <option key={item}>{item}</option>)}
           </select></label>
         </div>
       </div>
       <div className="crm-summary">
-        <Metric icon={<Mail />} label="Website responses" value={websiteEnquiries.length} tone={websiteEnquiries.length ? "amber" : "green"} />
-        <Metric icon={<Bell />} label="New responses" value={newWebsiteEnquiries.length} tone={newWebsiteEnquiries.length ? "amber" : "green"} />
+        <Metric icon={<Mail />} label="Website tickets" value={websiteEnquiries.length} tone={websiteEnquiries.length ? "blue" : "green"} />
+        <Metric icon={<Bell />} label="Open tickets" value={newWebsiteEnquiries.length} tone={newWebsiteEnquiries.length ? "amber" : "green"} />
         <Metric icon={<Users />} label="Outreach prospects" value={outreachCount} tone="blue" />
         <Metric icon={<CalendarDays />} label="Follow-ups" value={followUpCount} tone="amber" />
         <Metric icon={<ShieldCheck />} label="Partner schools" value={partnerCount} tone="green" />
@@ -15880,12 +15953,12 @@ function updateRecord(id, patch) {
       {recentWebsiteEnquiries.length > 0 && (
         <section className="crm-enquiry-strip" aria-label="Recent website contact responses">
           <div>
-            <p className="eyebrow">Website contact responses</p>
+            <p className="eyebrow">Newest support tickets</p>
             <h3>Latest messages from the public site</h3>
           </div>
           <div className="crm-enquiry-strip-grid">
             {recentWebsiteEnquiries.map((record) => (
-              <button key={record.id} type="button" onClick={() => setSelectedId(record.id)}>
+              <button key={record.id} type="button" onClick={() => openTicket(record)}>
                 <span>{record.type || "Enquiry"}</span>
                 <strong>{record.name || "Unnamed contact"}</strong>
                 <small>{record.email || "No email"}{record.createdAt ? ` · ${formatShortDate(record.createdAt)}` : ""}</small>
@@ -15895,7 +15968,7 @@ function updateRecord(id, patch) {
           </div>
         </section>
       )}
-      <p className="panel-note">Showing {rowsToShow.length} of {visibleRecords.length} matching records.</p>
+      <p className="panel-note">Showing {rowsToShow.length ? pageStart + 1 : 0}–{Math.min(pageStart + rowsToShow.length, visibleRecords.length)} of {visibleRecords.length} matching tickets.</p>
       <CrmBulkActions
         selectedCount={selectedRows.length}
         visibleCount={selectedVisibleCount}
@@ -15908,10 +15981,11 @@ function updateRecord(id, patch) {
         <table className="crm-table">
           <thead>
             <tr>
-              <th><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleRows} aria-label="Select visible CRM rows" /></th>
-              <th><button type="button" onClick={() => changeSort("name")}>Lead {sort.key === "name" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
+              <th><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleRows} aria-label="Select visible support tickets" /></th>
+              <th><button type="button" onClick={() => changeSort("name")}>Ticket {sort.key === "name" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
               <th><button type="button" onClick={() => changeSort("contact")}>Contact {sort.key === "contact" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
               <th><button type="button" onClick={() => changeSort("created")}>Received {sort.key === "created" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
+              <th>Age</th>
               <th><button type="button" onClick={() => changeSort("status")}>Status {sort.key === "status" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
               <th><button type="button" onClick={() => changeSort("owner")}>Owner {sort.key === "owner" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
               <th><button type="button" onClick={() => changeSort("followUp")}>Follow-up {sort.key === "followUp" ? (sort.direction === "asc" ? "↑" : "↓") : ""}</button></th>
@@ -15922,8 +15996,9 @@ function updateRecord(id, patch) {
             {rowsToShow.map((record) => {
               const isOutreach = record.type === "Outreach";
               const notificationEvidence = crmNotificationEvidence(record);
+              const age = supportTicketAge(record);
               return (
-                <tr key={record.id} className={selectedRecord?.id === record.id ? "selected" : ""}>
+                <tr key={record.id} className={`${selectedRecord?.id === record.id ? "selected " : ""}support-ticket-${age.key}`}>
                   <td><input type="checkbox" checked={selectedRows.includes(record.id)} onChange={() => toggleRow(record.id)} aria-label={`Select ${record.name}`} /></td>
                   <td>
                     <strong>{record.name}</strong>
@@ -15946,21 +16021,29 @@ function updateRecord(id, patch) {
                     <strong>{record.createdAt ? formatShortDate(record.createdAt) : "Not recorded"}</strong>
                     <small>{record.createdAt ? new Date(record.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : ""}</small>
                   </td>
+                  <td><span className={`support-ticket-age ${age.key}`}>{age.label}</span></td>
                   <td><select value={record.status || "New"} onChange={(event) => updateRecord(record.id, { status: event.target.value })}>{crmStatuses.map((item) => <option key={item}>{item}</option>)}</select></td>
-                  <td><select value={record.owner || "Unassigned"} onChange={(event) => updateRecord(record.id, { owner: event.target.value })}>{crmOwners.map((item) => <option key={item}>{item}</option>)}</select></td>
+                  <td><strong>{record.owner || "Unassigned"}</strong><small>{record.firstOpenedAt ? `Opened ${new Date(record.firstOpenedAt).toLocaleString("en-GB")}` : "Opener recorded when ticket is opened"}</small></td>
                   <td>
                     <input type="date" value={record.followUpDate || ""} onChange={(event) => updateRecord(record.id, { followUpDate: event.target.value })} aria-label={`${record.name} follow-up date`} />
                     {isOutreach && <small>{record.dateContacted ? `Contacted ${record.dateContacted}` : "Not contacted"}</small>}
                   </td>
-                  <td><button className="button light" type="button" onClick={() => setSelectedId(record.id)}>Details</button></td>
+                  <td><button className="button light" type="button" onClick={() => openTicket(record)}>Open Ticket</button></td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </TableWrap>
-      {selectedRecord && <CrmDetailDrawer record={selectedRecord} onChange={updateRecord} />}
-      {!visibleRecords.length && <EmptyList title="No matching enquiries" text="Change the filter or wait for new website enquiries." />}
+      {sortedRecords.length > pageSize && (
+        <nav className="support-ticket-pager" aria-label="Support ticket pages">
+          <button className="button light" type="button" disabled={safePage <= 1} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}>Previous</button>
+          <span>Page <strong>{safePage}</strong> of <strong>{pageCount}</strong></span>
+          <button className="button light" type="button" disabled={safePage >= pageCount} onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}>Next</button>
+        </nav>
+      )}
+      {selectedRecord && <CrmDetailDrawer record={selectedRecord} onChange={updateRecord} onClose={() => setSelectedId("")} />}
+      {!visibleRecords.length && <EmptyList title="No matching support tickets" text="Change the filter or wait for a new website ticket." />}
     </div>
   );
 }
@@ -16013,8 +16096,9 @@ function CrmBulkActions({ selectedCount, visibleCount, allVisibleSelected, onSel
   );
 }
 
-function CrmDetailDrawer({ record, onChange }) {
+function CrmDetailDrawer({ record, onChange, onClose }) {
   const isOutreach = record.type === "Outreach";
+  const age = supportTicketAge(record);
   const firstName = String(record.name || "there").trim().split(/\s+/)[0] || "there";
   const [replySubject, setReplySubject] = useState("");
   const [replyBody, setReplyBody] = useState("");
@@ -16031,6 +16115,14 @@ function CrmDetailDrawer({ record, onChange }) {
     setReplyState({ status: "idle", message: "" });
     setLastSentReply(null);
   }, [record.id]);
+
+  useEffect(() => {
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
 
   async function sendReply() {
     if (!replyReviewed || !replySubject.trim() || !replyBody.trim() || replyState.status === "sending") return;
@@ -16053,21 +16145,28 @@ function CrmDetailDrawer({ record, onChange }) {
   }
 
   return (
-    <section className="crm-detail-drawer" aria-label="CRM lead details">
+    <div className="support-ticket-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="crm-detail-drawer" role="dialog" aria-modal="true" aria-label={`Support ticket from ${record.name}`}>
       <div className="crm-detail-heading">
         <div>
-          <p className="eyebrow">Selected lead</p>
+          <p className="eyebrow">Support ticket</p>
           <h3>{record.name}</h3>
           <p>{isOutreach ? [record.area, record.location, record.contactType].filter(Boolean).join(" · ") : record.organisation || "No organisation"}</p>
+          <div className="support-ticket-owner-line">
+            <span className={`support-ticket-age ${age.key}`}>{age.label}</span>
+            <span>{record.owner && record.owner !== "Unassigned" ? `Handled by ${record.owner}` : "Assigning ticket owner…"}</span>
+            {record.firstOpenedAt && <span>First opened {new Date(record.firstOpenedAt).toLocaleString("en-GB")}</span>}
+          </div>
         </div>
         <div className="crm-detail-badges">
           {record.classification && <span className={`crm-classification ${record.classification}`}>{record.classification}</span>}
           <Badge value={record.status || "New"} />
+          <button className="support-ticket-close" type="button" onClick={onClose} aria-label="Close support ticket">×</button>
         </div>
       </div>
       <div className="crm-detail-grid">
         <label>Status<select value={record.status || "New"} onChange={(event) => onChange(record.id, { status: event.target.value })}>{crmStatuses.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label>Owner<select value={record.owner || "Unassigned"} onChange={(event) => onChange(record.id, { owner: event.target.value })}>{crmOwners.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label>Ticket owner<input value={record.owner || "Unassigned"} readOnly title="The first staff member to open an unassigned ticket becomes its owner." /></label>
         {isOutreach && <label>Date contacted<input type="date" value={record.dateContacted || ""} onChange={(event) => onChange(record.id, { dateContacted: event.target.value })} /></label>}
         <label>Follow-up date<input type="date" value={record.followUpDate || ""} onChange={(event) => onChange(record.id, { followUpDate: event.target.value })} /></label>
         <label className="full">Contact<input value={record.contactEmail || record.email || ""} onChange={(event) => onChange(record.id, { contactEmail: event.target.value })} placeholder="Email address" /></label>
@@ -16135,6 +16234,7 @@ function CrmDetailDrawer({ record, onChange }) {
       )}
       <p className={`crm-sync ${record.syncState || "local"}`}>{crmSyncText(record)}</p>
     </section>
+    </div>
   );
 }
 
@@ -16158,7 +16258,7 @@ function AuditLog({ data = {} }) {
     if (action.includes("hr") || action.includes("former staff") || action.includes("staff photo") || action.includes("profile notes")) return "HR";
     if (action.includes("user") || action.includes("password") || action.includes("account") || action.includes("invite")) return "Users";
     if (action.includes("rota") || action.includes("cover") || action.includes("staffing")) return "Staffing";
-    if (action.includes("crm") || action.includes("enquiry")) return "CRM";
+    if (action.includes("crm") || action.includes("enquiry") || action.includes("support ticket")) return "Support Tickets";
     if (action.includes("ofsted")) return "Ofsted";
     if (action.includes("document") || action.includes("policy")) return "Documents";
     if (action.includes("settings") || action.includes("public")) return "Settings";
@@ -16172,7 +16272,7 @@ function AuditLog({ data = {} }) {
       metadata.site && `Site: ${metadata.site}`,
       metadata.documentName && `Document: ${metadata.documentName}`,
       metadata.payrollPeriod && `Period: ${metadata.payrollPeriod}`,
-      metadata.crmRecord && `CRM: ${metadata.crmRecord}`,
+      metadata.crmRecord && `Support ticket: ${metadata.crmRecord}`,
       item.actor && `Actor: ${item.actor}`,
       item.tableName && `Table: ${item.tableName}`,
     ].filter(Boolean).slice(0, 5);
@@ -16375,7 +16475,7 @@ function AuditLog({ data = {} }) {
               <Badge value={item.module} />
             </button>
           ))}
-          {!filteredItems.length && <EmptyList title="No audit entries yet" text="User, CRM, rota, cover, HR and hours changes will appear here." />}
+          {!filteredItems.length && <EmptyList title="No audit entries yet" text="User, support ticket, rota, cover, HR and hours changes will appear here." />}
         </div>
         {selectedAudit && (
           <aside className="audit-detail-panel">
@@ -16435,7 +16535,7 @@ function Settings() {
     ["Public site live", "Domain, homepage and booking routes are published."],
     ["Staff login live", "Manual temporary passwords work while email setup is completed."],
     ["SCR data visible", "Admins can review staff compliance and evidence requests."],
-    ["CRM usable", "School outreach and enquiries are available as rows with search and filters."],
+    ["Support Tickets usable", "Customer tickets are available as paginated rows with search, ownership and replies."],
   ];
   const resendItems = [
     ["Create Resend account", "Use an Après School-owned login."],
@@ -18243,13 +18343,19 @@ function mergeCrmRecords(demoRecords, updates, localRecords = getLocalEnquiries(
   const taggedDemo = demoRecords.map((record) => ({ ...record, source: record.source || "demo" }));
   const records = [...taggedLocal, ...taggedDemo].map((record, index) => {
     const id = record.id || record.createdAt || `${record.name || "enquiry"}-${record.email || "unknown"}-${index}`;
+    const localUpdate = updates[id] || {};
     return {
       ...record,
       id,
       status: record.status || "New",
-      owner: "Unassigned",
-      nextAction: "call/email follow-up",
-      ...updates[id],
+      owner: record.owner || "Unassigned",
+      nextAction: record.nextAction || "call/email follow-up",
+      ...localUpdate,
+      owner: record.ownerId ? record.owner : localUpdate.owner || record.owner || "Unassigned",
+      ownerId: record.ownerId || localUpdate.ownerId || "",
+      firstOpenedAt: record.firstOpenedAt || localUpdate.firstOpenedAt || "",
+      firstOpenedBy: record.firstOpenedBy || localUpdate.firstOpenedBy || "",
+      firstOpenedByName: record.firstOpenedByName || localUpdate.firstOpenedByName || "",
     };
   });
   return records;

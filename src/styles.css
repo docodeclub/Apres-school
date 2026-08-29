@@ -14156,11 +14156,129 @@ label {
 .crm-detail-drawer {
   display: grid;
   gap: 16px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
+  position: fixed;
+  z-index: 1002;
+  top: 0;
+  right: 0;
+  width: min(760px, 94vw);
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
   background: #fff;
-  padding: 18px;
-  box-shadow: 0 10px 28px rgba(38, 63, 169, 0.07);
+  padding: 24px;
+  box-shadow: -22px 0 60px rgba(24, 38, 86, 0.2);
+  align-content: start;
+  animation: support-ticket-drawer-in 0.2s ease-out;
+}
+
+.support-ticket-drawer-backdrop {
+  position: fixed;
+  z-index: 1001;
+  inset: 0;
+  background: rgba(18, 28, 61, 0.45);
+  backdrop-filter: blur(3px);
+}
+
+@keyframes support-ticket-drawer-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.support-ticket-close {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--royal-dark);
+  cursor: pointer;
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.support-ticket-close:hover {
+  border-color: var(--royal);
+  background: var(--soft);
+}
+
+.support-ticket-owner-line {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.support-ticket-owner-line > span:not(.support-ticket-age) {
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--muted);
+  padding: 6px 9px;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.support-ticket-age {
+  display: inline-flex !important;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 6px 9px;
+  font-size: 0.72rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.support-ticket-age.new {
+  background: #e7f8ee;
+  color: #167344;
+}
+
+.support-ticket-age.due {
+  background: #fff5d9;
+  color: #8a5a00;
+}
+
+.support-ticket-age.overdue {
+  background: #ffe8eb;
+  color: #a42537;
+}
+
+.support-ticket-age.unknown {
+  background: var(--soft);
+  color: var(--muted);
+}
+
+.crm-table tr.support-ticket-new td:first-child {
+  box-shadow: inset 4px 0 0 #45b979;
+}
+
+.crm-table tr.support-ticket-due td:first-child {
+  box-shadow: inset 4px 0 0 #efbc43;
+}
+
+.crm-table tr.support-ticket-overdue td:first-child {
+  box-shadow: inset 4px 0 0 #dc5264;
+}
+
+.support-ticket-pager {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.support-ticket-pager span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 750;
 }
 
 .crm-bulk-bar {
@@ -14656,6 +14774,32 @@ label {
   .expense-hero-metrics, .expense-submit-form { grid-template-columns: 1fr; }
   .expense-description { grid-column: auto; }
   .expense-claims-head, .expense-filter-row { align-items: stretch; flex-direction: column; }
+}
+
+@media (max-width: 640px) {
+  .crm-detail-drawer {
+    width: 100vw;
+    padding: 18px 14px 28px;
+  }
+
+  .crm-detail-heading,
+  .crm-reply-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .crm-detail-badges {
+    justify-content: flex-start;
+  }
+
+  .crm-detail-grid,
+  .crm-delivery-evidence {
+    grid-template-columns: 1fr;
+  }
+
+  .crm-detail-grid .full {
+    grid-column: auto;
+  }
 }
 
 .payroll-console {
