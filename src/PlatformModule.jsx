@@ -18654,20 +18654,30 @@ function mergeCrmRecords(demoRecords, updates, localRecords = getLocalEnquiries(
   const records = [...taggedLocal, ...taggedDemo].map((record, index) => {
     const id = record.id || record.createdAt || `${record.name || "enquiry"}-${record.email || "unknown"}-${index}`;
     const localUpdate = updates[id] || {};
+    const isLiveRecord = record.source === "supabase";
+    const updateAge = Date.now() - new Date(localUpdate.updatedAt || 0).getTime();
+    const useOptimisticUpdate = !isLiveRecord
+      || localUpdate.syncState === "saving"
+      || (localUpdate.syncState === "saved" && Number.isFinite(updateAge) && updateAge >= 0 && updateAge < 30000);
+    const appliedUpdate = useOptimisticUpdate
+      ? localUpdate
+      : localUpdate.syncState === "error"
+        ? { syncState: "error", syncError: localUpdate.syncError || "The last change could not be saved." }
+        : {};
     return {
       ...record,
       id,
       status: record.status || "New",
       nextAction: record.nextAction || "call/email follow-up",
-      ...localUpdate,
-      owner: record.ownerId ? record.owner : localUpdate.owner || record.owner || "Unassigned",
-      ownerId: record.ownerId || localUpdate.ownerId || "",
-      firstOpenedAt: record.firstOpenedAt || localUpdate.firstOpenedAt || "",
-      firstOpenedBy: record.firstOpenedBy || localUpdate.firstOpenedBy || "",
-      firstOpenedByName: record.firstOpenedByName || localUpdate.firstOpenedByName || "",
-      archivedAt: Object.prototype.hasOwnProperty.call(localUpdate, "archivedAt") ? localUpdate.archivedAt : record.archivedAt || "",
-      archivedBy: Object.prototype.hasOwnProperty.call(localUpdate, "archivedBy") ? localUpdate.archivedBy : record.archivedBy || "",
-      archivedByName: Object.prototype.hasOwnProperty.call(localUpdate, "archivedByName") ? localUpdate.archivedByName : record.archivedByName || "",
+      ...appliedUpdate,
+      owner: record.ownerId ? record.owner : appliedUpdate.owner || record.owner || "Unassigned",
+      ownerId: record.ownerId || appliedUpdate.ownerId || "",
+      firstOpenedAt: record.firstOpenedAt || appliedUpdate.firstOpenedAt || "",
+      firstOpenedBy: record.firstOpenedBy || appliedUpdate.firstOpenedBy || "",
+      firstOpenedByName: record.firstOpenedByName || appliedUpdate.firstOpenedByName || "",
+      archivedAt: Object.prototype.hasOwnProperty.call(appliedUpdate, "archivedAt") ? appliedUpdate.archivedAt : record.archivedAt || "",
+      archivedBy: Object.prototype.hasOwnProperty.call(appliedUpdate, "archivedBy") ? appliedUpdate.archivedBy : record.archivedBy || "",
+      archivedByName: Object.prototype.hasOwnProperty.call(appliedUpdate, "archivedByName") ? appliedUpdate.archivedByName : record.archivedByName || "",
     };
   });
   return records;
