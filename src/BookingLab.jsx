@@ -22537,6 +22537,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         <span className="lab-camp-periods-label">Next available camps</span>
                         {featuredCampCatalogRows.map(renderCampCatalogRow)}
                       </div>
+                      {selectedRemainingCampRow && visibleExpandedCampPeriod !== selectedRemainingCampRow.period && (
+                        <div className="lab-camp-catalog-selected">
+                          <span className="lab-camp-periods-label">Your selected camp</span>
+                          {renderCampCatalogRow(selectedRemainingCampRow)}
+                        </div>
+                      )}
                       {remainingCampCatalogGroups.length > 0 && (
                         <div className="lab-camp-periods">
                           <span className="lab-camp-periods-label">More school holidays</span>

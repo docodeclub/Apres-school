@@ -38701,6 +38701,15 @@ th {
   gap: 9px;
 }
 
+.booking-launch-page .lab-camp-catalog-selected {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(65, 101, 220, 0.24);
+  border-radius: 14px;
+  background: #f6f8ff;
+  padding: 9px;
+}
+
 .booking-launch-page .lab-camp-period {
   display: grid;
   gap: 8px;
