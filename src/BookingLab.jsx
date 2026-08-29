@@ -95,6 +95,37 @@ import {
 
 const APRES_TERMS_URL = "https://docs.google.com/document/d/1ursh4YbP1e8cLG7fiUy0z3JezZWBUBG2_-7eG8wA0u0/edit?usp=sharing";
 
+const launchCareGuides = {
+  Wraparound: {
+    eyebrow: "Before and after school",
+    title: "Familiar care around the school day.",
+    intro: "A calm, friendly start or finish to the day with food, play, quieter choices and clear collection routines.",
+    image: "/assets/apres-highlights/wraparound-snack-spread.jpg",
+    image480: "/assets/apres-highlights/wraparound-snack-spread.jpg",
+    image800: "/assets/apres-highlights/wraparound-snack-spread.jpg",
+    alt: "A colourful snack spread prepared for children attending Après School wraparound care.",
+    details: [
+      ["Bring with you", "A named water bottle, a weather-appropriate coat and anything your school has asked your child to carry."],
+      ["We provide", "Breakfast or an after-school snack as appropriate, drinking water, play resources and a familiar supervised routine."],
+      ["Typical activities", "Outdoor games, arts and crafts, construction, board games, reading and child-led play."],
+    ],
+  },
+  "Holiday Camp": {
+    eyebrow: "School holiday care",
+    title: "Active days with room to reset.",
+    intro: "A full holiday-club day balancing energetic games, creative projects, themed challenges and calmer choices.",
+    image: "/assets/apres-highlights/camp-move-football.jpg",
+    image480: "/assets/apres-highlights/camp-move-football-480.jpg",
+    image800: "/assets/apres-highlights/camp-move-football-800.jpg",
+    alt: "Children playing football together during an Après School holiday camp.",
+    details: [
+      ["Bring with you", "A packed lunch, named water bottle, comfortable clothes, suitable footwear and weather protection."],
+      ["We provide", "Activity equipment, creative materials, drinking-water refills, supervised breaks and a welcoming base for the day."],
+      ["Typical activities", "Team games, sport, creative making, themed challenges, outdoor play and gentler small-group activities."],
+    ],
+  },
+};
+
 const parentSchoolPriority = [
   "Willington Prep",
   "King's House School",
@@ -1713,6 +1744,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ...labChildProfiles.filter((child) => !familyChildProfiles.some((familyChild) => familyChild.name === child.name)),
     ];
   const activeSession = sessions.find((session) => session.id === activeId) || sessions[0] || labSessions[0];
+  const activeCareGuide = launchCareGuides[careType] || launchCareGuides.Wraparound;
   const schoolOptions = [...new Set(sessions.map((session) => session.site))].sort();
   const launchRegisteredChildrenBase = familyChildProfiles.filter((child) => child.name && !child.guest);
   const launchRegisteredChildren = launchChildSavedProfile?.name && !launchRegisteredChildrenBase.some((child) => (child.id && child.id === launchChildSavedProfile.id) || child.name === launchChildSavedProfile.name)
@@ -22312,6 +22344,20 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             <p className="eyebrow">{isLaunchMode ? "Step 1" : "Start booking"}</p>
             <h2>{isLaunchMode ? "Choose your care." : "Choose school, care and pattern."}</h2>
           </div>
+          {isLaunchMode && (
+            <section className="lab-care-hero" aria-label={`${activeCareGuide.title} at ${selectedSchool}`}>
+              <picture>
+                <source media="(max-width: 520px)" srcSet={activeCareGuide.image480} />
+                <source media="(max-width: 900px)" srcSet={activeCareGuide.image800} />
+                <img src={activeCareGuide.image} alt={activeCareGuide.alt} width="1200" height="520" loading="eager" />
+              </picture>
+              <div>
+                <span>{activeCareGuide.eyebrow} · {selectedSchool}</span>
+                <h3>{activeCareGuide.title}</h3>
+                <p>{activeCareGuide.intro}</p>
+              </div>
+            </section>
+          )}
           <div className="lab-parent-pathway" aria-label="Parent booking choices">
             <section className={!isLaunchMode && parentChoiceStep !== "School" ? "collapsed" : ""}>
               <span>{isLaunchMode ? "School" : "1. School"}</span>
@@ -22401,6 +22447,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 </>
               )}
             </section>
+            {isLaunchMode && (
+              <aside className="lab-care-guide" aria-live="polite">
+                <div className="lab-care-guide-heading">
+                  <span>Good to know</span>
+                  <strong>{careType === "Holiday Camp" ? "Holiday Camp" : "Wraparound care"}</strong>
+                </div>
+                <div>
+                  {activeCareGuide.details.map(([label, detail], index) => (
+                    <article key={label}>
+                      <span>0{index + 1}</span>
+                      <strong>{label}</strong>
+                      <p>{detail}</p>
+                    </article>
+                  ))}
+                </div>
+              </aside>
+            )}
             <section className={!isLaunchMode && parentChoiceStep !== "Pattern" ? "collapsed" : ""}>
               <span>{isLaunchMode ? "When?" : "3. Booking pattern"}</span>
               {!isLaunchMode && parentChoiceStep !== "Pattern" ? (

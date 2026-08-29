@@ -38286,6 +38286,73 @@ th {
   margin-bottom: 3px;
 }
 
+.booking-launch-page .lab-care-hero {
+  position: relative;
+  min-height: 190px;
+  overflow: hidden;
+  border: 1px solid rgba(49, 75, 184, 0.16);
+  border-radius: 18px;
+  background: #17275c;
+  color: #fff;
+  isolation: isolate;
+}
+
+.booking-launch-page .lab-care-hero picture,
+.booking-launch-page .lab-care-hero img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.booking-launch-page .lab-care-hero img {
+  object-fit: cover;
+  object-position: 50% 50%;
+}
+
+.booking-launch-page .lab-care-hero::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(90deg, rgba(18, 32, 84, 0.94) 0%, rgba(27, 45, 111, 0.74) 48%, rgba(27, 45, 111, 0.12) 100%);
+  content: "";
+}
+
+.booking-launch-page .lab-care-hero > div {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  width: min(64%, 400px);
+  min-height: 190px;
+  padding: 22px;
+}
+
+.booking-launch-page .lab-care-hero span {
+  color: #ffc05b;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.booking-launch-page .lab-care-hero h3 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(1.45rem, 3vw, 2rem);
+  line-height: 1.02;
+}
+
+.booking-launch-page .lab-care-hero p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .booking-launch-page .lab-parent-pathway {
   gap: 10px;
 }
@@ -38302,9 +38369,9 @@ th {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  border: 1px solid rgba(47, 125, 75, 0.22);
+  border: 1px solid rgba(49, 75, 184, 0.22);
   border-radius: 12px;
-  background: #f1fbf6;
+  background: #f3f6ff;
   padding: 10px 11px;
 }
 
@@ -38327,7 +38394,7 @@ th {
 
 .booking-launch-page .lab-selected-school-card strong {
   overflow: hidden;
-  color: #163d26;
+  color: #233f9f;
   font-size: 1.18rem;
   line-height: 1.12;
   text-overflow: ellipsis;
@@ -38359,9 +38426,9 @@ th {
 }
 
 .booking-launch-page .lab-school-quick-select button.active {
-  border-color: #2f7d4b;
-  background: #f1fbf6;
-  box-shadow: inset 4px 0 0 #2f7d4b;
+  border-color: #4165dc;
+  background: #eef3ff;
+  box-shadow: inset 4px 0 0 #f2a12d;
 }
 
 .booking-launch-page .lab-school-quick-select strong {
@@ -38459,8 +38526,8 @@ th {
 }
 
 .booking-launch-page .lab-choice-badge {
-  background: rgba(47, 125, 75, 0.12);
-  color: #21623a;
+  background: rgba(242, 161, 45, 0.16);
+  color: #965704;
   font-size: 0.6rem;
   padding: 3px 6px;
 }
@@ -38487,15 +38554,81 @@ th {
 
 .booking-launch-page .lab-parent-pathway button.active,
 .booking-launch-page .lab-session-list button.active {
-  background: #f1fbf6;
-  border-color: #2f7d4b;
-  box-shadow: inset 4px 0 0 #2f7d4b, 0 10px 22px rgba(47, 125, 75, 0.1);
+  background: #eef3ff;
+  border-color: #4165dc;
+  box-shadow: inset 4px 0 0 #f2a12d, 0 10px 22px rgba(49, 75, 184, 0.12);
   opacity: 1;
 }
 
 .booking-launch-page .lab-parent-pathway button.active strong,
 .booking-launch-page .lab-session-list button.active strong {
-  color: #163d26;
+  color: #233f9f;
+}
+
+.booking-launch-page .lab-care-guide {
+  display: grid;
+  gap: 9px;
+  border: 1px solid rgba(49, 75, 184, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(145deg, #f8faff 0%, #fffaf1 100%);
+  padding: 12px;
+}
+
+.booking-launch-page .lab-care-guide-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.booking-launch-page .lab-care-guide-heading span {
+  color: #965704;
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.booking-launch-page .lab-care-guide-heading strong {
+  color: #233f9f;
+  font-size: 0.85rem;
+}
+
+.booking-launch-page .lab-care-guide > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.booking-launch-page .lab-care-guide article {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid rgba(49, 75, 184, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 10px;
+}
+
+.booking-launch-page .lab-care-guide article > span {
+  color: #f2a12d;
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.booking-launch-page .lab-care-guide article strong {
+  color: #25304f;
+  font-size: 0.78rem;
+  line-height: 1.15;
+}
+
+.booking-launch-page .lab-care-guide article p {
+  margin: 0;
+  color: #626d84;
+  font-size: 0.69rem;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 .booking-launch-page .lab-launch-choice-summary {
@@ -44182,7 +44315,7 @@ th {
   }
 
   .booking-launch-page.launch-step-choices .lab-search-panel {
-    max-width: 620px;
+    max-width: 760px;
     margin: 0 auto;
     padding: 24px;
   }
@@ -45923,5 +46056,89 @@ th {
     height: 58px;
     border-radius: 18px;
     font-size: 31px;
+  }
+}
+
+/* Booking choice states: keep selections clearly branded without the former green wash. */
+.booking-launch-page .lab-booking-range-row button.range-primary,
+.booking-launch-page .lab-booking-range-row button.active.range-primary,
+.booking-launch-page .lab-day-blocks button.active,
+.booking-launch-page .lab-child-chips button.active,
+.booking-launch-page .lab-child-checkbox.active,
+.booking-launch-page.launch-step-checkout .lab-child-chips button.active,
+.booking-launch-page.launch-step-checkout .lab-child-checkbox.active,
+.booking-launch-page .lab-payment-options label.active,
+.booking-launch-page.launch-step-checkout .lab-payment-options label.active {
+  border-color: #4165dc;
+  background: #eef3ff !important;
+  color: #233f9f !important;
+  box-shadow: inset 4px 0 0 #f2a12d, 0 10px 22px rgba(49, 75, 184, 0.1);
+}
+
+.booking-launch-page .lab-booking-range-row button.range-primary strong,
+.booking-launch-page .lab-booking-range-row button.range-primary span,
+.booking-launch-page .lab-booking-range-row button.active.range-primary strong,
+.booking-launch-page .lab-booking-range-row button.active.range-primary span,
+.booking-launch-page .lab-booking-range-row button.active.range-primary small,
+.booking-launch-page .lab-booking-range-row button.active.range-primary em,
+.booking-launch-page .lab-booking-range-row button.active.range-primary .lab-booking-range-preview span,
+.booking-launch-page .lab-child-chips button.active strong,
+.booking-launch-page .lab-child-chips button.active small,
+.booking-launch-page .lab-child-checkbox.active strong,
+.booking-launch-page .lab-child-checkbox.active small,
+.booking-launch-page.launch-step-checkout .lab-child-chips button.active *,
+.booking-launch-page.launch-step-checkout .lab-child-checkbox.active strong,
+.booking-launch-page.launch-step-checkout .lab-child-checkbox.active small {
+  color: #233f9f !important;
+}
+
+.booking-launch-page .lab-payment-options label.active em,
+.booking-launch-page.launch-step-checkout .lab-payment-options label.active em {
+  border-color: rgba(65, 101, 220, 0.18);
+  background: #4165dc;
+  color: #fff;
+}
+
+.booking-launch-page .lab-selected-session-tray.has-picks {
+  border-color: rgba(65, 101, 220, 0.3);
+  background: #f3f6ff;
+  box-shadow: 0 14px 28px rgba(49, 75, 184, 0.12);
+}
+
+.booking-launch-page .lab-selected-session-tray.has-picks strong {
+  color: #233f9f;
+}
+
+@media (max-width: 760px) {
+  .booking-launch-page .lab-care-hero {
+    min-height: 230px;
+  }
+
+  .booking-launch-page .lab-care-hero::after {
+    background: linear-gradient(0deg, rgba(18, 32, 84, 0.96) 0%, rgba(27, 45, 111, 0.7) 58%, rgba(27, 45, 111, 0.12) 100%);
+  }
+
+  .booking-launch-page .lab-care-hero > div {
+    align-content: end;
+    width: 100%;
+    min-height: 230px;
+    padding: 18px;
+  }
+
+  .booking-launch-page .lab-care-hero p {
+    max-width: 34rem;
+  }
+
+  .booking-launch-page .lab-care-guide > div:last-child {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-launch-page .lab-care-guide article {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 3px 8px;
+  }
+
+  .booking-launch-page .lab-care-guide article p {
+    grid-column: 2;
   }
 }
