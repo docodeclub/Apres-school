@@ -15735,6 +15735,13 @@ function crmNotificationEvidence(record) {
 }
 
 function supportTicketAge(record, now = Date.now()) {
+  if (record?.status === "Closed") {
+    return {
+      key: "closed",
+      label: record.closedAt ? `Closed ${formatShortDate(record.closedAt)}` : "Closed",
+      hours: 0,
+    };
+  }
   const created = new Date(record?.createdAt || "").getTime();
   if (!Number.isFinite(created)) return { key: "unknown", label: "Age unknown", hours: 0 };
   const hours = Math.max(0, Math.floor((now - created) / 3600000));
@@ -16104,7 +16111,7 @@ function updateRecord(id, patch) {
         <Metric icon={<CalendarDays />} label="Follow-ups" value={followUpCount} tone="amber" />
         <Metric icon={<ShieldCheck />} label="Partner schools" value={partnerCount} tone="green" />
       </div>
-      {recentWebsiteEnquiries.length > 0 && (
+      {typeFilter === "Website enquiries" && recentWebsiteEnquiries.length > 0 && (
         <section className="crm-enquiry-strip" aria-label="Recent website contact responses">
           <div>
             <p className="eyebrow">Newest support tickets</p>

@@ -14283,6 +14283,11 @@ label {
   color: var(--muted);
 }
 
+.support-ticket-age.closed {
+  background: #edf0f6;
+  color: #5e6679;
+}
+
 .crm-table tr.support-ticket-new td:first-child {
   box-shadow: inset 4px 0 0 #45b979;
 }
