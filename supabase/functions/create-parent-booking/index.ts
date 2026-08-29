@@ -105,7 +105,7 @@ serve(async (request) => {
       if (childProfileBlock) {
         return json({
           error: childProfileBlock.message,
-          code: "CHILD_PROFILE_INCOMPLETE",
+          code: (childProfileBlock as { code?: string }).code || "CHILD_PROFILE_INCOMPLETE",
           childId: childProfileBlock.childId,
           childName: childProfileBlock.childName,
           missingFields: childProfileBlock.missingFields,
@@ -494,6 +494,27 @@ async function findChildProfileBookingBlock(bookingActor: BookingActor, items: B
     return [`${childId}:${childName.toLowerCase()}`, { childId, childName }];
   })).values()];
 
+  const sessionBlockIds = [...new Set(items
+    .map((item) => stringValue(item.sessionBlockId || item.session_block_id))
+    .filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))];
+  const holidayBlockContexts = new Map<string, { category: string; site: string }>();
+  if (sessionBlockIds.length) {
+    const { data: blocks, error: blockError } = await supabase
+      .from("session_blocks")
+      .select("id, sessions!inner(programmes!inner(category, locations!inner(name)))")
+      .in("id", sessionBlockIds);
+    if (blockError) throw blockError;
+    (blocks || []).forEach((block) => {
+      const session = relationRecord(block.sessions);
+      const programme = relationRecord(session.programmes);
+      const location = relationRecord(programme.locations);
+      holidayBlockContexts.set(stringValue(block.id), {
+        category: stringValue(programme.category),
+        site: stringValue(location.name),
+      });
+    });
+  }
+
   for (const requested of requestedChildren) {
     const child = (children || []).find((candidate) => (
       (requested.childId && stringValue(candidate.id) === requested.childId)
@@ -535,8 +556,43 @@ async function findChildProfileBookingBlock(bookingActor: BookingActor, items: B
         message: `${childName}'s profile needs attention before checkout: ${issue}.`,
       };
     }
+
+
+    const childName = stringValue(child.full_name) || requested.childName || "This child";
+    const requestedHolidaySites = [...new Set(items
+      .filter((item) => {
+        const itemChildId = stringValue(item.childId || item.child_id);
+        const itemChildName = stringValue(item.childName || item.child_name);
+        return (requested.childId && itemChildId === requested.childId)
+          || (requested.childName && itemChildName.toLowerCase() === requested.childName.toLowerCase());
+      })
+      .map((item) => holidayBlockContexts.get(stringValue(item.sessionBlockId || item.session_block_id)))
+      .filter((context) => context?.category === "holiday_camp")
+      .map((context) => context?.site || ""))];
+    for (const site of requestedHolidaySites) {
+      const allowedYears = ["Nursery", "Reception", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5", "Year 6", "Year 7"];
+      const minYear = /^willington(?:\s+(?:prep|school))?$/i.test(site.trim()) ? "Nursery" : "Reception";
+      const maxYear = "Year 6";
+      const childYear = stringValue(child.year_group);
+      const childRank = allowedYears.indexOf(childYear);
+      if (childRank < allowedYears.indexOf(minYear) || childRank > allowedYears.indexOf(maxYear)) {
+        return {
+          code: "CHILD_HOLIDAY_YEAR_INELIGIBLE",
+          childId: stringValue(child.id),
+          childName,
+          missingFields: [],
+          unansweredConsents: [],
+          message: `${childName} is saved as ${childYear || "an unknown year group"}. Holiday Camp at ${site || "this venue"} accepts ${minYear} to ${maxYear}.`,
+        };
+      }
+    }
   }
   return null;
+}
+
+function relationRecord(value: unknown): Record<string, unknown> {
+  if (Array.isArray(value)) return isObject(value[0]) ? value[0] : {};
+  return isObject(value) ? value : {};
 }
 
 async function sendBookingRequestEmail({

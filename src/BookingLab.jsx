@@ -141,6 +141,21 @@ function normaliseParentSchool(value) {
   return school;
 }
 
+function holidayCampYearRange(site, rules, eligibility = {}) {
+  const normalisedSite = normaliseParentSchool(site);
+  return {
+    min: String(eligibility?.minYear || (normalisedSite === "Willington Prep" ? "Nursery" : rules.holidayYearMin || "Reception")),
+    max: String(eligibility?.maxYear || rules.holidayYearMax || "Year 6"),
+  };
+}
+
+function holidayCampYearIssue(child, site, rules, eligibility = {}) {
+  const range = holidayCampYearRange(site, rules, eligibility);
+  const childYear = schoolYearIndex(child?.year);
+  if (childYear >= schoolYearIndex(range.min) && childYear <= schoolYearIndex(range.max)) return "";
+  return `${child?.name || "This child"} is saved as ${child?.year || "an unknown year group"}. Holiday Camp at ${normaliseParentSchool(site) || "this venue"} accepts ${range.min} to ${range.max}.`;
+}
+
 function parentSchoolOptionLabel(school) {
   return school === "Willington Prep" ? "Willington Prep (Willington School)" : school;
 }
@@ -917,6 +932,7 @@ function liveHolidayCampCatalog(rows = []) {
         price: Number(row.pricing?.dayPrice || row.price || 0),
         capacity: Number(row.capacity || 0),
         paymentRoute: "PonchoPay card + vouchers",
+        ageRange: row.ageRange || "",
         eligibility: row.eligibility || {},
         pricing: row.pricing || {},
         imageUrl: row.presentation?.imageUrl || "",
@@ -6201,10 +6217,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     if (rules.schoolOnlyStrict && eligibilityCareType === "Wraparound" && child.school !== eligibilitySite && child.school !== "Guest") {
       issues.push(`${child.name} is not linked to ${eligibilitySite}`);
     }
-    const childYear = schoolYearIndex(child.year);
-    if (eligibilityCareType === "Holiday Camp" && (childYear < schoolYearIndex(rules.holidayYearMin) || childYear > schoolYearIndex(rules.holidayYearMax))) {
-      issues.push(`${child.name} is outside the holiday camp year range`);
-    }
+    const holidayIssue = eligibilityCareType === "Holiday Camp"
+      ? holidayCampYearIssue(child, eligibilitySite, rules, activeSession.eligibility)
+      : "";
+    if (holidayIssue) issues.push(holidayIssue);
     return issues;
   });
   const rulesBlocked = eligibilityIssues.length > 0 && !(adminOverride && rules.allowAdminOverride);
@@ -6215,9 +6231,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     && child.school !== "Guest"
   ));
   const yearEligibilityIssueChild = eligibilityChildren.find((child) => {
-    const childYear = schoolYearIndex(child.year);
     return eligibilityCareType === "Holiday Camp"
-      && (childYear < schoolYearIndex(rules.holidayYearMin) || childYear > schoolYearIndex(rules.holidayYearMax));
+      && Boolean(holidayCampYearIssue(child, eligibilitySite, rules, activeSession.eligibility));
   });
   const eligibilityIssueChild = schoolEligibilityIssueChild || yearEligibilityIssueChild || eligibilityChildren[0] || null;
   const eligibilityActionLabel = schoolEligibilityIssueChild
@@ -7385,8 +7400,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const capacityPercent = Number(test.capacity || 0) ? Math.round((capacityAfter / Number(test.capacity || 1)) * 100) : 0;
     const issues = [
       rules.schoolOnlyStrict && test.careType === "Wraparound" && test.childSchool !== test.site ? `School-only rule blocks ${test.childSchool || "this school"} for ${test.site}` : "",
-      test.careType === "Holiday Camp" && schoolYearIndex(test.childYear) < schoolYearIndex(rules.holidayYearMin) ? `Below holiday minimum year ${rules.holidayYearMin}` : "",
-      test.careType === "Holiday Camp" && schoolYearIndex(test.childYear) > schoolYearIndex(rules.holidayYearMax) ? `Above holiday maximum year ${rules.holidayYearMax}` : "",
+      test.careType === "Holiday Camp" ? holidayCampYearIssue({ name: "Test child", year: test.childYear }, test.site, rules) : "",
     ].filter(Boolean);
     const blocked = issues.length > 0 && !(test.override && rules.allowAdminOverride);
     const waitlist = capacityAfter > Number(test.capacity || 0) || capacityPercent > Number(rules.autoWaitlistAtPercent || 100);
@@ -7414,8 +7428,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const simulatedCapacityPercent = Number(ruleTest.capacity || 0) ? Math.round((simulatedCapacityAfter / Number(ruleTest.capacity || 1)) * 100) : 0;
   const simulatedIssues = [
     rules.schoolOnlyStrict && ruleTest.careType === "Wraparound" && ruleTest.childSchool !== ruleTest.site ? `School-only rule blocks ${ruleTest.childSchool || "this school"} for ${ruleTest.site}` : "",
-    ruleTest.careType === "Holiday Camp" && schoolYearIndex(ruleTest.childYear) < schoolYearIndex(rules.holidayYearMin) ? `Below holiday minimum year ${rules.holidayYearMin}` : "",
-    ruleTest.careType === "Holiday Camp" && schoolYearIndex(ruleTest.childYear) > schoolYearIndex(rules.holidayYearMax) ? `Above holiday maximum year ${rules.holidayYearMax}` : "",
+    ruleTest.careType === "Holiday Camp" ? holidayCampYearIssue({ name: "Test child", year: ruleTest.childYear }, ruleTest.site, rules) : "",
   ].filter(Boolean);
   const simulatedBlocked = simulatedIssues.length > 0 && !(ruleTest.override && rules.allowAdminOverride);
   const simulatedWaitlist = simulatedCapacityAfter > Number(ruleTest.capacity || 0) || simulatedCapacityPercent > Number(rules.autoWaitlistAtPercent || 100);
@@ -15982,11 +15995,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       if (rules.schoolOnlyStrict && careTypes.includes("Wraparound") && sites.some((site) => child.school !== site && child.school !== "Guest")) {
         issues.push(`${child.name} is not linked to ${sites.find((site) => child.school !== site) || activeSession.site}`);
       }
-      const childYear = schoolYearIndex(child.year);
-      if (careTypes.includes("Holiday Camp") && (childYear < schoolYearIndex(rules.holidayYearMin) || childYear > schoolYearIndex(rules.holidayYearMax))) {
-        issues.push(`${child.name} is outside the holiday camp year range`);
-      }
-      return issues;
+      const holidayItems = childItems.length
+        ? childItems.filter((item) => item.careType === "Holiday Camp")
+        : activeSession.type === "Holiday Camp" ? [{ site: activeSession.site, eligibility: activeSession.eligibility }] : [];
+      holidayItems.forEach((item) => {
+        const issue = holidayCampYearIssue(child, item.site, rules, item.eligibility || activeSession.eligibility);
+        if (issue) issues.push(issue);
+      });
+      return [...new Set(issues)];
     });
     if (isLaunchMode && launchNeedsAccount) {
       setStatus("Sign in or create an account before booking.");
@@ -23932,7 +23948,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           <div className={rulesBlocked ? "lab-rule-panel blocked" : "lab-rule-panel"}>
             <div>
               <strong>{rulesBlocked ? "Rules check failed" : "Rules check passed"}</strong>
-              <span>{activeSession.type === "Wraparound" ? "School-only eligibility" : `${rules.holidayYearMin} to ${rules.holidayYearMax}`}</span>
+              <span>{activeSession.type === "Wraparound"
+                ? "School-only eligibility"
+                : `${holidayCampYearRange(activeSession.site, rules, activeSession.eligibility).min} to ${holidayCampYearRange(activeSession.site, rules, activeSession.eligibility).max}`}</span>
             </div>
             <div>
               {eligibilityIssues.length ? eligibilityIssues.map((issue) => <span key={issue}>{issue}</span>) : <span>Selected children match the current rules.</span>}
