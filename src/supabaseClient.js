@@ -51,6 +51,7 @@ export async function fetchPublicHolidayCampSchedule() {
     capacity: Number(row.capacity || 0),
     eligibility: row.eligibility || {},
     pricing: row.pricing || {},
+    presentation: row.presentation || {},
   }));
 }
 

@@ -2757,6 +2757,7 @@ summary {
 .holiday-camp-schedule-list > article small, .holiday-camp-schedule-list > article span { color: #68738a; }
 .holiday-camp-date-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
 .holiday-camp-date-chips span { padding: .3rem .48rem; border-radius: 999px; background: #f0f4ff; color: #2745a6 !important; font-size: .75rem; font-weight: 800; }
+.holiday-camp-schedule-list > article > button { min-height: 36px; border: 1px solid #4165dc; border-radius: 999px; background: #fff; color: #2745a6; padding: .5rem .75rem; font-weight: 900; }
 
 .lab-camp-pricing-summary {
   display: grid;
@@ -38631,6 +38632,184 @@ th {
   line-height: 1.35;
 }
 
+.booking-launch-page .lab-camp-catalog {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 4px;
+  border: 1px solid rgba(49, 75, 184, 0.14);
+  border-radius: 18px;
+  background: #f8faff;
+  padding: 12px;
+}
+
+.booking-launch-page .lab-camp-catalog > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 4px;
+}
+
+.booking-launch-page .lab-camp-catalog > header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.booking-launch-page .lab-camp-catalog > header span {
+  color: #965704;
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.booking-launch-page .lab-camp-catalog > header strong {
+  color: #233f9f;
+  font-size: 1.06rem;
+}
+
+.booking-launch-page .lab-camp-catalog > header small {
+  color: #626d84;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.booking-launch-page .lab-camp-catalog > div {
+  display: grid;
+  gap: 9px;
+}
+
+.booking-launch-page .lab-camp-catalog article {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) 132px;
+  gap: 14px;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid rgba(37, 48, 79, 0.12);
+  border-radius: 16px;
+  background: #fff;
+  padding: 9px;
+  box-shadow: 0 8px 20px rgba(28, 43, 92, 0.05);
+}
+
+.booking-launch-page .lab-camp-catalog article.active {
+  border-color: #4165dc;
+  background: #f7f9ff;
+  box-shadow: inset 4px 0 0 #f2a12d, 0 10px 24px rgba(49, 75, 184, 0.1);
+}
+
+.booking-launch-page .lab-camp-catalog article > img {
+  width: 132px;
+  height: 100%;
+  min-height: 122px;
+  border-radius: 11px;
+  object-fit: cover;
+}
+
+.booking-launch-page .lab-camp-catalog-copy {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.booking-launch-page .lab-camp-catalog-copy > span {
+  width: fit-content;
+  border-radius: 999px;
+  background: #fff4df;
+  color: #965704;
+  padding: 4px 7px;
+  font-size: 0.62rem;
+  font-weight: 950;
+}
+
+.booking-launch-page .lab-camp-catalog-copy > strong {
+  color: #25304f;
+  font-size: 1.04rem;
+  line-height: 1.15;
+}
+
+.booking-launch-page .lab-camp-catalog-copy > p {
+  margin: 0;
+  color: #3f4e77;
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.booking-launch-page .lab-camp-catalog-copy > small {
+  color: #667187;
+  font-size: 0.69rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.booking-launch-page .lab-camp-catalog-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.booking-launch-page .lab-camp-catalog-tags span {
+  border: 1px solid rgba(65, 101, 220, 0.12);
+  border-radius: 999px;
+  background: #f1f4ff;
+  color: #30479f;
+  padding: 4px 6px;
+  font-size: 0.61rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.booking-launch-page .lab-camp-catalog-price {
+  display: grid;
+  align-content: center;
+  justify-items: stretch;
+  gap: 4px;
+  border-left: 1px solid rgba(37, 48, 79, 0.1);
+  padding-left: 12px;
+  text-align: right;
+}
+
+.booking-launch-page .lab-camp-catalog-price > strong {
+  color: #233f9f;
+  font-size: 1.06rem;
+  line-height: 1.1;
+}
+
+.booking-launch-page .lab-camp-catalog-price > strong span {
+  display: block;
+  margin-top: 2px;
+  color: #626d84;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.booking-launch-page .lab-camp-catalog-price > small {
+  color: #626d84;
+  font-size: 0.66rem;
+  font-weight: 750;
+}
+
+.booking-launch-page .lab-camp-catalog-price > button {
+  min-height: 34px;
+  margin-top: 4px;
+  border: 1px solid #4165dc;
+  border-radius: 999px;
+  background: #4165dc;
+  color: #fff;
+  padding: 7px 9px;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-align: center;
+}
+
+.booking-launch-page .lab-camp-catalog article.active .lab-camp-catalog-price > button {
+  border-color: #f2a12d;
+  background: #fff7e9;
+  color: #8b5103;
+}
+
 .booking-launch-page .lab-launch-choice-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -44320,6 +44499,10 @@ th {
     padding: 24px;
   }
 
+  .booking-launch-page.launch-step-choices .lab-search-panel.lab-camp-choice-panel {
+    max-width: 980px;
+  }
+
   .booking-launch-page.launch-step-choices .lab-panel-heading {
     text-align: center;
   }
@@ -46140,5 +46323,43 @@ th {
 
   .booking-launch-page .lab-care-guide article p {
     grid-column: 2;
+  }
+
+  .booking-launch-page .lab-camp-catalog > header {
+    align-items: start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .booking-launch-page .lab-camp-catalog article {
+    grid-template-columns: 94px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .booking-launch-page .lab-camp-catalog article > img {
+    width: 94px;
+    min-height: 112px;
+  }
+
+  .booking-launch-page .lab-camp-catalog-price {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    border-top: 1px solid rgba(37, 48, 79, 0.1);
+    border-left: 0;
+    padding-top: 9px;
+    padding-left: 0;
+    text-align: left;
+  }
+
+  .booking-launch-page .lab-camp-catalog-price > small {
+    display: none;
+  }
+
+  .booking-launch-page .lab-camp-catalog-price > button {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 108px;
+    margin-top: 0;
   }
 }

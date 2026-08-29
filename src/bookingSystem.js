@@ -943,6 +943,7 @@ export async function fetchHolidayCampSchedule() {
     capacity: Number(row.capacity || 0),
     eligibility: row.eligibility || {},
     pricing: row.pricing || {},
+    presentation: row.presentation || {},
   }));
 }
 
@@ -951,6 +952,9 @@ export async function upsertHolidayCamp(camp = {}) {
   const { data, error } = await supabase.rpc("admin_upsert_holiday_camp", { p_camp: camp });
   if (error) throw error;
   if (data?.error) throw new Error(data.error);
+  const { data: presentationData, error: presentationError } = await supabase.rpc("admin_set_holiday_camp_presentation", { p_camp: camp });
+  if (presentationError) throw presentationError;
+  if (presentationData?.error) throw new Error(presentationData.error);
   return data;
 }
 
@@ -989,6 +993,9 @@ export async function fetchAdminHolidayCampSchedule() {
       eligibility: row.eligibility || {},
       published: row.parent_bookable === true && row.status === "open" && block.parent_bookable !== false,
       notes: row.booking_metadata?.notes || "",
+      imageUrl: row.booking_metadata?.imageUrl || "",
+      campType: row.booking_metadata?.campType || "Multi-Activity",
+      sessionBlocks: row.session_blocks || [],
       pricing: {
         dayPrice: Number(row.price || 0),
         fullWeek4Price: Number(row.booking_metadata?.fullWeek4Price || 0),

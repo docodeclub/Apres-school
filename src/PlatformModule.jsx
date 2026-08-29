@@ -14847,6 +14847,7 @@ function Sessions({ data, access }) {
   const [savingCamp, setSavingCamp] = useState(false);
   const [campDraft, setCampDraft] = useState({
     site: "", area: "", campName: "Holiday Camp", ageRange: "Primary-age children",
+    campType: "Multi-Activity", imageUrl: "/assets/apres-highlights/camp-move-football.jpg",
     eligibility: "Open to children from all schools", schoolOnly: false,
     dateFrom: "", dateTo: "", weekdays: [1, 2, 3, 4, 5],
     startTime: "09:00", endTime: "17:00", price: "50", capacity: "",
@@ -14881,6 +14882,43 @@ function Sessions({ data, access }) {
         ? current.weekdays.filter((item) => item !== day)
         : [...current.weekdays, day].sort(),
     }));
+  }
+
+  function editCamp(camp) {
+    const rows = [...camp.rows].sort((a, b) => String(a.sessionDate).localeCompare(String(b.sessionDate)));
+    const first = rows[0] || {};
+    const last = rows[rows.length - 1] || first;
+    const blocks = first.sessionBlocks || [];
+    const dayBlock = blocks.find((block) => block.label === "Holiday Camp") || {};
+    const earlyBlock = blocks.find((block) => block.label === "Early Drop-Off") || {};
+    const toTime = (value, fallback) => value ? holidayCampDateTime(value, { hour: "2-digit", minute: "2-digit" }) : fallback;
+    setCampDraft((current) => ({
+      ...current,
+      site: first.siteName || camp.siteName || "",
+      area: first.area || "",
+      campName: first.campName || camp.campName || "Holiday Camp",
+      ageRange: first.ageRange || "Primary-age children",
+      campType: first.campType || "Multi-Activity",
+      imageUrl: first.imageUrl || "/assets/apres-highlights/camp-move-football.jpg",
+      eligibility: first.eligibility?.label || "Open to children from all schools",
+      schoolOnly: first.eligibility?.schoolOnly === true,
+      dateFrom: first.sessionDate || "",
+      dateTo: last.sessionDate || first.sessionDate || "",
+      startTime: toTime(dayBlock.starts_at || first.startsAt, "09:00"),
+      endTime: toTime(dayBlock.ends_at || first.endsAt, "17:00"),
+      price: String(first.pricing?.dayPrice || first.price || 0),
+      capacity: String(first.capacity || ""),
+      earlyDropOffEnabled: Boolean(earlyBlock.id || first.pricing?.earlyDropOffEnabled),
+      earlyDropOffStart: toTime(earlyBlock.starts_at, "08:00"),
+      earlyDropOffEnd: toTime(earlyBlock.ends_at, "09:00"),
+      earlyDropOffPrice: String(earlyBlock.price ?? 5),
+      fullWeek4Price: String(first.pricing?.fullWeek4Price || ""),
+      fullWeek5Price: String(first.pricing?.fullWeek5Price || ""),
+      notes: first.notes || "",
+      published: first.published === true,
+    }));
+    setCampMessage(`Editing ${camp.campName} at ${camp.siteName}.`);
+    window.setTimeout(() => document.querySelector(".holiday-camp-planner form")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 
   async function saveCamp(event) {
@@ -14924,6 +14962,8 @@ function Sessions({ data, access }) {
               <label>Area<input value={campDraft.area} onChange={(event) => updateCampDraft("area", event.target.value)} placeholder="e.g. Richmond" /></label>
               <label>Camp name<input value={campDraft.campName} onChange={(event) => updateCampDraft("campName", event.target.value)} /></label>
               <label>Age range<input value={campDraft.ageRange} onChange={(event) => updateCampDraft("ageRange", event.target.value)} /></label>
+              <label>Type of camp<input value={campDraft.campType} onChange={(event) => updateCampDraft("campType", event.target.value)} placeholder="Multi-Activity" /></label>
+              <label className="holiday-camp-wide">Activity image URL<input type="url" value={campDraft.imageUrl} onChange={(event) => updateCampDraft("imageUrl", event.target.value)} placeholder="https://… or /assets/…" /><small>Shown beside this camp week in the parent booking journey.</small></label>
               <label>First date<input type="date" value={campDraft.dateFrom} onChange={(event) => updateCampDraft("dateFrom", event.target.value)} /></label>
               <label>Last date<input type="date" value={campDraft.dateTo} onChange={(event) => updateCampDraft("dateTo", event.target.value)} /></label>
               <label>Start time<input type="time" value={campDraft.startTime} onChange={(event) => updateCampDraft("startTime", event.target.value)} /></label>
@@ -14957,6 +14997,7 @@ function Sessions({ data, access }) {
               <article key={camp.key}>
                 <div><span>{camp.siteName}</span><strong>{camp.campName}</strong><small>{camp.rows.length} date{camp.rows.length === 1 ? "" : "s"} · {formatCurrency(camp.rows[0].price)} per day</small></div>
                 <div className="holiday-camp-date-chips">{camp.rows.slice(0, 8).map((row) => <span key={row.sessionId}>{holidayCampDateTime(row.startsAt, { weekday: "short", day: "numeric", month: "short" })}</span>)}{camp.rows.length > 8 && <span>+{camp.rows.length - 8} more</span>}</div>
+                <button type="button" onClick={() => editCamp(camp)}>Edit activity</button>
                 <Badge value={camp.published ? "Published" : "Draft"} />
               </article>
             ))}

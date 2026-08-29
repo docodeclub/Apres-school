@@ -919,6 +919,9 @@ function liveHolidayCampCatalog(rows = []) {
         paymentRoute: "PonchoPay card + vouchers",
         eligibility: row.eligibility || {},
         pricing: row.pricing || {},
+        imageUrl: row.presentation?.imageUrl || "",
+        campType: row.presentation?.campType || "Multi-Activity",
+        dayPresentation: {},
         features: ["Book individual days", "Full-week saving applied automatically", "Early Drop-Off available per day"],
       });
     }
@@ -937,6 +940,11 @@ function liveHolidayCampCatalog(rows = []) {
       capacity: Number(row.capacity || 0),
     };
     camp.days.push(day);
+    camp.dayPresentation[day] = {
+      imageUrl: row.presentation?.imageUrl || camp.imageUrl || "",
+      campType: row.presentation?.campType || camp.campType || "Multi-Activity",
+      notes: row.presentation?.notes || "",
+    };
     if (!camp.dayBlocks[day]) camp.dayBlocks[day] = [];
     camp.dayBlocks[day].push(block);
     camp.dayBlocks[day].sort((a, b) => a.start.localeCompare(b.start));
@@ -1188,6 +1196,21 @@ function parseLabDay(value) {
 function labDayIso(value) {
   const parsed = parseLabDay(value);
   return parsed ? parsed.toISOString().slice(0, 10) : "";
+}
+
+function campCatalogDateRange(days = []) {
+  const dates = days.map(parseLabDay).filter(Boolean).sort((a, b) => a - b);
+  if (!dates.length) return "Dates coming soon";
+  const first = dates[0];
+  const last = dates[dates.length - 1];
+  const sameMonth = first.getMonth() === last.getMonth() && first.getFullYear() === last.getFullYear();
+  const firstLabel = first.toLocaleDateString("en-GB", {
+    day: "numeric",
+    ...(sameMonth ? {} : { month: "short" }),
+    ...(first.getFullYear() === last.getFullYear() ? {} : { year: "numeric" }),
+  });
+  const lastLabel = last.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return dates.length === 1 ? lastLabel : `${firstLabel}–${lastLabel}`;
 }
 
 function canonicalSessionDays(session, proposedDays = []) {
@@ -1744,7 +1767,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ...labChildProfiles.filter((child) => !familyChildProfiles.some((familyChild) => familyChild.name === child.name)),
     ];
   const activeSession = sessions.find((session) => session.id === activeId) || sessions[0] || labSessions[0];
-  const activeCareGuide = launchCareGuides[careType] || launchCareGuides.Wraparound;
+  const activeCareGuideBase = launchCareGuides[careType] || launchCareGuides.Wraparound;
+  const activeCareGuide = careType === "Holiday Camp" && activeSession?.imageUrl
+    ? {
+        ...activeCareGuideBase,
+        image: activeSession.imageUrl,
+        image480: activeSession.imageUrl,
+        image800: activeSession.imageUrl,
+      }
+    : activeCareGuideBase;
   const schoolOptions = [...new Set(sessions.map((session) => session.site))].sort();
   const launchRegisteredChildrenBase = familyChildProfiles.filter((child) => child.name && !child.guest);
   const launchRegisteredChildren = launchChildSavedProfile?.name && !launchRegisteredChildrenBase.some((child) => (child.id && child.id === launchChildSavedProfile.id) || child.name === launchChildSavedProfile.name)
@@ -1788,6 +1819,31 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       : session.days;
     return canonicalSessionDays(session, proposedDays);
   };
+  const launchCampCatalogRows = activityOptionsForCare
+    .filter((session) => session.type === "Holiday Camp")
+    .map((session) => {
+      const days = daysForSession(session);
+      const blocks = normaliseSessionBlocks(session, days[0]);
+      const dayBlock = blocks.find((block) => block.label === "Holiday Camp") || blocks[0];
+      const addOnBlocks = blocks.filter((block) => block.key !== dayBlock?.key);
+      const operatingDays = days.length;
+      const fullWeekPrice = Number(operatingDays === 4 ? session.pricing?.fullWeek4Price : session.pricing?.fullWeek5Price) || 0;
+      const weeklySaving = Math.max(0, Number(dayBlock?.price || session.price || 0) * operatingDays - fullWeekPrice);
+      const presentation = session.dayPresentation?.[days[0]] || {};
+      return {
+        session,
+        days,
+        blocks,
+        dayBlock,
+        addOnBlocks,
+        fullWeekPrice,
+        weeklySaving,
+        dateRange: campCatalogDateRange(days),
+        imageUrl: presentation.imageUrl || session.imageUrl || launchCareGuides["Holiday Camp"].image800,
+        campType: presentation.campType || session.campType || "Multi-Activity",
+      };
+    })
+    .sort((a, b) => String(labDayIso(a.days[0])).localeCompare(String(labDayIso(b.days[0]))));
   const activeSessionBlocks = normaliseSessionBlocks(activeSession, daysForSession(activeSession)[0]);
   const activeCampDayBlock = activeSession.type === "Holiday Camp" ? activeSessionBlocks.find((block) => block.label === "Holiday Camp") : null;
   const activeCampEarlyBlock = activeSession.type === "Holiday Camp" ? activeSessionBlocks.find((block) => block.label === "Early Drop-Off") : null;
@@ -22339,7 +22395,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             )}
           </section>
         )}
-          {launchBookingShellOpen && <div className="lab-search-panel">
+          {launchBookingShellOpen && <div className={`lab-search-panel ${isLaunchMode && careType === "Holiday Camp" ? "lab-camp-choice-panel" : ""}`}>
             <div className="lab-panel-heading">
             <p className="eyebrow">{isLaunchMode ? "Step 1" : "Start booking"}</p>
             <h2>{isLaunchMode ? "Choose your care." : "Choose school, care and pattern."}</h2>
@@ -22421,7 +22477,44 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                       );
                     })}
                   </div>
-                  {activityOptionsForCare.length > 1 && (
+                  {careType === "Holiday Camp" && launchCampCatalogRows.length > 0 ? (
+                    <section className="lab-camp-catalog" aria-label={`Holiday camps at ${selectedSchool}`}>
+                      <header>
+                        <div>
+                          <span>Choose a camp week</span>
+                          <strong>{launchCampCatalogRows.length} upcoming camp{launchCampCatalogRows.length === 1 ? "" : "s"}</strong>
+                        </div>
+                        <small>Individual days are bookable within every week.</small>
+                      </header>
+                      <div>
+                        {launchCampCatalogRows.map((row) => {
+                          const selected = activeSession.id === row.session.id;
+                          const siblingPercent = Number(rules.siblingDiscountPercent || 0);
+                          return (
+                            <article className={selected ? "active" : ""} key={row.session.id}>
+                              <img src={row.imageUrl} alt="" width="220" height="150" loading="lazy" />
+                              <div className="lab-camp-catalog-copy">
+                                <span>{row.campType}</span>
+                                <strong>{row.session.title}</strong>
+                                <p>{row.dateRange} · {row.dayBlock?.start || "09:00"}–{row.dayBlock?.end || "17:00"}</p>
+                                <div className="lab-camp-catalog-tags">
+                                  <span>Individual days available</span>
+                                  {row.fullWeekPrice > 0 && <span>Full week {money(row.fullWeekPrice)}{row.weeklySaving > 0 ? ` · save ${money(row.weeklySaving)}` : ""}</span>}
+                                  {siblingPercent > 0 && <span>{siblingPercent}% sibling discount</span>}
+                                </div>
+                                <small>{row.addOnBlocks.length ? `Add-ons: ${row.addOnBlocks.map((block) => `${block.label} ${block.start}–${block.end} +${money(block.price)} per day`).join(" · ")}` : "No add-ons are currently offered for this camp."}</small>
+                              </div>
+                              <div className="lab-camp-catalog-price">
+                                <strong>{money(row.dayBlock?.price ?? row.session.price)} <span>per day</span></strong>
+                                <small>{row.days.length} bookable day{row.days.length === 1 ? "" : "s"}</small>
+                                <button type="button" aria-pressed={selected} onClick={() => chooseSession(row.session, { advance: false })}>{selected ? "Selected" : "Choose week"}</button>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ) : activityOptionsForCare.length > 1 && (
                     <div className="lab-activity-choice" aria-label="Choose activity">
                       <span>Activity</span>
                       <div>
