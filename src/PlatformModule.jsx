@@ -16288,6 +16288,7 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
   const [attachmentFiles, setAttachmentFiles] = useState([]);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attachmentMessage, setAttachmentMessage] = useState("");
+  const attachmentFileRef = useRef(null);
   const parentFollowUps = (record.parentMessages || [])
     .filter((message) => !(message.body === record.message && Math.abs(new Date(message.createdAt || 0).getTime() - new Date(record.createdAt || 0).getTime()) < 10000))
     .map((message) => ({ ...message, subject: "Parent follow-up", status: "Received", sentAt: message.createdAt }));
@@ -16308,6 +16309,7 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
       const uploaded = await uploadStaffSupportTicketAttachments(record.id, attachmentFiles);
       onChange(record.id, { attachments: [...(record.attachments || []), ...uploaded] });
       setAttachmentFiles([]);
+      if (attachmentFileRef.current) attachmentFileRef.current.value = "";
       setAttachmentMessage(`${uploaded.length} private attachment${uploaded.length === 1 ? "" : "s"} added.`);
     } catch (error) {
       setAttachmentMessage(error?.message || "The attachment could not be uploaded.");
@@ -16486,7 +16488,7 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
             </section>
           )}
           <section className="crm-ticket-attachment-upload" aria-label="Add a private ticket attachment">
-            <label>Add private attachments<input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setAttachmentFiles(Array.from(event.target.files || []).slice(0, 3))} /></label>
+            <label>Add private attachments<input ref={attachmentFileRef} type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setAttachmentFiles(Array.from(event.target.files || []).slice(0, 3))} /></label>
             <small>Up to 3 JPG, PNG, WebP or PDF files · 8MB each. Only this family and authorised administrators can open them.</small>
             <button className="button light" type="button" onClick={uploadTicketAttachments} disabled={!attachmentFiles.length || attachmentBusy}>{attachmentBusy ? "Uploading…" : "Add attachments"}</button>
             {attachmentMessage && <span role="status">{attachmentMessage}</span>}

@@ -1499,6 +1499,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [parentSupportUnreadCount, setParentSupportUnreadCount] = useState(0);
   const [parentSupportDraftFiles, setParentSupportDraftFiles] = useState([]);
   const [parentSupportReplyFiles, setParentSupportReplyFiles] = useState([]);
+  const parentSupportDraftFileRef = useRef(null);
+  const parentSupportReplyFileRef = useRef(null);
   const [parentBadgeFilter, setParentBadgeFilter] = useState("all");
   const [parentBadgeChildFilter, setParentBadgeChildFilter] = useState("all");
   const [launchFinanceSection, setLaunchFinanceSection] = useState("Overview");
@@ -16729,6 +16731,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       }
       setParentSupportDraft({ subject: "", message: "" });
       setParentSupportDraftFiles([]);
+      if (parentSupportDraftFileRef.current) parentSupportDraftFileRef.current.value = "";
       setParentSupportNotice(attachmentWarning
         ? `Your ticket was created, but the attachment was not added: ${attachmentWarning}`
         : result.notificationWarning
@@ -16760,6 +16763,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       }
       setParentSupportReply("");
       setParentSupportReplyFiles([]);
+      if (parentSupportReplyFileRef.current) parentSupportReplyFileRef.current.value = "";
       setParentSupportNotice(attachmentWarning
         ? `Your message was saved, but the attachment was not added: ${attachmentWarning}`
         : result.notificationWarning
@@ -16807,7 +16811,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           <form onSubmit={submitParentSupportTicket}>
             <label>Subject<input value={parentSupportDraft.subject} onChange={(event) => setParentSupportDraft((current) => ({ ...current, subject: event.target.value }))} maxLength="180" placeholder="What do you need help with?" required /></label>
             <label>Message<textarea rows="5" value={parentSupportDraft.message} onChange={(event) => setParentSupportDraft((current) => ({ ...current, message: event.target.value }))} maxLength="8000" placeholder="Include the child, school, booking or payment details that will help us investigate." required /></label>
-            <label>Attachments <small>Up to 3 JPG, PNG, WebP or PDF files · 8MB each</small><input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setParentSupportDraftFiles(Array.from(event.target.files || []).slice(0, 3))} /></label>
+            <label>Attachments <small>Up to 3 JPG, PNG, WebP or PDF files · 8MB each</small><input ref={parentSupportDraftFileRef} type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setParentSupportDraftFiles(Array.from(event.target.files || []).slice(0, 3))} /></label>
             <button type="submit" disabled={parentSupportBusy || parentSupportDraft.subject.trim().length < 3 || parentSupportDraft.message.trim().length < 10}>{parentSupportBusy ? "Sending…" : "Send to Après School"}</button>
           </form>
         </details>
@@ -16840,7 +16844,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 {!!selected.attachments?.length && <div className="lab-parent-support-attachments"><strong>Private attachments</strong>{selected.attachments.map((attachment) => <a key={attachment.id} href={attachment.url || undefined} target="_blank" rel="noreferrer" aria-disabled={!attachment.url}><span>{attachment.fileName}</span><small>{Math.max(1, Math.round(Number(attachment.byteSize || 0) / 1024))} KB · {attachment.uploaderType === "staff" ? "Après School" : "You"}</small></a>)}</div>}
                 <form className="lab-parent-support-reply" onSubmit={submitParentSupportReply}>
                   <label>{selectedClosed ? "What do you still need help with?" : "Add a message"}<textarea rows="4" value={parentSupportReply} onChange={(event) => setParentSupportReply(event.target.value)} maxLength="8000" placeholder={selectedClosed ? "Explain what remains unresolved. A message is required to re-open the ticket." : "Add any useful information for our helpdesk."} required /></label>
-                  <label>Attachments <small>Optional · up to 3 private files</small><input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setParentSupportReplyFiles(Array.from(event.target.files || []).slice(0, 3))} /></label>
+                  <label>Attachments <small>Optional · up to 3 private files</small><input ref={parentSupportReplyFileRef} type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setParentSupportReplyFiles(Array.from(event.target.files || []).slice(0, 3))} /></label>
                   {selectedClosed && <p><strong>This ticket is closed.</strong> Sending this message will re-open it and notify our helpdesk.</p>}
                   <button type="submit" disabled={parentSupportBusy || parentSupportReply.trim().length < 10}>{parentSupportBusy ? "Sending…" : selectedClosed ? "Re-open ticket and send message" : "Send message"}</button>
                 </form>
