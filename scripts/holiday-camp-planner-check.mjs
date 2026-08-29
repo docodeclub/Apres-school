@@ -7,6 +7,7 @@ const checks = [
   ["src/bookingSystem.js", ["fetchAdminHolidayCampSchedule", "admin_upsert_holiday_camp"]],
   ["supabase/migrations/0132_holiday_camp_planner.sql", ["public_holiday_camp_schedule", "holiday_camp_planner", "Only admins can manage holiday camps"]],
   ["supabase/migrations/0133_willington_holiday_camp_pricing.sql", ["fullWeek4Price", "fullWeek5Price", "Early Drop-Off", "Full Week Discount", "holiday_camp_week_context"]],
+  ["supabase/migrations/0135_holiday_camp_early_dropoff_dependency.sql", ["Early Drop-Off can only be added", "deferrable initially deferred", "Holiday Camp"]],
 ];
 
 const failures = [];

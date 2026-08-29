@@ -1486,6 +1486,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [childRegistrationSubmitAttempted, setChildRegistrationSubmitAttempted] = useState(false);
   const [selectedParentBookingId, setSelectedParentBookingId] = useState("");
   const [parentSessionCancellingId, setParentSessionCancellingId] = useState("");
+  const [parentEarlyDropOffPendingId, setParentEarlyDropOffPendingId] = useState("");
   const [liveParentLedger, setLiveParentLedger] = useState({
     invoices: [],
     bookings: [],
@@ -4327,6 +4328,39 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     });
   const parentBookedSessionRows = [...draftParentBookedSessionRows, ...liveOnlyBookedSessionRows]
     .sort((a, b) => (a.start?.getTime() || 0) - (b.start?.getTime() || 0));
+  const earlyDropOffContextForBookedRow = (row) => {
+    if (!row?.future || row.status === "Cancelled" || !row.liveItemIds?.length) return null;
+    const rowItems = activeExistingBookingItems
+      .filter(({ item }) => row.liveItemIds.includes(item.id))
+      .map(({ item }) => item);
+    const campDayItem = rowItems.find((item) => bookingItemLabel(item) === "Holiday Camp");
+    if (!campDayItem) return null;
+    const childId = String(campDayItem.childId || campDayItem.child_id || "");
+    const childName = String(bookingItemChildName(campDayItem) || "").trim().toLowerCase();
+    const sameChildAndSession = ({ item }) => {
+      const itemChildId = String(item.childId || item.child_id || "");
+      const itemChildName = String(bookingItemChildName(item) || "").trim().toLowerCase();
+      const sameChild = childId ? itemChildId === childId : Boolean(childName && itemChildName === childName);
+      return sameChild && String(item.sessionId || item.session_id || "") === String(campDayItem.sessionId || campDayItem.session_id || "");
+    };
+    if (activeExistingBookingItems.some((entry) => sameChildAndSession(entry) && bookingItemLabel(entry.item) === "Early Drop-Off")) return null;
+    const child = selectableChildProfiles.find((profile) => (
+      (childId && String(profile.id || "") === childId)
+      || (!childId && String(profile.name || "").trim().toLowerCase() === childName)
+    ));
+    if (!child) return null;
+    const liveSessionId = String(campDayItem.sessionId || campDayItem.session_id || "");
+    for (const session of liveCampSessions) {
+      for (const [day, blocks] of Object.entries(session.dayBlocks || {})) {
+        const block = blocks.find((candidate) => (
+          String(candidate.liveSessionId || "") === liveSessionId
+          && candidate.label === "Early Drop-Off"
+        ));
+        if (block) return { session, day, block, child };
+      }
+    }
+    return null;
+  };
   const selectedParentBooking = parentManagedBookings.find((draft) => draft.id === selectedParentBookingId) || parentManagedBookings[0] || null;
   const selectedParentBookingRows = selectedParentBooking
     ? parentBookedSessionRows.filter((row) => row.draftId === selectedParentBooking.id)
@@ -7991,6 +8025,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const addingBlock = !pickedDays.includes(day) || !currentKeysForDay.includes(blockKey);
     const row = activeDayRows.find((item) => item.day === day);
     const rowBlockKeys = (row?.blocks || []).map((item) => item.key);
+    const holidayCampBlock = row?.blocks?.find((item) => item.label === "Holiday Camp");
+    const earlyDropOffBlock = row?.blocks?.find((item) => item.label === "Early Drop-Off");
     const existingState = row ? bookingStateForBlock(row, block) : null;
     const pickerState = row ? pickerBookingStateForBlock(row, block) : null;
     if (addingBlock && pickerState?.allBooked) {
@@ -8012,9 +8048,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setSelectedDayBlocks((current) => {
       const dayIsPicked = pickedDays.includes(day);
       const currentKeys = current[blockStoreKey]?.filter((key) => rowBlockKeys.includes(key)) || (dayIsPicked ? rowBlockKeys : []);
-      const nextKeys = currentKeys.includes(blockKey)
+      let nextKeys = currentKeys.includes(blockKey)
         ? currentKeys.filter((key) => key !== blockKey)
         : [...currentKeys, blockKey];
+      if (addingBlock && block.label === "Early Drop-Off" && holidayCampBlock) {
+        const mainDayAlreadyBooked = pickerBookingStateForBlock(row, holidayCampBlock)?.allBooked;
+        if (!mainDayAlreadyBooked && !nextKeys.includes(holidayCampBlock.key)) nextKeys.push(holidayCampBlock.key);
+      }
+      if (!addingBlock && block.label === "Holiday Camp" && earlyDropOffBlock) {
+        nextKeys = nextKeys.filter((key) => key !== earlyDropOffBlock.key);
+      }
       if (!nextKeys.length) {
         setSelectedDays((daysState) => ({
           ...daysState,
@@ -8031,6 +8074,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       const availableNames = pickerState.availableChildren.map((child) => child.name).join(", ");
       const bookedNames = pickerState.conflicts.map(({ child }) => child.name).join(", ");
       setStatus(`Selected for ${availableNames}.${bookedNames ? ` ${bookedNames} already ${pickerState.pending ? "has payment pending" : "booked"}.` : ""}`);
+    } else if (addingBlock && block.label === "Early Drop-Off" && holidayCampBlock) {
+      const mainDayAlreadyBooked = pickerBookingStateForBlock(row, holidayCampBlock)?.allBooked;
+      setStatus(mainDayAlreadyBooked
+        ? "Early Drop-Off selected for this existing Holiday Camp booking."
+        : "Holiday Camp has also been selected because Early Drop-Off is an add-on.");
+    } else if (!addingBlock && block.label === "Holiday Camp" && earlyDropOffBlock) {
+      setStatus("Early Drop-Off was removed with the Holiday Camp day because it cannot be booked by itself.");
     } else {
       setStatus("");
     }
@@ -8404,6 +8454,55 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setEditingBasketGroupId("");
     setParentCheckoutOpen(false);
     setStatus("Basket cleared.");
+  }
+
+  function addEarlyDropOffFromBooking(row) {
+    const context = earlyDropOffContextForBookedRow(row);
+    if (!context) {
+      setStatus("Early Drop-Off is not available for this booking, or it has already been added.");
+      return;
+    }
+    if (draftBookingBasket.length) {
+      setStatus("Complete or clear the current basket before adding Early Drop-Off to this booking.");
+      setLaunchBookingActive(true);
+      setLaunchParentPortalOpen(false);
+      moveLaunchFlowStep("Dates", ".lab-draft-basket");
+      return;
+    }
+    const { session, day, block, child } = context;
+    const groupId = `basket-early-drop-off-${Date.now()}`;
+    const line = {
+      id: `${groupId}-${child.id}-${labDayIso(day)}-${block.key}`,
+      groupId,
+      childId: child.id,
+      childName: child.name,
+      childSchool: child.school || session.site,
+      sessionId: block.liveSessionId || session.id,
+      catalogSessionId: session.id,
+      site: session.site,
+      activity: session.title,
+      careType: session.type,
+      day,
+      sessionDate: labDayIso(day),
+      blockKey: block.key,
+      sessionBlockId: sessionBlockIdForBooking(block),
+      sessionLabel: block.label,
+      start: block.start || "",
+      end: block.end || "",
+      price: Number(block.price || 0),
+      paymentRoute: session.paymentRoute,
+    };
+    setParentEarlyDropOffPendingId(row.id);
+    setDraftBookingBasket([line]);
+    setLaunchBookingActive(true);
+    setLaunchParentPortalOpen(false);
+    setParentCheckoutOpen(false);
+    setLaunchFlowStep("Dates");
+    setStatus(`Early Drop-Off for ${child.name} on ${day} has been added to your basket.`);
+    window.setTimeout(() => {
+      setParentEarlyDropOffPendingId("");
+      scrollToFlowSection(".lab-draft-basket", "center");
+    }, 80);
   }
 
   async function proceedBasketCheckout() {
@@ -22913,6 +23012,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   const childNames = row.draft.children?.join(", ") || row.draft.childName || "Child not recorded";
                   const sessionDetail = row.row.blocks.map((block) => `${block.label}${block.start || block.end ? ` · ${block.start}-${block.end}` : ""}`).join(" · ");
                   const paymentCheckInProgress = /payment being checked|awaiting ponchopay confirmation/i.test(`${row.draft.status || ""} ${row.draft.paymentStatus || ""}`);
+                  const earlyDropOffContext = earlyDropOffContextForBookedRow(row);
                   return (
                     <article className={`lab-parent-booking-row state-${row.status.toLowerCase()}`} role="row" key={row.id}>
                       <div role="cell" data-label="Booking">
@@ -22943,6 +23043,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                           : "Session value"}</small>
                       </div>
                       <div className="lab-parent-booking-row-actions" role="cell" data-label="Actions">
+                        {earlyDropOffContext && (
+                          <button
+                            type="button"
+                            onClick={() => addEarlyDropOffFromBooking(row)}
+                            disabled={parentEarlyDropOffPendingId === row.id}
+                          >
+                            {parentEarlyDropOffPendingId === row.id ? "Adding…" : "Add Early Drop-Off"}
+                          </button>
+                        )}
                         {invoiceRow?.balance > 0 && paymentCheckInProgress && (
                           <button type="button" disabled>Payment checking</button>
                         )}
