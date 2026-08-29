@@ -38778,6 +38778,7 @@ th {
 
 .booking-launch-page .lab-camp-period-rows {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) !important;
   gap: 8px;
 }
 
