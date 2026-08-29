@@ -44610,6 +44610,8 @@ th {
   }
 
   .booking-launch-page.launch-step-choices .lab-search-panel {
+    position: static;
+    top: auto;
     max-width: 760px;
     margin: 0 auto;
     padding: 24px;
