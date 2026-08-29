@@ -1200,6 +1200,32 @@ function bookingPolicyState(draft, hours = 24) {
   };
 }
 
+function individualSessionCancellationPolicy(start, hours = 24, now = new Date()) {
+  const sessionStart = start instanceof Date ? start : start ? new Date(start) : null;
+  const windowHours = Math.max(0, Number(hours || 0));
+  if (!sessionStart || Number.isNaN(sessionStart.getTime())) {
+    return {
+      allowed: false,
+      label: "Date check needed",
+      detail: "This session has no valid start date.",
+      deadline: null,
+      hours: windowHours,
+    };
+  }
+  const deadline = new Date(sessionStart.getTime() - windowHours * 60 * 60 * 1000);
+  const allowed = now <= deadline;
+  const deadlineLabel = `${deadline.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} ${deadline.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+  return {
+    allowed,
+    label: allowed ? "Cancellation available" : `${windowHours}-hour window closed`,
+    detail: allowed
+      ? `This session can be cancelled until ${deadlineLabel}.`
+      : `Online cancellation closed at ${deadlineLabel}, ${windowHours} hours before the session starts.`,
+    deadline,
+    hours: windowHours,
+  };
+}
+
 function parseLabDay(value) {
   if (!value) return null;
   const cleaned = String(value).replace(/,/g, "").trim();
@@ -4299,6 +4325,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       const activeRows = bookingBlockRows(draft).map((row) => {
       const start = bookingRowStart(row);
       const future = start ? start > new Date() : false;
+      const cancellationPolicy = individualSessionCancellationPolicy(start, rules.cancellationHours);
       const cancelledSession = (draft.cancelledSessions || []).find((item) => item.day === row.day);
       const childMultiplier = Math.max(1, Number(draft.childCount || draft.children?.length || 1));
       const creditAmount = Math.max(0, Number(row.price || 0) * childMultiplier);
@@ -4350,7 +4377,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               : "unpaid"
           : "",
         status: cancelledSession ? "Cancelled" : future ? "Future" : "Past",
-        canCancel: future && !cancelledSession && draft.status !== "Cancelled",
+        canCancel: cancellationPolicy.allowed && !cancelledSession && draft.status !== "Cancelled",
+        cancellationPolicy,
         cancelledSession,
         liveBookingId,
         liveItemIds,
@@ -4434,7 +4462,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           const startTime = validStart ? startsAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : "";
           const endTime = validEnd ? endsAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : "";
           const amount = Math.max(0, Number(item.unitAmount || item.unit_amount || 0));
-          const future = validStart ? startsAt > new Date() : true;
+          const future = validStart ? startsAt > new Date() : false;
+          const cancellationPolicy = individualSessionCancellationPolicy(validStart ? startsAt : null, rules.cancellationHours);
           const syntheticDraft = {
             id: booking.id,
             realBookingId: booking.id,
@@ -4468,11 +4497,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             actualCreditAmount: 0,
             cancellationOutcome: "",
             status: future ? "Future" : "Past",
-            canCancel: staffAdHoc && future,
+            canCancel: cancellationPolicy.allowed,
+            cancellationPolicy,
             cancelledSession: null,
             liveBookingId: booking.id,
             liveItemIds: item.id ? [item.id] : [],
-            usesRealApi: staffAdHoc,
+            usesRealApi: realBookingServiceReady && Boolean(booking.id && item.id),
             staffAdHoc,
           };
         });
@@ -14603,18 +14633,22 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     }
   }
 
-  async function cancelParentBookedSession(draftId, day) {
-    const draft = drafts.find((item) => item.id === draftId);
+  async function cancelParentBookedSession(draftId, day, selectedRow = null) {
+    const storedDraft = drafts.find((item) => item.id === draftId);
+    const sessionRow = selectedRow || parentBookedSessionRows.find((row) => row.draftId === draftId && row.day === day && row.status !== "Cancelled");
+    const draft = storedDraft || sessionRow?.draft;
     if (!draft) return;
-    const dayRow = bookingBlockRows(draft).find((row) => row.day === day);
-    const sessionRow = parentBookedSessionRows.find((row) => row.draftId === draftId && row.day === day && row.status !== "Cancelled");
-    const start = dayRow ? bookingRowStart(dayRow) : null;
+    const dayRow = storedDraft
+      ? bookingBlockRows(storedDraft).find((row) => row.day === day)
+      : sessionRow?.row;
+    const start = sessionRow?.start || (dayRow ? bookingRowStart(dayRow) : null);
     if (!dayRow || !start) {
       setStatus("This session could not be checked. Please contact the office.");
       return;
     }
-    if (start <= new Date()) {
-      setStatus("Only future sessions can be cancelled from the parent account.");
+    const cancellationPolicy = individualSessionCancellationPolicy(start, rules.cancellationHours);
+    if (!cancellationPolicy.allowed) {
+      setStatus(`Cancellation unavailable: ${cancellationPolicy.detail}`);
       return;
     }
     if ((draft.cancelledSessions || []).some((item) => item.day === day)) {
@@ -14636,6 +14670,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       } catch (error) {
         setParentSessionCancellingId("");
         setStatus(`Session cancellation failed: ${error instanceof Error ? error.message : "Unable to update the live booking."}`);
+        return;
+      }
+      if (!storedDraft) {
+        const removedValue = Math.max(0, Number(backendAmendment?.removedTotal || 0));
+        await refreshLiveParentLedger({ quiet: true });
+        setSelectedParentBookingId(draft.id);
+        setParentSessionCancellingId("");
+        setStatus(removedValue > 0
+          ? `${day} cancelled through the booking system. The family balance has been updated by ${money(removedValue)}.`
+          : `${day} cancelled through the booking system.`);
         return;
       }
     } else {
@@ -23315,7 +23359,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                           type="button"
                           className="button light danger"
                           disabled={!row.canCancel || parentSessionCancellingId === row.id}
-                          onClick={() => row.staffAdHoc ? reviewParentAdHocCancellation(row) : cancelParentBookedSession(row.draftId, row.day)}
+                          onClick={() => row.staffAdHoc ? reviewParentAdHocCancellation(row) : cancelParentBookedSession(row.draftId, row.day, row)}
                         >
                           {parentSessionCancellingId === row.id
                             ? "Cancelling..."
@@ -23324,7 +23368,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                               : row.status === "Cancelled"
                                 ? "Cancelled"
                                 : row.future
-                                  ? "Cancellation unavailable"
+                                  ? `${rules.cancellationHours}-hour window closed`
                                   : "Past session"}
                         </button>
                       </div>
@@ -25121,7 +25165,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 </div>
               )}
               <div className="lab-deadline-strip">
-                <span>Cancel up to {rules.cancellationHours}h before first session</span>
+                  <span>Cancel individual sessions up to {rules.cancellationHours}h before each one</span>
                 <span>Amend up to {rules.amendmentHours}h before first session</span>
                 <span>{isLaunchMode ? `References can be added within ${rules.paymentDueHours}h` : `Voucher/TFC due within ${rules.paymentDueHours}h`}</span>
               </div>

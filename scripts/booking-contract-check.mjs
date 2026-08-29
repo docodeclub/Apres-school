@@ -10,6 +10,7 @@ const reservationSql = readFileSync(join(root, "supabase/migrations/0030_create_
 const seedSql = readFileSync(join(root, "supabase/migrations/0045_seed_2026_wraparound_booking_sessions.sql"), "utf8");
 const cancellationSql = readFileSync(join(root, "supabase/migrations/0032_cancel_parent_booking.sql"), "utf8");
 const amendmentSql = readFileSync(join(root, "supabase/migrations/0033_amend_parent_booking_remove_items.sql"), "utf8");
+const individualCancellationSql = readFileSync(join(root, "supabase/migrations/0142_individual_session_cancellation_window.sql"), "utf8");
 const amendmentAddSql = readFileSync(join(root, "supabase/migrations/0034_amend_parent_booking_add_items.sql"), "utf8");
 const edgeFunction = readFileSync(join(root, "supabase/functions/create-parent-booking/index.ts"), "utf8");
 const updateFunction = readFileSync(join(root, "supabase/functions/update-parent-booking/index.ts"), "utf8");
@@ -39,10 +40,12 @@ if (request) validateRequestShape(request);
   ["cancellation RPC releases capacity holds", cancellationSql.includes("booking_capacity_holds") && cancellationSql.includes("released_at")],
   ["cancellation RPC updates invoice status", cancellationSql.includes("booking_invoices") && cancellationSql.includes("cancelled_refund_review")],
   ["booking update function calls cancellation RPC", updateFunction.includes("cancel_parent_booking")],
-  ["amendment RPC enforces parent window", amendmentSql.includes("Amendment window has closed")],
+  ["individual session cancellation uses the selected session start", individualCancellationSql.includes("selected_booking_item.starts_at")],
+  ["individual session cancellation uses configured notice hours", individualCancellationSql.includes("selected_session.cancellation_hours") && individualCancellationSql.includes("make_interval")],
   ["amendment RPC releases removed capacity holds", amendmentSql.includes("amend_parent_booking_remove_items") && amendmentSql.includes("released_at")],
   ["amendment RPC updates invoice balance", amendmentSql.includes("amended_credit_review") && amendmentSql.includes("balance = greatest")],
   ["booking update function calls amendment RPC", updateFunction.includes("amend_parent_booking_remove_items")],
+  ["parent portal enables live individual-session cancellation", bookingLabSource.includes("individualSessionCancellationPolicy") && bookingLabSource.includes("usesRealApi: realBookingServiceReady && Boolean(booking.id && item.id)")],
   ["add-session amendment RPC enforces parent window", amendmentAddSql.includes("Amendment window has closed")],
   ["add-session amendment RPC checks capacity", amendmentAddSql.includes("booking_capacity_holds") && amendmentAddSql.includes("availableBeforeAmendment")],
   ["add-session amendment RPC updates invoice balance", amendmentAddSql.includes("amended_balance_due") && amendmentAddSql.includes("balance = balance + v_added_total")],
