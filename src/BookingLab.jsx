@@ -1860,7 +1860,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const selected = activeSession.id === row.session.id;
     const siblingPercent = Number(rules.siblingDiscountPercent || 0);
     return (
-      <article className={selected ? "active" : ""} key={row.session.id}>
+      <article className={`lab-camp-catalog-row ${selected ? "active" : ""}`} key={row.session.id}>
         <img src={row.imageUrl} alt="" width="220" height="150" loading="lazy" />
         <div className="lab-camp-catalog-copy">
           <span>{row.campType}</span>

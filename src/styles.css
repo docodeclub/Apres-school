@@ -38796,7 +38796,7 @@ th {
   text-align: center;
 }
 
-.booking-launch-page .lab-camp-catalog article {
+.booking-launch-page .lab-camp-catalog-row {
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr) 132px;
   gap: 14px;
@@ -38809,13 +38809,13 @@ th {
   box-shadow: 0 8px 20px rgba(28, 43, 92, 0.05);
 }
 
-.booking-launch-page .lab-camp-catalog article.active {
+.booking-launch-page .lab-camp-catalog-row.active {
   border-color: #4165dc;
   background: #f7f9ff;
   box-shadow: inset 4px 0 0 #f2a12d, 0 10px 24px rgba(49, 75, 184, 0.1);
 }
 
-.booking-launch-page .lab-camp-catalog article > img {
+.booking-launch-page .lab-camp-catalog-row > img {
   width: 132px;
   height: 100%;
   min-height: 122px;
@@ -38930,7 +38930,7 @@ th {
   color: #8b5103 !important;
 }
 
-.booking-launch-page .lab-camp-catalog article.active .lab-camp-catalog-price > button {
+.booking-launch-page .lab-camp-catalog-row.active .lab-camp-catalog-price > button {
   border-color: #fff;
   background: #fff !important;
   color: #8b5103 !important;
@@ -46479,12 +46479,12 @@ th {
     grid-row: 1 / span 2;
   }
 
-  .booking-launch-page .lab-camp-catalog article {
+  .booking-launch-page .lab-camp-catalog-row {
     grid-template-columns: 94px minmax(0, 1fr);
     gap: 10px;
   }
 
-  .booking-launch-page .lab-camp-catalog article > img {
+  .booking-launch-page .lab-camp-catalog-row > img {
     width: 94px;
     min-height: 112px;
   }
