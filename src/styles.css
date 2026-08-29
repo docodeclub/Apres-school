@@ -2685,9 +2685,42 @@ summary {
   background: #f0fbf4;
 }
 
-.camp-site-schedule > div { display: flex; flex-wrap: wrap; gap: .35rem; }
-.camp-site-schedule > div span { padding: .32rem .55rem; border-radius: 999px; background: #fff; border: 1px solid #d7e0f2; font-size: .78rem; font-weight: 800; }
 .camp-site-schedule small { color: #5a6680; }
+
+.camp-week-list {
+  display: grid;
+  gap: .38rem;
+  max-height: 250px;
+  padding-right: .25rem;
+  overflow-y: auto;
+  scrollbar-color: #9fb1d7 transparent;
+}
+
+.camp-week-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .52rem .62rem;
+  border: 1px solid #d6e8dd;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.camp-week-row span {
+  color: #26345a;
+  font-size: .78rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.camp-week-row strong {
+  flex: 0 0 auto;
+  color: #257448;
+  font-size: .78rem;
+  line-height: 1.2;
+  text-align: right;
+}
 
 .holiday-camp-planner {
   display: grid;

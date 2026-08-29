@@ -2006,8 +2006,36 @@ function HolidayClubs({ setPage }) {
     const scheduleVenue = normaliseVenue(row.siteName);
     return cardVenue === scheduleVenue || cardVenue.includes(scheduleVenue) || scheduleVenue.includes(cardVenue);
   });
-  const formatCampDate = (value) => new Date(`${value}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const formatCampTime = (value) => new Date(value).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const campWeekRanges = (rows) => {
+    const weeks = new Map();
+    rows.forEach((row) => {
+      const name = row.campName || "Holiday Camp";
+      const dates = weeks.get(name) || [];
+      dates.push(row.sessionDate);
+      weeks.set(name, dates);
+    });
+    return [...weeks.entries()]
+      .map(([name, dates]) => {
+        const sortedDates = [...dates].sort();
+        return { name, firstDate: sortedDates[0], lastDate: sortedDates[sortedDates.length - 1], days: sortedDates.length };
+      })
+      .sort((left, right) => left.firstDate.localeCompare(right.firstDate));
+  };
+  const formatCampRange = ({ firstDate, lastDate }) => {
+    const start = new Date(`${firstDate}T12:00:00`);
+    const end = new Date(`${lastDate}T12:00:00`);
+    const startDay = start.toLocaleDateString("en-GB", { day: "numeric" });
+    const endDay = end.toLocaleDateString("en-GB", { day: "numeric" });
+    const startMonth = start.toLocaleDateString("en-GB", { month: "short" });
+    const endMonth = end.toLocaleDateString("en-GB", { month: "short" });
+    const startYear = start.getFullYear();
+    const endYear = end.getFullYear();
+    if (firstDate === lastDate) return `${startDay} ${startMonth} ${startYear}`;
+    if (startYear === endYear && startMonth === endMonth) return `${startDay}–${endDay} ${endMonth} ${endYear}`;
+    if (startYear === endYear) return `${startDay} ${startMonth}–${endDay} ${endMonth} ${endYear}`;
+    return `${startDay} ${startMonth} ${startYear}–${endDay} ${endMonth} ${endYear}`;
+  };
 
   return (
     <PageShell eyebrow="Holiday Clubs" title="Holiday clubs across five school venues.">
@@ -2042,7 +2070,7 @@ function HolidayClubs({ setPage }) {
         <div className="section-kicker">
           <p className="eyebrow">Our five venues</p>
           <h2>Five locations. One family booking system.</h2>
-          <p>Find us at King’s House School, Willington Prep, Ripley Court School, The Rowans School and Shrewsbury House School. Choose a venue below, then use your Après School family account to view availability.</p>
+          <p>Find us at King’s House School, Willington Prep, Ripley Court School, The Rowans School and Shrewsbury House School. Our published 2026/27 camp weeks are shown below, with live availability available through your Après School family account.</p>
         </div>
         <div className="camp-booking-note">
           <article>
@@ -2060,6 +2088,7 @@ function HolidayClubs({ setPage }) {
           {holidaySites.map((site) => {
             const liveBlocks = scheduleForSite(site);
             const liveDates = liveBlocks.filter((row) => row.blockLabel === "Holiday Camp");
+            const campWeeks = campWeekRanges(liveDates);
             const firstDate = liveDates[0];
             const earlyDropOff = liveBlocks.find((row) => row.blockLabel === "Early Drop-Off");
             return (
@@ -2085,8 +2114,15 @@ function HolidayClubs({ setPage }) {
                   {campScheduleState === "loading" && <span>Checking upcoming dates…</span>}
                   {campScheduleState === "error" && <span>Open booking to check current availability.</span>}
                   {campScheduleState === "ready" && liveDates.length > 0 && <>
-                    <strong>{liveDates.length} upcoming date{liveDates.length === 1 ? "" : "s"}</strong>
-                    <div>{liveDates.slice(0, 4).map((row) => <span key={row.sessionId}>{formatCampDate(row.sessionDate)}</span>)}</div>
+                    <strong>{campWeeks.length} published camp week{campWeeks.length === 1 ? "" : "s"} · {liveDates.length} bookable dates</strong>
+                    <div className="camp-week-list" aria-label={`Published holiday camp dates for ${site.title}`}>
+                      {campWeeks.map((week) => (
+                        <div className="camp-week-row" key={`${site.title}-${week.name}-${week.firstDate}`}>
+                          <span>{week.name}</span>
+                          <strong>{formatCampRange(week)}</strong>
+                        </div>
+                      ))}
+                    </div>
                     <small>{formatCampTime(firstDate.startsAt)}–{formatCampTime(firstDate.endsAt)} · £{firstDate.price.toFixed(2)} per day · Book the full week and save 10%.</small>
                     {earlyDropOff && <small>Early Drop-Off {formatCampTime(earlyDropOff.startsAt)}–{formatCampTime(earlyDropOff.endsAt)} · +£{earlyDropOff.price.toFixed(2)} per day</small>}
                   </>}
