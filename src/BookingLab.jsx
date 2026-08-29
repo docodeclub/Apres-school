@@ -1885,7 +1885,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               chooseSession(row.session, { advance: false });
             }}
           >
-            {selected ? "Selected" : "Choose week"}
+            {selected ? "Selected" : "Book"}
           </button>
         </div>
       </article>
@@ -22533,6 +22533,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         </div>
                         <small>Individual days are bookable within every week.</small>
                       </header>
+                      {activeCampDayBlock && (
+                        <section className="lab-camp-pricing-summary lab-camp-pricing-summary-top" aria-label="Holiday Camp pricing">
+                          <article><span>Holiday Camp</span><strong>{activeCampDayBlock.start}–{activeCampDayBlock.end}</strong><small>{money(activeCampDayBlock.price)} per day</small></article>
+                          <article className="saving"><span>Full-week pricing</span><strong>Book the full week and save 10%</strong><small>4 operating days {money(activeSession.pricing?.fullWeek4Price || 180)} · 5 operating days {money(activeSession.pricing?.fullWeek5Price || 225)}</small></article>
+                          {activeCampEarlyBlock && <article><span>Early Drop-Off</span><strong>{activeCampEarlyBlock.start}–{activeCampEarlyBlock.end}</strong><small>+{money(activeCampEarlyBlock.price)} per day · choose separately</small></article>}
+                        </section>
+                      )}
                       <div className="lab-camp-catalog-featured">
                         <span className="lab-camp-periods-label">Next available camps</span>
                         {featuredCampCatalogRows.map(renderCampCatalogRow)}
@@ -23845,13 +23852,6 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             </div>
             <strong>{pickedDayRows.length && new Set(pickedDayRows.map((row) => row.price)).size > 1 ? `${money(Math.min(...pickedDayRows.map((row) => row.price)))}-${money(Math.max(...pickedDayRows.map((row) => row.price)))}` : money(pickedDayRows[0]?.price ?? activeSession.price)}<span>per child/session</span></strong>
           </div>
-          {activeSession.type === "Holiday Camp" && activeCampDayBlock && (
-            <section className="lab-camp-pricing-summary" aria-label="Holiday Camp pricing">
-              <article><span>Holiday Camp</span><strong>{activeCampDayBlock.start}–{activeCampDayBlock.end}</strong><small>{money(activeCampDayBlock.price)} per day</small></article>
-              <article className="saving"><span>Full-week pricing</span><strong>Book the full week and save 10%</strong><small>4 operating days {money(activeSession.pricing?.fullWeek4Price || 180)} · 5 operating days {money(activeSession.pricing?.fullWeek5Price || 225)}</small></article>
-              {activeCampEarlyBlock && <article><span>Early Drop-Off</span><strong>{activeCampEarlyBlock.start}–{activeCampEarlyBlock.end}</strong><small>+{money(activeCampEarlyBlock.price)} per day · choose separately</small></article>}
-            </section>
-          )}
           <div className="lab-purchase-snapshot">
             <article>
               <span>Current plan</span>

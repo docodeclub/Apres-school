@@ -38882,13 +38882,15 @@ th {
   align-content: center;
   justify-items: stretch;
   gap: 4px;
-  border-left: 1px solid rgba(37, 48, 79, 0.1);
-  padding-left: 12px;
+  border-left: 0;
+  border-radius: 12px;
+  background: #3049b8;
+  padding: 12px;
   text-align: right;
 }
 
 .booking-launch-page .lab-camp-catalog-price > strong {
-  color: #233f9f;
+  color: #fff;
   font-size: 1.06rem;
   line-height: 1.1;
 }
@@ -38896,13 +38898,13 @@ th {
 .booking-launch-page .lab-camp-catalog-price > strong span {
   display: block;
   margin-top: 2px;
-  color: #626d84;
+  color: rgba(255, 255, 255, 0.78);
   font-size: 0.68rem;
   font-weight: 800;
 }
 
 .booking-launch-page .lab-camp-catalog-price > small {
-  color: #626d84;
+  color: rgba(255, 255, 255, 0.82);
   font-size: 0.66rem;
   font-weight: 750;
 }
@@ -38910,20 +38912,24 @@ th {
 .booking-launch-page .lab-camp-catalog-price > button {
   min-height: 34px;
   margin-top: 4px;
-  border: 1px solid #4165dc;
+  border: 1px solid #fff;
   border-radius: 999px;
-  background: #4165dc;
-  color: #fff;
+  background: #fff;
+  color: #233f9f;
   padding: 7px 9px;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 950;
   text-align: center;
 }
 
 .booking-launch-page .lab-camp-catalog article.active .lab-camp-catalog-price > button {
-  border-color: #f2a12d;
-  background: #fff7e9;
+  border-color: #fff;
+  background: #fff;
   color: #8b5103;
+}
+
+.booking-launch-page .lab-camp-pricing-summary-top {
+  margin: 0;
 }
 
 .booking-launch-page .lab-launch-choice-summary {
@@ -46479,10 +46485,9 @@ th {
     grid-column: 1 / -1;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    border-top: 1px solid rgba(37, 48, 79, 0.1);
+    border-top: 0;
     border-left: 0;
-    padding-top: 9px;
-    padding-left: 0;
+    padding: 10px;
     text-align: left;
   }
 
