@@ -14224,6 +14224,28 @@ label {
   background: #ffe9ed;
 }
 
+.support-ticket-close-without-reply {
+  min-height: 40px;
+  border: 1px solid rgba(176, 103, 20, 0.3);
+  border-radius: 999px;
+  background: #fff8e9;
+  color: #8a5614;
+  cursor: pointer;
+  padding: 0 14px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.support-ticket-close-without-reply:hover {
+  border-color: #d28a2b;
+  background: #fff0cf;
+}
+
+.support-ticket-close-without-reply:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
 .support-ticket-archived-badge {
   display: inline-flex;
   border-radius: 999px;

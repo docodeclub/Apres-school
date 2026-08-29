@@ -16274,6 +16274,7 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
   const [replyState, setReplyState] = useState({ status: "idle", message: "" });
   const [lastSentReply, setLastSentReply] = useState(null);
   const [closeAfterReply, setCloseAfterReply] = useState(false);
+  const [closeBusy, setCloseBusy] = useState(false);
   const [reopenBusy, setReopenBusy] = useState(false);
   const replyHistory = [lastSentReply, ...(record.replies || [])].filter(Boolean).filter((reply, index, items) => items.findIndex((item) => item.id === reply.id) === index);
   const notificationEvidence = crmNotificationEvidence(record);
@@ -16333,6 +16334,29 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
     }
   }
 
+  async function closeTicketWithoutReply() {
+    if (closeBusy || record.status === "Closed") return;
+    const confirmed = window.confirm(
+      `Close the support ticket from ${record.name} without sending a reply?\n\nThe parent will not receive an email or closure notification. You can re-open the ticket later.`,
+    );
+    if (!confirmed) return;
+    setCloseBusy(true);
+    setReplyState({ status: "sending", message: "Closing ticket without sending an email…" });
+    try {
+      await onClosed(true);
+      setReplyState({ status: "sent", message: "Ticket closed. No email was sent to the parent." });
+      addAuditLog("Support ticket closed without reply", `${record.name} · ${replyAddress || "No reply address"}`, {
+        tableName: "enquiries",
+        crmRecord: record.name,
+        email: replyAddress,
+      });
+    } catch (error) {
+      setReplyState({ status: "error", message: error.message || "The ticket could not be closed." });
+    } finally {
+      setCloseBusy(false);
+    }
+  }
+
   function toggleArchive() {
     if (record.archivedAt) {
       onArchive(false);
@@ -16360,6 +16384,11 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
           {record.classification && <span className={`crm-classification ${record.classification}`}>{record.classification}</span>}
           {record.archivedAt && <span className="support-ticket-archived-badge">Archived</span>}
           <Badge value={record.status || "New"} />
+          {record.status !== "Closed" && !record.archivedAt && (
+            <button className="support-ticket-close-without-reply" type="button" disabled={closeBusy} onClick={closeTicketWithoutReply}>
+              {closeBusy ? "Closing…" : "Close ticket"}
+            </button>
+          )}
           <button className="support-ticket-archive" type="button" onClick={toggleArchive}>{record.archivedAt ? "Restore" : "Archive"}</button>
           <button className="support-ticket-close" type="button" onClick={onClose} aria-label="Close support ticket">×</button>
         </div>
