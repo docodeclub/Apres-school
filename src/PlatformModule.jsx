@@ -15930,6 +15930,12 @@ function updateRecord(id, patch) {
       direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
     }));
   }
+  function chooseTicketFilter(filter) {
+    setTypeFilter(filter);
+    setQuery("");
+    setSelectedId("");
+    setSelectedRows([]);
+  }
   function openTicket(record) {
     setSelectedId(record.id);
     if (!isSupabaseCrmRecord(record.id, record)) {
@@ -16140,8 +16146,22 @@ function updateRecord(id, patch) {
         </div>
       </div>
       <div className="crm-summary">
-        <Metric icon={<Bell />} label="Open tickets" value={openWebsiteEnquiries.length} tone={openWebsiteEnquiries.length ? "amber" : "green"} />
-        <Metric icon={<ShieldCheck />} label="Closed tickets" value={closedWebsiteEnquiries.length} tone="green" />
+        <Metric
+          icon={<Bell />}
+          label="Open tickets"
+          value={openWebsiteEnquiries.length}
+          tone={openWebsiteEnquiries.length ? "amber" : "green"}
+          onClick={() => chooseTicketFilter("Open tickets")}
+          active={typeFilter === "Open tickets"}
+        />
+        <Metric
+          icon={<ShieldCheck />}
+          label="Closed tickets"
+          value={closedWebsiteEnquiries.length}
+          tone="green"
+          onClick={() => chooseTicketFilter("Closed tickets")}
+          active={typeFilter === "Closed tickets"}
+        />
       </div>
       {typeFilter === "Open tickets" && recentWebsiteEnquiries.length > 0 && (
         <section className="crm-enquiry-strip" aria-label="Recent website contact responses">
@@ -19341,8 +19361,12 @@ function addMinutes(time, minutes) {
   return `${String(nextHour).padStart(2, "0")}:${String(nextMinute).padStart(2, "0")}`;
 }
 
-function Metric({ icon, label, value, tone }) {
-  return <article className={`metric ${tone}`}><div>{icon}</div><span>{label}</span><strong>{value}</strong></article>;
+function Metric({ icon, label, value, tone, onClick, active = false }) {
+  const content = <><div>{icon}</div><span>{label}</span><strong>{value}</strong></>;
+  if (onClick) {
+    return <button type="button" className={`metric metric-button ${tone} ${active ? "active" : ""}`.trim()} onClick={onClick} aria-pressed={active}>{content}</button>;
+  }
+  return <article className={`metric ${tone}`}>{content}</article>;
 }
 
 function Panel({ title, children }) {

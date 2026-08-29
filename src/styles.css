@@ -9552,6 +9552,35 @@ label {
   overflow-wrap: anywhere;
 }
 
+.metric-button {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.metric-button:hover {
+  border-color: #aebcf0;
+  transform: translateY(-1px);
+}
+
+.metric-button:focus-visible {
+  outline: 3px solid rgba(76, 102, 224, 0.24);
+  outline-offset: 2px;
+}
+
+.metric-button.active {
+  border-color: var(--royal);
+  background: #f4f7ff;
+  box-shadow: 0 0 0 3px rgba(76, 102, 224, 0.12), var(--shadow-soft);
+}
+
 .metric.green svg,
 .good {
   color: var(--green);
