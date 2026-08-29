@@ -14609,6 +14609,18 @@ label {
   white-space: pre-wrap;
 }
 
+.crm-reply-address-warning {
+  margin: 0;
+  border: 1px solid #efb4b4;
+  border-radius: 12px;
+  background: #fff2f2;
+  color: #a32929;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .crm-reply-workspace > label:not(.crm-reply-approval) {
   display: grid;
   gap: 6px;

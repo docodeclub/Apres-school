@@ -102,7 +102,7 @@ function normalizeEnquiry(payload: Record<string, unknown>) {
 
 function validateEnquiry(enquiry: ReturnType<typeof normalizeEnquiry>) {
   if (!enquiry.name) return "Name is required";
-  if (!enquiry.email || !enquiry.email.includes("@")) return "Valid email is required";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(enquiry.email)) return "Enter a complete email address, including the part after the final dot (for example, name@example.com)";
   if (!enquiry.message) return "Message is required";
   if (enquiry.name.length > 120 || enquiry.email.length > 254 || enquiry.organisation.length > 160) return "One or more fields are too long";
   if (enquiry.message.length > 5000) return "Message is too long";
@@ -166,7 +166,7 @@ async function notifyByEmail(enquiry: ReturnType<typeof normalizeEnquiry>, enqui
     body: JSON.stringify({
       from: resendFrom,
       to: [notificationTo],
-      reply_to: enquiry.email || resendReplyTo,
+      reply_to: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(enquiry.email) ? enquiry.email : resendReplyTo,
       subject,
       text,
       html,

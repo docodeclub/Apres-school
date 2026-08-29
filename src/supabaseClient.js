@@ -2247,6 +2247,9 @@ export async function updateCrmEnquiry(id, patch) {
   const payload = {};
 
   if (patch.status) payload.status = normalizeCrmStatus(patch.status);
+  if (typeof patch.contactEmail === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patch.contactEmail.trim())) {
+    payload.email = patch.contactEmail.trim().toLowerCase();
+  }
   if ("owner" in patch || "note" in patch || "nextAction" in patch) {
     payload.internal_notes = JSON.stringify({
       owner: patch.owner,
@@ -2294,10 +2297,10 @@ export async function setSupportTicketClosed(enquiryId, closed = true) {
   return data || {};
 }
 
-export async function sendEnquiryReply({ enquiryId, subject, body, closeTicket = false }) {
+export async function sendEnquiryReply({ enquiryId, recipientEmail, subject, body, closeTicket = false }) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.functions.invoke("send-enquiry-reply", {
-    body: { enquiryId, subject, body, closeTicket: Boolean(closeTicket) },
+    body: { enquiryId, recipientEmail, subject, body, closeTicket: Boolean(closeTicket) },
   });
   if (error) {
     let message = error.message || "The reply could not be sent.";

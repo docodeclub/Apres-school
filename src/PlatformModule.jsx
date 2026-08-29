@@ -15775,6 +15775,10 @@ function supportTicketAge(record, now = Date.now()) {
   return { key: "new", label, hours };
 }
 
+function validSupportReplyEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
 function CRM({ data, access }) {
   const [updates, setUpdates] = useState(() => readCrmUpdates());
   const [typeFilter, setTypeFilter] = useState("Website enquiries");
@@ -16292,6 +16296,8 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
   const [reopenBusy, setReopenBusy] = useState(false);
   const replyHistory = [lastSentReply, ...(record.replies || [])].filter(Boolean).filter((reply, index, items) => items.findIndex((item) => item.id === reply.id) === index);
   const notificationEvidence = crmNotificationEvidence(record);
+  const replyAddress = String(record.contactEmail || record.email || "").trim();
+  const replyAddressValid = validSupportReplyEmail(replyAddress);
 
   useEffect(() => {
     setReplySubject(`Re: ${record.subject || "Your Après School enquiry"}`);
@@ -16315,17 +16321,17 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
     setReplyState({ status: "sending", message: "Sending your approved reply…" });
     try {
       const { sendEnquiryReply } = await loadSupabaseModule();
-      const result = await sendEnquiryReply({ enquiryId: record.id, subject: replySubject.trim(), body: replyBody.trim(), closeTicket: closeAfterReply });
+      const result = await sendEnquiryReply({ enquiryId: record.id, recipientEmail: replyAddress, subject: replySubject.trim(), body: replyBody.trim(), closeTicket: closeAfterReply });
       setLastSentReply(result.reply || null);
       setReplyReviewed(false);
-      setReplyState({ status: "sent", message: closeAfterReply ? `Reply sent and ticket closed. ${record.email} can re-open it from the email.` : `Reply sent to ${record.email}.` });
+      setReplyState({ status: "sent", message: closeAfterReply ? `Reply sent and ticket closed. ${replyAddress} can re-open it from the email.` : `Reply sent to ${replyAddress}.` });
       onChange(record.id, closeAfterReply
         ? { status: "Closed", closedAt: new Date().toISOString(), nextAction: "Closed — parent can re-open from the email" }
         : { status: "Responded", closedAt: "", nextAction: "Monitor for parent reply" });
-      addAuditLog("Enquiry reply sent", `${record.name} · ${record.email} · ${replySubject.trim()}`, {
+      addAuditLog("Enquiry reply sent", `${record.name} · ${replyAddress} · ${replySubject.trim()}`, {
         tableName: "enquiries",
         crmRecord: record.name,
-        email: record.email,
+        email: replyAddress,
       });
     } catch (error) {
       setReplyState({ status: "error", message: error?.message || "The reply could not be sent." });
@@ -16416,13 +16422,14 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
               <h4>Review and send a reply</h4>
               <p>The message is only sent after you approve the final wording.</p>
             </div>
-            <span>{record.email}</span>
+            <span>{replyAddressValid ? replyAddress : "Reply address needs correcting"}</span>
           </div>
           <div className="crm-original-message">
             <span>Original enquiry</span>
             <strong>{record.subject || `${record.type || "Website"} enquiry`}</strong>
             <p>{record.message || "No message was supplied."}</p>
           </div>
+          {!replyAddressValid && <p className="crm-reply-address-warning" role="alert">The parent entered an incomplete email address. Correct the Contact field above before sending a reply.</p>}
           <label>Subject<input value={replySubject} onChange={(event) => { setReplySubject(event.target.value); setReplyReviewed(false); }} maxLength="180" /></label>
           <label>Reply<textarea rows="9" value={replyBody} onChange={(event) => { setReplyBody(event.target.value); setReplyReviewed(false); }} maxLength="8000" placeholder="Write or paste the approved reply here." /></label>
           <label className="crm-close-ticket-option">
@@ -16434,7 +16441,7 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
             <span>I have reviewed the recipient, subject and message and approve this email for sending.</span>
           </label>
           <div className="crm-reply-actions">
-            <button className="button book" type="button" onClick={sendReply} disabled={!replyReviewed || !replySubject.trim() || !replyBody.trim() || replyState.status === "sending"}>
+            <button className="button book" type="button" onClick={sendReply} disabled={!replyAddressValid || !replyReviewed || !replySubject.trim() || !replyBody.trim() || replyState.status === "sending"}>
               {replyState.status === "sending" ? "Sending…" : "Send approved reply"}
             </button>
             <span className={replyState.status === "error" ? "error" : replyState.status === "sent" ? "success" : ""} role="status">{replyState.message}</span>

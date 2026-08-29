@@ -26,6 +26,7 @@ serve(async (request) => {
     const actor = await requireAdmin(request.headers.get("Authorization") || "");
     const payload = await request.json().catch(() => null) as Record<string, unknown> | null;
     const enquiryId = stringValue(payload?.enquiryId);
+    const requestedRecipientEmail = stringValue(payload?.recipientEmail).toLowerCase();
     const subject = stringValue(payload?.subject);
     const body = stringValue(payload?.body);
     const closeTicket = payload?.closeTicket === true;
@@ -40,9 +41,16 @@ serve(async (request) => {
       .maybeSingle();
     if (enquiryError) throw enquiryError;
     if (!enquiry) return json({ error: "Enquiry not found." }, 404);
-    const recipientEmail = stringValue(enquiry.email).toLowerCase();
+    const recipientEmail = requestedRecipientEmail || stringValue(enquiry.email).toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
       return json({ error: "This enquiry does not have a valid reply address." }, 400);
+    }
+    if (recipientEmail !== stringValue(enquiry.email).toLowerCase()) {
+      const { error: recipientUpdateError } = await supabase
+        .from("enquiries")
+        .update({ email: recipientEmail })
+        .eq("id", enquiryId);
+      if (recipientUpdateError) throw recipientUpdateError;
     }
 
     // A provider request can succeed before a later database write fails. Recover
