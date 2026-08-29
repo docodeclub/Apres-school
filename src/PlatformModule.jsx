@@ -1086,17 +1086,10 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data, onboard
       ? ["Staff", "Registers", "Safeguarding", "Staffing", "Holiday", "SCR", "Employee Documents", "Ofsted", "Documents", "Expenses", "Pay", "Sessions", "Pricing Groups"]
       : platformTabs;
   const pinnedDashboardTab = onboardingOnly ? "" : ["Admin", "Superadmin"].includes(effectiveRole) ? "Admin" : "Staff";
-  const showPinnedSupportTickets = !onboardingOnly && ["Admin", "Superadmin"].includes(effectiveRole);
-  const openSupportTicketCount = (enrichedData.enquiries || []).filter((record) => (
-    record.type !== "Outreach"
-    && !record.archivedAt
-    && record.status !== "Closed"
-  )).length;
   const visibleGroups = platformGroups
     .map(([group, items]) => [group, items.filter((item) => (
       visibleTabs.includes(item)
       && item !== pinnedDashboardTab
-      && !(showPinnedSupportTickets && item === "CRM")
     ))])
     .filter(([, items]) => items.length);
 
@@ -1226,18 +1219,6 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data, onboard
               onClick={() => selectNavItem("Today", pinnedDashboardTab)}
             >
               <LayoutDashboard /> <span>Dashboard</span>
-            </button>
-          )}
-          {showPinnedSupportTickets && (
-            <button
-              className={`platform-nav-dashboard platform-nav-support-tickets ${tab === "CRM" ? "active" : ""}`}
-              type="button"
-              aria-current={tab === "CRM" ? "page" : undefined}
-              onClick={() => selectNavItem("Comms", "CRM")}
-            >
-              <Mail aria-hidden="true" />
-              <span>Support Tickets</span>
-              <small aria-label={`${openSupportTicketCount} open support tickets`}>{openSupportTicketCount}</small>
             </button>
           )}
           {visibleGroups.map(([group, items]) => (
