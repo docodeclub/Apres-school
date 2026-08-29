@@ -53,6 +53,9 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Added
 
+- A secure Support Tickets area in the parent portal where signed-in families can raise requests, view their own conversation history, add follow-up messages and re-open closed tickets with a required explanation.
+- Parent and helpdesk email notifications for portal ticket creation, follow-up and reopening, with secure deep links back to the relevant account or staff ticket.
+- A time-limited, single-use re-opening form for support contacts who do not yet have a family account, replacing the previous one-click email mutation.
 - Former-staff document-only accounts that retain secure access to the employee's own P45, previous payslips and HR files after operational access ends.
 - A staff-leaver workflow that archives the employment record, applies the restricted access state and sends a professional access-change email.
 - A restrictive database-wide former-staff guard so preserved manager or admin roles cannot expose operational records through older access rules.

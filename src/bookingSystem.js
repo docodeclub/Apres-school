@@ -1134,6 +1134,59 @@ export async function fetchParentBookingLedger({ limit = 80 } = {}) {
   };
 }
 
+export async function fetchParentSupportTickets({ limit = 50 } = {}) {
+  assertSupabase();
+  await currentUser();
+  const { data, error } = await supabase.rpc("parent_support_ticket_workspace", {
+    p_limit: limit,
+  });
+  if (error) throw error;
+  return {
+    parentAccountId: data?.parentAccountId || "",
+    tickets: Array.isArray(data?.tickets) ? data.tickets : [],
+    fetchedAt: data?.fetchedAt || new Date().toISOString(),
+  };
+}
+
+export async function createParentSupportTicket({ subject, message } = {}) {
+  assertSupabase();
+  await currentUser();
+  const { data, error } = await supabase.rpc("parent_create_support_ticket", {
+    p_subject: String(subject || "").trim(),
+    p_message: String(message || "").trim(),
+  });
+  if (error) throw error;
+  const notificationWarning = await notifyParentSupportTicket({ ticketId: data?.id, event: "created" });
+  return { ...(data || {}), notificationWarning };
+}
+
+export async function replyToParentSupportTicket({ ticketId, message, reopen = false } = {}) {
+  assertSupabase();
+  await currentUser();
+  const { data, error } = await supabase.rpc("parent_reply_support_ticket", {
+    p_enquiry_id: ticketId,
+    p_message: String(message || "").trim(),
+    p_reopen: Boolean(reopen),
+  });
+  if (error) throw error;
+  const notificationWarning = await notifyParentSupportTicket({ ticketId, event: reopen ? "reopened" : "message" });
+  return { ...(data || {}), notificationWarning };
+}
+
+async function notifyParentSupportTicket({ ticketId, event }) {
+  if (!ticketId) return "";
+  try {
+    const { data, error } = await supabase.functions.invoke("notify-parent-support-ticket", {
+      body: { ticketId, event },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return "";
+  } catch (error) {
+    return error?.message || "The ticket was saved, but the confirmation email could not be sent.";
+  }
+}
+
 export async function quoteParentBookingPricing(items = []) {
   assertSupabase();
   await currentUser();

@@ -55,12 +55,14 @@ import {
   createChildProfile,
   createParentCreditTopUp,
   createParentBooking,
+  createParentSupportTicket,
   fetchBookableSessions,
   fetchHolidayCampSchedule,
   fetchCurrentProfile,
   fetchParentAccount,
   fetchParentBadgeBook,
   fetchParentBookingLedger,
+  fetchParentSupportTickets,
   quoteParentBookingPricing,
   fetchStaffRegister,
   graduateParentChild,
@@ -71,6 +73,7 @@ import {
   registerParentAccount,
   removeParentAccountHolder,
   removeParentBookingItems,
+  replyToParentSupportTicket,
   requestParentPasswordReset as requestParentPasswordResetCode,
   signInParentAccount as signInRealParentAccount,
   signOutParentAccount as signOutRealParentAccount,
@@ -94,6 +97,14 @@ import {
 } from "./bookingLab/schoolCalendars2026.js";
 
 const APRES_TERMS_URL = "https://docs.google.com/document/d/1ursh4YbP1e8cLG7fiUy0z3JezZWBUBG2_-7eG8wA0u0/edit?usp=sharing";
+
+function requestedParentAccountSection() {
+  if (typeof window === "undefined") return "Overview";
+  const section = new URLSearchParams(window.location.search).get("account");
+  if (section === "payments") return "Payments";
+  if (section === "support") return "Support";
+  return "Overview";
+}
 
 const launchCareGuides = {
   Wraparound: {
@@ -1469,13 +1480,20 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [notificationFilter, setNotificationFilter] = useState("All");
   const [invoiceFilter, setInvoiceFilter] = useState("All");
   const [launchAccountSection, setLaunchAccountSection] = useState(() => {
-    if (typeof window === "undefined") return "Overview";
-    return new URLSearchParams(window.location.search).get("account") === "payments" ? "Payments" : "Overview";
+    return requestedParentAccountSection();
   });
   const [launchAccountMenuOpen, setLaunchAccountMenuOpen] = useState(false);
   const [parentBadgeBook, setParentBadgeBook] = useState({ rewards: [], total: 0 });
   const [parentBadgeBookLoading, setParentBadgeBookLoading] = useState(false);
   const [parentBadgeBookError, setParentBadgeBookError] = useState("");
+  const [parentSupportTickets, setParentSupportTickets] = useState([]);
+  const [parentSupportLoading, setParentSupportLoading] = useState(false);
+  const [parentSupportError, setParentSupportError] = useState("");
+  const [parentSupportSelectedId, setParentSupportSelectedId] = useState("");
+  const [parentSupportDraft, setParentSupportDraft] = useState({ subject: "", message: "" });
+  const [parentSupportReply, setParentSupportReply] = useState("");
+  const [parentSupportBusy, setParentSupportBusy] = useState(false);
+  const [parentSupportNotice, setParentSupportNotice] = useState("");
   const [parentBadgeFilter, setParentBadgeFilter] = useState("all");
   const [parentBadgeChildFilter, setParentBadgeChildFilter] = useState("all");
   const [launchFinanceSection, setLaunchFinanceSection] = useState("Overview");
@@ -5562,6 +5580,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setParentLogin({ username: "", password: "" });
     setLaunchAccountSessionEmail("");
     setSelectedChildIds([]);
+    setParentSupportTickets([]);
+    setParentSupportSelectedId("");
+    setParentSupportDraft({ subject: "", message: "" });
+    setParentSupportReply("");
+    setParentSupportError("");
+    setParentSupportNotice("");
     setLiveParentLedger({ invoices: [], bookings: [], creditEntries: [], creditBalance: 0, fetchedAt: "", loading: false, error: "" });
     localStorage.setItem("apres-parent-account-signed-in", "false");
     localStorage.setItem("apres-parent-account-mode", JSON.stringify(isLaunchMode ? "live" : "demo"));
@@ -5711,10 +5735,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     };
   }, [realBookingServiceReady, parentAccountSignedIn, parentAccountMode, launchParentPortalOpen]);
 
+  useEffect(() => {
+    if (!isLaunchMode || launchAccountSection !== "Support" || !realBookingServiceReady || !parentAccountSignedIn || parentAccountMode !== "live") return;
+    const requestedTicketId = new URLSearchParams(window.location.search).get("ticket") || "";
+    refreshParentSupportTickets({ selectId: requestedTicketId });
+  }, [isLaunchMode, launchAccountSection, realBookingServiceReady, parentAccountSignedIn, parentAccountMode]);
+
   function openLaunchParentPortal() {
     setLaunchBookingActive(false);
     setLaunchParentPortalOpen(true);
-    setLaunchAccountSection(new URLSearchParams(window.location.search).get("account") === "payments" ? "Payments" : "Overview");
+    setLaunchAccountSection(requestedParentAccountSection());
     setLaunchAccountMenuOpen(false);
     setLaunchChildRegistrationOpen(false);
     setLaunchChildSavedNotice("");
@@ -9713,7 +9743,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         setLaunchAccountSessionEmail(username);
         setLaunchParentPortalOpen(true);
         setLaunchBookingActive(false);
-        setLaunchAccountSection(new URLSearchParams(window.location.search).get("account") === "payments" ? "Payments" : "Overview");
+        setLaunchAccountSection(requestedParentAccountSection());
         setLaunchAccountMenuOpen(false);
         localStorage.setItem("apres-parent-account-signed-in", "true");
         localStorage.setItem("apres-parent-account-mode", JSON.stringify("live"));
@@ -16640,6 +16670,148 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     );
   }
 
+  async function refreshParentSupportTickets({ quiet = false, selectId = "" } = {}) {
+    if (!realBookingServiceReady || parentAccountMode !== "live") return null;
+    if (!quiet) setParentSupportLoading(true);
+    setParentSupportError("");
+    try {
+      const workspace = await fetchParentSupportTickets();
+      const tickets = workspace.tickets || [];
+      setParentSupportTickets(tickets);
+      setParentSupportSelectedId((current) => {
+        const preferred = selectId || current;
+        return tickets.some((ticket) => ticket.id === preferred) ? preferred : tickets[0]?.id || "";
+      });
+      return workspace;
+    } catch (error) {
+      setParentSupportError(error?.message || "We could not load your support tickets.");
+      return null;
+    } finally {
+      if (!quiet) setParentSupportLoading(false);
+    }
+  }
+
+  async function submitParentSupportTicket(event) {
+    event.preventDefault();
+    const subject = parentSupportDraft.subject.trim();
+    const message = parentSupportDraft.message.trim();
+    if (subject.length < 3 || message.length < 10 || parentSupportBusy) return;
+    setParentSupportBusy(true);
+    setParentSupportError("");
+    setParentSupportNotice("");
+    try {
+      const result = await createParentSupportTicket({ subject, message });
+      setParentSupportDraft({ subject: "", message: "" });
+      setParentSupportNotice(result.notificationWarning
+        ? "Your support ticket has been created. The email confirmation is delayed, but our team can see your ticket here."
+        : "Your support ticket has been created and our helpdesk has been notified.");
+      await refreshParentSupportTickets({ quiet: true, selectId: result.id });
+    } catch (error) {
+      setParentSupportError(error?.message || "Your support ticket could not be created.");
+    } finally {
+      setParentSupportBusy(false);
+    }
+  }
+
+  async function submitParentSupportReply(event) {
+    event.preventDefault();
+    const ticket = parentSupportTickets.find((item) => item.id === parentSupportSelectedId);
+    const message = parentSupportReply.trim();
+    if (!ticket || message.length < 10 || parentSupportBusy) return;
+    const reopen = String(ticket.status || "").toLowerCase() === "closed";
+    setParentSupportBusy(true);
+    setParentSupportError("");
+    setParentSupportNotice("");
+    try {
+      const result = await replyToParentSupportTicket({ ticketId: ticket.id, message, reopen });
+      setParentSupportReply("");
+      setParentSupportNotice(result.notificationWarning
+        ? `${reopen ? "Your ticket has been re-opened" : "Your message has been added"}. The email confirmation is delayed.`
+        : reopen ? "Your ticket has been re-opened with your message." : "Your message has been added to the ticket.");
+      await refreshParentSupportTickets({ quiet: true, selectId: ticket.id });
+    } catch (error) {
+      setParentSupportError(error?.message || "Your message could not be added.");
+    } finally {
+      setParentSupportBusy(false);
+    }
+  }
+
+  function renderParentSupportTickets() {
+    const selected = parentSupportTickets.find((ticket) => ticket.id === parentSupportSelectedId) || parentSupportTickets[0] || null;
+    const openCount = parentSupportTickets.filter((ticket) => String(ticket.status || "").toLowerCase() !== "closed").length;
+    const statusLabel = (value) => {
+      const status = String(value || "new").toLowerCase();
+      if (status === "closed") return "Closed";
+      if (status === "responded") return "Waiting for you";
+      if (status === "reviewing" || status === "follow_up") return "Waiting for Après School";
+      return "Open";
+    };
+    const formatSupportDate = (value) => value
+      ? new Date(value).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+      : "Time not recorded";
+    const timeline = selected ? [
+      ...(selected.parentMessages?.length ? selected.parentMessages : [{ id: `${selected.id}-original`, body: selected.message, createdAt: selected.createdAt, senderType: "parent" }]),
+      ...(selected.replies || []).map((reply) => ({ ...reply, createdAt: reply.sentAt, senderType: "staff" })),
+    ].filter((message) => message.body).sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || ""))) : [];
+    const selectedClosed = String(selected?.status || "").toLowerCase() === "closed";
+
+    return (
+      <section className="lab-parent-support" aria-label="Your support tickets">
+        <header className="lab-parent-support-head">
+          <div>
+            <p className="eyebrow">Help and support</p>
+            <h3>Your support tickets</h3>
+            <p>Keep every question and response together securely inside your family account.</p>
+          </div>
+          <div><strong>{openCount}</strong><span>open ticket{openCount === 1 ? "" : "s"}</span></div>
+        </header>
+        <details className="lab-parent-support-new" open={!parentSupportTickets.length}>
+          <summary>Raise a new support ticket</summary>
+          <form onSubmit={submitParentSupportTicket}>
+            <label>Subject<input value={parentSupportDraft.subject} onChange={(event) => setParentSupportDraft((current) => ({ ...current, subject: event.target.value }))} maxLength="180" placeholder="What do you need help with?" required /></label>
+            <label>Message<textarea rows="5" value={parentSupportDraft.message} onChange={(event) => setParentSupportDraft((current) => ({ ...current, message: event.target.value }))} maxLength="8000" placeholder="Include the child, school, booking or payment details that will help us investigate." required /></label>
+            <button type="submit" disabled={parentSupportBusy || parentSupportDraft.subject.trim().length < 3 || parentSupportDraft.message.trim().length < 10}>{parentSupportBusy ? "Sending…" : "Send to Après School"}</button>
+          </form>
+        </details>
+        {parentSupportNotice && <p className="lab-parent-support-notice" role="status">{parentSupportNotice}</p>}
+        {parentSupportError && <p className="lab-parent-support-error" role="alert">{parentSupportError}</p>}
+        {parentSupportLoading ? <div className="lab-parent-support-empty"><strong>Loading your tickets…</strong></div> : (
+          <div className="lab-parent-support-layout">
+            <nav className="lab-parent-support-list" aria-label="Support ticket list">
+              {parentSupportTickets.map((ticket) => (
+                <button type="button" key={ticket.id} className={ticket.id === selected?.id ? "active" : ""} onClick={() => { setParentSupportSelectedId(ticket.id); setParentSupportReply(""); setParentSupportNotice(""); }}>
+                  <span className={`status-${String(ticket.status || "new").toLowerCase()}`}>{statusLabel(ticket.status)}</span>
+                  <strong>{ticket.subject || "Support request"}</strong>
+                  <small>{formatSupportDate(ticket.parentReopenedAt || ticket.createdAt)}</small>
+                </button>
+              ))}
+              {!parentSupportTickets.length && <div className="lab-parent-support-empty"><strong>No support tickets yet</strong><p>Use “Raise a new support ticket” whenever you need help.</p></div>}
+            </nav>
+            {selected && (
+              <article className="lab-parent-support-thread">
+                <header><div><span>{statusLabel(selected.status)}</span><h4>{selected.subject || "Support request"}</h4><small>Opened {formatSupportDate(selected.createdAt)}</small></div></header>
+                <div className="lab-parent-support-messages">
+                  {timeline.map((message) => (
+                    <div className={message.senderType === "staff" ? "from-apres" : "from-parent"} key={message.id}>
+                      <strong>{message.senderType === "staff" ? "Après School" : "You"}</strong>
+                      <p>{message.body}</p>
+                      <small>{formatSupportDate(message.createdAt)}</small>
+                    </div>
+                  ))}
+                </div>
+                <form className="lab-parent-support-reply" onSubmit={submitParentSupportReply}>
+                  <label>{selectedClosed ? "What do you still need help with?" : "Add a message"}<textarea rows="4" value={parentSupportReply} onChange={(event) => setParentSupportReply(event.target.value)} maxLength="8000" placeholder={selectedClosed ? "Explain what remains unresolved. A message is required to re-open the ticket." : "Add any useful information for our helpdesk."} required /></label>
+                  {selectedClosed && <p><strong>This ticket is closed.</strong> Sending this message will re-open it and notify our helpdesk.</p>}
+                  <button type="submit" disabled={parentSupportBusy || parentSupportReply.trim().length < 10}>{parentSupportBusy ? "Sending…" : selectedClosed ? "Re-open ticket and send message" : "Send message"}</button>
+                </form>
+              </article>
+            )}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   function renderLaunchFamilyConsole() {
     const tabs = ["Overview", "Contacts", "Authorised Collectors", "Consents", "Dietary Needs", "Allergies", "Medications", "Medical Conditions", "SEND", "Badges"];
     const selectedChild = launchRegisteredChildren.find((child) => child.id === launchFamilyChildId) || launchRegisteredChildren[0] || null;
@@ -22870,7 +23042,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   onClick={() => setLaunchAccountMenuOpen((current) => !current)}
                 >
                   <span>Account menu</span>
-                  <strong>{launchAccountSection === "Payments" ? "Payments & credit" : launchAccountSection === "Badges" ? "Children’s rewards" : launchAccountSection === "Account" ? "Account settings" : launchAccountSection}</strong>
+                  <strong>{launchAccountSection === "Payments" ? "Payments & credit" : launchAccountSection === "Badges" ? "Children’s rewards" : launchAccountSection === "Support" ? "Support tickets" : launchAccountSection === "Account" ? "Account settings" : launchAccountSection}</strong>
                   <b aria-hidden="true">{launchAccountMenuOpen ? "Close" : "Open"}</b>
                 </button>
                 <nav id="parent-account-sections" className={`lab-parent-account-sections${launchAccountMenuOpen ? " is-open" : ""}`} aria-label="Parent account sections">
@@ -22881,6 +23053,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     ["Bookings", "Bookings"],
                     ["Payments", "Payments & credit"],
                     ["Messages", "Messages"],
+                    ["Support", "Support tickets"],
                     ["Account", "Account settings"],
                   ].map(([section, label]) => (
                     <button
@@ -23045,6 +23218,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             )}
             {isLaunchMode && renderLaunchFamilyConsole()}
             {isLaunchMode && renderParentBadgeBook()}
+            {isLaunchMode && renderParentSupportTickets()}
             <div className="lab-parent-portal-cards">
               {parentPortalCards.map(([label, value, text]) => (
                 <article key={label}>

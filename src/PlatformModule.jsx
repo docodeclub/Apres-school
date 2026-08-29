@@ -16279,7 +16279,13 @@ function CrmDetailDrawer({ record, onChange, onClose, onArchive, onClosed }) {
   const [closeAfterReply, setCloseAfterReply] = useState(false);
   const [closeBusy, setCloseBusy] = useState(false);
   const [reopenBusy, setReopenBusy] = useState(false);
-  const replyHistory = [lastSentReply, ...(record.replies || [])].filter(Boolean).filter((reply, index, items) => items.findIndex((item) => item.id === reply.id) === index);
+  const parentFollowUps = (record.parentMessages || [])
+    .filter((message) => !(message.body === record.message && Math.abs(new Date(message.createdAt || 0).getTime() - new Date(record.createdAt || 0).getTime()) < 10000))
+    .map((message) => ({ ...message, subject: "Parent follow-up", status: "Received", sentAt: message.createdAt }));
+  const replyHistory = [lastSentReply, ...(record.replies || []), ...parentFollowUps]
+    .filter(Boolean)
+    .filter((reply, index, items) => items.findIndex((item) => item.id === reply.id) === index)
+    .sort((left, right) => String(right.sentAt || right.createdAt || "").localeCompare(String(left.sentAt || left.createdAt || "")));
   const notificationEvidence = crmNotificationEvidence(record);
   const replyAddress = String(record.contactEmail || record.email || "").trim();
   const replyAddressValid = validSupportReplyEmail(replyAddress);

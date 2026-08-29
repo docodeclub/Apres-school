@@ -16,6 +16,7 @@ const serviceRoleKey =
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
+const parentSupportUrl = Deno.env.get("APRES_PARENT_SUPPORT_URL") ?? "https://www.apres-school.co.uk/launch-booking?account=support";
 
 serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -36,7 +37,7 @@ serve(async (request) => {
 
     const { data: enquiry, error: enquiryError } = await supabase
       .from("enquiries")
-      .select("id,name,email,type,subject,message,status,reopen_token")
+      .select("id,name,email,type,subject,message,status,reopen_token,parent_account_id")
       .eq("id", enquiryId)
       .maybeSingle();
     if (enquiryError) throw enquiryError;
@@ -76,6 +77,7 @@ serve(async (request) => {
         actorId: actor.id,
         emailLog: existingLog,
         closeTicket,
+        parentAccountId: stringValue(enquiry.parent_account_id),
       });
       return json({ sent: true, recovered: true, reply, ticketStatus: closeTicket ? "closed" : "open" }, 200);
     }
@@ -83,13 +85,15 @@ serve(async (request) => {
     const lines = body.split(/\r?\n/);
     const ticketStatus = closeTicket ? "Ticket Closed" : "Ticket Open";
     const reopenUrl = closeTicket
-      ? `${supabaseUrl}/functions/v1/manage-support-ticket?action=reopen&ticket=${encodeURIComponent(enquiryId)}&token=${encodeURIComponent(stringValue(enquiry.reopen_token))}`
+      ? enquiry.parent_account_id
+        ? `${parentSupportUrl}${parentSupportUrl.includes("?") ? "&" : "?"}ticket=${encodeURIComponent(enquiryId)}`
+        : `${supabaseUrl}/functions/v1/manage-support-ticket?action=reopen&ticket=${encodeURIComponent(enquiryId)}&token=${encodeURIComponent(stringValue(enquiry.reopen_token))}`
       : "";
     const emailLines = [
       ...lines,
       "",
       `Ticket status: ${ticketStatus}`,
-      ...(reopenUrl ? [`Re-open this ticket: ${reopenUrl}`] : []),
+      ...(reopenUrl ? [`View or re-open this ticket securely: ${reopenUrl}`] : []),
     ];
     const emailText = emailLines.join("\n");
     const emailLog = await sendBookingEmail(supabase, {
@@ -140,10 +144,12 @@ serve(async (request) => {
         closed_at: new Date().toISOString(),
         closed_by: actor.id,
         parent_reopened_at: null,
+        reopen_token_expires_at: enquiry.parent_account_id ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       } : {
         status: "responded",
         closed_at: null,
         closed_by: null,
+        reopen_token_expires_at: null,
       }).eq("id", enquiryId);
       if (statusError) throw statusError;
     }
@@ -173,6 +179,7 @@ async function recoverSentReply({
   actorId,
   emailLog,
   closeTicket,
+  parentAccountId,
 }: {
   enquiryId: string;
   recipientEmail: string;
@@ -181,6 +188,7 @@ async function recoverSentReply({
   actorId: string;
   emailLog: Record<string, unknown>;
   closeTicket: boolean;
+  parentAccountId: string;
 }) {
   const emailLogId = stringValue(emailLog.id);
   const { data: existingReply, error: existingReplyError } = await supabase
@@ -216,10 +224,12 @@ async function recoverSentReply({
     closed_at: new Date().toISOString(),
     closed_by: actorId,
     parent_reopened_at: null,
+    reopen_token_expires_at: parentAccountId ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
   } : {
     status: "responded",
     closed_at: null,
     closed_by: null,
+    reopen_token_expires_at: null,
   }).eq("id", enquiryId);
   if (statusError) throw statusError;
   return reply;

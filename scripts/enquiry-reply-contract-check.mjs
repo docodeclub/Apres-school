@@ -14,7 +14,7 @@ const checks = [
   ["admin-only reply history", /current_user_app_role\(\) in \('admin', 'superadmin'\)/, content.migration],
   ["responded enquiry status", /add value if not exists 'responded'/, content.migration],
   ["reply function requires an administrator", /Only administrators can send enquiry replies/, content.function],
-  ["reply function loads the original enquiry", /from\("enquiries"\)[\s\S]*select\("id,name,email,type,subject,message,status,reopen_token"\)/, content.function],
+  ["reply function loads the original enquiry", /from\("enquiries"\)[\s\S]*select\("id,name,email,type,subject,message,status,reopen_token,parent_account_id"\)/, content.function],
   ["reply function sends branded email", /paragraphsToHtml[\s\S]*preheader:[\s\S]*A reply from Après School/, content.function],
   ["reply function records audit evidence", /audit_log[\s\S]*enquiry_reply_sent/, content.function],
   ["shared email log links enquiry", /enquiry_id: input\.enquiryId/, content.email],
