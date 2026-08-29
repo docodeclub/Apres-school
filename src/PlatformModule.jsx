@@ -4349,7 +4349,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
         <article className={dashboardMetrics.websiteEnquiries ? "amber" : ""}>
           <span>{dashboardMetrics.websiteEnquiries}</span>
           <strong>Open support tickets</strong>
-          <small>New parent or school contact follow-ups</small>
+          <small>Every parent or school ticket not explicitly closed</small>
         </article>
         <article className={dashboardMetrics.scrRisk ? "red" : ""}>
           <span>{dashboardMetrics.scrRisk}</span>
