@@ -1476,6 +1476,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [launchFlowStep, setLaunchFlowStep] = useState("Choices");
   const [launchExpandedDay, setLaunchExpandedDay] = useState("");
   const [launchFocusedReviewMonth, setLaunchFocusedReviewMonth] = useState("");
+  const [expandedCampPeriod, setExpandedCampPeriod] = useState("");
+  const [showAllCampPeriod, setShowAllCampPeriod] = useState("");
   const [parentMessageFilter, setParentMessageFilter] = useState("All");
   const [expandedDateMonths, setExpandedDateMonths] = useState({});
   const [selectedAddOns, setSelectedAddOns] = useState([]);
@@ -1841,9 +1843,54 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         dateRange: campCatalogDateRange(days),
         imageUrl: presentation.imageUrl || session.imageUrl || launchCareGuides["Holiday Camp"].image800,
         campType: presentation.campType || session.campType || "Multi-Activity",
+        period: String(session.title || "Holiday Camp").replace(/\s+[–-]\s+Week\s+\d+.*$/i, "").trim() || "Holiday Camp",
       };
     })
     .sort((a, b) => String(labDayIso(a.days[0])).localeCompare(String(labDayIso(b.days[0]))));
+  const featuredCampCatalogRows = launchCampCatalogRows.slice(0, 3);
+  const remainingCampCatalogGroups = launchCampCatalogRows.slice(3).reduce((groups, row) => {
+    const existing = groups.find((group) => group.period === row.period);
+    if (existing) existing.rows.push(row);
+    else groups.push({ period: row.period, rows: [row] });
+    return groups;
+  }, []);
+  const selectedRemainingCampRow = launchCampCatalogRows.slice(3).find((row) => row.session.id === activeSession.id);
+  const visibleExpandedCampPeriod = expandedCampPeriod || selectedRemainingCampRow?.period || "";
+  const renderCampCatalogRow = (row) => {
+    const selected = activeSession.id === row.session.id;
+    const siblingPercent = Number(rules.siblingDiscountPercent || 0);
+    return (
+      <article className={selected ? "active" : ""} key={row.session.id}>
+        <img src={row.imageUrl} alt="" width="220" height="150" loading="lazy" />
+        <div className="lab-camp-catalog-copy">
+          <span>{row.campType}</span>
+          <strong>{row.session.title}</strong>
+          <p>{row.dateRange} · {row.dayBlock?.start || "09:00"}–{row.dayBlock?.end || "17:00"}</p>
+          <div className="lab-camp-catalog-tags">
+            <span>Individual days available</span>
+            {row.fullWeekPrice > 0 && <span>Full week {money(row.fullWeekPrice)}{row.weeklySaving > 0 ? ` · save ${money(row.weeklySaving)}` : ""}</span>}
+            {siblingPercent > 0 && <span>{siblingPercent}% sibling discount</span>}
+          </div>
+          <small>{row.addOnBlocks.length ? `Add-ons: ${row.addOnBlocks.map((block) => `${block.label} ${block.start}–${block.end} +${money(block.price)} per day`).join(" · ")}` : "No add-ons are currently offered for this camp."}</small>
+        </div>
+        <div className="lab-camp-catalog-price">
+          <strong>{money(row.dayBlock?.price ?? row.session.price)} <span>per day</span></strong>
+          <small>{row.days.length} bookable day{row.days.length === 1 ? "" : "s"}</small>
+          <button
+            type="button"
+            aria-pressed={selected}
+            onClick={() => {
+              setExpandedCampPeriod(row.period);
+              if (remainingCampCatalogGroups.find((group) => group.period === row.period)?.rows.indexOf(row) >= 2) setShowAllCampPeriod(row.period);
+              chooseSession(row.session, { advance: false });
+            }}
+          >
+            {selected ? "Selected" : "Choose week"}
+          </button>
+        </div>
+      </article>
+    );
+  };
   const activeSessionBlocks = normaliseSessionBlocks(activeSession, daysForSession(activeSession)[0]);
   const activeCampDayBlock = activeSession.type === "Holiday Camp" ? activeSessionBlocks.find((block) => block.label === "Holiday Camp") : null;
   const activeCampEarlyBlock = activeSession.type === "Holiday Camp" ? activeSessionBlocks.find((block) => block.label === "Early Drop-Off") : null;
@@ -22486,33 +22533,53 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         </div>
                         <small>Individual days are bookable within every week.</small>
                       </header>
-                      <div>
-                        {launchCampCatalogRows.map((row) => {
-                          const selected = activeSession.id === row.session.id;
-                          const siblingPercent = Number(rules.siblingDiscountPercent || 0);
-                          return (
-                            <article className={selected ? "active" : ""} key={row.session.id}>
-                              <img src={row.imageUrl} alt="" width="220" height="150" loading="lazy" />
-                              <div className="lab-camp-catalog-copy">
-                                <span>{row.campType}</span>
-                                <strong>{row.session.title}</strong>
-                                <p>{row.dateRange} · {row.dayBlock?.start || "09:00"}–{row.dayBlock?.end || "17:00"}</p>
-                                <div className="lab-camp-catalog-tags">
-                                  <span>Individual days available</span>
-                                  {row.fullWeekPrice > 0 && <span>Full week {money(row.fullWeekPrice)}{row.weeklySaving > 0 ? ` · save ${money(row.weeklySaving)}` : ""}</span>}
-                                  {siblingPercent > 0 && <span>{siblingPercent}% sibling discount</span>}
-                                </div>
-                                <small>{row.addOnBlocks.length ? `Add-ons: ${row.addOnBlocks.map((block) => `${block.label} ${block.start}–${block.end} +${money(block.price)} per day`).join(" · ")}` : "No add-ons are currently offered for this camp."}</small>
-                              </div>
-                              <div className="lab-camp-catalog-price">
-                                <strong>{money(row.dayBlock?.price ?? row.session.price)} <span>per day</span></strong>
-                                <small>{row.days.length} bookable day{row.days.length === 1 ? "" : "s"}</small>
-                                <button type="button" aria-pressed={selected} onClick={() => chooseSession(row.session, { advance: false })}>{selected ? "Selected" : "Choose week"}</button>
-                              </div>
-                            </article>
-                          );
-                        })}
+                      <div className="lab-camp-catalog-featured">
+                        <span className="lab-camp-periods-label">Next available camps</span>
+                        {featuredCampCatalogRows.map(renderCampCatalogRow)}
                       </div>
+                      {remainingCampCatalogGroups.length > 0 && (
+                        <div className="lab-camp-periods">
+                          <span className="lab-camp-periods-label">More school holidays</span>
+                          {remainingCampCatalogGroups.map((group) => {
+                            const expanded = visibleExpandedCampPeriod === group.period;
+                            const selectedIndex = group.rows.findIndex((row) => row.session.id === activeSession.id);
+                            const showAll = showAllCampPeriod === group.period || selectedIndex >= 2;
+                            const visibleRows = showAll ? group.rows : group.rows.slice(0, 2);
+                            const firstPrice = Number(group.rows[0]?.dayBlock?.price ?? group.rows[0]?.session.price ?? 0);
+                            return (
+                              <section className={`lab-camp-period ${expanded ? "expanded" : ""}`} key={group.period}>
+                                <button
+                                  className="lab-camp-period-toggle"
+                                  type="button"
+                                  aria-expanded={expanded}
+                                  onClick={() => {
+                                    setExpandedCampPeriod(expanded ? "" : group.period);
+                                    if (!expanded) setShowAllCampPeriod("");
+                                  }}
+                                >
+                                  <span><strong>{group.period}</strong><small>{group.rows.length} camp week{group.rows.length === 1 ? "" : "s"}</small></span>
+                                  <span><strong>From {money(firstPrice)} per day</strong><small>{expanded ? "Hide weeks" : "View weeks"}</small></span>
+                                  <b aria-hidden="true">{expanded ? "−" : "+"}</b>
+                                </button>
+                                {expanded && (
+                                  <div className="lab-camp-period-rows">
+                                    {visibleRows.map(renderCampCatalogRow)}
+                                    {group.rows.length > 2 && (
+                                      <button
+                                        className="lab-camp-period-more"
+                                        type="button"
+                                        onClick={() => setShowAllCampPeriod(showAll ? "" : group.period)}
+                                      >
+                                        {showAll ? `Show fewer ${group.period} weeks` : `Show all ${group.rows.length} ${group.period} weeks`}
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </section>
+                            );
+                          })}
+                        </div>
+                      )}
                     </section>
                   ) : activityOptionsForCare.length > 1 && (
                     <div className="lab-activity-choice" aria-label="Choose activity">
