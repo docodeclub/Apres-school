@@ -13,7 +13,7 @@ function expect(label, condition) {
 
 const sharedTemplate = read("supabase/functions/_shared/booking-email.ts");
 expect("shared booking template uses the text Après School header", sharedTemplate.includes(">Après School</span>"));
-expect("shared booking template uses the Family booking badge", sharedTemplate.includes(">Family booking</span>"));
+expect("shared booking template uses the Family booking badge", sharedTemplate.includes('|| "Family booking"'));
 expect("shared booking template uses the payslip-style action colour", sharedTemplate.includes('const actionBlue = "#4f6de8"'));
 expect("shared booking template is light-mode safe", sharedTemplate.includes('name="color-scheme" content="light only"'));
 expect("shared booking template no longer relies on a remote header image", !sharedTemplate.includes("<img "));
@@ -27,6 +27,8 @@ expect("migration completion reminders are separate from essential emails", pare
 expect("migration reminders stop after the migrated review is complete", parentAccountEmail.includes('parent.portal_status === "active" && outstandingItems === 0'));
 expect("migration reminders respect the parent opt-out", parentAccountEmail.includes("preferences.migrationSetupReminders === false"));
 expect("migration reminders provide a signed opt-out link", parentAccountEmail.includes("migrationReminderToken") && parentAccountEmail.includes("constantTimeEqual"));
+expect("migration reminder links survive service-key rotation", parentAccountEmail.includes("reminderSigningSecrets") && parentAccountEmail.includes("migrationReminderTokenMatches"));
+expect("migration reminder links use the canonical Supabase Functions route", parentAccountEmail.includes('/functions/v1'));
 expect("opt-out copy preserves essential communications", parentAccountEmail.includes("Essential booking, payment and safeguarding messages are unaffected"));
 expect("admins can send a migrated-account completion reminder", bookingLab.includes("Send completion reminder"));
 expect("bulk reminder runs are dry-run by default", reminderBatch.includes('const runLive = args.has("--run")') && reminderBatch.includes('mode: runLive ? "live" : "dry-run"'));

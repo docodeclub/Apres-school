@@ -16,7 +16,7 @@ const supabaseUrl = value(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_
 const serviceRoleKey = value(process.env.LIVE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.APRES_SERVICE_ROLE_KEY);
 const anonKey = value(process.env.LIVE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY);
 const functionsUrl = value(process.env.SUPABASE_FUNCTIONS_URL)
-  || `${supabaseUrl.replace(/\.supabase\.co\/?$/, ".functions.supabase.co")}`;
+  || `${supabaseUrl.replace(/\/$/, "")}/functions/v1`;
 
 if (!supabaseUrl || !serviceRoleKey || !anonKey) {
   throw new Error("Supabase URL, service role key and anon key are required.");

@@ -10,15 +10,22 @@ const corsHeaders = {
 };
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+const legacyServiceRoleKey = Deno.env.get("APRES_SERVICE_ROLE_KEY") ?? "";
 const serviceRoleKey =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-  Deno.env.get("APRES_SERVICE_ROLE_KEY") ??
+  legacyServiceRoleKey ??
   "";
 const resendApiKey = Deno.env.get("RESEND_API_KEY");
 const defaultLoginUrl = Deno.env.get("PARENT_PORTAL_URL") ?? "https://www.apres-school.co.uk/launch-booking";
 const functionsUrl = Deno.env.get("SUPABASE_FUNCTIONS_URL")
-  ?? supabaseUrl.replace(/\.supabase\.co\/?$/, ".functions.supabase.co");
-const reminderSigningSecret = Deno.env.get("MIGRATION_REMINDER_SIGNING_SECRET") ?? serviceRoleKey;
+  ?? `${supabaseUrl.replace(/\/$/, "")}/functions/v1`;
+const configuredReminderSigningSecret = Deno.env.get("MIGRATION_REMINDER_SIGNING_SECRET") ?? "";
+const reminderSigningSecrets = [...new Set([
+  configuredReminderSigningSecret,
+  legacyServiceRoleKey,
+  serviceRoleKey,
+].filter(Boolean))];
+const reminderSigningSecret = reminderSigningSecrets[0] ?? "";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
@@ -315,8 +322,8 @@ async function handlePublicReminderPreference(request: Request) {
     return reminderPreferencePage("Account not found", "We could not match this reminder-preference link to an active migrated account.", false, 404);
   }
 
-  const expectedToken = await migrationReminderToken(parent.id, stringValue(parent.email).toLowerCase());
-  if (!constantTimeEqual(token, expectedToken)) {
+  const tokenMatches = await migrationReminderTokenMatches(parent.id, stringValue(parent.email).toLowerCase(), token);
+  if (!tokenMatches) {
     return reminderPreferencePage("Link not recognised", "This reminder-preference link is invalid or has been changed.", false, 403);
   }
 
@@ -350,9 +357,21 @@ async function handlePublicReminderPreference(request: Request) {
 }
 
 async function migrationReminderToken(parentAccountId: string, email: string) {
+  return migrationReminderTokenWithSecret(parentAccountId, email, reminderSigningSecret);
+}
+
+async function migrationReminderTokenMatches(parentAccountId: string, email: string, token: string) {
+  for (const secret of reminderSigningSecrets) {
+    const expectedToken = await migrationReminderTokenWithSecret(parentAccountId, email, secret);
+    if (constantTimeEqual(token, expectedToken)) return true;
+  }
+  return false;
+}
+
+async function migrationReminderTokenWithSecret(parentAccountId: string, email: string, secret: string) {
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(reminderSigningSecret),
+    new TextEncoder().encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
