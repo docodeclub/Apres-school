@@ -1885,7 +1885,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               chooseSession(row.session, { advance: false });
             }}
           >
-            {selected ? "Selected" : "Book"}
+            {selected ? "✓ Selected" : "Book"}
           </button>
         </div>
       </article>

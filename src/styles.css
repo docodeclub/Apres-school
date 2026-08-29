@@ -38931,9 +38931,10 @@ th {
 }
 
 .booking-launch-page .lab-camp-catalog-row.active .lab-camp-catalog-price > button {
-  border-color: #fff;
-  background: #fff !important;
-  color: #8b5103 !important;
+  border-color: #c65f00;
+  background: #c65f00 !important;
+  color: #fff !important;
+  box-shadow: 0 7px 16px rgba(139, 81, 3, 0.28);
 }
 
 .booking-launch-page .lab-camp-pricing-summary-top {
