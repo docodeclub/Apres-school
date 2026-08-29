@@ -5550,6 +5550,29 @@ label {
   border-color: rgba(74, 104, 218, 0.28);
 }
 
+.platform-nav .platform-nav-support-tickets {
+  border-color: rgba(74, 104, 218, 0.24);
+  background: linear-gradient(135deg, rgba(239, 243, 255, 0.98), rgba(255, 255, 255, 0.96));
+}
+
+.platform-nav .platform-nav-support-tickets small {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 24px;
+  margin-left: auto;
+  border-radius: 999px;
+  background: var(--royal);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.platform-nav .platform-nav-support-tickets.active small {
+  background: #fff;
+  color: var(--royal-dark);
+}
+
 .platform-nav-group {
   display: grid;
   gap: 5px;
