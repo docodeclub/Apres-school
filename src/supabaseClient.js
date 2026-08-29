@@ -4000,3 +4000,32 @@ function addDaysIso(dateString, days) {
   date.setDate(date.getDate() + Number(days || 0));
   return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 }
+
+export async function fetchSchoolRegisterShareSettings() {
+  if (!supabase) throw new Error("The live service is not configured.");
+  const { data, error } = await supabase.rpc("school_register_share_admin_snapshot");
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function saveSchoolRegisterShareSettings(settings = {}) {
+  if (!supabase) throw new Error("The live service is not configured.");
+  const { data, error } = await supabase.rpc("save_school_register_share_settings", {
+    p_location_id: settings.locationId,
+    p_enabled: Boolean(settings.enabled),
+    p_send_time: settings.sendTime || "08:00",
+    p_include_breakfast: Boolean(settings.includeBreakfast),
+    p_include_after_school: Boolean(settings.includeAfterSchool),
+    p_recipients: settings.recipients || [],
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchSharedSchoolRegister(token) {
+  if (!supabase) throw new Error("The live service is not configured.");
+  const { data, error } = await supabase.rpc("read_school_register_share", { p_token: String(token || "") });
+  if (error) throw error;
+  return data;
+}

@@ -125,6 +125,7 @@ const Users = makeIcon("US");
 const X = makeIcon("X");
 const Platform = lazy(() => import("./PlatformModule.jsx"));
 const BookingLab = lazy(() => import("./BookingLab.jsx"));
+const SharedSchoolRegister = lazy(() => import("./SharedSchoolRegister.jsx"));
 
 class BookingJourneyErrorBoundary extends Component {
   constructor(props) {
@@ -295,6 +296,7 @@ const pagePaths = {
   Policies: "/policies",
   "Launch Booking": "/launch-booking",
   "Booking Lab": "/booking-lab",
+  "Shared Register": "/shared-register",
 };
 const pathPages = Object.fromEntries(Object.entries(pagePaths).map(([page, path]) => [path, page]));
 const legacyBookingPaths = new Set(["/bookings", "/magicbooking", "/book-pebble"]);
@@ -1332,8 +1334,9 @@ function PublicSite({ page, setPage, setPlatform }) {
           </Suspense>
         </BookingJourneyErrorBoundary>
       )}
-      <Footer setPage={setPage} />
-      <MobileCTA page={page} setPage={setPage} />
+      {page === "Shared Register" && <Suspense fallback={<div className="platform-loading">Opening private register…</div>}><SharedSchoolRegister /></Suspense>}
+      {page !== "Shared Register" && <Footer setPage={setPage} />}
+      {page !== "Shared Register" && <MobileCTA page={page} setPage={setPage} />}
     </main>
   );
 }

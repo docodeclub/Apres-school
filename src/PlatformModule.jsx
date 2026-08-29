@@ -41,6 +41,7 @@ import { EmployeeDocumentsDirectory, EmployeeDocumentsPanel } from "./EmployeeDo
 import PricingGroupsModule from "./PricingGroupsModule.jsx";
 import HolidayModule from "./HolidayModule.jsx";
 import StaffOnboardingModule from "./StaffOnboardingModule.jsx";
+import SchoolRegisterSharingModule from "./SchoolRegisterSharingModule.jsx";
 import {
   blockingPeriods,
   bookingGroups,
@@ -1291,7 +1292,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data, onboard
             onOpenPay={(staffId) => { setStaffProfileTargetId(staffId); setTab("Pay"); }}
           />
         )}
-        {tab === "Schools" && <SchoolsOperations data={enrichedData} />}
+        {tab === "Schools" && <SchoolsOperations data={enrichedData} role={effectiveRole} />}
         {tab === "HR Files" && <HRFiles data={targetedEnrichedData} targetStaffId={staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} />}
         {tab === "Employee Documents" && <EmployeeDocumentsDirectory data={scopedData} access={access} />}
         {tab === "Staffing" && <Staffing access={access} legacyHours={["Admin", "Superadmin"].includes(effectiveRole) ? <HoursTracker data={scopedData} access={access} /> : null} />}
@@ -8925,7 +8926,7 @@ function HRHierarchy({ data, onUpdateStaffSite, onUpdateHrLine, formerStaffRecor
   );
 }
 
-function SchoolsOperations({ data }) {
+function SchoolsOperations({ data, role }) {
   const schoolProfiles = [
     {
       name: "Willington Prep",
@@ -9023,6 +9024,7 @@ function SchoolsOperations({ data }) {
           );
         })}
       </section>
+      {["Admin", "Superadmin"].includes(role) && <SchoolRegisterSharingModule />}
     </div>
   );
 }

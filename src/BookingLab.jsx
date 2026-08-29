@@ -741,6 +741,7 @@ const defaultChildRegistration = {
   externalAgencies: "No",
   school: "",
   classroom: "",
+  className: "",
   tfcReference: "",
   governmentCode: "",
   collectionPassword: "",
@@ -5951,6 +5952,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         parentalResponsibility: child.parentalResponsibility || defaultChildRegistration.parentalResponsibility,
         school: normaliseParentSchool(child.school || child.schoolName || selectedSchool),
         classroom: child.classroom || child.year || child.yearGroup || "",
+        className: child.className || "",
         collectionPassword: child.collectionPassword || "",
         emergencyTitle: emergencyContact.title || "",
         emergencyRelationship: emergencyContact.relationship || "",
@@ -9192,6 +9194,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           dob: childDob,
           school: childRegistration.school || selectedSchool,
           classroom: childRegistration.classroom,
+          className: childRegistration.className,
           medicalNotes: [
             childRegistration.medicalCondition && `${childRegistration.medicalCondition}: ${childRegistration.medicalConditionDetails}`,
             childRegistration.medicationName && `${childRegistration.medicationName} ${childRegistration.medicationDosage || ""} ${childRegistration.medicationTime || ""}`.trim(),
@@ -9268,6 +9271,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       parentalResponsibility: childRegistration.parentalResponsibility,
       externalAgencies: childRegistration.externalAgencies,
       classroom: childRegistration.classroom,
+      className: liveChildProfile?.className || childRegistration.className,
       tfcReference: childRegistration.tfcReference,
       governmentCode: childRegistration.governmentCode,
       collectionPassword: childRegistration.collectionPassword,
@@ -16936,6 +16940,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <article><span>Date of birth</span><strong>{selectedChild.dob || selectedChild.dateOfBirth || "Not added"}</strong></article>
                   <article><span>School</span><strong>{selectedChild.school || "Not added"}</strong></article>
                   <article><span>Year group</span><strong>{selectedChild.year || selectedChild.classroom || "Not added"}</strong></article>
+                  <article><span>Class / form</span><strong>{selectedChild.className || "Not supplied"}</strong><small>Optional</small></article>
                   <article><span>Ethnicity</span><strong>{selectedChild.ethnicity || "Not provided"}</strong><small>Optional</small></article>
                 </div>
               )}
@@ -22625,6 +22630,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <label>External agencies involved?<select value={childRegistration.externalAgencies} onChange={(event) => updateChildRegistration("externalAgencies", event.target.value)}><option>No</option><option>Yes</option></select></label>
                   <label>Main school <span>Required</span><select aria-invalid={fieldInvalid(childBasicErrors.school)} value={normaliseParentSchool(childRegistration.school || activeFamily.registeredCentre || selectedSchool)} onChange={(event) => updateChildRegistration("school", event.target.value)}>{parentRegistrationSchools.map((school) => <option key={school} value={school}>{parentSchoolOptionLabel(school)}</option>)}</select>{fieldError(childBasicErrors.school)}</label>
                   <label>Year group <span>Required</span><select aria-invalid={fieldInvalid(childBasicErrors.classroom)} value={childRegistration.classroom} onChange={(event) => updateChildRegistration("classroom", event.target.value)}><option value="">Select</option>{childYearGroupOptions.map((option) => <option key={option}>{option}</option>)}</select>{fieldError(childBasicErrors.classroom)}</label>
+                  <label>Class / form <span>Optional</span><input value={childRegistration.className} onChange={(event) => updateChildRegistration("className", event.target.value)} placeholder="For example, 3B or Robins" /></label>
                   <label>Collection password <span>Required</span><input aria-invalid={fieldInvalid(childBasicErrors.collectionPassword)} value={childRegistration.collectionPassword} onChange={(event) => updateChildRegistration("collectionPassword", event.target.value)} />{fieldError(childBasicErrors.collectionPassword)}<small className="lab-field-hint">Staff use this if someone collects your child and needs to confirm they are authorised.</small></label>
                   <label>TFC reference <span>Optional</span><input value={childRegistration.tfcReference} onChange={(event) => updateChildRegistration("tfcReference", event.target.value)} /><small className="lab-field-hint">Your Tax-Free Childcare reference can be found in your HMRC Childcare Account.</small></label>
                   <label>Government code <span>Optional</span><input value={childRegistration.governmentCode} onChange={(event) => updateChildRegistration("governmentCode", event.target.value)} /><small className="lab-field-hint">This is your Government Childcare Code (sometimes called your 11-digit eligibility code). <button className="lab-inline-help" type="button" title="Parents usually find this in their childcare account or eligibility confirmation email.">Where do I find this?</button></small></label>

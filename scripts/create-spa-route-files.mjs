@@ -15,6 +15,7 @@ const routes = [
   "payments",
   "cancellations",
   "launch-booking",
+  "shared-register",
   "policies",
   "contact",
   "staff-application",
@@ -96,6 +97,12 @@ const routeMeta = {
     description: "Sign in to book Après School wraparound care and holiday club sessions for your family.",
     keywords: "Après School booking, wraparound booking, holiday club booking",
     robots: "noindex,nofollow",
+  },
+  "shared-register": {
+    title: "Private School Register | Après School",
+    description: "Time-limited read-only school register.",
+    keywords: "",
+    robots: "noindex,nofollow,noarchive",
   },
   magicbooking: {
     title: "Booking Route Moved | Après School",
