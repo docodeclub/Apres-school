@@ -4115,8 +4115,11 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
   const pendingCoverMoves = coverMoves.filter((move) => !["Sent", "Archived"].includes(move.status)).length;
   const suitabilityCounts = buildSuitabilityDeclarationCounts(staffWithScrState.filter((person) => !isFormerStaffRecord(person)));
   const suitabilityActions = suitabilityCounts.dueSoon + suitabilityCounts.expired + suitabilityCounts.missing;
-  const websiteEnquiries = data.enquiries.filter((record) => record.type !== "Outreach");
-  const newWebsiteEnquiries = websiteEnquiries.filter((record) => ["New", "Reviewing", "Follow up"].includes(record.status || "New")).length;
+  const websiteEnquiries = mergeCrmRecords(data.enquiries, readCrmUpdates())
+    .filter(isWebsiteEnquiryRecord);
+  const openWebsiteEnquiries = websiteEnquiries.filter((record) => (
+    !record.archivedAt && record.status !== "Closed"
+  ));
   const attentionCount = submittedEvidence.length + expiredRenewals + pendingCoverMoves + pendingDocs + suitabilityActions;
   const priorityItems = [
     [submittedEvidence.length, "Review submitted evidence", "Approve or send back staff evidence waiting for admin review.", "SCR"],
@@ -4129,7 +4132,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
     .filter((person) => !String(person.compliance).toLowerCase().includes("compliant"))
     .slice(0, 5);
   const quickActions = [
-    ["Support Tickets", `${newWebsiteEnquiries || websiteEnquiries.length} website ticket${(newWebsiteEnquiries || websiteEnquiries.length) === 1 ? "" : "s"} awaiting attention`, "CRM"],
+    ["Support Tickets", `${openWebsiteEnquiries.length} open website ticket${openWebsiteEnquiries.length === 1 ? "" : "s"}`, "CRM"],
     ["Expenses", "Review staff receipts and add approved claims to payroll", "Expenses"],
     ["Site SCR", "Open site-scoped compliance and evidence tools", "Inspection"],
     ["Staffing", "Planning, cover, qualifications and paid windows", "Staffing"],
@@ -4149,7 +4152,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
     submittedEvidence: submittedEvidence.length,
     suitabilityActions,
     pendingCoverMoves,
-    websiteEnquiries: newWebsiteEnquiries || websiteEnquiries.length,
+    websiteEnquiries: openWebsiteEnquiries.length,
     expiredRenewals,
   });
   const dashboardUpdatedLabel = dashboardLedger.fetchedAt ? `Updated ${formatDateTime(dashboardLedger.fetchedAt)}` : dashboardLedgerStatus;
