@@ -46,6 +46,14 @@ serve(async (request) => {
     const validationError = validatePayload(payload);
     if (validationError) return json({ error: validationError }, 400);
 
+    if (payload.action === "update-role") {
+      if (String(actor.role || "").toLowerCase() !== "superadmin") {
+        return json({ error: "Only a Superadmin can change staff access roles" }, 403);
+      }
+      const result = await updateStaffRole(payload, actor);
+      return json(result);
+    }
+
     const user = payload.action === "invite"
       ? await createOrUpdateUser(payload)
       : await resetExistingUser(payload);
@@ -153,6 +161,65 @@ async function resetExistingUser(payload: StaffAccountPayload) {
   const existing = await findProfileUserByEmail(payload.email);
   if (!existing) return createOrUpdateUser(payload);
   return updateExistingAuthUser(existing, payload);
+}
+
+async function updateStaffRole(payload: StaffAccountPayload, actor: { id?: string | null }) {
+  const query = supabase
+    .from("profiles")
+    .select("id, email, full_name, role, active");
+  const { data: profile, error: profileError } = payload.profileId
+    ? await query.eq("id", payload.profileId).maybeSingle()
+    : await query.ilike("email", payload.email).maybeSingle();
+
+  if (profileError) throw profileError;
+  if (!profile) throw new Error("Staff account not found");
+  if (profile.active === false) throw new Error("Reactivate this account before changing its access role");
+
+  const previousRole = normalizeRole(profile.role || "staff");
+  if (previousRole === payload.role) {
+    return {
+      userId: profile.id,
+      email: profile.email,
+      previousRole,
+      role: payload.role,
+      changed: false,
+    };
+  }
+
+  const { data: authData, error: authError } = await supabase.auth.admin.updateUserById(profile.id, {
+    user_metadata: {
+      full_name: profile.full_name || payload.name,
+      role: payload.role,
+    },
+  });
+  if (authError) throw authError;
+
+  const { error: updateError } = await supabase
+    .from("profiles")
+    .update({ role: payload.role })
+    .eq("id", profile.id);
+  if (updateError) throw updateError;
+
+  await supabase.from("audit_log").insert({
+    actor_id: actor.id || null,
+    action: "staff_account_role_updated",
+    table_name: "profiles",
+    record_id: profile.id,
+    metadata: {
+      email: profile.email,
+      previousRole,
+      newRole: payload.role,
+      staffRecordId: payload.staffRecordId || null,
+    },
+  });
+
+  return {
+    userId: authData.user.id,
+    email: profile.email,
+    previousRole,
+    role: payload.role,
+    changed: true,
+  };
 }
 
 async function updateExistingAuthUser(existing: { id: string; email: string }, payload: StaffAccountPayload) {
@@ -440,8 +507,12 @@ function buildEmailText(payload: StaffAccountPayload) {
 type StaffAccountPayload = ReturnType<typeof normalizePayload>;
 
 function normalizePayload(payload: Record<string, unknown>) {
+  const requestedAction = stringValue(payload.action);
   return {
-    action: stringValue(payload.action) === "reset-password" ? "reset-password" : "invite",
+    action: requestedAction === "update-role"
+      ? "update-role"
+      : requestedAction === "reset-password" ? "reset-password" : "invite",
+    profileId: stringValue(payload.profileId),
     staffRecordId: stringValue(payload.staffRecordId),
     name: stringValue(payload.name),
     email: stringValue(payload.email).toLowerCase(),
@@ -454,6 +525,7 @@ function normalizePayload(payload: Record<string, unknown>) {
 function validatePayload(payload: StaffAccountPayload) {
   if (!payload.name) return "Staff name is required";
   if (!payload.email.includes("@")) return "Staff email is required";
+  if (payload.action === "update-role") return null;
   if (payload.temporaryPassword.length < 10) return "A temporary password of at least 10 characters is required";
   return null;
 }

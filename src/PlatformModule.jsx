@@ -7520,6 +7520,7 @@ function UserManagement({ data }) {
   const [busyAccountId, setBusyAccountId] = useState("");
   const [accountQuery, setAccountQuery] = useState("");
   const [rolloutFilter, setRolloutFilter] = useState("All");
+  const [pendingRoles, setPendingRoles] = useState({});
   const users = mergeUserRecords(data.staff, state);
   const staffOptions = data.staff.map((person) => {
     const id = person.profileId || person.id;
@@ -7808,6 +7809,38 @@ function UserManagement({ data }) {
     addAuditLog("User updated", `${existing.email || existing.name} changed: ${Object.entries(patch).map(([key, value]) => `${key} ${value}`).join(", ")}`);
   }
 
+  async function saveUserRole(user) {
+    const nextRole = pendingRoles[user.id] || user.role;
+    if (nextRole === user.role) return;
+    if (!window.confirm(`Change ${user.name}'s platform access from ${user.role} to ${nextRole}?`)) return;
+
+    setBusyAccountId(user.id);
+    setAccountMessage(`Updating ${user.name}'s access…`);
+    try {
+      if (hasSupabaseConfig) {
+        const { updateStaffAccountRole } = await loadSupabaseModule();
+        await updateStaffAccountRole({
+          profileId: user.id,
+          staffRecordId: user.staffRecordId || "",
+          name: user.name,
+          email: user.email,
+          role: nextRole,
+        });
+      }
+      updateUser(user.id, { role: nextRole });
+      setPendingRoles((current) => {
+        const next = { ...current };
+        delete next[user.id];
+        return next;
+      });
+      setAccountMessage(`${user.name} now has ${nextRole} access.`);
+    } catch (error) {
+      setAccountMessage(`Access was not changed: ${error.message}`);
+    } finally {
+      setBusyAccountId("");
+    }
+  }
+
   function saveApplications(next) {
     setApplications(next);
     if (!hasSupabaseConfig) localStorage.setItem(staffApplicationsStorageKey, JSON.stringify(next));
@@ -8032,7 +8065,10 @@ function UserManagement({ data }) {
               <p>{user.email}</p>
             </div>
             <Badge value={user.status} />
-            <label>Role<select value={user.role} onChange={(event) => updateUser(user.id, { role: event.target.value })}>{userRoles.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Role<select value={pendingRoles[user.id] || user.role} onChange={(event) => setPendingRoles((current) => ({ ...current, [user.id]: event.target.value }))}>{userRoles.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <button className="button book" type="button" disabled={busyAccountId === user.id || !pendingRoles[user.id] || pendingRoles[user.id] === user.role} onClick={() => saveUserRole(user)}>
+              {busyAccountId === user.id ? "Saving role…" : "Save role"}
+            </button>
             <label>Status<select value={user.status} onChange={(event) => updateUser(user.id, { status: event.target.value })}>{["Active", "Invited", "Deactivated"].map((item) => <option key={item}>{item}</option>)}</select></label>
             {user.temporaryPassword && (
               <div className="temporary-password">

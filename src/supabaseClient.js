@@ -3145,6 +3145,10 @@ export async function resetStaffAccountPassword(payload) {
   return sendStaffAccountAction("reset-password", payload);
 }
 
+export async function updateStaffAccountRole(payload) {
+  return sendStaffAccountAction("update-role", payload);
+}
+
 function normalizeCrmStatus(status) {
   const value = String(status || "New").toLowerCase().replace(/\s+/g, "_");
   if (value === "follow_up") return "follow_up";
