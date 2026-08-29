@@ -15725,14 +15725,22 @@ function CRM({ data, access }) {
   const enquiryRecords = mergeCrmRecords(data.enquiries, updates);
   const records = [...enquiryRecords, ...outreach];
   const websiteEnquiries = enquiryRecords.filter(isWebsiteEnquiryRecord);
-  const newWebsiteEnquiries = websiteEnquiries.filter((record) => ["New", "Reviewing", "Follow up"].includes(record.status || "New"));
-  const recentWebsiteEnquiries = [...websiteEnquiries]
+  const activeWebsiteEnquiries = websiteEnquiries.filter((record) => !record.archivedAt);
+  const newWebsiteEnquiries = activeWebsiteEnquiries.filter((record) => ["New", "Reviewing", "Follow up"].includes(record.status || "New"));
+  const recentWebsiteEnquiries = [...activeWebsiteEnquiries]
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
     .slice(0, 3);
   const queryText = query.trim().toLowerCase();
   const visibleRecords = records.filter((record) => {
     const isWebsite = isWebsiteEnquiryRecord(record);
-    const matchesType = typeFilter === "All"
+    const isArchived = Boolean(record.archivedAt);
+    if (typeFilter === "Archived") {
+      if (!isArchived) return false;
+    } else if (isArchived) {
+      return false;
+    }
+    const matchesType = typeFilter === "Archived"
+      || typeFilter === "All"
       || (typeFilter === "Website enquiries" && isWebsite)
       || (typeFilter === "Outreach" && record.type === "Outreach")
       || record.type === typeFilter
@@ -15893,6 +15901,58 @@ function updateRecord(id, patch) {
         }));
       });
   }
+  function setTicketArchived(record, archived) {
+    const archivePatch = {
+      archivedAt: archived ? new Date().toISOString() : "",
+      archivedByName: archived ? access?.currentUser?.name || access?.currentUser?.email || "Administrator" : "",
+      status: archived ? "Closed" : record.status === "Closed" ? "Reviewing" : record.status,
+      syncState: isSupabaseCrmRecord(record.id, record) ? "saving" : "local",
+    };
+    setUpdates((current) => {
+      const next = { ...current, [record.id]: { ...current[record.id], ...archivePatch } };
+      saveCrmUpdates(next);
+      return next;
+    });
+    if (archived) setSelectedId("");
+    if (!isSupabaseCrmRecord(record.id, record)) return;
+    loadSupabaseModule()
+      .then(({ setSupportTicketArchived }) => setSupportTicketArchived(record.id, archived))
+      .then((result) => {
+        setUpdates((current) => {
+          const next = {
+            ...current,
+            [record.id]: {
+              ...current[record.id],
+              archivedAt: result.archivedAt || "",
+              archivedBy: result.archivedBy || "",
+              archivedByName: result.archivedByName || archivePatch.archivedByName,
+              status: result.status === "closed" ? "Closed" : result.status === "reviewing" ? "Reviewing" : current[record.id]?.status || record.status,
+              syncState: "saved",
+              syncError: "",
+            },
+          };
+          saveCrmUpdates(next);
+          return next;
+        });
+      })
+      .catch((error) => {
+        setUpdates((current) => {
+          const next = {
+            ...current,
+            [record.id]: {
+              ...current[record.id],
+              archivedAt: record.archivedAt || "",
+              archivedByName: record.archivedByName || "",
+              status: record.status,
+              syncState: "error",
+              syncError: error.message || "The archive change could not be saved.",
+            },
+          };
+          saveCrmUpdates(next);
+          return next;
+        });
+      });
+  }
   function toggleRow(id) {
     setSelectedRows((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   }
@@ -15936,7 +15996,7 @@ function updateRecord(id, patch) {
         <div className="crm-toolbar-controls">
           <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contact responses, school, email..." /></label>
           <label>Filter<select aria-label="Filter enquiries" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-            {["Website enquiries", "All", "Parent", "School", "Staff", "Outreach", "Prospect", "Contacted", "Follow up", "Partner school", "Closed"].map((item) => <option key={item}>{item}</option>)}
+            {["Website enquiries", "Archived", "All", "Parent", "School", "Staff", "Outreach", "Prospect", "Contacted", "Follow up", "Partner school", "Closed"].map((item) => <option key={item}>{item}</option>)}
           </select></label>
           <label>Per page<select aria-label="Rows per page" value={rowLimit} onChange={(event) => setRowLimit(event.target.value)}>
             {["15", "25", "50"].map((item) => <option key={item}>{item}</option>)}
@@ -15944,7 +16004,7 @@ function updateRecord(id, patch) {
         </div>
       </div>
       <div className="crm-summary">
-        <Metric icon={<Mail />} label="Website tickets" value={websiteEnquiries.length} tone={websiteEnquiries.length ? "blue" : "green"} />
+        <Metric icon={<Mail />} label="Website tickets" value={activeWebsiteEnquiries.length} tone={activeWebsiteEnquiries.length ? "blue" : "green"} />
         <Metric icon={<Bell />} label="Open tickets" value={newWebsiteEnquiries.length} tone={newWebsiteEnquiries.length ? "amber" : "green"} />
         <Metric icon={<Users />} label="Outreach prospects" value={outreachCount} tone="blue" />
         <Metric icon={<CalendarDays />} label="Follow-ups" value={followUpCount} tone="amber" />
@@ -16042,7 +16102,7 @@ function updateRecord(id, patch) {
           <button className="button light" type="button" disabled={safePage >= pageCount} onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}>Next</button>
         </nav>
       )}
-      {selectedRecord && <CrmDetailDrawer record={selectedRecord} onChange={updateRecord} onClose={() => setSelectedId("")} />}
+      {selectedRecord && <CrmDetailDrawer record={selectedRecord} onChange={updateRecord} onClose={() => setSelectedId("")} onArchive={(archived) => setTicketArchived(selectedRecord, archived)} />}
       {!visibleRecords.length && <EmptyList title="No matching support tickets" text="Change the filter or wait for a new website ticket." />}
     </div>
   );
@@ -16096,7 +16156,7 @@ function CrmBulkActions({ selectedCount, visibleCount, allVisibleSelected, onSel
   );
 }
 
-function CrmDetailDrawer({ record, onChange, onClose }) {
+function CrmDetailDrawer({ record, onChange, onClose, onArchive }) {
   const isOutreach = record.type === "Outreach";
   const age = supportTicketAge(record);
   const firstName = String(record.name || "there").trim().split(/\s+/)[0] || "there";
@@ -16144,6 +16204,15 @@ function CrmDetailDrawer({ record, onChange, onClose }) {
     }
   }
 
+  function toggleArchive() {
+    if (record.archivedAt) {
+      onArchive(false);
+      return;
+    }
+    if (!window.confirm(`Archive the support ticket from ${record.name}? It will remain available in the Archived filter.`)) return;
+    onArchive(true);
+  }
+
   return (
     <div className="support-ticket-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="crm-detail-drawer" role="dialog" aria-modal="true" aria-label={`Support ticket from ${record.name}`}>
@@ -16160,7 +16229,9 @@ function CrmDetailDrawer({ record, onChange, onClose }) {
         </div>
         <div className="crm-detail-badges">
           {record.classification && <span className={`crm-classification ${record.classification}`}>{record.classification}</span>}
+          {record.archivedAt && <span className="support-ticket-archived-badge">Archived</span>}
           <Badge value={record.status || "New"} />
+          <button className="support-ticket-archive" type="button" onClick={toggleArchive}>{record.archivedAt ? "Restore" : "Archive"}</button>
           <button className="support-ticket-close" type="button" onClick={onClose} aria-label="Close support ticket">×</button>
         </div>
       </div>
@@ -18355,6 +18426,9 @@ function mergeCrmRecords(demoRecords, updates, localRecords = getLocalEnquiries(
       firstOpenedAt: record.firstOpenedAt || localUpdate.firstOpenedAt || "",
       firstOpenedBy: record.firstOpenedBy || localUpdate.firstOpenedBy || "",
       firstOpenedByName: record.firstOpenedByName || localUpdate.firstOpenedByName || "",
+      archivedAt: Object.prototype.hasOwnProperty.call(localUpdate, "archivedAt") ? localUpdate.archivedAt : record.archivedAt || "",
+      archivedBy: Object.prototype.hasOwnProperty.call(localUpdate, "archivedBy") ? localUpdate.archivedBy : record.archivedBy || "",
+      archivedByName: Object.prototype.hasOwnProperty.call(localUpdate, "archivedByName") ? localUpdate.archivedByName : record.archivedByName || "",
     };
   });
   return records;

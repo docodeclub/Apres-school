@@ -14207,6 +14207,35 @@ label {
   background: var(--soft);
 }
 
+.support-ticket-archive {
+  min-height: 40px;
+  border: 1px solid rgba(164, 37, 55, 0.24);
+  border-radius: 999px;
+  background: #fff5f6;
+  color: #942235;
+  cursor: pointer;
+  padding: 0 14px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.support-ticket-archive:hover {
+  border-color: #c13f54;
+  background: #ffe9ed;
+}
+
+.support-ticket-archived-badge {
+  display: inline-flex;
+  border-radius: 999px;
+  background: #edf0f6;
+  color: #5e6679;
+  padding: 6px 9px;
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .support-ticket-owner-line {
   display: flex;
   gap: 7px;
