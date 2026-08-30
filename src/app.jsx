@@ -297,6 +297,7 @@ const pagePaths = {
   "Launch Booking": "/launch-booking",
   "Booking Lab": "/booking-lab",
   "Shared Register": "/shared-register",
+  "Migration Reminders": "/migration-reminders",
 };
 const pathPages = Object.fromEntries(Object.entries(pagePaths).map(([page, path]) => [path, page]));
 const legacyBookingPaths = new Set(["/bookings", "/magicbooking", "/book-pebble"]);
@@ -461,6 +462,7 @@ const pageMeta = {
   Policies: ["Policies | Après School", "Safeguarding, behaviour, health and safety, privacy and complaints policy summaries."],
   "Launch Booking": ["Family Booking | Après School", "Book Après School wraparound care and holiday clubs securely online."],
   "Booking Lab": ["Booking Lab | Après School", "Private booking system lab for Après School testing."],
+  "Migration Reminders": ["Account Reminder Preferences | Après School", "Confirmation of your Après School family-account reminder preference."],
 };
 const pageKeywords = {
   Home: "Après School, wraparound care for schools, holiday camps, extended school provision, after school club, breakfast club, school partnerships",
@@ -471,7 +473,7 @@ const pageKeywords = {
   "Launch Booking": "Après School beta booking, wraparound booking, holiday camp booking",
   "Booking Lab": "Après School booking lab",
 };
-const privatePrototypePages = new Set(["Booking Lab", "Launch Booking"]);
+const privatePrototypePages = new Set(["Booking Lab", "Launch Booking", "Migration Reminders"]);
 
 function ensureMetaTag(selector, attributes) {
   let element = document.querySelector(selector);
@@ -1335,9 +1337,58 @@ function PublicSite({ page, setPage, setPlatform }) {
         </BookingJourneyErrorBoundary>
       )}
       {page === "Shared Register" && <Suspense fallback={<div className="platform-loading">Opening private register…</div>}><SharedSchoolRegister /></Suspense>}
-      {page !== "Shared Register" && <Footer setPage={setPage} />}
-      {page !== "Shared Register" && <MobileCTA page={page} setPage={setPage} />}
+      {page === "Migration Reminders" && <MigrationReminderPreference />}
+      {!["Shared Register", "Migration Reminders"].includes(page) && <Footer setPage={setPage} />}
+      {!["Shared Register", "Migration Reminders"].includes(page) && <MobileCTA page={page} setPage={setPage} />}
     </main>
+  );
+}
+
+function MigrationReminderPreference() {
+  const result = new URLSearchParams(window.location.search).get("result") || "invalid";
+  const states = {
+    stopped: {
+      tone: "good",
+      eyebrow: "Preference saved",
+      title: "Account setup reminders stopped",
+      message: "We will no longer send reminders asking you to complete your migrated family account. Essential booking, payment and safeguarding messages are unaffected.",
+    },
+    incomplete: {
+      tone: "bad",
+      eyebrow: "Link incomplete",
+      title: "We could not use this link",
+      message: "The reminder-preference link is missing some required information. Please reply to the email and our team will help.",
+    },
+    "not-found": {
+      tone: "bad",
+      eyebrow: "Account not found",
+      title: "We could not match this link",
+      message: "We could not match the link to an active migrated account. Please reply to the email and our team will help.",
+    },
+    error: {
+      tone: "bad",
+      eyebrow: "Unable to save",
+      title: "Your preference was not changed",
+      message: "We could not update your reminder preference. Please reply to the email and our team will help.",
+    },
+    invalid: {
+      tone: "bad",
+      eyebrow: "Link not recognised",
+      title: "This link is not valid",
+      message: "The reminder-preference link is invalid or has been changed. Please use the original link from your email.",
+    },
+  };
+  const state = states[result] || states.invalid;
+  return (
+    <section className="migration-reminder-page" aria-labelledby="migration-reminder-title">
+      <article className={`migration-reminder-card ${state.tone}`}>
+        <span className="migration-reminder-icon" aria-hidden="true">{state.tone === "good" ? "✓" : "!"}</span>
+        <p className="eyebrow">{state.eyebrow}</p>
+        <h1 id="migration-reminder-title">{state.title}</h1>
+        <p>{state.message}</p>
+        <a className="button book" href="/launch-booking">Open family booking</a>
+      </article>
+    </section>
   );
 }
 

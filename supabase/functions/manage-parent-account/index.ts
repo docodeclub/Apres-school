@@ -305,12 +305,12 @@ function migrationOutstandingItemCount(parent: Record<string, unknown>) {
 async function handlePublicReminderPreference(request: Request) {
   const url = new URL(request.url);
   if (url.searchParams.get("action") !== "unsubscribe-migration-reminders") {
-    return reminderPreferencePage("Link not recognised", "This reminder-preference link is not valid.", false, 404);
+    return reminderPreferenceResponse(request, "invalid", "Link not recognised", "This reminder-preference link is not valid.", false, 404);
   }
   const parentAccountId = stringValue(url.searchParams.get("account"));
   const token = stringValue(url.searchParams.get("token"));
   if (!parentAccountId || !token) {
-    return reminderPreferencePage("Link incomplete", "This reminder-preference link is missing required information.", false, 400);
+    return reminderPreferenceResponse(request, "incomplete", "Link incomplete", "This reminder-preference link is missing required information.", false, 400);
   }
 
   const { data: parent, error } = await supabase
@@ -319,12 +319,12 @@ async function handlePublicReminderPreference(request: Request) {
     .eq("id", parentAccountId)
     .maybeSingle();
   if (error || !parent || parent.archived_at || parent.external_source !== "magicbooking") {
-    return reminderPreferencePage("Account not found", "We could not match this reminder-preference link to an active migrated account.", false, 404);
+    return reminderPreferenceResponse(request, "not-found", "Account not found", "We could not match this reminder-preference link to an active migrated account.", false, 404);
   }
 
   const tokenMatches = await migrationReminderTokenMatches(parent.id, stringValue(parent.email).toLowerCase(), token);
   if (!tokenMatches) {
-    return reminderPreferencePage("Link not recognised", "This reminder-preference link is invalid or has been changed.", false, 403);
+    return reminderPreferenceResponse(request, "invalid", "Link not recognised", "This reminder-preference link is invalid or has been changed.", false, 403);
   }
 
   const preferences = isObject(parent.marketing_preferences) ? parent.marketing_preferences : {};
@@ -339,7 +339,7 @@ async function handlePublicReminderPreference(request: Request) {
     .update({ marketing_preferences: nextPreferences, updated_at: new Date().toISOString() })
     .eq("id", parent.id);
   if (updateError) {
-    return reminderPreferencePage("Unable to save", "We could not update your reminder preference. Please reply to the email and our team will help.", false, 500);
+    return reminderPreferenceResponse(request, "error", "Unable to save", "We could not update your reminder preference. Please reply to the email and our team will help.", false, 500);
   }
 
   await supabase.from("audit_log").insert({
@@ -349,7 +349,9 @@ async function handlePublicReminderPreference(request: Request) {
     record_id: parent.id,
     metadata: { email: parent.email, optedOutAt },
   });
-  return reminderPreferencePage(
+  return reminderPreferenceResponse(
+    request,
+    "stopped",
     "Account setup reminders stopped",
     "We will no longer send reminders asking you to complete your migrated family account. Essential booking, payment and safeguarding messages are unaffected.",
     true,
@@ -399,17 +401,21 @@ function constantTimeEqual(left: string, right: string) {
   return difference === 0;
 }
 
-function reminderPreferencePage(title: string, message: string, success: boolean, status = 200) {
-  const safeTitle = escapeForPage(title);
-  const safeMessage = escapeForPage(message);
-  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle} | Après School</title></head><body style="margin:0;background:#eef3ff;font-family:Arial,Helvetica,sans-serif;color:#25304f"><main style="min-height:100vh;display:grid;place-items:center;padding:24px"><section style="width:min(560px,100%);box-sizing:border-box;background:#fff;border:1px solid #dbe5ff;border-radius:24px;padding:32px;box-shadow:0 18px 48px rgba(37,48,79,.14)"><p style="margin:0 0 8px;color:#c47708;font-weight:900;letter-spacing:1px;text-transform:uppercase;font-size:12px">Après School</p><h1 style="margin:0 0 16px;color:#314bb8;font-size:30px;line-height:1.2">${safeTitle}</h1><p style="margin:0 0 24px;color:#66708a;font-size:16px;line-height:1.6">${safeMessage}</p><a href="https://www.apres-school.co.uk/launch-booking" style="display:inline-block;background:${success ? "#4f6de8" : "#25304f"};color:#fff;padding:13px 18px;border-radius:999px;text-decoration:none;font-weight:900">Open family booking</a></section></main></body></html>`, {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
-  });
-}
-
-function escapeForPage(value: string) {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+function reminderPreferenceResponse(request: Request, result: string, title: string, message: string, success: boolean, status = 200) {
+  if (request.method === "GET") {
+    const redirectUrl = new URL("/migration-reminders", defaultLoginUrl);
+    redirectUrl.searchParams.set("result", result);
+    return new Response(null, {
+      status: 303,
+      headers: {
+        ...corsHeaders,
+        "Location": redirectUrl.toString(),
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+      },
+    });
+  }
+  return json({ ok: success, result, title, message }, status);
 }
 
 async function inviteLinkedAccountHolder(actor: ActorProfile, payload: Record<string, unknown>) {

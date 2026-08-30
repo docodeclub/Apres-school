@@ -47140,3 +47140,52 @@ th {
   .shared-register-table-wrap { margin: 0 16px 20px; }
   .shared-register-table-wrap th, .shared-register-table-wrap td { padding: 12px 10px; }
 }
+.migration-reminder-page {
+  min-height: 62vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(32px, 7vw, 88px) 20px;
+  background: linear-gradient(145deg, #eef3ff, #f8faff 58%, #fff6e9);
+}
+
+.migration-reminder-card {
+  width: min(580px, 100%);
+  box-sizing: border-box;
+  padding: clamp(28px, 5vw, 44px);
+  border: 1px solid #dbe5ff;
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 20px 54px rgba(37, 48, 79, 0.14);
+}
+
+.migration-reminder-card h1 {
+  margin: 6px 0 14px;
+  color: #314bb8;
+  font-size: clamp(30px, 5vw, 42px);
+  line-height: 1.08;
+}
+
+.migration-reminder-card > p:not(.eyebrow) {
+  margin: 0 0 26px;
+  color: #66708a;
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.migration-reminder-icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e5f8ee;
+  color: #168355;
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.migration-reminder-card.bad .migration-reminder-icon {
+  background: #fff0ed;
+  color: #b13f31;
+}

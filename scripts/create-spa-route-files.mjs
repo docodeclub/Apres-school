@@ -16,6 +16,7 @@ const routes = [
   "cancellations",
   "launch-booking",
   "shared-register",
+  "migration-reminders",
   "policies",
   "contact",
   "staff-application",
@@ -101,6 +102,12 @@ const routeMeta = {
   "shared-register": {
     title: "Private School Register | Après School",
     description: "Time-limited read-only school register.",
+    keywords: "",
+    robots: "noindex,nofollow,noarchive",
+  },
+  "migration-reminders": {
+    title: "Account Reminder Preferences | Après School",
+    description: "Confirmation of your Après School family-account reminder preference.",
     keywords: "",
     robots: "noindex,nofollow,noarchive",
   },
