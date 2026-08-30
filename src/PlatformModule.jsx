@@ -1622,6 +1622,11 @@ function adHocSchoolKey(value) {
   return normalized;
 }
 
+function registerCareType(row = {}) {
+  const text = `${row.programmeName || ""} ${row.sessionLabel || ""}`.toLowerCase();
+  return /holiday\s*camp|early\s*drop[ -]?off/.test(text) ? "holiday" : "wraparound";
+}
+
 function Registers({ access }) {
   const today = new Date();
   const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -1632,7 +1637,14 @@ function Registers({ access }) {
   const [registerDate, setRegisterDate] = useState(initialRegisterDate);
   const [rows, setRows] = useState([]);
   const [timetable, setTimetable] = useState([]);
-  const [school, setSchool] = useState("All schools");
+  const accountDefaultSite = canonicalSchoolName(access?.currentStaff?.defaultRegisterSite || "");
+  const assignedSiteSuggestion = canonicalSchoolName(access?.currentStaff?.primarySite || "");
+  const initialSite = accountDefaultSite || assignedSiteSuggestion || "All schools";
+  const [careType, setCareType] = useState("wraparound");
+  const [school, setSchool] = useState(initialSite);
+  const [savedDefaultSite, setSavedDefaultSite] = useState(accountDefaultSite);
+  const [defaultSiteSaving, setDefaultSiteSaving] = useState(false);
+  const [defaultSiteMessage, setDefaultSiteMessage] = useState("");
   const [programme, setProgramme] = useState("All activities");
   const [session, setSession] = useState("All sessions");
   const [search, setSearch] = useState("");
@@ -1678,6 +1690,13 @@ function Registers({ access }) {
   const [childProfileSection, setChildProfileSection] = useState("Overview");
   const [childPhotoStatus, setChildPhotoStatus] = useState("");
   const canManageChildPhoto = ["Manager", "Admin", "Superadmin"].includes(access?.role);
+
+  useEffect(() => {
+    const nextDefault = canonicalSchoolName(access?.currentStaff?.defaultRegisterSite || "");
+    setSavedDefaultSite(nextDefault);
+    if (nextDefault) setSchool(nextDefault);
+    else if (assignedSiteSuggestion) setSchool((current) => current === "All schools" ? assignedSiteSuggestion : current);
+  }, [access?.currentStaff?.defaultRegisterSite, assignedSiteSuggestion]);
 
   const statusLabels = {
     booked: "Expected",
@@ -1730,18 +1749,26 @@ function Registers({ access }) {
   }, [registerDate]);
 
   const registerOptions = [...timetable, ...rows];
-  const schools = ["All schools", ...new Set(registerOptions.map((row) => row.siteName).filter(Boolean))];
+  const careTypeOptions = registerOptions.filter((row) => careType === "all" || registerCareType(row) === careType);
+  const schools = ["All schools", ...new Set([
+    accountDefaultSite,
+    assignedSiteSuggestion,
+    ...careTypeOptions.map((row) => row.siteName),
+  ].filter(Boolean))];
   const programmes = ["All activities", ...new Set(registerOptions
+    .filter((row) => careType === "all" || registerCareType(row) === careType)
     .filter((row) => school === "All schools" || row.siteName === school)
     .map((row) => row.programmeName)
     .filter(Boolean))];
   const sessions = ["All sessions", ...new Set(registerOptions
+    .filter((row) => careType === "all" || registerCareType(row) === careType)
     .filter((row) => school === "All schools" || row.siteName === school)
     .filter((row) => programme === "All activities" || row.programmeName === programme)
     .map((row) => row.sessionLabel)
     .filter(Boolean))];
   const normalizedSearch = search.trim().toLowerCase();
   const sessionScopeRows = rows.filter((row) => {
+    if (careType !== "all" && registerCareType(row) !== careType) return false;
     if (school !== "All schools" && row.siteName !== school) return false;
     if (programme !== "All activities" && row.programmeName !== programme) return false;
     if (fireDrill && !["checked_in", "late_collection", "incident"].includes(row.attendanceStatus)) return false;
@@ -1764,6 +1791,7 @@ function Registers({ access }) {
   const visibleSessionLabels = session === "All sessions" ? sessions.slice(1) : [session];
   const sessionSections = visibleSessionLabels.map((sessionLabel) => {
     const optionRows = registerOptions
+      .filter((row) => careType === "all" || registerCareType(row) === careType)
       .filter((row) => school === "All schools" || row.siteName === school)
       .filter((row) => programme === "All activities" || row.programmeName === programme)
       .filter((row) => row.sessionLabel === sessionLabel);
@@ -1777,6 +1805,22 @@ function Registers({ access }) {
   const presentCount = visibleRows.filter((row) => ["checked_in", "late_collection", "incident"].includes(row.attendanceStatus)).length;
   const completedCount = visibleRows.filter((row) => ["checked_out", "absent"].includes(row.attendanceStatus)).length;
   const selectedChild = rows.find((row) => row.bookingItemId === selectedChildId) || null;
+
+  async function saveDefaultSite() {
+    if (school === "All schools") return;
+    setDefaultSiteSaving(true);
+    setDefaultSiteMessage("");
+    try {
+      const { saveMyDefaultRegisterSite } = await loadSupabaseModule();
+      const saved = canonicalSchoolName(await saveMyDefaultRegisterSite(school));
+      setSavedDefaultSite(saved);
+      setDefaultSiteMessage(`${saved} will open first.`);
+    } catch (error) {
+      setDefaultSiteMessage(error?.message || "The default site could not be saved.");
+    } finally {
+      setDefaultSiteSaving(false);
+    }
+  }
 
   useEffect(() => {
     if (registerReportType !== "safeguarding" || !selectedChild?.bookingItemId) return undefined;
@@ -2483,13 +2527,23 @@ function Registers({ access }) {
       <div className="register-selector-panel">
         <label>Date<input type="date" value={registerDate} onChange={(event) => {
           setRegisterDate(event.target.value);
-          setSchool("All schools");
           setProgramme("All activities");
           setSession("All sessions");
         }} /></label>
-        <label>School<select value={school} onChange={(event) => { setSchool(event.target.value); setProgramme("All activities"); setSession("All sessions"); }}>
-          {schools.map((item) => <option key={item}>{item}</option>)}
+        <label>Care type<select value={careType} onChange={(event) => { setCareType(event.target.value); setProgramme("All activities"); setSession("All sessions"); }}>
+          <option value="wraparound">Breakfast &amp; after-school</option>
+          <option value="holiday">Holiday Camp</option>
+          <option value="all">All care types</option>
         </select></label>
+        <div className="register-site-selector">
+          <label>School<select value={school} onChange={(event) => { setSchool(event.target.value); setProgramme("All activities"); setSession("All sessions"); setDefaultSiteMessage(""); }}>
+            {schools.map((item) => <option key={item}>{item}</option>)}
+          </select></label>
+          <button className={savedDefaultSite === school ? "saved" : ""} type="button" onClick={saveDefaultSite} disabled={school === "All schools" || savedDefaultSite === school || defaultSiteSaving}>
+            {savedDefaultSite === school ? "Default site" : defaultSiteSaving ? "Saving…" : "Set as default"}
+          </button>
+          {defaultSiteMessage && <small>{defaultSiteMessage}</small>}
+        </div>
         <label>Activity<select value={programme} onChange={(event) => { setProgramme(event.target.value); setSession("All sessions"); }}>
           {programmes.map((item) => <option key={item}>{item}</option>)}
         </select></label>
@@ -18808,6 +18862,11 @@ function buildAccessContext(role, userEmail, data, previewUserId = "") {
   const users = mergeUserRecords(data.staff, readUserAdminState());
   const hierarchy = readHierarchyState();
   const currentUser = users.find((user) => user.id === previewUserId) || users.find((user) => user.email === userEmail) || users.find((user) => user.role === role) || users[0];
+  const currentStaff = data.staff.find((person) => (
+    person.id === currentUser?.staffRecordId
+    || person.profileId === currentUser?.id
+    || String(person.email || "").toLowerCase() === String(currentUser?.email || "").toLowerCase()
+  )) || null;
   const isScoped = role === "Manager";
   const isStaffScoped = role === "Staff";
   const directReports = isScoped
@@ -18828,6 +18887,7 @@ function buildAccessContext(role, userEmail, data, previewUserId = "") {
   return {
     role,
     currentUser,
+    currentStaff,
     isScoped,
     isStaffScoped,
     directReports,

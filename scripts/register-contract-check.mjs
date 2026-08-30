@@ -12,7 +12,8 @@ const pupilReports = readFileSync(join(root, "supabase/migrations/0083_register_
 const reportReviewQueue = readFileSync(join(root, "supabase/migrations/0084_register_report_review_queue.sql"), "utf8");
 const guidedIncidentWorkflow = readFileSync(join(root, "supabase/migrations/0089_guided_incident_workflow.sql"), "utf8");
 const firstAidProviderRequirement = readFileSync(join(root, "supabase/migrations/0091_require_first_aid_provider.sql"), "utf8");
-const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}`;
+const registerPreferences = readFileSync(join(root, "supabase/migrations/0150_register_care_type_and_default_site.sql"), "utf8");
+const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}`;
 const service = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
 const interfaceSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
 const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8");
@@ -43,6 +44,10 @@ const checks = [
   ["compact register shows medical only when recorded", /hasMedical && <span className="register-need-icon medical"/],
   ["pupil drawer contains care, SEND and emergency details", /className=\{`register-child-drawer[\s\S]*Medical and care information[\s\S]*<h3>SEND<\/h3>[\s\S]*Emergency contact/],
   ["register selectors combine timetable options with confirmed rows", /const registerOptions = \[\.\.\.timetable, \.\.\.rows\]/],
+  ["register defaults to wraparound care without holiday add-ons", /const \[careType, setCareType\] = useState\("wraparound"\)[\s\S]*registerCareType\(row\) === careType/],
+  ["register allows holiday care to be deliberately selected", /<option value="holiday">Holiday Camp<\/option>/],
+  ["staff can save an account-level default register site", /set_my_default_register_site[\s\S]*default_register_site/],
+  ["register applies the saved account default site", /accountDefaultSite[\s\S]*setSchool\(nextDefault\)/],
   ["register renders every available session as a section", /const sessionSections = visibleSessionLabels\.map[\s\S]*className="register-session-section"/],
   ["register provides quick session filter buttons", /className="register-session-filters"[\s\S]*setSession\(item\)/],
   ["ad-hoc pupil search is server-backed and role protected", /staff_adhoc_booking_options[\s\S]*role in \('staff', 'manager', 'admin', 'superadmin'\)/],
@@ -75,7 +80,7 @@ const checks = [
   ["parent first aid email places what happened above date and time", /label: "What happened:"[\s\S]*label: "Date and time"/],
   ["staff dashboard provides a prominent registers shortcut", /className="staff-register-shortcut"[\s\S]*onClick=\{onOpenRegisters\}[\s\S]*Open Registers/],
   ["admin dashboard provides the same prominent registers shortcut", /className="staff-register-shortcut admin-register-shortcut"[\s\S]*onOpenTab\("Registers"\)[\s\S]*Open Registers/],
-  ["every staff role receives a pinned dashboard link", /const pinnedDashboardTab = \["Admin", "Superadmin"\]\.includes\(effectiveRole\) \? "Admin" : "Staff"[\s\S]*<span>Dashboard<\/span>/],
+  ["every staff role receives a pinned dashboard link", /const pinnedDashboardTab = [^;]*\["Admin", "Superadmin"\]\.includes\(effectiveRole\) \? "Admin" : "Staff"[\s\S]*<span>Dashboard<\/span>/],
   ["authenticated sessions land on the role dashboard", /applySession\(data\.session, \{ landOnDashboard: true \}\)[\s\S]*landOnDashboard[\s\S]*\? "Admin" : "Staff"/],
 ];
 
@@ -90,7 +95,7 @@ checks.forEach(([label, pattern]) => {
       ? registerParentNotification
     : label.startsWith("authenticated sessions")
       ? appSource
-    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register renders") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("register highlights") || label.startsWith("register only offers") || label.startsWith("admin UI") || label.startsWith("staff form") || label.startsWith("staff dashboard") || label.startsWith("admin dashboard") || label.startsWith("every staff role")
+    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register defaults") || label.startsWith("register allows") || label.startsWith("register applies") || label.startsWith("register renders") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("register highlights") || label.startsWith("register only offers") || label.startsWith("admin UI") || label.startsWith("staff form") || label.startsWith("staff dashboard") || label.startsWith("admin dashboard") || label.startsWith("every staff role")
       ? platformSource
       : label.startsWith("staff UI")
         ? interfaceSource

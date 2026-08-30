@@ -53,6 +53,8 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Added
 
+- Account-level default register sites for staff, with the saved school selected automatically on future register visits.
+- A register care-type switch that keeps holiday camps and Early Drop-Off out of the normal Breakfast Club and After-school Club view.
 - A branded, no-index confirmation page for migration-reminder opt-outs, reached through the existing signed unsubscribe link.
 - Per-user unread support-ticket badges for parents and administrators, cleared only when that signed-in person opens the ticket.
 - Private support-ticket attachments for families and administrators, with restricted storage, validated image/PDF uploads and short-lived download links.

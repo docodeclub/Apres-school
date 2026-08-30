@@ -1207,6 +1207,7 @@ export async function fetchPlatformData({ userId, role }) {
       start_date,
       contract_type,
       primary_site,
+      default_register_site,
       pay_rate,
       annual_salary,
       contract_hours,
@@ -1655,6 +1656,8 @@ function mapStaffRecords(records) {
       accessRole: normalizeRole(profile?.role),
       role: record.job_role || profile?.role || "Staff",
       location: record.primary_site || record.employment_type || "Assigned sites",
+      primarySite: record.primary_site || "",
+      defaultRegisterSite: record.default_register_site || "",
       compliance: scr?.admin_review?.status || "Review needed",
       dbsNumber: scr?.dbs?.number || scr?.dbs?.dbsNumber || scr?.dbs?.dbs_number || scr?.dbs?.certificateNo || scr?.dbs?.certificate_no || "",
       dbsRenewal: scr?.dbs?.renewalDate || scr?.dbs?.renewal_date || "Not recorded",
@@ -2920,6 +2923,15 @@ export async function updateStaffSiteDetails(staffRecordId, location) {
     staffRecordId: data.id,
     location: data.primary_site || "",
   };
+}
+
+export async function saveMyDefaultRegisterSite(siteName = "") {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("set_my_default_register_site", {
+    p_site_name: String(siteName || "").trim() || null,
+  });
+  if (error) throw error;
+  return String(data || "");
 }
 
 export async function updateHrReportingLine({ staffRecordId, managerStaffRecordId = "", scope = "" }) {

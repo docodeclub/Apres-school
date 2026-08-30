@@ -5734,7 +5734,7 @@ label {
 
 .register-selector-panel {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   padding: 18px;
   border: 1px solid #dce4f5;
@@ -5762,6 +5762,39 @@ label {
   color: var(--royal-dark);
   padding: 10px 12px;
   font: inherit;
+}
+
+.register-site-selector {
+  display: grid;
+  gap: 6px;
+}
+
+.register-site-selector > button {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--royal);
+  padding: 0 2px;
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.register-site-selector > button.saved {
+  color: #18794e;
+  text-decoration: none;
+}
+
+.register-site-selector > button:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.register-site-selector > small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.25;
 }
 
 .register-session-filters {
