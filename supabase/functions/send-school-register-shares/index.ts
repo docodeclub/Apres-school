@@ -14,11 +14,19 @@ serve(async (request) => {
   if (!supabaseUrl || !serviceRoleKey) return json({ error: "Register sharing is unavailable" }, 503);
 
   try {
+    const payload = await request.json().catch(() => ({}));
     if (request.headers.get("x-apres-register-bootstrap") === "1") {
       const { error: secretError } = await supabase.rpc("bootstrap_school_register_cron_secret", { p_secret: cronSecret });
       if (secretError) throw secretError;
     }
-    const now = londonParts(new Date());
+    const requestedTestDate = String(payload?.testDate || "");
+    if (requestedTestDate && request.headers.get("x-apres-test-mode") !== "controlled") {
+      return json({ error: "Controlled test header required" }, 403);
+    }
+    if (requestedTestDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedTestDate)) {
+      return json({ error: "Invalid test date" }, 400);
+    }
+    const now = requestedTestDate ? { date: requestedTestDate, time: "23:59:00" } : londonParts(new Date());
     const { data: locations, error } = await supabase.rpc("school_register_share_due_locations", {
       p_local_date: now.date,
       p_local_time: now.time,
