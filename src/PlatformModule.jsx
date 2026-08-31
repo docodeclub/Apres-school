@@ -24,6 +24,7 @@ import {
   fetchStaffRegisterTimetable,
   quoteStaffAdHocBookingPricing,
   readSafeguardingDraft,
+  resetStaffRegisterDay,
   saveSafeguardingDraft,
   updateSafeguardingCase,
   uploadSafeguardingAttachments,
@@ -1651,6 +1652,9 @@ function Registers({ access }) {
   const [fireDrill, setFireDrill] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingIds, setSavingIds] = useState([]);
+  const [registerResetOpen, setRegisterResetOpen] = useState(false);
+  const [registerResetSaving, setRegisterResetSaving] = useState(false);
+  const [registerResetError, setRegisterResetError] = useState("");
   const [selectedChildId, setSelectedChildId] = useState("");
   const [message, setMessage] = useState({ tone: "info", text: "Loading the live register…" });
   const [adHocOpen, setAdHocOpen] = useState(false);
@@ -2485,6 +2489,38 @@ function Registers({ access }) {
     });
   }
 
+  const resettableAttendanceCount = rows.filter((row) => (
+    row.siteName === school && row.attendanceStatus !== "booked"
+  )).length;
+
+  function openRegisterReset() {
+    if (school === "All schools") {
+      setMessage({ tone: "bad", text: "Choose one school before resetting attendance for the day." });
+      return;
+    }
+    setRegisterResetError("");
+    setRegisterResetOpen(true);
+  }
+
+  async function confirmRegisterReset() {
+    setRegisterResetSaving(true);
+    setRegisterResetError("");
+    try {
+      const result = await resetStaffRegisterDay({ registerDate, siteName: school });
+      setRegisterResetOpen(false);
+      await refreshRegister();
+      const count = Number(result.resetCount || 0);
+      setMessage({
+        tone: "good",
+        text: `${school} attendance was reset for ${new Date(`${registerDate}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}. ${count} ${count === 1 ? "attendance record" : "attendance records"} returned to expected.`,
+      });
+    } catch (error) {
+      setRegisterResetError(error?.message || "The register could not be reset.");
+    } finally {
+      setRegisterResetSaving(false);
+    }
+  }
+
   function downloadRegister() {
     const header = ["Child", "School", "Year group", "Age", "Session", "Time", "Status", "Care alerts", "Parent", "Emergency phone"];
     const values = visibleRows.map((row) => [
@@ -2521,6 +2557,7 @@ function Registers({ access }) {
           <button className="button book register-adhoc-launch" type="button" onClick={openAdHocBooking}>Ad-hoc booking</button>
           <button className="button light" type="button" onClick={refreshRegister} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button>
           <button className="button light" type="button" onClick={downloadRegister} disabled={!visibleRows.length}>Download CSV</button>
+          <button className="button register-reset-launch" type="button" onClick={openRegisterReset} disabled={loading || school === "All schools" || !resettableAttendanceCount} title={school === "All schools" ? "Choose one school first" : !resettableAttendanceCount ? "No recorded attendance to reset" : `Reset ${school} attendance for this day`}>Reset day</button>
         </div>
       </div>
 
@@ -3491,6 +3528,43 @@ function Registers({ access }) {
               <button className="button light" type="button" onClick={() => setAdHocOpen(false)} disabled={adHocSaving}>Cancel</button>
               <button className="button book" type="button" onClick={submitAdHocBooking} disabled={adHocSaving || adHocPricingLoading || !adHocChildId || !adHocSessionIds.length}>
                 {adHocSaving ? "Adding to register…" : "Add to register"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {registerResetOpen && (
+        <div className="register-adhoc-layer" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !registerResetSaving) setRegisterResetOpen(false);
+        }}>
+          <section className="register-adhoc-dialog register-cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="register-reset-title">
+            <header>
+              <div>
+                <p className="eyebrow">Reset daily attendance</p>
+                <h2 id="register-reset-title">Reset {school} for this day?</h2>
+                <p>This is a register-wide action, not an individual child update.</p>
+              </div>
+              <button type="button" onClick={() => setRegisterResetOpen(false)} disabled={registerResetSaving} aria-label="Close reset warning"><X size={20} /></button>
+            </header>
+
+            <div className="register-cancel-summary register-reset-summary">
+              <strong>Warning: all attendance for this school and date will be reset</strong>
+              <dl>
+                <div><dt>School</dt><dd>{school}</dd></div>
+                <div><dt>Date</dt><dd>{new Date(`${registerDate}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</dd></div>
+                <div><dt>Recorded attendance</dt><dd>{resettableAttendanceCount} {resettableAttendanceCount === 1 ? "entry" : "entries"}</dd></div>
+              </dl>
+              <p>Check-ins, check-outs, absences and attendance notes will return to <strong>Expected</strong>. Bookings, rewards, incident reports, first-aid reports and safeguarding records will not be removed. The reset will be recorded in the audit history.</p>
+            </div>
+
+            {registerResetError && <p className="register-adhoc-error" role="alert">{registerResetError}</p>}
+
+            <footer>
+              <div><span>Attendance reset</span><strong>{school}</strong></div>
+              <button className="button light" type="button" onClick={() => setRegisterResetOpen(false)} disabled={registerResetSaving}>Keep attendance</button>
+              <button className="button register-cancel-confirm" type="button" onClick={confirmRegisterReset} disabled={registerResetSaving}>
+                {registerResetSaving ? "Resetting…" : "Yes, reset this day"}
               </button>
             </footer>
           </section>

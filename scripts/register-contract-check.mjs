@@ -14,7 +14,9 @@ const guidedIncidentWorkflow = readFileSync(join(root, "supabase/migrations/0089
 const firstAidProviderRequirement = readFileSync(join(root, "supabase/migrations/0091_require_first_aid_provider.sql"), "utf8");
 const registerPreferences = readFileSync(join(root, "supabase/migrations/0150_register_care_type_and_default_site.sql"), "utf8");
 const registerFullNames = readFileSync(join(root, "supabase/migrations/0151_register_full_child_names.sql"), "utf8");
-const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}`;
+const registerDayReset = readFileSync(join(root, "supabase/migrations/0152_reset_daily_register_attendance.sql"), "utf8");
+const registerDayResetRepair = readFileSync(join(root, "supabase/migrations/0153_fix_register_reset_audit_snapshot.sql"), "utf8");
+const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}\n${registerDayReset}\n${registerDayResetRepair}`;
 const service = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
 const interfaceSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
 const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8");
@@ -34,6 +36,7 @@ const checks = [
   ["client fetches the authoritative register RPC", /supabase\.rpc\("staff_register_for_day"/],
   ["client fetches configured register timetable options", /export async function fetchStaffRegisterTimetable[\s\S]*\.from\("sessions"\)/],
   ["client persists attendance through the register RPC", /supabase\.rpc\("update_staff_register_entry"/],
+  ["client resets one daily register through the secure RPC", /resetStaffRegisterDay[\s\S]*reset_staff_register_day[\s\S]*p_register_date[\s\S]*p_site_name/],
   ["staff UI prefers server register rows", /useServerRegister \? liveRegisterRows : localRegisterRows/],
   ["staff UI fails closed when the server register is unavailable", /Local drafts are deliberately not shown as live attendance/],
   ["register returns emergency contact details", /emergency_contact jsonb/],
@@ -49,6 +52,9 @@ const checks = [
   ["register allows holiday care to be deliberately selected", /<option value="holiday">Holiday Camp<\/option>/],
   ["staff can save an account-level default register site", /set_my_default_register_site[\s\S]*default_register_site/],
   ["registers identify children by full name before preferred name", /coalesce\(nullif\(trim\(child\.full_name\), ''\), nullif\(trim\(item\.child_name\), ''\), nullif\(trim\(child\.preferred_name\), ''\), 'Child'\)/],
+  ["register day reset is restricted to one school and date", /reset_staff_register_day[\s\S]*Choose one school before resetting attendance[\s\S]*item\.site_name = v_site_name[\s\S]*p_register_date/],
+  ["register day reset preserves a complete audit snapshot", /Register day attendance reset[\s\S]*previousEntries[\s\S]*v_previous_entries/],
+  ["register reset UI shows a clear destructive-action warning", /Reset day[\s\S]*all attendance for this school and date will be reset[\s\S]*Yes, reset this day/],
   ["register applies the saved account default site", /accountDefaultSite[\s\S]*setSchool\(nextDefault\)/],
   ["register renders every available session as a section", /const sessionSections = visibleSessionLabels\.map[\s\S]*className="register-session-section"/],
   ["register provides quick session filter buttons", /className="register-session-filters"[\s\S]*setSession\(item\)/],
@@ -97,7 +103,7 @@ checks.forEach(([label, pattern]) => {
       ? registerParentNotification
     : label.startsWith("authenticated sessions")
       ? appSource
-    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register defaults") || label.startsWith("register allows") || label.startsWith("register applies") || label.startsWith("register renders") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("register highlights") || label.startsWith("register only offers") || label.startsWith("admin UI") || label.startsWith("staff form") || label.startsWith("staff dashboard") || label.startsWith("admin dashboard") || label.startsWith("every staff role")
+    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register defaults") || label.startsWith("register allows") || label.startsWith("register applies") || label.startsWith("register renders") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("register highlights") || label.startsWith("register only offers") || label.startsWith("register reset UI") || label.startsWith("admin UI") || label.startsWith("staff form") || label.startsWith("staff dashboard") || label.startsWith("admin dashboard") || label.startsWith("every staff role")
       ? platformSource
       : label.startsWith("staff UI")
         ? interfaceSource

@@ -263,6 +263,18 @@ export async function updateStaffRegisterEntry({ bookingItemId, status, note = "
   return data;
 }
 
+export async function resetStaffRegisterDay({ registerDate, siteName } = {}) {
+  assertSupabase();
+  if (!registerDate) throw new Error("Choose a register date.");
+  if (!siteName || siteName === "All schools") throw new Error("Choose one school before resetting attendance.");
+  const { data, error } = await supabase.rpc("reset_staff_register_day", {
+    p_register_date: registerDate,
+    p_site_name: siteName,
+  });
+  if (error) throw error;
+  return data || {};
+}
+
 export async function createStaffRegisterReport({
   bookingItemId,
   reportType,
