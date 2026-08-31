@@ -13,7 +13,8 @@ const reportReviewQueue = readFileSync(join(root, "supabase/migrations/0084_regi
 const guidedIncidentWorkflow = readFileSync(join(root, "supabase/migrations/0089_guided_incident_workflow.sql"), "utf8");
 const firstAidProviderRequirement = readFileSync(join(root, "supabase/migrations/0091_require_first_aid_provider.sql"), "utf8");
 const registerPreferences = readFileSync(join(root, "supabase/migrations/0150_register_care_type_and_default_site.sql"), "utf8");
-const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}`;
+const registerFullNames = readFileSync(join(root, "supabase/migrations/0151_register_full_child_names.sql"), "utf8");
+const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}`;
 const service = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
 const interfaceSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
 const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8");
@@ -47,6 +48,7 @@ const checks = [
   ["register defaults to wraparound care without holiday add-ons", /const \[careType, setCareType\] = useState\("wraparound"\)[\s\S]*registerCareType\(row\) === careType/],
   ["register allows holiday care to be deliberately selected", /<option value="holiday">Holiday Camp<\/option>/],
   ["staff can save an account-level default register site", /set_my_default_register_site[\s\S]*default_register_site/],
+  ["registers identify children by full name before preferred name", /coalesce\(nullif\(trim\(child\.full_name\), ''\), nullif\(trim\(item\.child_name\), ''\), nullif\(trim\(child\.preferred_name\), ''\), 'Child'\)/],
   ["register applies the saved account default site", /accountDefaultSite[\s\S]*setSchool\(nextDefault\)/],
   ["register renders every available session as a section", /const sessionSections = visibleSessionLabels\.map[\s\S]*className="register-session-section"/],
   ["register provides quick session filter buttons", /className="register-session-filters"[\s\S]*setSession\(item\)/],

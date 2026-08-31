@@ -95,6 +95,7 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Changed
 
+- Staff registers now show each child’s full first and last name instead of shortening the row to their preferred first name.
 - Converted primary public header and footer navigation to crawlable links while retaining SPA navigation.
 - Rebuilt the sitemap around current indexable pages and removed obsolete booking-provider routes.
 - Updated booking-system metadata to reflect the live family platform.
