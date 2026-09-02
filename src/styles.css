@@ -42997,6 +42997,19 @@ th {
   border-radius: 999px;
 }
 
+.booking-launch-page .lab-checkout-action-status {
+  margin-top: 10px;
+  padding: 11px 14px;
+  border: 1px solid rgba(53, 78, 171, 0.16);
+  border-radius: 14px;
+  background: #f4f7ff;
+  color: #25304f;
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .booking-launch-page .lab-payment-route-guide,
 .booking-launch-page .lab-payment-outcome-panel,
 .booking-launch-page .lab-parent-review-panel,

@@ -55,6 +55,9 @@ if (request) validateRequestShape(request);
   ["technical ledger diagnostics are hidden from launch parents", bookingLabSource.includes("realBookingServiceReady && !isLaunchMode")],
   ["family account exposes authorised collectors", bookingLabSource.includes('"Authorised Collectors"') && bookingLabSource.includes("Manage authorised collectors")],
   ["authorised collectors remain separate from emergency contacts", bookingLabSource.includes("authorisedCollectors: updatedChild.authorisedCollectors || []")],
+  ["parent checkout bypasses silent browser validation", bookingLabSource.includes('onSubmit={submitBooking} noValidate')],
+  ["parent checkout shows an in-place submission status", bookingLabSource.includes('className="lab-checkout-action-status"') && bookingLabSource.includes('aria-live="polite"')],
+  ["parent checkout blocks duplicate booking submissions", bookingLabSource.includes("bookingSubmissionRef.current") && bookingLabSource.includes('bookingSubmitting ? "Reserving sessions…"')],
 ].forEach(([label, ok]) => {
   if (!ok) failures.push(label);
 });

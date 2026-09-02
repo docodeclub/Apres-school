@@ -1641,6 +1641,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [stagingIssues, setStagingIssues] = useState(() => readJson("apres-booking-lab-staging-issues", []));
   const [bookingRehearsalRuns, setBookingRehearsalRuns] = useState(() => readJson("apres-booking-lab-booking-rehearsals", []));
   const [bookingRehearsalRunning, setBookingRehearsalRunning] = useState(false);
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const bookingSubmissionRef = useRef(false);
   const [stagingCredentials, setStagingCredentials] = useState(() => readJson("apres-booking-lab-staging-credentials", {
     projectRef: "",
     functionsUrl: "",
@@ -16080,6 +16082,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
 
   async function submitBooking(event) {
     event.preventDefault();
+    if (bookingSubmissionRef.current) return;
     const submittingBasketItems = isLaunchMode ? draftBookingBasket : [];
     const submittingBasketChildren = isLaunchMode
       ? selectableChildProfiles.filter((child) => new Set(submittingBasketItems.map((item) => item.childId)).has(child.id))
@@ -16240,7 +16243,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             ? "Payment pending"
             : "Payment guarantee pending",
     };
-    setStatus(isLaunchMode ? "Creating booking..." : "Preparing PonchoPay checkout session...");
+    bookingSubmissionRef.current = true;
+    setBookingSubmitting(true);
+    setStatus(isLaunchMode ? "Reserving your sessions and opening secure payment…" : "Preparing PonchoPay checkout session...");
     let realBookingResult = null;
     if (isLaunchMode) {
       try {
@@ -16254,11 +16259,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       }
       if (!realBookingResult?.booking) {
         const bookingError = realBookingResult?.message || "The booking could not be saved to your account.";
+        bookingSubmissionRef.current = false;
+        setBookingSubmitting(false);
         setStatus(`We could not reserve these sessions, so no payment has been opened. ${bookingError}`);
         setConfirmation(null);
         return;
       }
     }
+    bookingSubmissionRef.current = false;
+    setBookingSubmitting(false);
     const realCheckout = realBookingResult?.checkout || null;
     const confirmedWithoutPayment = Boolean(
       realBookingResult?.booking
@@ -24650,7 +24659,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           )}
           {isWaitlist && <div className="lab-capacity-warning">Selected children exceed visible capacity. Reduce the selection before checkout; full sessions cannot be booked yet.</div>}
 
-          <form key={activeFamily.id} className={`lab-checkout ${confirmation ? "confirmed" : ""}`} onSubmit={submitBooking}>
+          <form key={activeFamily.id} className={`lab-checkout ${confirmation ? "confirmed" : ""}`} onSubmit={submitBooking} noValidate>
             <div className="lab-checkout-header">
               <div>
                 <p className="eyebrow">Checkout</p>
@@ -25395,8 +25404,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </div>
               <div className="lab-stage-actions final">
                 <button type="button" onClick={() => moveCheckoutStep(-1)}>Back</button>
-                <button className="button book large" type="submit" disabled={rulesBlocked}>{primaryCheckoutLabel}</button>
+                <button className="button book large" type="submit" disabled={rulesBlocked || bookingSubmitting}>{bookingSubmitting ? "Reserving sessions…" : primaryCheckoutLabel}</button>
               </div>
+              {isLaunchMode && checkoutStep === "Review" && status ? <div className="lab-checkout-action-status" role="status" aria-live="polite">{status}</div> : null}
             </section>
             {!confirmation && <div className="lab-mobile-checkout-bar" aria-label="Mobile checkout action">
               <div>
@@ -25406,7 +25416,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </div>
               <div>
                 {checkoutStepIndex > 0 && <button type="button" onClick={() => setCheckoutStep(previousCheckoutStep)}>Back</button>}
-                <button className="button book" type={checkoutStep === "Review" ? "submit" : "button"} disabled={checkoutStep === "Review" && rulesBlocked} onClick={checkoutStep === "Review" ? undefined : () => moveCheckoutStep(1)}>{primaryCheckoutLabel}</button>
+                <button className="button book" type={checkoutStep === "Review" ? "submit" : "button"} disabled={checkoutStep === "Review" && (rulesBlocked || bookingSubmitting)} onClick={checkoutStep === "Review" ? undefined : () => moveCheckoutStep(1)}>{bookingSubmitting ? "Reserving…" : primaryCheckoutLabel}</button>
               </div>
             </div>}
           </form>
