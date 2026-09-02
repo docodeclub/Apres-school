@@ -9948,7 +9948,7 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
   const [renewalRequests, setRenewalRequests] = useState(() => readJson(scrRenewalRequestsStorageKey, {}));
   const [evidenceFilter, setEvidenceFilter] = useState("Action needed");
   const [profileTargetId, setProfileTargetId] = useState("");
-  const [siteFocusMode, setSiteFocusMode] = useState(false);
+  const [activeScrSection, setActiveScrSection] = useState("overview");
   const [siteBlockersOnly, setSiteBlockersOnly] = useState(false);
   const [assuranceWizardOpen, setAssuranceWizardOpen] = useState(false);
   const [assuranceWizardStep, setAssuranceWizardStep] = useState(0);
@@ -10020,6 +10020,20 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
     if (!data.scrRenewalRequests || !Object.keys(data.scrRenewalRequests).length) return;
     setRenewalRequests((current) => ({ ...current, ...data.scrRenewalRequests }));
   }, [data.scrRenewalRequests]);
+  useEffect(() => {
+    if (activeScrSection === "overview" && !assuranceWizardOpen) return undefined;
+    document.body.classList.add("scr-drawer-open");
+    function handleScrDrawerKeyDown(event) {
+      if (event.key !== "Escape") return;
+      if (assuranceWizardOpen) setAssuranceWizardOpen(false);
+      else setActiveScrSection("overview");
+    }
+    window.addEventListener("keydown", handleScrDrawerKeyDown);
+    return () => {
+      document.body.classList.remove("scr-drawer-open");
+      window.removeEventListener("keydown", handleScrDrawerKeyDown);
+    };
+  }, [activeScrSection, assuranceWizardOpen]);
   useEffect(() => {
     let active = true;
     if (!["Admin", "Superadmin"].includes(access?.role)) return () => { active = false; };
@@ -10389,11 +10403,11 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
   ];
   const selectedStaffEvidenceRows = buildScrSiteEvidenceRows(selectedSchoolStaff, data.hrFiles || [], renewalRequests);
   const siteBlockerRows = selectedStaffEvidenceRows.filter((row) => !row.ready);
-  const siteVisibleEvidenceRows = siteFocusMode && siteBlockersOnly
+  const siteVisibleEvidenceRows = siteBlockersOnly
     ? siteBlockerRows
     : selectedStaffEvidenceRows;
   const siteVisibleStaffIds = new Set(siteVisibleEvidenceRows.map((row) => row.person.id));
-  const siteVisibleStaff = siteFocusMode && siteBlockersOnly
+  const siteVisibleStaff = siteBlockersOnly
     ? selectedSchoolStaff.filter((person) => siteVisibleStaffIds.has(person.id))
     : selectedSchoolStaff;
   const selectedSiteDocumentLinks = readJson(documentLinksStorageKey, {});
@@ -10509,84 +10523,53 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
     }
   }
   function openEvidenceStaffProfile(staffId) {
+    setActiveScrSection("staff");
+    setAssuranceWizardOpen(false);
     setProfileTargetId(staffId);
     setSummaryStaffId(staffId);
-    document.getElementById("scr-staff-register")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  function activateSiteFocusMode() {
-    setSiteFocusMode(true);
-  }
+  const scrMenuItems = [
+    { id: "overview", label: "Overview", description: "Readiness and urgent actions", icon: <LayoutDashboard size={19} />, count: inspectionAttentionCount },
+    { id: "staff", label: "Staff records", description: "SCR profiles and evidence", icon: <Users size={19} />, count: selectedSchoolStaff.length },
+    { id: "evidence", label: "Evidence", description: "Requests, renewals and DBS", icon: <ShieldCheck size={19} />, count: evidenceActionQueue.length },
+    { id: "assurance", label: "Assurance", description: "Letters and inspection exports", icon: <FileText size={19} />, count: selectedAssuranceStaff.length },
+    { id: "assignments", label: "Assignments", description: "Sites, onboarding and cover", icon: <Briefcase size={19} />, count: requirementGapCount },
+    { id: "reference", label: "Reference", description: "Fields and statements", icon: <BookOpen size={19} /> },
+  ];
+  const activeScrMenuItem = scrMenuItems.find((item) => item.id === activeScrSection) || scrMenuItems[0];
 
   return (
     <div className="stack">
-      {["Admin", "Superadmin"].includes(access?.role) && (
-        <section className="scr-wizard-launch">
-          <div>
-            <p className="eyebrow">Guided compliance workflow</p>
-            <h2>Complete the SCR and assurance letter</h2>
-            <p>Work through each required section for one school. Sections can be skipped and returned to, but only genuine underlying evidence marks them complete.</p>
-          </div>
-          <div className="scr-wizard-launch-actions">
-            <span className={`scr-wizard-state ${assuranceWorkflow.letterStatus}`}>{assuranceWorkflow.letterStatus === "submitted" ? "Letter submitted" : `${Object.values(wizardCompletion).filter(Boolean).length}/6 complete`}</span>
-            <button className="button book" type="button" onClick={() => {
-              const nextStep = assuranceWizardSections.findIndex((section) => !wizardCompletion[section.id]);
-              setAssuranceWizardStep(nextStep === -1 ? assuranceWizardSections.length - 1 : nextStep);
-              setAssuranceWizardOpen(true);
-              setAssuranceWizardStatus("");
-            }}><ClipboardCheck size={17} /> {assuranceWorkflow.letterStatus === "submitted" ? "Review workflow" : assuranceWorkflow.updatedAt ? "Continue wizard" : "Start wizard"}</button>
-          </div>
-        </section>
-      )}
       {assuranceWizardOpen && (
-        <SCRAssuranceWizard
-          sections={assuranceWizardSections}
-          step={assuranceWizardStep}
-          onStep={setAssuranceWizardStep}
-          completion={wizardCompletion}
-          workflow={assuranceWorkflow}
-          school={selectedScrSchool}
-          schools={schoolOptions}
-          onSelectSchool={selectInspectionSchool}
-          staffRows={selectedStaffEvidenceRows}
-          evidenceItems={evidenceWorkflowItems}
-          requirementRow={selectedRequirementRow}
-          assuranceStatements={assuranceStatements}
-          requiredComplete={wizardRequiredComplete}
-          onOpenStaff={openEvidenceStaffProfile}
-          onUpdateWorkflow={updateAssuranceWorkflowDraft}
-          onContinue={() => advanceAssuranceWizard(false)}
-          onSkip={() => advanceAssuranceWizard(true)}
-          onGenerate={generateWizardAssuranceLetter}
-          onSubmit={submitWizardAssuranceLetter}
-          onClose={() => setAssuranceWizardOpen(false)}
-          busy={assuranceWizardBusy}
-          status={assuranceWizardStatus}
-        />
-      )}
-      <section className={`scr-site-focus ${siteFocusMode ? "active" : ""}`} aria-label="Site SCR focus mode">
-        <div>
-          <p className="eyebrow">Site focus</p>
-          <h3>{siteFocusMode ? `${selectedScrSchool || "Selected site"} register is focused.` : "Focus the register on one site."}</h3>
-          <p>{siteFocusMode ? "Showing only the site checklist, required cover, assigned staff and export controls." : "Use this for school assurance, Ofsted preparation or a quick compliance review without the full SCR noise."}</p>
-        </div>
-        <div className="scr-site-focus-actions">
-          <button className="button book" type="button" onClick={activateSiteFocusMode}><ShieldCheck size={16} /> {siteFocusMode ? "Refresh Site Focus" : "Open Site Focus"}</button>
-          {siteFocusMode && <button className="button light" type="button" onClick={() => setSiteFocusMode(false)}>Show Full SCR</button>}
-        </div>
-        {siteFocusMode && (
-          <div className="scr-site-focus-filter" aria-label="Site focus missing evidence filter">
-            <span><strong>{siteBlockerRows.length}</strong> staff with blockers</span>
-            <span><strong>{selectedStaffEvidenceRows.length}</strong> staff in site view</span>
-            <button
-              className={siteBlockersOnly ? "scr-filter-toggle active" : "scr-filter-toggle"}
-              type="button"
-              onClick={() => setSiteBlockersOnly((value) => !value)}
-            >
-              {siteBlockersOnly ? "Showing blockers" : "Show blockers only"}
-            </button>
+        <div className="scr-drawer-backdrop scr-wizard-drawer-backdrop" role="presentation">
+          <div className="scr-drawer-panel scr-wizard-drawer-panel" role="dialog" aria-modal="true" aria-label="SCR and assurance wizard">
+            <SCRAssuranceWizard
+              sections={assuranceWizardSections}
+              step={assuranceWizardStep}
+              onStep={setAssuranceWizardStep}
+              completion={wizardCompletion}
+              workflow={assuranceWorkflow}
+              school={selectedScrSchool}
+              schools={schoolOptions}
+              onSelectSchool={selectInspectionSchool}
+              staffRows={selectedStaffEvidenceRows}
+              evidenceItems={evidenceWorkflowItems}
+              requirementRow={selectedRequirementRow}
+              assuranceStatements={assuranceStatements}
+              requiredComplete={wizardRequiredComplete}
+              onOpenStaff={openEvidenceStaffProfile}
+              onUpdateWorkflow={updateAssuranceWorkflowDraft}
+              onContinue={() => advanceAssuranceWizard(false)}
+              onSkip={() => advanceAssuranceWizard(true)}
+              onGenerate={generateWizardAssuranceLetter}
+              onSubmit={submitWizardAssuranceLetter}
+              onClose={() => setAssuranceWizardOpen(false)}
+              busy={assuranceWizardBusy}
+              status={assuranceWizardStatus}
+            />
           </div>
-        )}
-      </section>
+        </div>
+      )}
       <section className="scr-school-switcher" aria-label="SCR site selector">
         <div className="scr-school-switcher-copy">
           <p className="eyebrow">Site register</p>
@@ -10634,12 +10617,35 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
         <div>
           <button className="button light" type="button" onClick={downloadStaffSummary}><Download size={16} /> Staff Summary</button>
           <button className="button light" type="button" onClick={downloadAssuranceLetter}><FileText size={16} /> Assurance Letter</button>
-          {siteFocusMode
-            ? <button className="button dark" type="button" onClick={downloadInspectionEvidencePack}><Download size={16} /> Inspection Pack</button>
-            : <button className="button dark" type="button"><Upload size={16} /> Request Evidence</button>}
+          <button className="button dark" type="button" onClick={downloadInspectionEvidencePack}><Download size={16} /> Inspection Pack</button>
         </div>
       </div>
-      {!siteFocusMode && (
+      <nav className="scr-section-menu" aria-label="Single Central Register sections">
+        {scrMenuItems.map((item) => (
+          <button
+            key={item.id}
+            className={activeScrSection === item.id ? "active" : ""}
+            type="button"
+            aria-current={activeScrSection === item.id ? "page" : undefined}
+            onClick={() => setActiveScrSection(item.id)}
+          >
+            <span className="scr-section-menu-icon">{item.icon}</span>
+            <span><strong>{item.label}</strong><small>{item.description}</small></span>
+            {Number.isFinite(item.count) && <em>{item.count}</em>}
+          </button>
+        ))}
+      </nav>
+      {activeScrSection === "overview" && (
+        <section className="scr-overview-workspace" aria-label="SCR overview">
+          <div className="scr-focus-summary-grid">
+            {scrFocusItems.map(([value, label, text]) => (
+              <article key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+                <p>{text}</p>
+              </article>
+            ))}
+          </div>
         <SCRInspectionLaunchPanel
           site={selectedOfstedSite}
           timing={selectedOfstedTiming}
@@ -10651,155 +10657,75 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
           staffEvidenceGaps={staffEvidenceGaps}
           scheduledInspection={scheduledInspection}
         />
+        </section>
       )}
-      <SCRInspectionChecklist
-        school={selectedScrSchool}
-        rows={siteVisibleEvidenceRows}
-        onOpenStaff={openEvidenceStaffProfile}
-        emptyTitle={siteBlockersOnly ? "No missing evidence in this view." : undefined}
-        emptyText={siteBlockersOnly ? "Clear the filter to show every assigned staff member again." : undefined}
-      />
-      {siteFocusMode && (
-        <SCRRequirementPanel rows={requirementRows} compactTitle="Required cover for this site" />
+      {activeScrSection !== "overview" && (
+        <SCRWorkspaceDrawer item={activeScrMenuItem} school={selectedScrSchool} onClose={() => setActiveScrSection("overview")}>
+          {activeScrSection === "staff" && <>
+            <div className="scr-drawer-filter-row">
+              <span><strong>{siteBlockerRows.length}</strong> staff with blockers</span>
+              <button className={siteBlockersOnly ? "scr-filter-toggle active" : "scr-filter-toggle"} type="button" onClick={() => setSiteBlockersOnly((value) => !value)}>{siteBlockersOnly ? "Showing blockers" : "Show blockers only"}</button>
+            </div>
+            <SCRInspectionChecklist school={selectedScrSchool} rows={siteVisibleEvidenceRows} onOpenStaff={openEvidenceStaffProfile} emptyTitle={siteBlockersOnly ? "No missing evidence in this view." : undefined} emptyText={siteBlockersOnly ? "Clear the filter to show every assigned staff member again." : undefined} />
+            <StaffTable
+              data={{ ...scrData, staff: siteVisibleStaff }}
+              siteScopeLabel={selectedScrSchool}
+              targetStaffId={profileTargetId || targetStaffId}
+              onTargetHandled={() => { setProfileTargetId(""); onTargetHandled?.(); }}
+              evidenceRequests={renewalRequests}
+              onRequestEvidence={requestProfileEvidence}
+              onClearEvidenceRequest={clearProfileEvidenceRequest}
+              onMarkEvidenceChecked={markProfileEvidenceChecked}
+              onOpenHrFiles={onOpenHrFiles}
+              onOpenPay={onOpenPay}
+              access={access}
+              onUpdateStaffPay={onUpdateStaffPay}
+            />
+          </>}
+          {activeScrSection === "evidence" && <>
+            <SCRSiteEvidenceBoard school={selectedScrSchool} rows={selectedStaffEvidenceRows} onOpenStaff={openEvidenceStaffProfile} />
+            <DBSDisclosureAuditPanel audit={dbsDisclosureAudit} onOpenStaff={openEvidenceStaffProfile} onApply={applyDbsDisclosureNumber} />
+            <section className="scr-evidence-console">
+              <div className="scr-assignments-heading"><div><p className="eyebrow">Evidence inbox</p><h3>Track evidence requests and renewals.</h3><p>Requested, submitted, rejected and approved evidence stays together here.</p></div><div className="renewal-mini-metrics"><Metric icon={<Bell />} label="Action needed" value={evidenceWorkflowItems.filter((item) => ["Prompt", "Requested", "Submitted", "Rejected"].includes(item.status)).length} tone="amber" /><Metric icon={<ClipboardCheck />} label="Submitted" value={submittedEvidence.length} tone={submittedEvidence.length ? "amber" : "green"} /></div></div>
+              <EvidenceWorkflowInbox items={evidenceWorkflowItems} filter={evidenceFilter} onFilter={setEvidenceFilter} />
+              <SubmittedEvidenceReviewQueue items={submittedEvidence} onReview={reviewSubmittedEvidence} />
+            </section>
+            <SCRRenewalPanel items={renewalItems} />
+          </>}
+          {activeScrSection === "assurance" && <>
+            {["Admin", "Superadmin"].includes(access?.role) && <section className="scr-wizard-launch"><div><p className="eyebrow">Guided compliance workflow</p><h2>Complete the SCR and assurance letter</h2><p>Work through each required section for this school. Only genuine underlying evidence marks a section complete.</p></div><div className="scr-wizard-launch-actions"><span className={`scr-wizard-state ${assuranceWorkflow.letterStatus}`}>{assuranceWorkflow.letterStatus === "submitted" ? "Letter submitted" : `${Object.values(wizardCompletion).filter(Boolean).length}/6 complete`}</span><button className="button book" type="button" onClick={() => { const nextStep = assuranceWizardSections.findIndex((section) => !wizardCompletion[section.id]); setAssuranceWizardStep(nextStep === -1 ? assuranceWizardSections.length - 1 : nextStep); setAssuranceWizardOpen(true); setAssuranceWizardStatus(""); }}><ClipboardCheck size={17} /> {assuranceWorkflow.letterStatus === "submitted" ? "Review workflow" : assuranceWorkflow.updatedAt ? "Continue wizard" : "Start wizard"}</button></div></section>}
+            <section className="scr-output-grid">
+              <article className="scr-output-card"><div><p className="eyebrow">Staff SCR summary</p><h3>{samplePerson.name || "Staff member"} record pack</h3><p>Download a staff record with recruitment checks, training, DBS, right to work and admin review status.</p></div><label>Staff member<select value={samplePerson.id || ""} onChange={(event) => setSummaryStaffId(event.target.value)}>{selectedSchoolStaff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><div className="scr-record-preview"><div><span>Role</span><strong>{samplePerson.role || "Role pending"}</strong></div><div><span>Assigned sites</span><strong>{staffPrimaryLocation(samplePerson)}</strong></div><div><span>DBS renewal</span><strong>{samplePerson.dbsRenewal || "Not recorded"}</strong></div><div><span>Safeguarding</span><strong>{samplePerson.safeguardingExpiry || "Not recorded"}</strong></div></div></article>
+              <article className="scr-output-card dark"><div><p className="eyebrow">School assurance letter</p><h3>For DSL, SBM and compliance contacts.</h3><p>Generate a school-facing assurance letter for the selected site only.</p></div><label className="scr-school-select">School / site<select value={assuranceSchool} onChange={(event) => selectInspectionSchool(event.target.value)}>{schoolOptions.map((school) => <option key={school}>{school}</option>)}</select></label><label className="scr-evidence-toggle"><input type="checkbox" checked={includeEvidenceAppendix} onChange={(event) => setIncludeEvidenceAppendix(event.target.checked)} /><span>{includeEvidenceAppendix ? "Include evidence appendix" : "Summary only"}</span></label><div className="assurance-mini-table">{selectedAssuranceStaff.length ? selectedAssuranceStaff.map((person) => <div key={person.id}><strong>{person.name}</strong><span>{person.role}</span><Badge value={person.compliance} /></div>) : <p className="empty-inline">No staff are currently assigned to this site.</p>}</div></article>
+            </section>
+          </>}
+          {activeScrSection === "assignments" && <>
+            {!!onboardingProfiles.length && <SCROnboardingQueue staff={onboardingProfiles} onUpdate={updateChecklist} onApprove={approveScrProfile} />}
+            <SCRAssignmentsPanel staff={selectedSchoolStaff} schools={assignmentSchools} onAdd={addAssignment} onRemove={removeAssignment} onUpdate={updateAssignment} />
+            <SCRRequirementPanel rows={requirementRows} />
+          </>}
+          {activeScrSection === "reference" && <>
+            <section className="scr-assurance-statements"><div><p className="eyebrow">Included in assurance output</p><h3>What schools can be shown when records are complete.</h3></div><div className="statement-grid">{assuranceStatements.map((statement) => <article key={statement}><CheckCircle2 size={18} /><p>{statement}</p></article>)}</div></section>
+            <div className="scr-grid">{["Personal Info", "Right to Work", "Identity Checks", "DBS", "Safeguarding", "Allergy Awareness", "First Aid", "Annual Declarations", "Recruitment Checks", "Admin Review"].map((group) => <article key={group}><h3>{group}</h3><p>{scrCopy[group]}</p></article>)}</div>
+          </>}
+        </SCRWorkspaceDrawer>
       )}
-      {!siteFocusMode && <SCRSiteEvidenceBoard
-        school={selectedScrSchool}
-        rows={selectedStaffEvidenceRows}
-        onOpenStaff={openEvidenceStaffProfile}
-      />}
-      {!siteFocusMode && <DBSDisclosureAuditPanel audit={dbsDisclosureAudit} onOpenStaff={openEvidenceStaffProfile} onApply={applyDbsDisclosureNumber} />}
-      <StaffTable
-        data={{ ...scrData, staff: siteVisibleStaff }}
-        siteScopeLabel={selectedScrSchool}
-        targetStaffId={profileTargetId || targetStaffId}
-        onTargetHandled={() => {
-          setProfileTargetId("");
-          onTargetHandled?.();
-        }}
-        evidenceRequests={renewalRequests}
-        onRequestEvidence={requestProfileEvidence}
-        onClearEvidenceRequest={clearProfileEvidenceRequest}
-        onMarkEvidenceChecked={markProfileEvidenceChecked}
-        onOpenHrFiles={onOpenHrFiles}
-        onOpenPay={onOpenPay}
-        access={access}
-        onUpdateStaffPay={onUpdateStaffPay}
-      />
-      {!siteFocusMode && <SCRDetailsPanel title="Exports and assurance" summary={`${selectedAssuranceStaff.length} staff in ${assuranceSchool} · ${selectedAssuranceCompletion}% ready`}>
-        <section className="scr-output-grid">
-          <article className="scr-output-card">
-            <div>
-              <p className="eyebrow">Staff SCR summary</p>
-              <h3>{samplePerson.name || "Staff member"} record pack</h3>
-              <p>Download a staff record with recruitment checks, training, DBS, right to work and admin review status.</p>
-            </div>
-            <label>
-              Staff member
-              <select value={samplePerson.id || ""} onChange={(event) => setSummaryStaffId(event.target.value)}>
-                {selectedSchoolStaff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
-              </select>
-            </label>
-            <div className="scr-record-preview">
-              <div><span>Role</span><strong>{samplePerson.role || "Role pending"}</strong></div>
-              <div><span>Assigned sites</span><strong>{staffPrimaryLocation(samplePerson)}</strong></div>
-              <div><span>DBS renewal</span><strong>{samplePerson.dbsRenewal || "Not recorded"}</strong></div>
-              <div><span>Safeguarding</span><strong>{samplePerson.safeguardingExpiry || "Not recorded"}</strong></div>
-            </div>
-          </article>
-          <article className="scr-output-card dark">
-            <div>
-              <p className="eyebrow">School assurance letter</p>
-              <h3>For DSL, SBM and compliance contacts.</h3>
-              <p>Generate a school-facing assurance letter for the selected site only.</p>
-            </div>
-            <label className="scr-school-select">
-              School / site
-              <select value={assuranceSchool} onChange={(event) => selectInspectionSchool(event.target.value)}>
-                {schoolOptions.map((school) => <option key={school}>{school}</option>)}
-              </select>
-            </label>
-            <label className="scr-evidence-toggle">
-              <input type="checkbox" checked={includeEvidenceAppendix} onChange={(event) => setIncludeEvidenceAppendix(event.target.checked)} />
-              <span>{includeEvidenceAppendix ? "Include evidence appendix" : "Summary only"}</span>
-            </label>
-            <div className="assurance-mini-table">
-              {selectedAssuranceStaff.length ? selectedAssuranceStaff.map((person) => (
-                <div key={person.id}>
-                  <strong>{person.name}</strong>
-                  <span>{person.role}</span>
-                  <Badge value={person.compliance} />
-                </div>
-              )) : <p className="empty-inline">No staff are currently assigned to this site.</p>}
-            </div>
-          </article>
-        </section>
-      </SCRDetailsPanel>}
-      {!siteFocusMode && <SCRDetailsPanel title="Evidence inbox and renewals" summary={`${evidenceActionQueue.length} priority actions · ${renewalItems.length} renewals`}>
-        <section className="scr-evidence-console">
-          <div className="scr-assignments-heading">
-            <div>
-              <p className="eyebrow">Evidence inbox</p>
-              <h3>Track evidence requests when you need the workflow.</h3>
-              <p>Requested, submitted, rejected and approved evidence sits here with audit history.</p>
-            </div>
-            <div className="renewal-mini-metrics">
-              <Metric icon={<Bell />} label="Action needed" value={evidenceWorkflowItems.filter((item) => ["Prompt", "Requested", "Submitted", "Rejected"].includes(item.status)).length} tone="amber" />
-              <Metric icon={<ClipboardCheck />} label="Submitted" value={submittedEvidence.length} tone={submittedEvidence.length ? "amber" : "green"} />
-            </div>
-          </div>
-          <EvidenceWorkflowInbox items={evidenceWorkflowItems} filter={evidenceFilter} onFilter={setEvidenceFilter} />
-          <SubmittedEvidenceReviewQueue items={submittedEvidence} onReview={reviewSubmittedEvidence} />
-        </section>
-        <SCRRenewalPanel items={renewalItems} />
-      </SCRDetailsPanel>}
-      {!siteFocusMode && <SCRDetailsPanel title="Assignments and requirements" summary={`${requirementGapCount} site cover gaps · ${onboardingProfiles.length} onboarding`}>
-        {!!onboardingProfiles.length && <SCROnboardingQueue staff={onboardingProfiles} onUpdate={updateChecklist} onApprove={approveScrProfile} />}
-        <SCRAssignmentsPanel
-          staff={selectedSchoolStaff}
-          schools={assignmentSchools}
-          onAdd={addAssignment}
-          onRemove={removeAssignment}
-          onUpdate={updateAssignment}
-        />
-        <SCRRequirementPanel rows={requirementRows} />
-      </SCRDetailsPanel>}
-      {!siteFocusMode && <SCRDetailsPanel title="Reference" summary="SCR fields and assurance statements">
-        <section className="scr-assurance-statements">
-          <div>
-            <p className="eyebrow">Included in assurance output</p>
-            <h3>What schools can be shown when records are complete.</h3>
-          </div>
-          <div className="statement-grid">
-            {assuranceStatements.map((statement) => (
-              <article key={statement}><CheckCircle2 size={18} /><p>{statement}</p></article>
-            ))}
-          </div>
-        </section>
-        <div className="scr-grid">
-          {["Personal Info", "Right to Work", "Identity Checks", "DBS", "Safeguarding", "Allergy Awareness", "First Aid", "Annual Declarations", "Recruitment Checks", "Admin Review"].map((group) => (
-            <article key={group}>
-              <h3>{group}</h3>
-              <p>{scrCopy[group]}</p>
-            </article>
-          ))}
-        </div>
-      </SCRDetailsPanel>}
     </div>
   );
 }
 
-function SCRDetailsPanel({ title, summary, children }) {
+function SCRWorkspaceDrawer({ item, school, onClose, children }) {
   return (
-    <details className="scr-details-panel">
-      <summary>
-        <div>
-          <strong>{title}</strong>
-          <span>{summary}</span>
-        </div>
-        <em>Open</em>
-      </summary>
-      <div className="scr-details-panel-body">{children}</div>
-    </details>
+    <div className="scr-drawer-backdrop" role="presentation">
+      <aside className="scr-drawer-panel" role="dialog" aria-modal="true" aria-label={item.label}>
+        <header className="scr-drawer-head">
+          <div className="scr-drawer-title-icon">{item.icon}</div>
+          <div><p className="eyebrow">{school}</p><h2>{item.label}</h2><p>{item.description}</p></div>
+          <button className="button light scr-drawer-close" type="button" onClick={onClose}><X size={17} /> Close</button>
+        </header>
+        <div className="scr-drawer-body">{children}</div>
+      </aside>
+    </div>
   );
 }
 
@@ -17163,7 +17089,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   const [statusFilter, setStatusFilter] = useState("Action needed");
   const [siteFilter, setSiteFilter] = useState("All");
   const [priorityView, setPriorityView] = useState(false);
-  const [selectedId, setSelectedId] = useState(data.staff[0]?.id || "");
+  const [selectedId, setSelectedId] = useState("");
   const isSiteScoped = Boolean(siteScopeLabel);
   const hierarchy = readHierarchyState();
   const staffUsers = data.staff.map((person, index) => ({
@@ -17274,7 +17200,9 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
   const activeStaff = data.staff.filter((person) => !isFormerStaffRecord(person));
   const actionCount = activeStaff.filter((person) => checkStatus(person) !== "Compliant").length;
   const compliantCount = activeStaff.length - actionCount;
-  const selectedPerson = rows.find((person) => person.id === selectedId) || rows[0] || data.staff.find((person) => person.id === selectedId) || data.staff[0];
+  const selectedPerson = selectedId
+    ? rows.find((person) => person.id === selectedId) || data.staff.find((person) => person.id === selectedId) || null
+    : null;
   const defaultStatusFilter = "Action needed";
   const registerViewMode = statusFilter === "All" && !priorityView ? "all" : "blockers";
   const filtersActive = query || statusFilter !== defaultStatusFilter || (!siteScopeLabel && siteFilter !== "All") || priorityView;
@@ -17287,6 +17215,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
     setStatusFilter("Action needed");
     setSiteFilter("All");
     setPriorityView(false);
+    setSelectedId("");
   }, [siteScopeLabel]);
   return (
     <section className="staff-register" id="scr-staff-register">
@@ -17350,22 +17279,33 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
         </div>
       </div>
       {selectedPerson && (
-        <StaffProfilePanel
-          person={selectedPerson}
-          data={data}
-          managerName={managerName(selectedPerson)}
-          checkStatus={checkStatus(selectedPerson)}
-          nextAction={actionText(selectedPerson)}
-          actionItems={actionItems(selectedPerson)}
-          evidenceRequests={buildStaffProfileEvidenceRequests(selectedPerson, evidenceRequests)}
-          onRequestEvidence={onRequestEvidence}
-          onClearEvidenceRequest={onClearEvidenceRequest}
-          onMarkEvidenceChecked={onMarkEvidenceChecked}
-          access={access}
-          onUpdateStaffPay={onUpdateStaffPay}
-          onOpenHrFiles={onOpenHrFiles}
-          onOpenPay={onOpenPay}
-        />
+        <div className="scr-drawer-backdrop scr-record-drawer-backdrop" role="presentation">
+          <aside className="scr-drawer-panel scr-record-drawer" role="dialog" aria-modal="true" aria-label={`${selectedPerson.name} SCR record`}>
+            <header className="scr-drawer-head">
+              <div className="scr-drawer-title-icon"><Users size={19} /></div>
+              <div><p className="eyebrow">Staff SCR record</p><h2>{selectedPerson.name}</h2><p>{selectedPerson.role} · {staffPrimaryLocation(selectedPerson)}</p></div>
+              <button className="button light scr-drawer-close" type="button" onClick={() => setSelectedId("")}><X size={17} /> Close</button>
+            </header>
+            <div className="scr-drawer-body">
+              <StaffProfilePanel
+                person={selectedPerson}
+                data={data}
+                managerName={managerName(selectedPerson)}
+                checkStatus={checkStatus(selectedPerson)}
+                nextAction={actionText(selectedPerson)}
+                actionItems={actionItems(selectedPerson)}
+                evidenceRequests={buildStaffProfileEvidenceRequests(selectedPerson, evidenceRequests)}
+                onRequestEvidence={onRequestEvidence}
+                onClearEvidenceRequest={onClearEvidenceRequest}
+                onMarkEvidenceChecked={onMarkEvidenceChecked}
+                access={access}
+                onUpdateStaffPay={onUpdateStaffPay}
+                onOpenHrFiles={onOpenHrFiles}
+                onOpenPay={onOpenPay}
+              />
+            </div>
+          </aside>
+        </div>
       )}
       <TableWrap>
         <table className={isSiteScoped ? "scr-staff-table scoped" : "scr-staff-table"}>
@@ -17393,7 +17333,7 @@ function StaffTable({ compact, data = mockPlatformData, targetStaffId, onTargetH
                 <td><span className={`scr-priority-pill ${priority.tier.toLowerCase()}`}>{priority.tier}</span><br /><small>{priority.reason}</small></td>
                 <td><strong>{actionText(person)}</strong></td>
                 {!compact && !isSiteScoped && <><td>{person.dbsRenewal}</td><td>{person.safeguardingExpiry}</td><td>{person.firstAidExpiry}</td></>}
-                <td><button className="button subtle scr-row-action" type="button" onClick={(event) => { event.stopPropagation(); setSelectedId(person.id); }}>{isFormerStaffRecord(person) ? "Retained record" : selectedPerson?.id === person.id ? "Evidence open" : "View evidence"}</button></td>
+                <td><button className="button subtle scr-row-action" type="button" onClick={(event) => { event.stopPropagation(); setSelectedId(person.id); }}>{isFormerStaffRecord(person) ? "Open retained record" : "Open record"}</button></td>
               </tr>
               );
             })}

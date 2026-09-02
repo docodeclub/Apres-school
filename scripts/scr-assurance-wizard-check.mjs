@@ -7,7 +7,7 @@ const migration = read("supabase/migrations/0122_scr_assurance_wizard.sql");
 const client = read("src/supabaseClient.js");
 const platform = read("src/PlatformModule.jsx");
 const scrStart = platform.indexOf("function SCR(");
-const scrEnd = platform.indexOf("function SCRDetailsPanel", scrStart);
+const scrEnd = platform.indexOf("function SCRWorkspaceDrawer", scrStart);
 const scrSource = platform.slice(scrStart, scrEnd);
 
 const checks = [
@@ -22,6 +22,9 @@ const checks = [
   ["skipped sections stay incomplete", platform.includes('statusValue = wizardCompletion[section.id] ? "complete" : skip ? "skipped" : "incomplete"')],
   ["letter waits for real completion", platform.includes("wizardRequiredComplete") && platform.includes("Complete the required sections before generating")],
   ["existing assurance PDF is reused", platform.includes("exportSchoolAssuranceLetter(selectedSchoolStaff, selectedScrSchool")],
+  ["SCR has a compact section menu", scrSource.includes('className="scr-section-menu"') && scrSource.includes('id: "staff"') && scrSource.includes('id: "evidence"')],
+  ["detailed SCR work opens in a drawer", platform.includes("function SCRWorkspaceDrawer") && platform.includes('role="dialog"') && platform.includes('className="scr-drawer-body"')],
+  ["individual staff records open in a nested drawer", platform.includes("scr-record-drawer-backdrop") && platform.includes("Open record")],
 ];
 
 let failures = 0;
