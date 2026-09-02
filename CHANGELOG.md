@@ -53,6 +53,8 @@ Notable changes to the Après School website and operations platform are recorde
 
 ### Added
 
+- A Ripley Court–only free-care pricing group, with a school-scoped complimentary-care rule.
+- Restored Admin and Superadmin save permissions for pricing groups and their rules while retaining database role checks.
 - Faster indexed register and finance-ledger queries, timeout-aware retries and protection against stale register requests replacing newer results.
 - Clear unavailable states for finance totals when live data cannot load, preventing a database timeout from being presented as £0 income.
 - Consistent register aliases for Ripley Court so saved site defaults match booking records regardless of their historic venue label.
