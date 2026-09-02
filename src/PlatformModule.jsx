@@ -1695,6 +1695,7 @@ function Registers({ access }) {
   const [childProfileOpen, setChildProfileOpen] = useState(false);
   const [childProfileSection, setChildProfileSection] = useState("Overview");
   const [childPhotoStatus, setChildPhotoStatus] = useState("");
+  const registerRequestRef = useRef(0);
   const canManageChildPhoto = ["Manager", "Admin", "Superadmin"].includes(access?.role);
 
   useEffect(() => {
@@ -1714,15 +1715,22 @@ function Registers({ access }) {
   };
 
   async function refreshRegister() {
+    const requestId = registerRequestRef.current + 1;
+    registerRequestRef.current = requestId;
     setLoading(true);
     setMessage({ tone: "info", text: "Loading the timetable and confirmed bookings…" });
     try {
       const timetableStart = new Date(`${registerDate}T00:00:00`);
       timetableStart.setMonth(Math.max(0, timetableStart.getMonth() - 1));
       const [registerResult, timetableResult] = await Promise.allSettled([
-        fetchStaffRegister({ registerDate }),
+        fetchStaffRegister({
+          registerDate,
+          siteName: school === "All schools" ? null : school,
+          programmeName: programme === "All activities" ? null : programme,
+        }),
         fetchStaffRegisterTimetable({ from: timetableStart }),
       ]);
+      if (requestId !== registerRequestRef.current) return;
       if (registerResult.status === "rejected") throw registerResult.reason;
       const nextRows = registerResult.value;
       const nextTimetable = timetableResult.status === "fulfilled" ? timetableResult.value : [];
@@ -1737,11 +1745,12 @@ function Registers({ access }) {
           : "No confirmed children are booked for this date.",
       });
     } catch (error) {
+      if (requestId !== registerRequestRef.current) return;
       setRows([]);
       setTimetable([]);
       setMessage({ tone: "bad", text: error?.message || "The live register could not be loaded." });
     } finally {
-      setLoading(false);
+      if (requestId === registerRequestRef.current) setLoading(false);
     }
   }
 
@@ -1752,7 +1761,7 @@ function Registers({ access }) {
       return;
     }
     refreshRegister();
-  }, [registerDate]);
+  }, [registerDate, school, programme]);
 
   const registerOptions = [...timetable, ...rows];
   const careTypeOptions = registerOptions.filter((row) => careType === "all" || registerCareType(row) === careType);
@@ -4307,14 +4316,16 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
       setDashboardLedgerStatus("Loading live booking ledger...");
       setDashboardLedgerError("");
       try {
-        const nextLedger = await fetchAdminBookingLedger({ limit: 250 });
+        const nextLedger = await fetchAdminBookingLedger({ limit: 120 });
         if (cancelled) return;
         setDashboardLedger({ ...nextLedger, liveRequested: true });
-        setDashboardLedgerStatus(nextLedger.bookings?.length ? "Live booking ledger loaded." : "Live ledger connected. No bookings found yet.");
+        setDashboardLedgerStatus(nextLedger.reducedAfterTimeout
+          ? "Live booking ledger loaded in reduced mode after a slow database response."
+          : nextLedger.bookings?.length ? "Live booking ledger loaded." : "Live ledger connected. No bookings found yet.");
       } catch (error) {
         if (cancelled) return;
-        setDashboardLedger({ invoices: [], bookings: [], fetchedAt: new Date().toISOString(), liveRequested: true });
-        setDashboardLedgerStatus("Live booking data unavailable. No booking rows are being shown.");
+        setDashboardLedger((current) => ({ ...current, liveRequested: true }));
+        setDashboardLedgerStatus("Live booking data is temporarily unavailable. Existing totals have not been replaced with zero.");
         setDashboardLedgerError(error?.message || "Could not load live booking ledger.");
       }
     }
@@ -4442,7 +4453,7 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
         </div>
         <aside className="admin-engine-finance-card">
           <span>Current booking ledger</span>
-          <strong>{formatCurrency(dashboardMetrics.bookedValue)}</strong>
+          <strong>{dashboardLedgerError && !dashboardLedger.bookings?.length ? "Unavailable" : formatCurrency(dashboardMetrics.bookedValue)}</strong>
           <p>Booked value</p>
           <dl>
             <div><dt>Collected / guaranteed</dt><dd>{formatCurrency(dashboardMetrics.collectedValue)}</dd></div>
@@ -4457,8 +4468,8 @@ function AdminDashboard({ data, access, onOpenTab, onOpenBookingFocus, onOpenSta
       <section className="admin-finance-strip">
         <button type="button" onClick={() => onOpenBookingFocus ? onOpenBookingFocus("week") : onOpenTab("Bookings")}>
           <span>Booked this week</span>
-          <strong>{formatCurrency(dashboardMetrics.weekBookedValue)}</strong>
-          <small>{dashboardMetrics.weekBookings} booking{dashboardMetrics.weekBookings === 1 ? "" : "s"} in the next 7 days</small>
+          <strong>{dashboardLedgerError && !dashboardLedger.bookings?.length ? "Unavailable" : formatCurrency(dashboardMetrics.weekBookedValue)}</strong>
+          <small>{dashboardLedgerError && !dashboardLedger.bookings?.length ? "Live totals could not be loaded—please refresh." : `${dashboardMetrics.weekBookings} booking${dashboardMetrics.weekBookings === 1 ? "" : "s"} in the next 7 days`}</small>
         </button>
         <button type="button" className="blue" onClick={() => onOpenBookingFocus ? onOpenBookingFocus("collected") : onOpenTab("Bookings")}>
           <span>Collected / guaranteed</span>

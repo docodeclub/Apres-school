@@ -31,12 +31,13 @@ export async function fetchCurrentProfile() {
 export async function fetchStaffRegister({ registerDate, siteName = null, programmeName = null } = {}) {
   assertSupabase();
   if (!registerDate) throw new Error("Choose a register date.");
+  const registerParams = {
+    p_register_date: registerDate,
+    p_site_name: siteName || null,
+    p_programme_name: programmeName || null,
+  };
   const [registerResult, rewardResult, reportResult] = await Promise.allSettled([
-    supabase.rpc("staff_register_for_day", {
-      p_register_date: registerDate,
-      p_site_name: siteName || null,
-      p_programme_name: programmeName || null,
-    }),
+    supabase.rpc("staff_register_for_day", registerParams),
     supabase.rpc("staff_register_rewards_for_day", {
       p_register_date: registerDate,
     }),
@@ -45,7 +46,10 @@ export async function fetchStaffRegister({ registerDate, siteName = null, progra
     }),
   ]);
   if (registerResult.status === "rejected") throw registerResult.reason;
-  const { data, error } = registerResult.value;
+  let { data, error } = registerResult.value;
+  if (isStatementTimeout(error)) {
+    ({ data, error } = await supabase.rpc("staff_register_for_day", registerParams));
+  }
   if (error) throw error;
   const rewardRows = rewardResult.status === "fulfilled" && !rewardResult.value.error
     ? rewardResult.value.data || []
@@ -1259,9 +1263,17 @@ export async function fetchAdminBookingLedger({ limit = 120 } = {}) {
   assertSupabase();
   await currentUser();
 
-  const { data, error } = await supabase.rpc("admin_booking_ledger", {
-    p_limit: limit,
+  const requestedLimit = Math.max(1, Number(limit) || 120);
+  let loadedLimit = requestedLimit;
+  let { data, error } = await supabase.rpc("admin_booking_ledger", {
+    p_limit: requestedLimit,
   });
+  if (isStatementTimeout(error)) {
+    loadedLimit = Math.max(50, Math.min(120, Math.floor(requestedLimit * 0.6)));
+    ({ data, error } = await supabase.rpc("admin_booking_ledger", {
+      p_limit: loadedLimit,
+    }));
+  }
   if (error) throw error;
 
   const mappedCreditEntries = (Array.isArray(data?.creditEntries) ? data.creditEntries : [])
@@ -1275,7 +1287,19 @@ export async function fetchAdminBookingLedger({ limit = 120 } = {}) {
       .filter((entry) => entry.status === "posted")
       .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
     fetchedAt: data?.fetchedAt || new Date().toISOString(),
+    resultLimit: loadedLimit,
+    reducedAfterTimeout: loadedLimit < requestedLimit,
   };
+}
+
+function isStatementTimeout(error) {
+  if (!error) return false;
+  return /statement timeout|canceling statement|57014/i.test([
+    error.code,
+    error.message,
+    error.details,
+    error.hint,
+  ].filter(Boolean).join(" "));
 }
 
 export async function upsertParentAccount(parent) {
