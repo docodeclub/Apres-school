@@ -1207,6 +1207,7 @@ export async function fetchPlatformData({ userId, role }) {
       start_date,
       contract_type,
       primary_site,
+      site_assignments,
       default_register_site,
       pay_rate,
       annual_salary,
@@ -1657,6 +1658,7 @@ function mapStaffRecords(records) {
       role: record.job_role || profile?.role || "Staff",
       location: record.primary_site || record.employment_type || "Assigned sites",
       primarySite: record.primary_site || "",
+      siteAssignments: Array.isArray(record.site_assignments) ? record.site_assignments : [],
       defaultRegisterSite: record.default_register_site || "",
       compliance: scr?.admin_review?.status || "Review needed",
       dbsNumber: scr?.dbs?.number || scr?.dbs?.dbsNumber || scr?.dbs?.dbs_number || scr?.dbs?.certificateNo || scr?.dbs?.certificate_no || "",
@@ -2923,6 +2925,31 @@ export async function updateStaffSiteDetails(staffRecordId, location) {
     staffRecordId: data.id,
     location: data.primary_site || "",
   };
+}
+
+export async function updateStaffSiteAssignments(staffRecordId, assignments = []) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!staffRecordId) throw new Error("Choose a staff member.");
+
+  const siteAssignments = (Array.isArray(assignments) ? assignments : [])
+    .map((assignment) => ({
+      school: String(assignment?.school || "").trim(),
+      role: String(assignment?.role || "Staff").trim() || "Staff",
+      startDate: String(assignment?.startDate || "").trim(),
+      endDate: String(assignment?.endDate || "").trim(),
+      status: String(assignment?.status || "Active").trim() || "Active",
+    }))
+    .filter((assignment) => assignment.school);
+
+  const { data, error } = await supabase
+    .from("staff_records")
+    .update({ site_assignments: siteAssignments })
+    .eq("id", staffRecordId)
+    .select("id, site_assignments")
+    .single();
+
+  if (error) throw error;
+  return Array.isArray(data.site_assignments) ? data.site_assignments : [];
 }
 
 export async function saveMyDefaultRegisterSite(siteName = "") {

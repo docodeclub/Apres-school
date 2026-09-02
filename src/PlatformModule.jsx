@@ -10072,29 +10072,29 @@ function SCR({ data, access, targetStaffId, inspectionSchoolTarget = "", onInspe
   }
   function updateAssignment(staffId, index, patch) {
     if (isFormerStaffRecord(scrData.staff.find((person) => person.id === staffId))) return;
-    setAssignmentState((current) => {
-      const assignments = [...(current[staffId] || [])];
-      assignments[index] = { ...assignments[index], ...patch };
-      return { ...current, [staffId]: assignments };
-    });
+    const assignments = [...(assignmentState[staffId] || [])];
+    assignments[index] = { ...assignments[index], ...patch };
+    setAssignmentState((current) => ({ ...current, [staffId]: assignments }));
+    persistSiteAssignments(staffId, assignments);
   }
   function addAssignment(staffId) {
     if (isFormerStaffRecord(scrData.staff.find((person) => person.id === staffId))) return;
-    setAssignmentState((current) => {
-      const assignments = current[staffId] || [];
-      const staffPerson = scrData.staff.find((person) => person.id === staffId);
-      return {
-        ...current,
-        [staffId]: [...assignments, { school: assignmentSchools[0] || "New site", role: staffPerson?.role || "Staff", startDate: "", endDate: "", status: "Active" }],
-      };
-    });
+    const assignments = assignmentState[staffId] || [];
+    const staffPerson = scrData.staff.find((person) => person.id === staffId);
+    const nextAssignments = [...assignments, { school: assignmentSchools[0] || "New site", role: staffPerson?.role || "Staff", startDate: "", endDate: "", status: "Active" }];
+    setAssignmentState((current) => ({ ...current, [staffId]: nextAssignments }));
+    persistSiteAssignments(staffId, nextAssignments);
   }
   function removeAssignment(staffId, index) {
     if (isFormerStaffRecord(scrData.staff.find((person) => person.id === staffId))) return;
-    setAssignmentState((current) => ({
-      ...current,
-      [staffId]: (current[staffId] || []).filter((_, itemIndex) => itemIndex !== index),
-    }));
+    const nextAssignments = (assignmentState[staffId] || []).filter((_, itemIndex) => itemIndex !== index);
+    setAssignmentState((current) => ({ ...current, [staffId]: nextAssignments }));
+    persistSiteAssignments(staffId, nextAssignments);
+  }
+  function persistSiteAssignments(staffId, assignments) {
+    loadSupabaseModule()
+      .then(({ updateStaffSiteAssignments }) => updateStaffSiteAssignments(staffId, assignments))
+      .catch((error) => setAssuranceWizardStatus(error.message || "School assignments could not be saved."));
   }
   function updateChecklist(staffId, patch) {
     const staffPerson = scrData.staff.find((person) => person.id === staffId);
