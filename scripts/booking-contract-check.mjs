@@ -63,6 +63,8 @@ if (request) validateRequestShape(request);
   ["parent checkout blocks duplicate booking submissions", bookingLabSource.includes("bookingSubmissionRef.current") && bookingLabSource.includes('bookingSubmitting ? "Reserving sessions…"')],
   ["authoritative parent quote applies sibling pricing", bookingSystemSource.includes('quote_current_parent_pricing_with_sibling')],
   ["booking creation persists sibling pricing", edgeFunction.includes('apply_booking_sibling_discount')],
+  ["booking creation prefers a parent's owned account over linked-holder invitations", edgeFunction.indexOf('.from("parent_accounts")', edgeFunction.indexOf("async function resolveBookingActor")) < edgeFunction.indexOf('.from("parent_account_holders")', edgeFunction.indexOf("async function resolveBookingActor"))],
+  ["booking creation surfaces database error messages", edgeFunction.includes('readableErrorMessage(error, "Unable to create booking")') && edgeFunction.includes("stringValue(error.message)")],
   ["sibling pricing requires at least two distinct children", siblingDiscountSql.includes("count(distinct") && siblingDiscountSql.includes("v_child_count < 2")],
   ["sibling pricing is visible in the basket", bookingLabSource.includes('10% sibling discount applied') && bookingLabSource.includes('basketPricingQuote.siblingDiscountTotal')],
   ["register identifies staff families server-side", staffFamilyRegisterSql.includes("parent_is_staff boolean") && staffFamilyRegisterSql.includes("parent_pricing_assignments") && staffFamilyRegisterSql.includes("staff_records")],

@@ -381,7 +381,7 @@ serve(async (request) => {
     });
   } catch (error) {
     console.error(error);
-    return json({ error: error instanceof Error ? error.message : "Unable to create booking" }, 500);
+    return json({ error: readableErrorMessage(error, "Unable to create booking") }, 500);
   }
 });
 
@@ -422,6 +422,27 @@ async function getActor(authHeader: string): Promise<Actor | null> {
 
 async function resolveBookingActor(actor: Actor): Promise<BookingActor> {
   try {
+    // A parent can also be invited as a holder on another family account. Always
+    // prefer the account they own so an unrelated holder row cannot change which
+    // account and child records are validated during checkout.
+    const { data: ownedAccount, error: ownedAccountError } = await supabase
+      .from("parent_accounts")
+      .select("profile_id, email, full_name")
+      .or(`profile_id.eq.${actor.id},email.eq.${actor.email}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (ownedAccountError) throw ownedAccountError;
+    if (ownedAccount?.email) {
+      return {
+        id: actor.id,
+        email: actor.email,
+        full_name: stringValue(ownedAccount.full_name) || actor.full_name,
+        role: actor.role,
+        accountHolderRole: "primary",
+      };
+    }
+
     const { data: holder, error } = await supabase
       .from("parent_account_holders")
       .select(`
@@ -466,6 +487,17 @@ async function resolveBookingActor(actor: Actor): Promise<BookingActor> {
   }
 
   return { ...actor, accountHolderRole: "primary" };
+}
+
+function readableErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && stringValue(error.message)) return stringValue(error.message);
+  if (isObject(error)) {
+    return stringValue(error.message)
+      || stringValue(error.error_description)
+      || stringValue(error.details)
+      || fallback;
+  }
+  return fallback;
 }
 
 async function findChildProfileBookingBlock(bookingActor: BookingActor, items: BookingItemRequest[]) {
