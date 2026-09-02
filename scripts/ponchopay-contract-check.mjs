@@ -86,6 +86,8 @@ const checks = [
   [files.ponchoLocations, "no pending PonchoPay locations", /PONCHOPAY_LOCATION_PENDING = \[\]/],
   [files.locationCheck, "location check reports configured and pending", /configured[\s\S]*pending[\s\S]*unexpectedMissing/],
   [files.processor, "booking state update", /updateBookingFromInvoice/],
+  [files.processor, "reported-complete callbacks cannot downgrade secured payments", /case "payment_reported_complete":[\s\S]*isSecuredPaymentStatus\(base\.payment_status\)[\s\S]*existing secured state retained/],
+  [files.processor, "credited cancellations are terminal booking states", /normaliseTerminalParentBookings[\s\S]*"cancelled_credit"[\s\S]*normaliseAllTerminalBookings[\s\S]*"cancelled_credit"/],
   [files.processor, "confirmed booking items after payment", /from\("booking_items"\)[\s\S]*status: "confirmed"/],
   [files.processor, "guarantee does not confirm booking", /payment_guaranteed[\s\S]*return "payment_pending"/],
   [files.processor, "childcare reconciliation confirms booking", /payment_reconciled[\s\S]*paid_by_fallback_card[\s\S]*return "confirmed"/],

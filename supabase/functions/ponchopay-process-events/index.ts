@@ -314,7 +314,7 @@ async function reconcilePaidCheckoutBooking(providerReference: string) {
 async function normaliseTerminalParentBookings(parentEmail: string) {
   const email = parentEmail.trim().toLowerCase();
   if (!email || !email.includes("@")) throw new Error("A valid parent email is required");
-  const terminalInvoiceStatuses = ["cancelled", "canceled", "refunded", "reversed", "void", "voided"];
+  const terminalInvoiceStatuses = ["cancelled", "canceled", "cancelled_credit", "refunded", "reversed", "void", "voided"];
   const { data: invoices, error: invoiceError } = await supabase
     .from("booking_invoices")
     .select("id, booking_id, payment_status")
@@ -373,7 +373,7 @@ async function normaliseTerminalParentBookings(parentEmail: string) {
 }
 
 async function normaliseAllTerminalBookings(dryRun = true) {
-  const terminalInvoiceStatuses = ["cancelled", "canceled", "refunded", "reversed", "void", "voided"];
+  const terminalInvoiceStatuses = ["cancelled", "canceled", "cancelled_credit", "refunded", "reversed", "void", "voided"];
   const invoices: Array<Record<string, unknown>> = [];
   const pageSize = 500;
   for (let from = 0; ; from += pageSize) {
@@ -885,6 +885,12 @@ function buildInvoiceState(event: WebhookEvent, currentInvoice: Record<string, u
         processingOutcome: "Payment captured by PonchoPay; booking confirmed while completion finalises",
       };
     case "payment_reported_complete":
+      if (isSecuredPaymentStatus(base.payment_status)) {
+        return {
+          ...base,
+          processingOutcome: `Payment reported complete received after ${base.payment_status}; existing secured state retained`,
+        };
+      }
       return {
         ...base,
         payment_status: "reported_complete",
@@ -1307,6 +1313,18 @@ function bookingStatusForInvoice(paymentStatus: string) {
     default:
       return "payment_pending";
   }
+}
+
+function isSecuredPaymentStatus(paymentStatus: unknown) {
+  return [
+    "paid",
+    "bank_confirmed",
+    "reconciled",
+    "paid_by_fallback_card",
+    "payment_guaranteed",
+    "payment_plan_active",
+    "captured",
+  ].includes(stringValue(paymentStatus).toLowerCase());
 }
 
 function shouldIssueReceipt(eventType: string) {
