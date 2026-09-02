@@ -13,6 +13,8 @@ const amendmentSql = readFileSync(join(root, "supabase/migrations/0033_amend_par
 const individualCancellationSql = readFileSync(join(root, "supabase/migrations/0142_individual_session_cancellation_window.sql"), "utf8");
 const amendmentAddSql = readFileSync(join(root, "supabase/migrations/0034_amend_parent_booking_add_items.sql"), "utf8");
 const edgeFunction = readFileSync(join(root, "supabase/functions/create-parent-booking/index.ts"), "utf8");
+const bookingSystemSource = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
+const siblingDiscountSql = readFileSync(join(root, "supabase/migrations/0157_server_side_sibling_discount.sql"), "utf8");
 const updateFunction = readFileSync(join(root, "supabase/functions/update-parent-booking/index.ts"), "utf8");
 const bookingLabSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
 const termsUrl = "https://docs.google.com/document/d/1ursh4YbP1e8cLG7fiUy0z3JezZWBUBG2_-7eG8wA0u0/edit?usp=sharing";
@@ -58,6 +60,10 @@ if (request) validateRequestShape(request);
   ["parent checkout bypasses silent browser validation", bookingLabSource.includes('onSubmit={submitBooking} noValidate')],
   ["parent checkout shows an in-place submission status", bookingLabSource.includes('className="lab-checkout-action-status"') && bookingLabSource.includes('aria-live="polite"')],
   ["parent checkout blocks duplicate booking submissions", bookingLabSource.includes("bookingSubmissionRef.current") && bookingLabSource.includes('bookingSubmitting ? "Reserving sessions…"')],
+  ["authoritative parent quote applies sibling pricing", bookingSystemSource.includes('quote_current_parent_pricing_with_sibling')],
+  ["booking creation persists sibling pricing", edgeFunction.includes('apply_booking_sibling_discount')],
+  ["sibling pricing requires at least two distinct children", siblingDiscountSql.includes("count(distinct") && siblingDiscountSql.includes("v_child_count < 2")],
+  ["sibling pricing is visible in the basket", bookingLabSource.includes('10% sibling discount applied') && bookingLabSource.includes('basketPricingQuote.siblingDiscountTotal')],
 ].forEach(([label, ok]) => {
   if (!ok) failures.push(label);
 });

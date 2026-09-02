@@ -1244,11 +1244,11 @@ export async function quoteParentBookingPricing(items = []) {
     .map((item) => ({ sessionBlockId: item.sessionBlockId || item.session_block_id, childId: item.childId || item.child_id || null, quantity: Number(item.quantity || 1) }))
     .filter((item) => item.sessionBlockId);
   if (!pricingItems.length) return null;
-  let { data, error } = await supabase.rpc("quote_current_parent_pricing", { p_items: pricingItems });
+  let { data, error } = await supabase.rpc("quote_current_parent_pricing_with_sibling", { p_items: pricingItems });
   if (error && /auth|jwt|session|token/i.test(String(error.message || error.details || ""))) {
     const { error: refreshError } = await supabase.auth.refreshSession();
     if (refreshError) throw refreshError;
-    ({ data, error } = await supabase.rpc("quote_current_parent_pricing", { p_items: pricingItems }));
+    ({ data, error } = await supabase.rpc("quote_current_parent_pricing_with_sibling", { p_items: pricingItems }));
   }
   if (error) throw error;
   return data;

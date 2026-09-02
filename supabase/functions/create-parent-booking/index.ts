@@ -146,10 +146,15 @@ serve(async (request) => {
     let savedItems = reservationResult.items || [];
 
     if (!reservationResult.existing) {
-      const { data: pricingData, error: pricingError } = await supabase.rpc("apply_booking_pricing", {
+      const { data: basePricingData, error: pricingError } = await supabase.rpc("apply_booking_pricing", {
         p_booking_id: stringValue(booking.id),
       });
       if (pricingError) throw pricingError;
+      const { data: siblingPricingData, error: siblingPricingError } = await supabase.rpc("apply_booking_sibling_discount", {
+        p_booking_id: stringValue(booking.id),
+      });
+      if (siblingPricingError) throw siblingPricingError;
+      const pricingData = isObject(siblingPricingData) ? siblingPricingData : basePricingData;
       if (isObject(pricingData)) {
         const pricedBooking = isObject(pricingData.booking) ? pricingData.booking : {};
         booking = {

@@ -6424,13 +6424,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const reviewCostCards = [
     ["Booking value", money(total), `${checkoutItemCount} child session${checkoutItemCount === 1 ? "" : "s"} · ${checkoutChildCount} child${checkoutChildCount === 1 ? "" : "ren"}`],
     ["Due today", money(payableTodayAmount), accountCreditPreview > 0 ? `${money(accountCreditPreview)} account credit applied first` : activePaymentPlan === "Monthly" ? `${remainingPlanBalance > 0 ? `${money(remainingPlanBalance)} scheduled` : "No remaining balance"}` : effectivePaymentMethod === "card" ? "Taken securely at booking" : "No card charge today"],
-    ["Discounts", discountTotal ? `-${money(discountTotal)}` : money(0), activePricingQuote ? `${activePricingQuote.pricingGroupName || "Standard"} pricing applied` : siblingDiscount ? "Sibling discount included" : weeklyDiscount ? "Full-week discount included" : promoDiscount ? "Promo applied" : "No discount applied"],
+    ["Discounts", discountTotal ? `-${money(discountTotal)}` : money(0), activePricingQuote ? (Number(activePricingQuote.siblingDiscountTotal || 0) > 0 ? "Sibling discount included" : `${activePricingQuote.pricingGroupName || "Standard"} pricing applied`) : siblingDiscount ? "Sibling discount included" : weeklyDiscount ? "Full-week discount included" : promoDiscount ? "Promo applied" : "No discount applied"],
     [isLaunchMode ? "Invoice" : "Payment route", activePaymentPlan === "Monthly" ? "Payment plan" : effectivePaymentMethod === "card" ? "Receipt emailed" : "Invoice emailed", isLaunchMode ? "Saved in your parent portal" : activePaymentRoute],
   ];
   const reviewLedgerRows = [
     ["Session fees", `${checkoutItemCount} child session${checkoutItemCount === 1 ? "" : "s"} across ${checkoutDayCount} day${checkoutDayCount === 1 ? "" : "s"}`, money(subtotal)],
     ["Add-ons", `${selectedAddOns.length} selected`, money(addOnTotal)],
-    ["Discounts", activePricingQuote ? `${activePricingQuote.pricingGroupName || "Standard"} · applied automatically` : "Applied before payment", `-${money(discountTotal)}`],
+    ["Discounts", activePricingQuote ? (Number(activePricingQuote.siblingDiscountTotal || 0) > 0 ? `10% sibling discount · applied automatically` : `${activePricingQuote.pricingGroupName || "Standard"} · applied automatically`) : "Applied before payment", `-${money(discountTotal)}`],
     ...(accountCreditPreview > 0 ? [["Account credit", "Applied automatically", `-${money(accountCreditPreview)}`]] : []),
     ["Pay today", activePaymentPlan === "Monthly" ? monthlyScheduleSummary : accountCreditPreview >= dueTodayAmount ? "Covered by account credit" : "Pay at confirmation", money(payableTodayAmount)],
   ];
@@ -24514,7 +24514,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <strong>{money(draftBasketTotal)}</strong>
                   {draftBasketTotal !== basketSubtotal && <small>{money(basketSubtotal)} before discounts</small>}
                   {pricingQuoteLoading && <small>Checking your tier price…</small>}
-                  {!pricingQuoteLoading && basketPricingQuote && Number(basketPricingQuote.discountTotal || 0) > 0 && <small>{Number(basketPricingQuote.fullWeekDiscountTotal || 0) > 0 ? "Full-week pricing applied" : `${basketPricingQuote.pricingGroupName || "Tier"} applied`} · {money(basketPricingQuote.discountTotal)} saved</small>}
+                  {!pricingQuoteLoading && basketPricingQuote && Number(basketPricingQuote.discountTotal || 0) > 0 && <small>{Number(basketPricingQuote.siblingDiscountTotal || 0) > 0 && Number(basketPricingQuote.fullWeekDiscountTotal || 0) > 0 ? "Full-week and sibling discounts applied" : Number(basketPricingQuote.siblingDiscountTotal || 0) > 0 ? "10% sibling discount applied" : Number(basketPricingQuote.fullWeekDiscountTotal || 0) > 0 ? "Full-week pricing applied" : `${basketPricingQuote.pricingGroupName || "Tier"} applied`} · {money(basketPricingQuote.discountTotal)} saved</small>}
                   {!pricingQuoteLoading && basketPricingQuote && Number(basketPricingQuote.discountTotal || 0) === 0 && <small>{basketPricingQuote.pricingGroupName || "Standard"} checked · no tier discount for these sessions</small>}
                   {!pricingQuoteLoading && pricingQuoteError && <small>Tier price needs rechecking at checkout</small>}
                 </div>
@@ -24552,6 +24552,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                       <span>Full Week Discount</span>
                       <strong>-{money(basketPricingQuote.fullWeekDiscountTotal)}</strong>
                       <small>Applied automatically because every operating Holiday Camp day in the week is booked for the same child.</small>
+                    </div>
+                  )}
+                  {Number(basketPricingQuote?.siblingDiscountTotal || 0) > 0 && (
+                    <div className="lab-draft-basket-adjustment">
+                      <span>10% sibling discount</span>
+                      <strong>-{money(basketPricingQuote.siblingDiscountTotal)}</strong>
+                      <small>Applied automatically when two or more children are included in the same booking.</small>
                     </div>
                   )}
                   <div className="lab-draft-basket-actions">
