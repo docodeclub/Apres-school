@@ -163,6 +163,7 @@ function makeIcon(label) {
       SH: <><path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z" /><path d="m9 12 2 2 4-5" /></>,
       "*": <><path d="M12 3v5" /><path d="M12 16v5" /><path d="M3 12h5" /><path d="M16 12h5" /><path d="m6 6 3 3" /><path d="m15 15 3 3" /><path d="m18 6-3 3" /><path d="m9 15-3 3" /></>,
       ST: <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z" />,
+      BC: <><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M3 12h18" /><path d="M10 12v2h4v-2" /></>,
       UP: <><path d="M12 20V9" /><path d="m7 14 5-5 5 5" /><path d="M5 4h14" /></>,
       US: <><path d="M16 20v-2a4 4 0 0 0-8 0v2" /><circle cx="12" cy="8" r="4" /><path d="M20 20v-2a3 3 0 0 0-3-3" /><path d="M4 20v-2a3 3 0 0 1 3-3" /></>,
       MD: <><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6V3Z" /></>,
@@ -197,6 +198,7 @@ const Search = makeIcon("SE");
 const ShieldCheck = makeIcon("SH");
 const Sparkles = makeIcon("*");
 const Star = makeIcon("ST");
+const Briefcase = makeIcon("BC");
 const Upload = makeIcon("UP");
 const Users = makeIcon("US");
 const MedicalCross = makeIcon("MD");
@@ -2663,6 +2665,11 @@ function Registers({ access }) {
                           <button className="register-child-button" type="button" onClick={() => setSelectedChildId(row.bookingItemId)} aria-label={`Open details for ${row.childName}`}>
                             <strong>
                               {row.childName}
+                              {row.parentIsStaff && (
+                                <span className="register-staff-family-marker" role="img" aria-label="Staff family" title="Parent is a staff member">
+                                  <Briefcase size={13} />
+                                </span>
+                              )}
                               {!!row.rewardsToday?.length && (
                                 <span className="register-earned-badges" aria-label={`${row.rewardsToday.length} badge${row.rewardsToday.length === 1 ? "" : "s"} earned today`}>
                                   {row.rewardsToday.slice(0, 3).map((reward) => {

@@ -15,6 +15,7 @@ const amendmentAddSql = readFileSync(join(root, "supabase/migrations/0034_amend_
 const edgeFunction = readFileSync(join(root, "supabase/functions/create-parent-booking/index.ts"), "utf8");
 const bookingSystemSource = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
 const siblingDiscountSql = readFileSync(join(root, "supabase/migrations/0157_server_side_sibling_discount.sql"), "utf8");
+const staffFamilyRegisterSql = readFileSync(join(root, "supabase/migrations/0158_register_staff_family_indicator.sql"), "utf8");
 const updateFunction = readFileSync(join(root, "supabase/functions/update-parent-booking/index.ts"), "utf8");
 const bookingLabSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
 const termsUrl = "https://docs.google.com/document/d/1ursh4YbP1e8cLG7fiUy0z3JezZWBUBG2_-7eG8wA0u0/edit?usp=sharing";
@@ -64,6 +65,8 @@ if (request) validateRequestShape(request);
   ["booking creation persists sibling pricing", edgeFunction.includes('apply_booking_sibling_discount')],
   ["sibling pricing requires at least two distinct children", siblingDiscountSql.includes("count(distinct") && siblingDiscountSql.includes("v_child_count < 2")],
   ["sibling pricing is visible in the basket", bookingLabSource.includes('10% sibling discount applied') && bookingLabSource.includes('basketPricingQuote.siblingDiscountTotal')],
+  ["register identifies staff families server-side", staffFamilyRegisterSql.includes("parent_is_staff boolean") && staffFamilyRegisterSql.includes("parent_pricing_assignments") && staffFamilyRegisterSql.includes("staff_records")],
+  ["register displays a labelled staff-family marker", bookingLabSource.includes('10% sibling discount applied') && readFileSync(join(root, "src/PlatformModule.jsx"), "utf8").includes('aria-label="Staff family"')],
 ].forEach(([label, ok]) => {
   if (!ok) failures.push(label);
 });

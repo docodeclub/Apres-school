@@ -99,6 +99,7 @@ export async function fetchStaffRegister({ registerDate, siteName = null, progra
     childYearGroup: row.child_year_group,
     parentName: row.parent_name,
     parentPhone: row.parent_phone,
+    parentIsStaff: row.parent_is_staff === true,
     emergencyContact: row.emergency_contact || {},
     siteName: row.site_name,
     programmeName: row.programme_name,
