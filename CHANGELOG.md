@@ -55,7 +55,7 @@ Notable changes to the Après School website and operations platform are recorde
 
 - Faster indexed register and finance-ledger queries, timeout-aware retries and protection against stale register requests replacing newer results.
 - Clear unavailable states for finance totals when live data cannot load, preventing a database timeout from being presented as £0 income.
-- Consistent register aliases for Willington and Ripley Court so saved site defaults match booking records regardless of their historic venue label.
+- Consistent register aliases for Ripley Court so saved site defaults match booking records regardless of their historic venue label.
 
 - A guarded daily register reset for one selected school, including a clear warning and a complete audit snapshot of the attendance it replaces.
 - Account-level default register sites for staff, with the saved school selected automatically on future register visits.

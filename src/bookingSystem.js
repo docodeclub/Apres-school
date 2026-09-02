@@ -4,7 +4,6 @@ const childProfilePhotoBucket = "child-profile-photos";
 
 function registerStoredSiteName(siteName) {
   const normalized = String(siteName || "").trim().toLowerCase();
-  if (normalized === "willington prep") return "Willington";
   if (normalized === "ripley court school") return "Ripley Court";
   return siteName || null;
 }
