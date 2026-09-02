@@ -56,7 +56,7 @@ async function requestCode(input: Record<string, unknown>, request: Request) {
   });
   if (!allowed) return json({ error: "Too many reset requests. Please wait before trying again." }, 429);
 
-  const parentUser = await resolveParentUser(email);
+  const parentUser = await resolveParentUser(email, { createMissingAuthUser: true });
   let emailSent = false;
   let emailError = "";
 
@@ -223,8 +223,14 @@ async function confirmCode(input: Record<string, unknown>) {
   return json({ ok: true, email });
 }
 
-async function resolveParentUser(email: string) {
-  const authUser = await findAuthUserByEmail(email);
+async function resolveParentUser(
+  email: string,
+  options: { createMissingAuthUser?: boolean } = {},
+) {
+  let authUser = await findAuthUserByEmail(email);
+  if (!authUser?.id && options.createMissingAuthUser) {
+    authUser = await createMigratedParentAuthUser(email);
+  }
   if (!authUser?.id) return null;
 
   const { data: profile, error: profileError } = await supabase
@@ -253,6 +259,74 @@ async function resolveParentUser(email: string) {
   if (holder) return { ...authUser, holder };
 
   return null;
+}
+
+async function createMigratedParentAuthUser(email: string) {
+  const { data: parentAccount, error: parentError } = await supabase
+    .from("parent_accounts")
+    .select("id, full_name, email, archived_at")
+    .eq("email", email)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (parentError) throw parentError;
+  if (!parentAccount) return null;
+
+  // The password is never disclosed or used by the parent. It only creates the
+  // Auth identity needed for the one-time passcode flow; confirmCode replaces it.
+  const temporaryPassword = `${crypto.randomUUID()}aA1!`;
+  const { data: created, error: createError } = await supabase.auth.admin.createUser({
+    email,
+    password: temporaryPassword,
+    email_confirm: true,
+    user_metadata: {
+      full_name: cleanString(parentAccount.full_name) || email,
+      role: "parent",
+      migrated_account: true,
+    },
+  });
+  if (createError) {
+    // A simultaneous request may have created the same login first. Resolve it
+    // again rather than failing an otherwise valid reset request.
+    const concurrentUser = await findAuthUserByEmail(email);
+    if (concurrentUser?.id) return concurrentUser;
+    throw createError;
+  }
+  if (!created.user?.id) throw new Error("Unable to prepare this migrated parent login.");
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .upsert({
+      id: created.user.id,
+      email,
+      full_name: cleanString(parentAccount.full_name) || email,
+      role: "parent",
+      active: true,
+      must_change_password: true,
+    }, { onConflict: "id" });
+  if (profileError) throw profileError;
+
+  const { error: accountError } = await supabase
+    .from("parent_accounts")
+    .update({
+      profile_id: created.user.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", parentAccount.id);
+  if (accountError) throw accountError;
+
+  await supabase.from("audit_log").insert({
+    actor_id: created.user.id,
+    action: "migrated_parent_login_prepared_for_password_reset",
+    table_name: "parent_accounts",
+    record_id: parentAccount.id,
+    metadata: { email },
+  });
+
+  return {
+    id: created.user.id,
+    email: created.user.email || email,
+    user_metadata: created.user.user_metadata || {},
+  };
 }
 
 async function findAuthUserByEmail(email: string) {
