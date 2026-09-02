@@ -2,6 +2,20 @@ import { hasSupabaseConfig, supabase } from "./supabaseClient.js";
 
 const childProfilePhotoBucket = "child-profile-photos";
 
+function registerStoredSiteName(siteName) {
+  const normalized = String(siteName || "").trim().toLowerCase();
+  if (normalized === "willington prep") return "Willington";
+  if (normalized === "ripley court school") return "Ripley Court";
+  return siteName || null;
+}
+
+function registerDisplaySiteName(siteName) {
+  const normalized = String(siteName || "").trim().toLowerCase();
+  if (normalized === "willington") return "Willington Prep";
+  if (normalized === "ripley court") return "Ripley Court School";
+  return siteName || "";
+}
+
 export function bookingSystemConfigured() {
   return Boolean(hasSupabaseConfig && supabase);
 }
@@ -33,7 +47,7 @@ export async function fetchStaffRegister({ registerDate, siteName = null, progra
   if (!registerDate) throw new Error("Choose a register date.");
   const registerParams = {
     p_register_date: registerDate,
-    p_site_name: siteName || null,
+    p_site_name: registerStoredSiteName(siteName),
     p_programme_name: programmeName || null,
   };
   const [registerResult, rewardResult, reportResult] = await Promise.allSettled([
@@ -105,7 +119,7 @@ export async function fetchStaffRegister({ registerDate, siteName = null, progra
     parentPhone: row.parent_phone,
     parentIsStaff: row.parent_is_staff === true,
     emergencyContact: row.emergency_contact || {},
-    siteName: row.site_name,
+    siteName: registerDisplaySiteName(row.site_name),
     programmeName: row.programme_name,
     sessionLabel: row.session_label,
     startsAt: row.starts_at,
@@ -234,7 +248,7 @@ export async function fetchStaffRegisterTimetable({ from = new Date(), limit = 5
 
     if (!blocks.length) {
       options.push({
-        siteName: location.name || "",
+        siteName: registerDisplaySiteName(location.name),
         programmeName: programme.name || row.booking_label || "Activity",
         sessionLabel: row.booking_label || programme.name || "Session",
       });
@@ -243,7 +257,7 @@ export async function fetchStaffRegisterTimetable({ from = new Date(), limit = 5
 
     blocks.forEach((block) => {
       options.push({
-        siteName: location.name || "",
+        siteName: registerDisplaySiteName(location.name),
         programmeName: programme.name || row.booking_label || "Activity",
         sessionLabel: block.label || row.booking_label || "Session",
       });
