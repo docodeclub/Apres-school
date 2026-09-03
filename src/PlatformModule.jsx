@@ -206,11 +206,19 @@ const SendNeeds = makeIcon("SN");
 const X = makeIcon("X");
 
 function compareRegisterAttendance(left, right) {
-  const leftActioned = left.attendanceStatus === "booked" ? 0 : 1;
-  const rightActioned = right.attendanceStatus === "booked" ? 0 : 1;
-  if (leftActioned !== rightActioned) return leftActioned - rightActioned;
+  const attendanceRank = {
+    booked: 0,
+    checked_in: 1,
+    late_collection: 1,
+    incident: 1,
+    absent: 2,
+    checked_out: 3,
+  };
+  const leftRank = attendanceRank[left.attendanceStatus] ?? 1;
+  const rightRank = attendanceRank[right.attendanceStatus] ?? 1;
+  if (leftRank !== rightRank) return leftRank - rightRank;
 
-  if (leftActioned) {
+  if (leftRank > 0) {
     const leftTime = Date.parse(left.attendanceTime || left.checkedInAt || left.checkedOutAt || "") || 0;
     const rightTime = Date.parse(right.attendanceTime || right.checkedInAt || right.checkedOutAt || "") || 0;
     if (leftTime !== rightTime) return leftTime - rightTime;

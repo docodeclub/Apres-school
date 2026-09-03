@@ -6593,6 +6593,29 @@ body.scr-drawer-open {
   border-bottom: 0;
 }
 
+.register-table tr.status-checked_out td {
+  background: #f8f9fc;
+}
+
+.register-table tr.status-checked_out td > * {
+  opacity: 0.48;
+  transition: opacity 160ms ease;
+}
+
+.register-table tr.status-checked_out:hover td > *,
+.register-table tr.status-checked_out:focus-within td > * {
+  opacity: 0.7;
+}
+
+.register-table tr.status-checked_out .register-row-actions,
+.register-table tr.status-checked_out .register-row-actions button:first-child {
+  opacity: 1;
+}
+
+.register-table tr.status-checked_out .register-row-actions button:not(:first-child) {
+  opacity: 0.42;
+}
+
 .register-table td > strong,
 .register-table td > span,
 .register-table td > small {

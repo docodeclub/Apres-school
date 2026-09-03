@@ -21,6 +21,7 @@ const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n
 const service = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
 const interfaceSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
 const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8");
+const stylesSource = readFileSync(join(root, "src/styles.css"), "utf8");
 const appSource = readFileSync(join(root, "src/app.jsx"), "utf8");
 const adHocFunction = readFileSync(join(root, "supabase/functions/create-staff-adhoc-booking/index.ts"), "utf8");
 const parentBookingFunction = readFileSync(join(root, "supabase/functions/create-parent-booking/index.ts"), "utf8");
@@ -59,7 +60,8 @@ const checks = [
   ["register reset UI shows a clear destructive-action warning", /Reset day[\s\S]*all attendance for this school and date will be reset[\s\S]*Yes, reset this day/],
   ["register applies the saved account default site", /accountDefaultSite[\s\S]*setSchool\(nextDefault\)/],
   ["register renders every available session as a section", /const sessionSections = visibleSessionLabels\.map[\s\S]*className="register-session-section"/],
-  ["register moves actioned children below expected children", /function compareRegisterAttendance[\s\S]*attendanceStatus === "booked"[\s\S]*\.sort\(compareRegisterAttendance\)/],
+  ["register orders expected, present, absent and checked-out children", /function compareRegisterAttendance[\s\S]*booked: 0[\s\S]*checked_in: 1[\s\S]*absent: 2[\s\S]*checked_out: 3[\s\S]*\.sort\(compareRegisterAttendance\)/],
+  ["checked-out register rows are faded but can be checked in again", /status-checked_out[\s\S]*register-row-actions button:first-child/],
   ["register provides quick session filter buttons", /className="register-session-filters"[\s\S]*setSession\(item\)/],
   ["ad-hoc pupil search is server-backed and role protected", /staff_adhoc_booking_options[\s\S]*role in \('staff', 'manager', 'admin', 'superadmin'\)/],
   ["ad-hoc sessions use the exact local register date", /staff_adhoc_booking_options[\s\S]*at time zone 'Europe\/London'\)::date = p_register_date/],
@@ -106,7 +108,9 @@ checks.forEach(([label, pattern]) => {
       ? registerParentNotification
     : label.startsWith("authenticated sessions")
       ? appSource
-    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register defaults") || label.startsWith("register allows") || label.startsWith("register applies") || label.startsWith("register renders") || label.startsWith("register moves") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("register highlights") || label.startsWith("register only offers") || label.startsWith("register reset UI") || label.startsWith("admin UI") || label.startsWith("staff form") || label.startsWith("staff dashboard") || label.startsWith("admin dashboard") || label.startsWith("every staff role")
+    : label.startsWith("checked-out register")
+      ? stylesSource
+    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register defaults") || label.startsWith("register allows") || label.startsWith("register applies") || label.startsWith("register renders") || label.startsWith("register orders") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("register highlights") || label.startsWith("register only offers") || label.startsWith("register reset UI") || label.startsWith("admin UI") || label.startsWith("staff form") || label.startsWith("staff dashboard") || label.startsWith("admin dashboard") || label.startsWith("every staff role")
       ? platformSource
       : label.startsWith("staff UI")
         ? interfaceSource
