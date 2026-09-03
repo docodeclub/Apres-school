@@ -9315,6 +9315,21 @@ body.scr-drawer-open {
   color: #fff !important;
 }
 
+.register-going-home-summary {
+  border-color: #c8d8f7;
+  background: #f5f8ff;
+}
+
+.register-going-home-actions {
+  flex-wrap: wrap;
+}
+
+.register-going-home-confirm {
+  border-color: #2e8952 !important;
+  background: #2e8952 !important;
+  color: #fff !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .site-header > .button.header-book-cta {
     --book-glow-angle: 135deg;

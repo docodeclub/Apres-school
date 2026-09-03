@@ -17,7 +17,8 @@ const registerFullNames = readFileSync(join(root, "supabase/migrations/0151_regi
 const registerDayReset = readFileSync(join(root, "supabase/migrations/0152_reset_daily_register_attendance.sql"), "utf8");
 const registerDayResetRepair = readFileSync(join(root, "supabase/migrations/0153_fix_register_reset_audit_snapshot.sql"), "utf8");
 const registerRecheckin = readFileSync(join(root, "supabase/migrations/0168_refresh_register_timestamps_on_recheckin.sql"), "utf8");
-const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}\n${registerDayReset}\n${registerDayResetRepair}\n${registerRecheckin}`;
+const registerGoingHome = readFileSync(join(root, "supabase/migrations/0169_checkout_child_from_active_afterschool_sessions.sql"), "utf8");
+const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}\n${registerDayReset}\n${registerDayResetRepair}\n${registerRecheckin}\n${registerGoingHome}`;
 const service = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
 const interfaceSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
 const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8");
@@ -40,6 +41,7 @@ const checks = [
   ["client persists attendance through the register RPC", /supabase\.rpc\("update_staff_register_entry"/],
   ["checking in again refreshes the action time and clears stale checkout time", /update_staff_register_entry[\s\S]*excluded\.attendance_status = 'checked_in' then now\(\)[\s\S]*excluded\.attendance_status = 'checked_in' then null/],
   ["client resets one daily register through the secure RPC", /resetStaffRegisterDay[\s\S]*reset_staff_register_day[\s\S]*p_register_date[\s\S]*p_site_name/],
+  ["client checks a child out of all active after-school sessions atomically", /checkoutChildFromActiveAfterschoolSessions[\s\S]*checkout_child_from_active_afterschool_sessions/],
   ["staff UI prefers server register rows", /useServerRegister \? liveRegisterRows : localRegisterRows/],
   ["staff UI fails closed when the server register is unavailable", /Local drafts are deliberately not shown as live attendance/],
   ["register returns emergency contact details", /emergency_contact jsonb/],
@@ -61,6 +63,9 @@ const checks = [
   ["register applies the saved account default site", /accountDefaultSite[\s\S]*setSchool\(nextDefault\)/],
   ["register renders every available session as a section", /const sessionSections = visibleSessionLabels\.map[\s\S]*className="register-session-section"/],
   ["register orders expected, present, absent and checked-out children", /function compareRegisterAttendance[\s\S]*booked: 0[\s\S]*checked_in: 1[\s\S]*absent: 2[\s\S]*checked_out: 3[\s\S]*\.sort\(compareRegisterAttendance\)/],
+  ["going home only updates active after-school sessions for the same child site and day", /checkout_child_from_active_afterschool_sessions[\s\S]*item\.child_id = v_anchor\.child_id[\s\S]*item\.site_name = v_anchor\.site_name[\s\S]*Europe\/London[\s\S]*after-school[\s\S]*entry\.attendance_status in \('checked_in', 'late_collection', 'incident'\)/],
+  ["register provides an explicit ASC-wide departure choice", /isAfterSchoolRegisterRow\(row\) \? "Going home" : "Check out"[\s\S]*Only check out from[\s\S]*Going home — check out all/],
+  ["register shows that Breakfast Club is unaffected by going home", /Breakfast Club and any expected sessions are not affected/],
   ["checked-out register rows are faded but can be checked in again", /status-checked_out[\s\S]*register-row-actions button:first-child/],
   ["register provides quick session filter buttons", /className="register-session-filters"[\s\S]*setSession\(item\)/],
   ["ad-hoc pupil search is server-backed and role protected", /staff_adhoc_booking_options[\s\S]*role in \('staff', 'manager', 'admin', 'superadmin'\)/],

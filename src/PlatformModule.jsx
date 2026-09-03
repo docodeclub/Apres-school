@@ -3,6 +3,7 @@ import {
   bookingSystemConfigured,
   cancelParentBooking,
   cancelStaffAdHocBooking,
+  checkoutChildFromActiveAfterschoolSessions,
   appendSafeguardingCaseEntry,
   completeSafeguardingCaseTask,
   createSafeguardingCaseTask,
@@ -1652,6 +1653,11 @@ function registerCareType(row = {}) {
   return /holiday\s*camp|early\s*drop[ -]?off/.test(text) ? "holiday" : "wraparound";
 }
 
+function isAfterSchoolRegisterRow(row = {}) {
+  const text = `${row.programmeName || ""} ${row.sessionLabel || ""}`.toLowerCase();
+  return /after[-\s]?school/.test(text);
+}
+
 function Registers({ access }) {
   const today = new Date();
   const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -1679,6 +1685,9 @@ function Registers({ access }) {
   const [registerResetOpen, setRegisterResetOpen] = useState(false);
   const [registerResetSaving, setRegisterResetSaving] = useState(false);
   const [registerResetError, setRegisterResetError] = useState("");
+  const [goingHomeRow, setGoingHomeRow] = useState(null);
+  const [goingHomeSaving, setGoingHomeSaving] = useState(false);
+  const [goingHomeError, setGoingHomeError] = useState("");
   const [selectedChildId, setSelectedChildId] = useState("");
   const [message, setMessage] = useState({ tone: "info", text: "Loading the live register…" });
   const [adHocOpen, setAdHocOpen] = useState(false);
@@ -1887,6 +1896,14 @@ function Registers({ access }) {
   const adHocQuotedTotal = Number(adHocPricingQuote?.totalAmount ?? adHocTotal);
   const adHocCancellationRows = adHocCancellationRow
     ? rows.filter((row) => row.bookingId === adHocCancellationRow.bookingId)
+    : [];
+  const goingHomeActiveRows = goingHomeRow
+    ? rows.filter((row) => (
+      row.childId === goingHomeRow.childId
+      && row.siteName === goingHomeRow.siteName
+      && isAfterSchoolRegisterRow(row)
+      && ["checked_in", "late_collection", "incident"].includes(row.attendanceStatus)
+    ))
     : [];
 
   function childAlreadyBookedInSession(childId, sessionBlockId) {
@@ -2504,6 +2521,56 @@ function Registers({ access }) {
     }
   }
 
+  function requestCheckout(row) {
+    const activeAfterSchoolRows = isAfterSchoolRegisterRow(row)
+      ? rows.filter((candidate) => (
+        candidate.childId === row.childId
+        && candidate.siteName === row.siteName
+        && isAfterSchoolRegisterRow(candidate)
+        && ["checked_in", "late_collection", "incident"].includes(candidate.attendanceStatus)
+      ))
+      : [];
+    if (activeAfterSchoolRows.length > 1) {
+      setGoingHomeError("");
+      setGoingHomeRow(row);
+      return;
+    }
+    updateRow(row, "checked_out");
+  }
+
+  async function confirmGoingHome() {
+    if (!goingHomeRow) return;
+    const childName = goingHomeRow.childName;
+    const affectedIds = goingHomeActiveRows.map((row) => row.bookingItemId);
+    setGoingHomeSaving(true);
+    setGoingHomeError("");
+    setSavingIds((current) => [...new Set([...current, ...affectedIds])]);
+    try {
+      const result = await checkoutChildFromActiveAfterschoolSessions({
+        bookingItemId: goingHomeRow.bookingItemId,
+      });
+      setGoingHomeRow(null);
+      await refreshRegister();
+      const count = Number(result.updatedCount || affectedIds.length);
+      setMessage({
+        tone: "good",
+        text: `${childName} checked out from ${count} active after-school ${count === 1 ? "session" : "sessions"}. Breakfast Club was not changed.`,
+      });
+    } catch (error) {
+      setGoingHomeError(error?.message || `${childName} could not be checked out from all after-school sessions.`);
+    } finally {
+      setGoingHomeSaving(false);
+      setSavingIds((current) => current.filter((id) => !affectedIds.includes(id)));
+    }
+  }
+
+  async function confirmSingleAfterSchoolCheckout() {
+    if (!goingHomeRow) return;
+    const row = goingHomeRow;
+    setGoingHomeRow(null);
+    await updateRow(row, "checked_out");
+  }
+
   async function bulkUpdate(status) {
     const actionable = visibleRows.filter((row) => !savingIds.includes(row.bookingItemId));
     if (!actionable.length) return;
@@ -2738,7 +2805,7 @@ function Registers({ access }) {
                         <td><span className={`register-status status-${row.attendanceStatus}`}>{statusLabels[row.attendanceStatus] || row.attendanceStatus}</span></td>
                         <td><div className="register-row-actions">
                           <button type="button" onClick={() => updateRow(row, "checked_in")} disabled={busy || row.attendanceStatus === "checked_in"}>Check in</button>
-                          <button type="button" onClick={() => updateRow(row, "checked_out")} disabled={busy || row.attendanceStatus === "checked_out"}>Check out</button>
+                          <button type="button" onClick={() => requestCheckout(row)} disabled={busy || row.attendanceStatus === "checked_out"}>{isAfterSchoolRegisterRow(row) ? "Going home" : "Check out"}</button>
                           <button type="button" onClick={() => updateRow(row, "absent")} disabled={busy || row.attendanceStatus === "absent"}>Absent</button>
                           {row.staffAdHoc && (
                             <button className="register-cancel-adhoc" type="button" onClick={() => openAdHocCancellation(row)} disabled={busy}>
@@ -3605,6 +3672,46 @@ function Registers({ access }) {
               <button className="button light" type="button" onClick={() => setRegisterResetOpen(false)} disabled={registerResetSaving}>Keep attendance</button>
               <button className="button register-cancel-confirm" type="button" onClick={confirmRegisterReset} disabled={registerResetSaving}>
                 {registerResetSaving ? "Resetting…" : "Yes, reset this day"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {goingHomeRow && (
+        <div className="register-adhoc-layer" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !goingHomeSaving) setGoingHomeRow(null);
+        }}>
+          <section className="register-adhoc-dialog register-cancel-dialog register-going-home-dialog" role="dialog" aria-modal="true" aria-labelledby="register-going-home-title">
+            <header>
+              <div>
+                <p className="eyebrow">After-school departure</p>
+                <h2 id="register-going-home-title">Is {goingHomeRow.childName} going home?</h2>
+                <p>They are still checked into {goingHomeActiveRows.length} after-school sessions today.</p>
+              </div>
+              <button type="button" onClick={() => setGoingHomeRow(null)} disabled={goingHomeSaving} aria-label="Close going home confirmation"><X size={20} /></button>
+            </header>
+
+            <div className="register-cancel-summary register-going-home-summary">
+              <strong>Choose how to record this departure</strong>
+              <ul>
+                {goingHomeActiveRows.map((row) => (
+                  <li key={row.bookingItemId}>
+                    <b>{row.sessionLabel}</b>
+                    <span>{new Date(row.startsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}-{new Date(row.endsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span>
+                  </li>
+                ))}
+              </ul>
+              <p><strong>Going home</strong> checks the child out of every active after-school session shown above. Breakfast Club and any expected sessions are not affected.</p>
+            </div>
+
+            {goingHomeError && <p className="register-adhoc-error" role="alert">{goingHomeError}</p>}
+
+            <footer className="register-going-home-actions">
+              <button className="button light" type="button" onClick={() => setGoingHomeRow(null)} disabled={goingHomeSaving}>Cancel</button>
+              <button className="button light" type="button" onClick={confirmSingleAfterSchoolCheckout} disabled={goingHomeSaving}>Only check out from {goingHomeRow.sessionLabel}</button>
+              <button className="button register-going-home-confirm" type="button" onClick={confirmGoingHome} disabled={goingHomeSaving}>
+                {goingHomeSaving ? "Checking out…" : "Going home — check out all"}
               </button>
             </footer>
           </section>

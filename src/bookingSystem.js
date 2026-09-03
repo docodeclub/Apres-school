@@ -281,6 +281,16 @@ export async function updateStaffRegisterEntry({ bookingItemId, status, note = "
   return data;
 }
 
+export async function checkoutChildFromActiveAfterschoolSessions({ bookingItemId } = {}) {
+  assertSupabase();
+  if (!bookingItemId) throw new Error("Choose a child from the register.");
+  const { data, error } = await supabase.rpc("checkout_child_from_active_afterschool_sessions", {
+    p_booking_item_id: bookingItemId,
+  });
+  if (error) throw error;
+  return data || {};
+}
+
 export async function resetStaffRegisterDay({ registerDate, siteName } = {}) {
   assertSupabase();
   if (!registerDate) throw new Error("Choose a register date.");
