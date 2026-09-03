@@ -16,7 +16,8 @@ const registerPreferences = readFileSync(join(root, "supabase/migrations/0150_re
 const registerFullNames = readFileSync(join(root, "supabase/migrations/0151_register_full_child_names.sql"), "utf8");
 const registerDayReset = readFileSync(join(root, "supabase/migrations/0152_reset_daily_register_attendance.sql"), "utf8");
 const registerDayResetRepair = readFileSync(join(root, "supabase/migrations/0153_fix_register_reset_audit_snapshot.sql"), "utf8");
-const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}\n${registerDayReset}\n${registerDayResetRepair}`;
+const registerRecheckin = readFileSync(join(root, "supabase/migrations/0168_refresh_register_timestamps_on_recheckin.sql"), "utf8");
+const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}\n${registerDayReset}\n${registerDayResetRepair}\n${registerRecheckin}`;
 const service = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
 const interfaceSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
 const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8");
@@ -36,6 +37,7 @@ const checks = [
   ["client fetches the authoritative register RPC", /supabase\.rpc\("staff_register_for_day"/],
   ["client fetches configured register timetable options", /export async function fetchStaffRegisterTimetable[\s\S]*\.from\("sessions"\)/],
   ["client persists attendance through the register RPC", /supabase\.rpc\("update_staff_register_entry"/],
+  ["checking in again refreshes the action time and clears stale checkout time", /update_staff_register_entry[\s\S]*excluded\.attendance_status = 'checked_in' then now\(\)[\s\S]*excluded\.attendance_status = 'checked_in' then null/],
   ["client resets one daily register through the secure RPC", /resetStaffRegisterDay[\s\S]*reset_staff_register_day[\s\S]*p_register_date[\s\S]*p_site_name/],
   ["staff UI prefers server register rows", /useServerRegister \? liveRegisterRows : localRegisterRows/],
   ["staff UI fails closed when the server register is unavailable", /Local drafts are deliberately not shown as live attendance/],
