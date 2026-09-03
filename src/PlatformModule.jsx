@@ -205,6 +205,20 @@ const MedicalCross = makeIcon("MD");
 const SendNeeds = makeIcon("SN");
 const X = makeIcon("X");
 
+function compareRegisterAttendance(left, right) {
+  const leftActioned = left.attendanceStatus === "booked" ? 0 : 1;
+  const rightActioned = right.attendanceStatus === "booked" ? 0 : 1;
+  if (leftActioned !== rightActioned) return leftActioned - rightActioned;
+
+  if (leftActioned) {
+    const leftTime = Date.parse(left.attendanceTime || left.checkedInAt || left.checkedOutAt || "") || 0;
+    const rightTime = Date.parse(right.attendanceTime || right.checkedInAt || right.checkedOutAt || "") || 0;
+    if (leftTime !== rightTime) return leftTime - rightTime;
+  }
+
+  return String(left.childName || "").localeCompare(String(right.childName || ""), "en-GB", { sensitivity: "base" });
+}
+
 
 const platformTabs = ["Staff", "Admin", "Onboarding", "Customer Profiles", "Bookings", "Registers", "Incidents", "Safeguarding", "Booking Payments", "Pricing Groups", "Finance", "Expenses", "Holiday", "Users", "HR", "HR Files", "Employee Documents", "Schools", "Staffing", "SCR", "Ofsted", "Documents", "Pay", "Rewards", "Sessions", "CRM", "Audit", "Settings"];
 const platformGroups = [
@@ -1813,7 +1827,9 @@ function Registers({ access }) {
     return {
       label: sessionLabel,
       activityNames: [...new Set(optionRows.map((row) => row.programmeName).filter(Boolean))],
-      rows: visibleRows.filter((row) => row.sessionLabel === sessionLabel),
+      rows: visibleRows
+        .filter((row) => row.sessionLabel === sessionLabel)
+        .sort(compareRegisterAttendance),
     };
   });
   const expectedCount = visibleRows.filter((row) => row.attendanceStatus === "booked").length;
