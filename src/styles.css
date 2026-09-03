@@ -6554,9 +6554,22 @@ body.scr-drawer-open {
 
 .register-table {
   width: 100%;
-  min-width: 680px;
+  min-width: 760px;
   border-collapse: collapse;
+  table-layout: fixed;
 }
+
+.register-table th:nth-child(1),
+.register-table td:nth-child(1) { width: 29%; }
+
+.register-table th:nth-child(2),
+.register-table td:nth-child(2) { width: 14%; }
+
+.register-table th:nth-child(3),
+.register-table td:nth-child(3) { width: 15%; }
+
+.register-table th:nth-child(4),
+.register-table td:nth-child(4) { width: 42%; }
 
 .register-table th {
   padding: 13px 15px;
@@ -6702,8 +6715,13 @@ body.scr-drawer-open {
 }
 
 .register-row-actions {
+  flex-wrap: nowrap;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.register-row-actions:has(.register-cancel-adhoc) {
   flex-wrap: wrap;
-  min-width: 238px;
 }
 
 .register-row-actions button:disabled,
