@@ -6583,7 +6583,7 @@ body.scr-drawer-open {
 }
 
 .register-table td {
-  padding: 10px 14px;
+  padding: 5px 14px;
   border-bottom: 1px solid #e6ebf5;
   color: var(--royal-dark);
   vertical-align: middle;
@@ -6741,6 +6741,10 @@ body.scr-drawer-open {
   flex-wrap: nowrap;
   min-width: 0;
   white-space: nowrap;
+}
+
+.register-row-actions button {
+  padding: 6px 12px;
 }
 
 .register-row-actions:has(.register-cancel-adhoc) {
