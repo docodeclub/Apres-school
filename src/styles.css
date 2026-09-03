@@ -47783,6 +47783,7 @@ th {
 @media print {
   @page { size: A4 portrait; margin: 8mm; }
   body { background: #fff !important; color: #111 !important; }
+  .shared-register-shell, .shared-register-shell * { visibility: visible !important; }
   body > header, body > footer, .site-header, .site-footer, .cookie-consent, .shared-register-live, .shared-register-notice, .shared-register-filters { display: none !important; }
   .shared-register-shell { min-height: 0; padding: 0; background: #fff !important; }
   .shared-register-card { width: 100%; margin: 0; overflow: visible; border: 0; border-radius: 0; box-shadow: none; }
