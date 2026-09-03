@@ -85,7 +85,13 @@ export default function SharedSchoolRegister() {
           <label>Session<select value={session} onChange={(event) => setSession(event.target.value)}><option value="All">All sessions</option>{sessionOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>Year group<select value={year} onChange={(event) => setYear(event.target.value)}><option>All</option>{options("yearGroup").map((value) => <option key={value}>{value}</option>)}</select></label>
           <label>Class / form<select value={className} onChange={(event) => setClassName(event.target.value)}><option>All</option>{options("className").map((value) => <option key={value}>{value}</option>)}</select></label>
-          <button className="button light" type="button" onClick={load}>Refresh now</button>
+          <div className="shared-register-actions">
+            <button className="button light" type="button" onClick={load}>Refresh now</button>
+            <button className="button primary" type="button" onClick={() => window.print()}>Print register</button>
+          </div>
+        </div>
+        <div className="shared-register-print-summary">
+          <strong>Current view:</strong> {[programme !== "All" ? programme : "", session !== "All" ? sessionOptions.find(([value]) => value === session)?.[1] : "", year !== "All" ? year : "", className !== "All" ? `Class ${className}` : "", search ? `Search: ${search}` : ""].filter(Boolean).join(" · ") || "All included sessions and children"}
         </div>
         <div className="shared-register-count"><strong>{visibleRows.length}</strong> {visibleRows.length === 1 ? "session booking" : "session bookings"} across <strong>{sessionGroups.length}</strong> {sessionGroups.length === 1 ? "session" : "sessions"}</div>
         <div className="shared-register-sessions">

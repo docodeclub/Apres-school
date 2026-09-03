@@ -47739,6 +47739,9 @@ th {
 .shared-register-filters { display: grid; grid-template-columns: 1.2fr repeat(4, 1fr) auto; gap: 10px; padding: 22px 30px; align-items: end; }
 .shared-register-filters label { color: #25304f; font-weight: 800; font-size: 13px; }
 .shared-register-filters input, .shared-register-filters select { display: block; width: 100%; margin-top: 6px; }
+.shared-register-actions { display: flex; gap: 8px; }
+.shared-register-actions .button { white-space: nowrap; }
+.shared-register-print-summary { display: none; }
 .shared-register-count { margin: 0 30px 12px; color: #56627b; }
 .shared-register-count strong { color: #2443aa; font-size: 24px; }
 .shared-register-sessions { display: grid; gap: 18px; margin: 0 30px 30px; }
@@ -47773,6 +47776,37 @@ th {
   .shared-register-session > header { align-items: flex-start; padding: 15px; }
   .shared-register-session > header h2 { font-size: 18px; }
   .shared-register-table-wrap th, .shared-register-table-wrap td { padding: 12px 10px; }
+  .shared-register-actions { grid-column: 1 / -1; }
+  .shared-register-actions .button { flex: 1; }
+}
+
+@media print {
+  @page { size: A4 portrait; margin: 8mm; }
+  body { background: #fff !important; color: #111 !important; }
+  body > header, body > footer, .site-header, .site-footer, .cookie-consent, .shared-register-live, .shared-register-notice, .shared-register-filters { display: none !important; }
+  .shared-register-shell { min-height: 0; padding: 0; background: #fff !important; }
+  .shared-register-card { width: 100%; margin: 0; overflow: visible; border: 0; border-radius: 0; box-shadow: none; }
+  .shared-register-card > header { display: block; padding: 0 0 3mm; color: #111; background: none !important; border-bottom: 1px solid #444; }
+  .shared-register-card > header .eyebrow { display: none; }
+  .shared-register-card h1 { margin: 0 0 1mm; color: #111; font-size: 15pt; line-height: 1.1; }
+  .shared-register-card header p { color: #222; font-size: 8pt; }
+  .shared-register-print-summary { display: block; margin: 2mm 0; color: #222; font-size: 7.5pt; line-height: 1.2; }
+  .shared-register-count { margin: 0 0 2mm; color: #222; font-size: 7.5pt; }
+  .shared-register-count strong { color: #111; font-size: inherit; }
+  .shared-register-sessions { display: block; margin: 0; }
+  .shared-register-session { margin: 0 0 2.5mm; overflow: visible; border: 1px solid #777; border-radius: 0; box-shadow: none; }
+  .shared-register-session > header { padding: 1.5mm 2mm; color: #111; background: #eee !important; border-bottom: 1px solid #777; break-after: avoid; }
+  .shared-register-session > header p { display: none; }
+  .shared-register-session > header h2 { color: #111; font-size: 9pt; line-height: 1.1; }
+  .shared-register-session > header span { padding: 0; color: #111; background: none; border-radius: 0; font-size: 7pt; }
+  .shared-register-table-wrap { overflow: visible; }
+  .shared-register-table-wrap table { table-layout: fixed; font-size: 7.5pt; line-height: 1.05; }
+  .shared-register-table-wrap thead { display: table-header-group; }
+  .shared-register-table-wrap tr { break-inside: avoid; }
+  .shared-register-table-wrap th, .shared-register-table-wrap td { padding: 1.2mm 2mm; border-bottom: .25pt solid #bbb; color: #111; }
+  .shared-register-table-wrap th { background: #f5f5f5 !important; font-size: 6.5pt; letter-spacing: .03em; }
+  .shared-register-table-wrap th:first-child, .shared-register-table-wrap td:first-child { width: 46%; }
+  .shared-register-empty { padding: 4mm; font-size: 8pt; }
 }
 .migration-reminder-page {
   min-height: 62vh;
