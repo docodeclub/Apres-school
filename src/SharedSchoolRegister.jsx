@@ -75,6 +75,7 @@ export default function SharedSchoolRegister() {
     <section className="shared-register-shell">
       <div className="shared-register-card">
         <header>
+          <img className="shared-register-print-logo" src="/assets/apres-school-text.png" alt="Après School" />
           <div><p className="eyebrow">Private school register</p><h1>{register.schoolName}</h1><p>{formatDate(register.registerDate)} · Read only</p></div>
           <div className="shared-register-live"><span /> Live list<small>Refreshes every minute</small></div>
         </header>

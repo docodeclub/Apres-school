@@ -47741,6 +47741,7 @@ th {
 .shared-register-filters input, .shared-register-filters select { display: block; width: 100%; margin-top: 6px; }
 .shared-register-actions { display: flex; gap: 8px; }
 .shared-register-actions .button { white-space: nowrap; }
+.shared-register-print-logo { display: none; }
 .shared-register-print-summary { display: none; }
 .shared-register-count { margin: 0 30px 12px; color: #56627b; }
 .shared-register-count strong { color: #2443aa; font-size: 24px; }
@@ -47787,7 +47788,8 @@ th {
   body > header, body > footer, .site-header, .site-footer, .cookie-consent, .shared-register-live, .shared-register-notice, .shared-register-filters { display: none !important; }
   .shared-register-shell { min-height: 0; padding: 0; background: #fff !important; }
   .shared-register-card { width: 100%; margin: 0; overflow: visible; border: 0; border-radius: 0; box-shadow: none; }
-  .shared-register-card > header { display: block; padding: 0 0 3mm; color: #111; background: none !important; border-bottom: 1px solid #444; }
+  .shared-register-card > header { display: grid; grid-template-columns: 34mm 1fr; align-items: center; gap: 5mm; padding: 0 0 3mm; color: #111; background: none !important; border-bottom: 1px solid #444; }
+  .shared-register-print-logo { display: block; width: 34mm; height: auto; }
   .shared-register-card > header .eyebrow { display: none; }
   .shared-register-card h1 { margin: 0 0 1mm; color: #111; font-size: 15pt; line-height: 1.1; }
   .shared-register-card header p { color: #222; font-size: 8pt; }
