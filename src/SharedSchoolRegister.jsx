@@ -7,6 +7,7 @@ export default function SharedSchoolRegister() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [programme, setProgramme] = useState("All");
+  const [session, setSession] = useState("All");
   const [year, setYear] = useState("All");
   const [className, setClassName] = useState("All");
 
@@ -48,9 +49,24 @@ export default function SharedSchoolRegister() {
     const query = search.trim().toLowerCase();
     return (!query || String(row.childName).toLowerCase().includes(query))
       && (programme === "All" || row.programmeName === programme)
+      && (session === "All" || sessionKey(row) === session)
       && (year === "All" || row.yearGroup === year)
       && (className === "All" || row.className === className);
-  }), [rows, search, programme, year, className]);
+  }), [rows, search, programme, session, year, className]);
+  const sessionOptions = useMemo(() => {
+    const unique = new Map();
+    rows.forEach((row) => unique.set(sessionKey(row), sessionHeading(row)));
+    return [...unique.entries()];
+  }, [rows]);
+  const sessionGroups = useMemo(() => {
+    const groups = new Map();
+    visibleRows.forEach((row) => {
+      const key = sessionKey(row);
+      if (!groups.has(key)) groups.set(key, { key, heading: sessionHeading(row), rows: [] });
+      groups.get(key).rows.push(row);
+    });
+    return [...groups.values()];
+  }, [visibleRows]);
 
   if (loading) return <section className="shared-register-shell"><div className="shared-register-state"><strong>Opening today’s register…</strong><p>Checking the private link.</p></div></section>;
   if (error) return <section className="shared-register-shell"><div className="shared-register-state expired"><strong>Register unavailable</strong><p>{error}</p><p>Ask Après School for today’s new register email.</p></div></section>;
@@ -66,15 +82,23 @@ export default function SharedSchoolRegister() {
         <div className="shared-register-filters">
           <label>Find a child<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name" /></label>
           <label>Club<select value={programme} onChange={(event) => setProgramme(event.target.value)}><option>All</option>{options("programmeName").map((value) => <option key={value}>{value}</option>)}</select></label>
+          <label>Session<select value={session} onChange={(event) => setSession(event.target.value)}><option value="All">All sessions</option>{sessionOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>Year group<select value={year} onChange={(event) => setYear(event.target.value)}><option>All</option>{options("yearGroup").map((value) => <option key={value}>{value}</option>)}</select></label>
           <label>Class / form<select value={className} onChange={(event) => setClassName(event.target.value)}><option>All</option>{options("className").map((value) => <option key={value}>{value}</option>)}</select></label>
           <button className="button light" type="button" onClick={load}>Refresh now</button>
         </div>
-        <div className="shared-register-count"><strong>{visibleRows.length}</strong> {visibleRows.length === 1 ? "child" : "children"} shown</div>
-        <div className="shared-register-table-wrap">
-          <table><thead><tr><th>Child</th><th>Year group</th><th>Class / form</th><th>Club</th></tr></thead>
-            <tbody>{visibleRows.map((row, index) => <tr key={`${row.childName}-${row.programmeName}-${index}`}><td>{row.childName}</td><td>{row.yearGroup}</td><td>{row.className}</td><td>{row.programmeName}</td></tr>)}</tbody>
-          </table>
+        <div className="shared-register-count"><strong>{visibleRows.length}</strong> {visibleRows.length === 1 ? "session booking" : "session bookings"} across <strong>{sessionGroups.length}</strong> {sessionGroups.length === 1 ? "session" : "sessions"}</div>
+        <div className="shared-register-sessions">
+          {sessionGroups.map((group) => (
+            <section className="shared-register-session" key={group.key}>
+              <header><div><p>Session</p><h2>{group.heading}</h2></div><span>{group.rows.length} {group.rows.length === 1 ? "child" : "children"}</span></header>
+              <div className="shared-register-table-wrap">
+                <table><thead><tr><th>Child</th><th>Year group</th><th>Class / form</th></tr></thead>
+                  <tbody>{group.rows.map((row, index) => <tr key={`${row.childName}-${group.key}-${index}`}><td>{row.childName}</td><td>{row.yearGroup}</td><td>{row.className}</td></tr>)}</tbody>
+                </table>
+              </div>
+            </section>
+          ))}
           {!visibleRows.length && <p className="shared-register-empty">No children match these filters.</p>}
         </div>
       </div>
@@ -87,4 +111,17 @@ function formatDate(value) {
 }
 function formatDateTime(value) {
   return new Date(value).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+function sessionKey(row) {
+  return String(row.sessionKey || `${row.programmeName}|${row.sessionLabel}|${row.startsAt}|${row.endsAt}`);
+}
+function sessionHeading(row) {
+  const programme = String(row.programmeName || "Club session");
+  const label = String(row.sessionLabel || "");
+  const times = row.startsAt && row.endsAt ? `${formatTime(row.startsAt)}–${formatTime(row.endsAt)}` : "";
+  const distinctLabel = label && label.toLowerCase() !== programme.toLowerCase() ? label : "";
+  return [programme, distinctLabel, times].filter(Boolean).join(" · ");
+}
+function formatTime(value) {
+  return new Date(value).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Europe/London" });
 }
