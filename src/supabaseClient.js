@@ -1005,6 +1005,52 @@ export async function fetchAdminParentBookings(parentAccountId, limit = 30) {
   return data || [];
 }
 
+export async function updateAdminParentProfile(parentAccountId, patch = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!parentAccountId) throw new Error("Choose a parent account.");
+  const payload = {};
+  if (patch.fullName !== undefined) payload.full_name = String(patch.fullName || "").trim();
+  if (patch.phone !== undefined) payload.phone = String(patch.phone || "").trim() || null;
+  if (patch.billingAddress !== undefined) payload.billing_address = patch.billingAddress || {};
+  if (!payload.full_name && patch.fullName !== undefined) throw new Error("Parent name is required.");
+  const { data, error } = await supabase
+    .from("parent_accounts")
+    .update(payload)
+    .eq("id", parentAccountId)
+    .select("id,full_name,email,phone,billing_address,updated_at")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateAdminChildProfile(childId, patch = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!childId) throw new Error("Choose a child profile.");
+  const allowed = {
+    fullName: "full_name",
+    preferredName: "preferred_name",
+    dateOfBirth: "date_of_birth",
+    schoolName: "school_name",
+    yearGroup: "year_group",
+    className: "class_name",
+    medicalNotes: "medical_notes",
+    allergyNotes: "allergy_notes",
+    dietaryNotes: "dietary_notes",
+  };
+  const payload = Object.fromEntries(Object.entries(allowed)
+    .filter(([key]) => patch[key] !== undefined)
+    .map(([key, column]) => [column, typeof patch[key] === "string" ? patch[key].trim() || null : patch[key]]));
+  if (!payload.full_name && patch.fullName !== undefined) throw new Error("Child name is required.");
+  const { data, error } = await supabase
+    .from("child_profiles")
+    .update(payload)
+    .eq("id", childId)
+    .select("id,parent_account_id,full_name,preferred_name,date_of_birth,school_name,year_group,class_name,medical_notes,allergy_notes,dietary_notes,updated_at")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function requestChildProfileUpdate({ childId, section = "allergies", note = "" } = {}) {
   if (!supabase) throw new Error("Supabase is not configured.");
   if (!childId) throw new Error("Choose a child profile.");

@@ -20790,6 +20790,339 @@ th {
   font-weight: 900;
 }
 
+.parent-support-connection {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow-y: auto;
+  background: #f4f7ff;
+  color: var(--navy);
+}
+
+.parent-support-identity-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px clamp(18px, 4vw, 60px);
+  background: #24366f;
+  color: #fff;
+  box-shadow: 0 8px 28px rgba(28, 43, 90, 0.22);
+}
+
+.parent-support-identity-bar div,
+.parent-support-site-head div {
+  display: grid;
+  gap: 2px;
+}
+
+.parent-support-identity-bar span {
+  color: #dce5ff;
+  font-size: 0.82rem;
+}
+
+.parent-support-identity-bar button {
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: #fff;
+  color: #24366f;
+  font-weight: 900;
+}
+
+.parent-support-site-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px clamp(18px, 4vw, 60px);
+  border-bottom: 1px solid #dbe4fb;
+  background: #fff;
+}
+
+.parent-support-site-head strong {
+  color: var(--blue);
+  font-size: 1.45rem;
+}
+
+.parent-support-site-head div span {
+  color: var(--orange);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.parent-support-site-head > span {
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: #eef3ff;
+  color: var(--blue);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.parent-support-shell {
+  width: min(1160px, calc(100% - 32px));
+  margin: 24px auto 60px;
+  display: grid;
+  gap: 16px;
+}
+
+.parent-support-heading,
+.parent-support-child-card > header,
+.parent-support-list > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.parent-support-heading {
+  padding: 24px;
+  border: 1px solid #dbe4fb;
+  border-radius: 24px;
+  background: #fff;
+}
+
+.parent-support-heading h2,
+.parent-support-child-card h3,
+.parent-support-list h3,
+.parent-support-edit h3 {
+  margin: 3px 0;
+}
+
+.parent-support-heading p,
+.parent-support-edit > p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.parent-support-heading > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.parent-support-no-booking {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border: 1px solid #efcf8b;
+  border-radius: 18px;
+  background: #fff8e7;
+  color: #704a0b;
+}
+
+.parent-support-no-booking svg {
+  flex: 0 0 auto;
+}
+
+.parent-support-no-booking div {
+  display: grid;
+  gap: 3px;
+}
+
+.parent-support-no-booking span {
+  font-size: 0.86rem;
+}
+
+.parent-support-tabs {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 7px;
+  border: 1px solid #dbe4fb;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.parent-support-tabs button {
+  flex: 1 0 auto;
+  border: 0;
+  border-radius: 12px;
+  padding: 11px 15px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.parent-support-tabs button.active {
+  background: var(--blue);
+  color: #fff;
+}
+
+.parent-support-message {
+  margin: 0;
+  padding: 12px 15px;
+  border: 1px solid #b9ddc5;
+  border-radius: 14px;
+  background: #effaf2;
+  color: #1e6639;
+  font-weight: 850;
+}
+
+.parent-support-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.parent-support-grid article,
+.parent-support-list,
+.parent-support-child-card,
+.parent-support-edit,
+.parent-support-children {
+  padding: 20px;
+  border: 1px solid #dbe4fb;
+  border-radius: 20px;
+  background: #fff;
+}
+
+.parent-support-grid article,
+.parent-support-list article,
+.parent-support-child-picker button {
+  display: grid;
+  gap: 5px;
+}
+
+.parent-support-grid article > span,
+.parent-support-list article span,
+.parent-support-list article small,
+.parent-support-child-picker span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.parent-support-grid article > strong {
+  font-size: 1.45rem;
+}
+
+.parent-support-list article {
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid #e4e9f5;
+}
+
+.parent-support-list article:last-child {
+  border-bottom: 0;
+}
+
+.parent-support-list article > div:last-child {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.parent-support-child-picker {
+  display: flex;
+  gap: 9px;
+  overflow-x: auto;
+  margin-bottom: 14px;
+}
+
+.parent-support-child-picker button {
+  min-width: 210px;
+  border: 1px solid #dbe4fb;
+  border-radius: 15px;
+  padding: 12px 14px;
+  background: #f7f9ff;
+  text-align: left;
+}
+
+.parent-support-child-picker button.active {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(79, 109, 232, 0.12);
+}
+
+.parent-support-child-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 0;
+}
+
+.parent-support-child-card dl div {
+  padding: 13px;
+  border-radius: 14px;
+  background: #f7f9ff;
+}
+
+.parent-support-child-card dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.parent-support-child-card dd {
+  margin: 5px 0 0;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.parent-support-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.parent-support-form-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.parent-support-form-grid label.wide {
+  grid-column: 1 / -1;
+}
+
+.parent-support-form-grid textarea {
+  min-height: 92px;
+}
+
+.parent-support-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+@media (max-width: 760px) {
+  .parent-support-identity-bar,
+  .parent-support-heading,
+  .parent-support-child-card > header,
+  .parent-support-list > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .parent-support-identity-bar button,
+  .parent-support-heading > div:last-child .button {
+    width: 100%;
+  }
+
+  .parent-support-heading > div:last-child {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .parent-support-grid,
+  .parent-support-child-card dl,
+  .parent-support-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .parent-support-form-grid label.wide {
+    grid-column: auto;
+  }
+}
+
 .report-review-row em {
   width: fit-content;
   margin-top: 3px;

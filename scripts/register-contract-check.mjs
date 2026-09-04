@@ -78,6 +78,8 @@ const checks = [
   ["register shows the collection password near the top of the child drawer", /register-drawer-password[\s\S]*aria-label="Collection password"[\s\S]*collectionPassword\(selectedChild\)/],
   ["register shows whether parent email was sent requested or not requested", /registerParentEmailStatus[\s\S]*parentCopyEmailedAt[\s\S]*emailPrimaryContactRequested[\s\S]*Parent email not requested/],
   ["register allows admins to send a saved report to the parent", /Incidents canSendParentCopy[\s\S]*sendRegisterReportToParent[\s\S]*Send report to parent/],
+  ["admin UI provides an audited parent support connection", /(?=[\s\S]*Connect as parent)(?=[\s\S]*Connected as)(?=[\s\S]*Parent support connection opened)(?=[\s\S]*Log out &amp; return to admin)/],
+  ["admin UI parent support mode blocks booking and payment actions", /(?=[\s\S]*Booking and payment actions are disabled)(?=[\s\S]*cannot book, pay, cancel sessions, delete the account or change its password)/],
   ["customer profile route selects the matching family child and allergy section", /openCustomerProfileFromRegister[\s\S]*childId[\s\S]*section: "Allergies"[\s\S]*setTab\("Customer Profiles"\)/],
   ["customer profile can request an allergy update", /(?=[\s\S]*Request allergy update)(?=[\s\S]*Send update request)(?=[\s\S]*requestChildProfileUpdate)/],
   ["parent care values treat none as an empty allergy record", /meaningfulFamilyCareValue[\s\S]*no known[\s\S]*allergies:[\s\S]*filter\(meaningfulFamilyCareValue\)/],

@@ -3976,6 +3976,13 @@ function FamilyImportReview({ access, target = null, onTargetHandled }) {
   const [allergyRequestNote, setAllergyRequestNote] = useState("");
   const [allergyRequestBusy, setAllergyRequestBusy] = useState(false);
   const [allergyRequestStatus, setAllergyRequestStatus] = useState("");
+  const [supportFamilyId, setSupportFamilyId] = useState("");
+  const [supportTab, setSupportTab] = useState("Overview");
+  const [supportChildId, setSupportChildId] = useState("");
+  const [supportEditMode, setSupportEditMode] = useState("");
+  const [supportDraft, setSupportDraft] = useState({});
+  const [supportBusy, setSupportBusy] = useState(false);
+  const [supportMessage, setSupportMessage] = useState("");
   const canReview = ["Admin", "Superadmin"].includes(access?.role);
 
   useEffect(() => {
@@ -4035,6 +4042,97 @@ function FamilyImportReview({ access, target = null, onTargetHandled }) {
   const activePricingAssignment = [...(selectedFamily?.parent_pricing_assignments || [])]
     .filter((item) => item.effective_from <= new Date().toISOString().slice(0, 10) && (!item.effective_to || item.effective_to >= new Date().toISOString().slice(0, 10)))
     .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
+  const supportFamily = families.find((family) => family.id === supportFamilyId) || null;
+  const supportChildren = supportFamily?.child_profiles || [];
+  const supportChild = supportChildren.find((child) => child.id === supportChildId) || supportChildren[0] || null;
+  const supportOutstanding = parentBookings.reduce((total, booking) => total + Math.max(0, Number(booking.outstanding_balance || 0)), 0);
+
+  function openParentSupportConnection() {
+    if (!selectedFamily) return;
+    setSupportFamilyId(selectedFamily.id);
+    setSupportChildId(selectedFamily.child_profiles?.[0]?.id || "");
+    setSupportTab("Overview");
+    setSupportEditMode("");
+    setSupportMessage("");
+    addAuditLog("Parent support connection opened", `${selectedFamily.full_name} · ${selectedFamily.email}`);
+  }
+
+  function closeParentSupportConnection() {
+    if (supportFamily) addAuditLog("Parent support connection closed", `${supportFamily.full_name} · ${supportFamily.email}`);
+    setSupportFamilyId("");
+    setSupportEditMode("");
+    setSupportMessage("");
+  }
+
+  function editSupportParent() {
+    if (!supportFamily) return;
+    setSupportDraft({
+      fullName: supportFamily.full_name || "",
+      phone: supportFamily.phone || "",
+      address1: supportFamily.billing_address?.line1 || "",
+      address2: supportFamily.billing_address?.line2 || "",
+      town: supportFamily.billing_address?.town || "",
+      county: supportFamily.billing_address?.county || "",
+      postcode: supportFamily.billing_address?.postcode || "",
+      country: supportFamily.billing_address?.country || "",
+    });
+    setSupportEditMode("parent");
+    setSupportMessage("");
+  }
+
+  function editSupportChild(child) {
+    if (!child) return;
+    setSupportChildId(child.id);
+    setSupportDraft({
+      fullName: child.full_name || "",
+      preferredName: child.preferred_name || "",
+      dateOfBirth: child.date_of_birth || "",
+      schoolName: child.school_name || "",
+      yearGroup: child.year_group || "",
+      className: child.class_name || "",
+      allergyNotes: child.allergy_notes || "",
+      medicalNotes: child.medical_notes || "",
+      dietaryNotes: child.dietary_notes || "",
+    });
+    setSupportEditMode("child");
+    setSupportMessage("");
+  }
+
+  async function saveSupportChanges(event) {
+    event.preventDefault();
+    if (!supportFamily || supportBusy || !supportEditMode) return;
+    setSupportBusy(true);
+    setSupportMessage("");
+    try {
+      const module = await loadSupabaseModule();
+      if (supportEditMode === "parent") {
+        await module.updateAdminParentProfile(supportFamily.id, {
+          fullName: supportDraft.fullName,
+          phone: supportDraft.phone,
+          billingAddress: {
+            ...(supportFamily.billing_address || {}),
+            line1: supportDraft.address1,
+            line2: supportDraft.address2,
+            town: supportDraft.town,
+            county: supportDraft.county,
+            postcode: supportDraft.postcode,
+            country: supportDraft.country,
+          },
+        });
+        addAuditLog("Parent support profile updated", `${supportFamily.full_name} · ${supportFamily.email}`);
+      } else if (supportChild) {
+        await module.updateAdminChildProfile(supportChild.id, supportDraft);
+        addAuditLog("Parent support child profile updated", `${supportFamily.full_name} · ${supportChild.full_name}`);
+      }
+      setFamilies(await module.fetchMigrationReviewFamilies());
+      setSupportEditMode("");
+      setSupportMessage("Changes saved. The parent will see the updated information immediately.");
+    } catch (supportError) {
+      setSupportMessage(supportError?.message || "The changes could not be saved.");
+    } finally {
+      setSupportBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!target?.childId || !families.length) return;
@@ -4343,7 +4441,7 @@ function FamilyImportReview({ access, target = null, onTargetHandled }) {
             <section className="family-import-detail" aria-label={`Review ${selectedFamily.full_name}`}>
               <div className="family-import-family-head">
                 <div><p className="eyebrow">Family record</p><h3>{selectedFamily.full_name}</h3><p>{selectedFamily.email} · {selectedFamily.phone || "Phone missing"}</p></div>
-                <div className="family-credit-profile-actions"><div className="family-credit-profile-balance"><span>Account credit</span><strong>{formatCurrency(selectedCreditBalance)}</strong></div><button className="button book" type="button" onClick={openCreditAdjustment}>Top up / adjust credit</button><Badge value={selectedFamily.portal_status === "migration_review" ? "Migration review" : selectedFamily.portal_status || "Active"} /><span className="family-import-no-login">{selectedFamily.profile_id ? "Login linked" : "No login created"}</span></div>
+                <div className="family-credit-profile-actions"><button className="button secondary" type="button" onClick={openParentSupportConnection}>Connect as parent</button><div className="family-credit-profile-balance"><span>Account credit</span><strong>{formatCurrency(selectedCreditBalance)}</strong></div><button className="button book" type="button" onClick={openCreditAdjustment}>Top up / adjust credit</button><Badge value={selectedFamily.portal_status === "migration_review" ? "Migration review" : selectedFamily.portal_status || "Active"} /><span className="family-import-no-login">{selectedFamily.profile_id ? "Login linked" : "No login created"}</span></div>
               </div>
               {creditMessage && <p className={`family-credit-status ${creditMessageTone}`} role="status">{creditMessage}</p>}
               <div className="family-import-parent-grid">
@@ -4404,6 +4502,38 @@ function FamilyImportReview({ access, target = null, onTargetHandled }) {
               ) : <EmptyList title="No child profiles" text="This family has no imported child record and needs manual review." />}
             </section>
           )}
+        </div>
+      )}
+
+      {supportFamily && (
+        <div className="parent-support-connection" role="dialog" aria-modal="true" aria-label={`Connected to ${supportFamily.full_name}'s parent account`}>
+          <header className="parent-support-identity-bar">
+            <div><strong>Connected as {access?.currentUser?.name || access?.currentUser?.email || "Après School admin"}</strong><span>Viewing {supportFamily.full_name}'s family account · every change is audited</span></div>
+            <button type="button" onClick={closeParentSupportConnection}>Log out &amp; return to admin</button>
+          </header>
+          <div className="parent-support-site-head"><div><strong>Après School</strong><span>Let's Learn and Play</span></div><span>Support connection</span></div>
+          <main className="parent-support-shell">
+            <section className="parent-support-heading">
+              <div><p className="eyebrow">Family account</p><h2>{supportFamily.full_name}</h2><p>{supportFamily.email} · {supportFamily.phone || "Phone not supplied"}</p></div>
+              <div><span className="secure-label">Secure support view</span><button className="button light" type="button" onClick={closeParentSupportConnection}>Return to admin</button></div>
+            </section>
+            <aside className="parent-support-no-booking"><LockKeyhole aria-hidden="true" /><div><strong>Booking and payment actions are disabled</strong><span>You can inspect the family account and correct profile information, but cannot book, pay, cancel sessions, delete the account or change its password.</span></div></aside>
+            <nav className="parent-support-tabs" aria-label="Parent account sections">
+              {["Overview", "Bookings", "Payments", "Children", "Account"].map((item) => <button type="button" key={item} className={supportTab === item ? "active" : ""} onClick={() => { setSupportTab(item); setSupportEditMode(""); setSupportMessage(""); }}>{item}</button>)}
+            </nav>
+            {supportMessage && <p className="parent-support-message" role="status">{supportMessage}</p>}
+            {supportTab === "Overview" && <section className="parent-support-grid">
+              <article><span>Children</span><strong>{supportChildren.length}</strong><small>{supportChildren.map((child) => child.full_name).join(" · ") || "No children recorded"}</small></article>
+              <article><span>Recent bookings</span><strong>{parentBookings.length}</strong><small>{parentBookings[0] ? `Latest ${formatShortDate(String(parentBookings[0].created_at || "").slice(0, 10))}` : "No bookings found"}</small></article>
+              <article><span>Outstanding</span><strong>{formatCurrency(supportOutstanding)}</strong><small>Across the bookings visible here</small></article>
+              <article><span>Account status</span><strong>{supportFamily.portal_status || "Active"}</strong><small>{supportFamily.profile_id ? "Login linked" : "Login not linked"}</small></article>
+            </section>}
+            {supportTab === "Bookings" && <section className="parent-support-list"><header><div><p className="eyebrow">Bookings</p><h3>What the family can see</h3></div><span>{parentBookings.length} recent</span></header>{parentBookings.map((booking) => <article key={booking.id}><div><strong>{booking.booking_reference || "Booking"}</strong><span>{formatShortDate(String(booking.created_at || "").slice(0, 10))} · {booking.status}</span><small>{[...new Set((booking.booking_items || []).map((item) => item.child_name).filter(Boolean))].join(" · ") || "Child not recorded"}</small></div><div><strong>{formatCurrency(booking.total_amount)}</strong><span>{booking.booking_items?.length || 0} sessions</span></div></article>)}{!parentBookings.length && <EmptyList title="No bookings found" text="No bookings are linked to this family account." />}</section>}
+            {supportTab === "Payments" && <section className="parent-support-grid"><article><span>Total booked</span><strong>{formatCurrency(parentBookings.reduce((sum, booking) => sum + Number(booking.total_amount || 0), 0))}</strong><small>Recent bookings shown</small></article><article><span>Outstanding balance</span><strong>{formatCurrency(supportOutstanding)}</strong><small>No payments can be made in support mode</small></article><article><span>Account credit</span><strong>{formatCurrency((supportFamily.parent_account_credit_entries || []).filter((entry) => entry.status === "posted").reduce((sum, entry) => sum + Number(entry.amount || 0), 0))}</strong><small>Managed from the admin profile</small></article></section>}
+            {supportTab === "Children" && <section className="parent-support-children"><div className="parent-support-child-picker">{supportChildren.map((child) => <button type="button" key={child.id} className={supportChild?.id === child.id ? "active" : ""} onClick={() => { setSupportChildId(child.id); setSupportEditMode(""); setSupportMessage(""); }}><strong>{child.full_name}</strong><span>{child.school_name || "School not supplied"} · {child.year_group || "Year not supplied"}</span></button>)}</div>{supportChild && supportEditMode !== "child" && <section className="parent-support-child-card"><header><div><p className="eyebrow">Child profile</p><h3>{supportChild.full_name}</h3></div><button className="button secondary" type="button" onClick={() => editSupportChild(supportChild)}>Edit profile</button></header><dl><div><dt>Date of birth</dt><dd>{formatShortDate(supportChild.date_of_birth)}</dd></div><div><dt>School</dt><dd>{supportChild.school_name || "Not supplied"}</dd></div><div><dt>Year / class</dt><dd>{[supportChild.year_group, supportChild.class_name].filter(Boolean).join(" · ") || "Not supplied"}</dd></div><div><dt>Allergies</dt><dd>{supportChild.allergy_notes || "None recorded"}</dd></div><div><dt>Medical</dt><dd>{supportChild.medical_notes || "None recorded"}</dd></div><div><dt>Dietary</dt><dd>{supportChild.dietary_notes || "None recorded"}</dd></div></dl></section>}{supportChild && supportEditMode === "child" && <form className="parent-support-edit" onSubmit={saveSupportChanges}><h3>Edit {supportChild.full_name}</h3><div className="parent-support-form-grid"><label>Full name<input required value={supportDraft.fullName || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, fullName: event.target.value }))} /></label><label>Preferred name<input value={supportDraft.preferredName || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, preferredName: event.target.value }))} /></label><label>Date of birth<input type="date" value={supportDraft.dateOfBirth || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, dateOfBirth: event.target.value }))} /></label><label>School<input value={supportDraft.schoolName || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, schoolName: event.target.value }))} /></label><label>Year group<input value={supportDraft.yearGroup || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, yearGroup: event.target.value }))} /></label><label>Class<input value={supportDraft.className || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, className: event.target.value }))} /></label><label className="wide">Allergies<textarea value={supportDraft.allergyNotes || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, allergyNotes: event.target.value }))} /></label><label className="wide">Medical information<textarea value={supportDraft.medicalNotes || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, medicalNotes: event.target.value }))} /></label><label className="wide">Dietary information<textarea value={supportDraft.dietaryNotes || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, dietaryNotes: event.target.value }))} /></label></div><div className="parent-support-edit-actions"><button className="button light" type="button" onClick={() => setSupportEditMode("")}>Cancel</button><button className="button book" disabled={supportBusy}>{supportBusy ? "Saving…" : "Save changes"}</button></div></form>}</section>}
+            {supportTab === "Account" && supportEditMode !== "parent" && <section className="parent-support-child-card"><header><div><p className="eyebrow">Account details</p><h3>{supportFamily.full_name}</h3></div><button className="button secondary" type="button" onClick={editSupportParent}>Edit contact details</button></header><dl><div><dt>Email</dt><dd>{supportFamily.email}</dd></div><div><dt>Phone</dt><dd>{supportFamily.phone || "Not supplied"}</dd></div><div><dt>Address</dt><dd>{reviewValue([supportFamily.billing_address?.line1, supportFamily.billing_address?.line2, supportFamily.billing_address?.town, supportFamily.billing_address?.county, supportFamily.billing_address?.postcode, supportFamily.billing_address?.country], "Not supplied")}</dd></div><div><dt>Centres</dt><dd>{reviewValue(supportFamily.registered_centres, "Not supplied")}</dd></div></dl></section>}
+            {supportTab === "Account" && supportEditMode === "parent" && <form className="parent-support-edit" onSubmit={saveSupportChanges}><h3>Edit contact details</h3><p>The login email is shown but cannot be changed from support mode because it is tied to authentication.</p><div className="parent-support-form-grid"><label>Full name<input required value={supportDraft.fullName || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, fullName: event.target.value }))} /></label><label>Email<input disabled value={supportFamily.email || ""} /></label><label>Phone<input value={supportDraft.phone || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, phone: event.target.value }))} /></label><label className="wide">Address line 1<input value={supportDraft.address1 || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, address1: event.target.value }))} /></label><label className="wide">Address line 2<input value={supportDraft.address2 || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, address2: event.target.value }))} /></label><label>Town<input value={supportDraft.town || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, town: event.target.value }))} /></label><label>County<input value={supportDraft.county || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, county: event.target.value }))} /></label><label>Postcode<input value={supportDraft.postcode || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, postcode: event.target.value }))} /></label><label>Country<input value={supportDraft.country || ""} onChange={(event) => setSupportDraft((current) => ({ ...current, country: event.target.value }))} /></label></div><div className="parent-support-edit-actions"><button className="button light" type="button" onClick={() => setSupportEditMode("")}>Cancel</button><button className="button book" disabled={supportBusy}>{supportBusy ? "Saving…" : "Save changes"}</button></div></form>}
+          </main>
         </div>
       )}
     </div>
