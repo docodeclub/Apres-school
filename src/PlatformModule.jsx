@@ -1925,6 +1925,12 @@ function Registers({ access, onViewParentAccount }) {
     return contact.phone || contact.mobile || contact.telephone || contact.number || row.parentPhone || "";
   }
 
+  function collectionPassword(row) {
+    const registration = row.consents?.registration || {};
+    const value = registration.collectionPassword || "";
+    return meaningfulCareValue(value) ? String(value).trim() : "";
+  }
+
   function childAge(row) {
     if (!row.childDateOfBirth) return "";
     const birth = new Date(`${row.childDateOfBirth}T12:00:00`);
@@ -2880,6 +2886,12 @@ function Registers({ access, onViewParentAccount }) {
               </div>
               <button className="register-drawer-close" type="button" onClick={() => setSelectedChildId("")} aria-label="Close pupil details"><X size={20} /></button>
             </header>
+
+            <section className={`register-drawer-password ${collectionPassword(selectedChild) ? "recorded" : "missing"}`} aria-label="Collection password">
+              <span>Collection password</span>
+              <strong>{collectionPassword(selectedChild) || "Not provided"}</strong>
+              <small>{collectionPassword(selectedChild) ? "Use this to verify an unfamiliar collector." : "Confirm the collector using the authorised-collector information below."}</small>
+            </section>
 
             <section className="register-drawer-session">
               <span>Today’s booking</span>

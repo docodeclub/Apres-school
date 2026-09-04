@@ -75,6 +75,7 @@ const checks = [
   ["register shows that Breakfast Club is unaffected by going home", /Breakfast Club and any expected sessions are not affected/],
   ["register parent profile route is restricted to administrators", /const canViewParentAccount = \["Admin", "Superadmin"\][\s\S]*View parent account/],
   ["register parent profile route filters to the selected family", /setSearch\(family\.email \|\| family\.full_name \|\| ""\)/],
+  ["register shows the collection password near the top of the child drawer", /register-drawer-password[\s\S]*aria-label="Collection password"[\s\S]*collectionPassword\(selectedChild\)/],
   ["customer profile route selects the matching family child and allergy section", /openCustomerProfileFromRegister[\s\S]*childId[\s\S]*section: "Allergies"[\s\S]*setTab\("Customer Profiles"\)/],
   ["customer profile can request an allergy update", /(?=[\s\S]*Request allergy update)(?=[\s\S]*Send update request)(?=[\s\S]*requestChildProfileUpdate)/],
   ["parent care values treat none as an empty allergy record", /meaningfulFamilyCareValue[\s\S]*no known[\s\S]*allergies:[\s\S]*filter\(meaningfulFamilyCareValue\)/],

@@ -6883,6 +6883,43 @@ body.scr-drawer-open {
   background: #f0faf4 !important;
 }
 
+.register-drawer-password {
+  display: grid;
+  gap: 5px;
+  border-width: 2px !important;
+}
+
+.register-drawer-password.recorded {
+  border-color: #f0b45d !important;
+  background: #fff8e9 !important;
+}
+
+.register-drawer-password.missing {
+  border-color: #d7dfed !important;
+  background: #f5f7fb !important;
+}
+
+.register-drawer-password span {
+  color: #8b5a0c;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.register-drawer-password strong {
+  color: var(--royal-dark);
+  font-size: clamp(1.35rem, 4vw, 1.8rem);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.register-drawer-password small {
+  color: var(--muted);
+  font-weight: 750;
+  line-height: 1.35;
+}
+
 .register-drawer-session span,
 .register-drawer-session small {
   color: var(--muted);
