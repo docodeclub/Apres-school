@@ -15529,6 +15529,29 @@ function reportBooleanLabel(value) {
   return value || "Not recorded";
 }
 
+function registerParentEmailStatus(report) {
+  const details = report?.details || {};
+  if (details.parentCopyEmailedAt) {
+    return {
+      key: "sent",
+      shortLabel: "Parent email sent",
+      detail: `Sent ${registerReportDateTime(details.parentCopyEmailedAt)}${details.parentCopyRecipient ? ` to ${details.parentCopyRecipient}` : ""}`,
+    };
+  }
+  if (details.emailPrimaryContactRequested === true) {
+    return {
+      key: "unconfirmed",
+      shortLabel: "Parent email not confirmed",
+      detail: "The staff member selected email to parent, but successful delivery was not recorded.",
+    };
+  }
+  return {
+    key: "not-requested",
+    shortLabel: "Parent email not requested",
+    detail: "The staff member did not select email to parent when saving this report.",
+  };
+}
+
 function reportLocalIsoDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value || "").slice(0, 10);
@@ -15925,7 +15948,7 @@ function Incidents() {
 
   function exportReportSummary() {
     const rows = [
-      ["Date", "Report type", "Site", "Child", "Programme", "Session", "Status", "Recorded by", "Affected areas", "Summary"],
+      ["Date", "Report type", "Site", "Child", "Programme", "Session", "Status", "Recorded by", "Parent email", "Affected areas", "Summary"],
       ...rangeReports.map((report) => [
         reportLocalIsoDate(report.occurredAt || report.createdAt),
         registerReportTypeLabels[report.type] || report.type,
@@ -15935,6 +15958,7 @@ function Incidents() {
         report.sessionLabel || "",
         registerReportStatusLabel(report.status),
         report.reporterName || "",
+        registerParentEmailStatus(report).shortLabel,
         report.type === "first_aid" ? registerBodyAreasLabel(report.details || {}) : "",
         report.summary || "",
       ]),
@@ -16050,6 +16074,7 @@ function Incidents() {
               <strong>{report.childName || "Child record"}</strong>
               <span>{report.siteName || "School not recorded"} · {report.sessionLabel || report.programmeName || "Session not recorded"}</span>
               <small>{registerReportDateTime(report.occurredAt || report.createdAt)}</small>
+              <span className={`report-parent-email-status ${registerParentEmailStatus(report).key}`}>{registerParentEmailStatus(report).shortLabel}</span>
               <em>{registerReportStatusLabel(report.status)}</em>
             </button>
           ))}
@@ -16083,6 +16108,7 @@ function Incidents() {
               <dl className="report-review-facts">
                 <div><dt>Occurred</dt><dd>{registerReportDateTime(selectedReport.occurredAt || selectedReport.createdAt)}</dd></div>
                 <div><dt>Recorded by</dt><dd>{selectedReport.reporterName || "Staff member"}</dd></div>
+                <div className={`report-parent-email-fact ${registerParentEmailStatus(selectedReport).key}`}><dt>Email copy to parent</dt><dd>{registerParentEmailStatus(selectedReport).detail}</dd></div>
                 {detailRows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
               </dl>
 

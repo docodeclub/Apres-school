@@ -20749,6 +20749,34 @@ th {
   color: var(--muted);
 }
 
+.report-review-row .report-parent-email-status {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.73rem;
+  font-weight: 900;
+}
+
+.report-review-row .report-parent-email-status.sent,
+.report-parent-email-fact.sent {
+  border-color: #abd9bb;
+  background: #eaf8ef;
+  color: #1f6a3c;
+}
+
+.report-review-row .report-parent-email-status.unconfirmed,
+.report-parent-email-fact.unconfirmed {
+  border-color: #efd18f;
+  background: #fff7df;
+  color: #81540d;
+}
+
+.report-review-row .report-parent-email-status.not-requested,
+.report-parent-email-fact.not-requested {
+  background: #eef1f6;
+  color: #68728a;
+}
+
 .report-review-row em {
   width: fit-content;
   margin-top: 3px;
