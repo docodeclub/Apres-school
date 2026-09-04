@@ -1049,6 +1049,7 @@ function FormerStaffPortal({ data = {}, userEmail = "", onSignOut }) {
 
 function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data, onboardingOnly = false }) {
   const [staffProfileTargetId, setStaffProfileTargetId] = useState("");
+  const [customerProfileTarget, setCustomerProfileTarget] = useState(null);
   const [scrInspectionTarget, setScrInspectionTarget] = useState("");
   const [bookingAdminFocus, setBookingAdminFocus] = useState("");
   const [viewRole, setViewRole] = useState(role);
@@ -1164,6 +1165,14 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data, onboard
     setOpenNavGroup("Sites");
     localStorage.setItem("apres-platform-open-nav-group", "Sites");
     setTab("Bookings");
+  }
+
+  function openCustomerProfileFromRegister(childId) {
+    if (!childId) return;
+    setCustomerProfileTarget({ childId, section: "Allergies", requestedAt: Date.now() });
+    setOpenNavGroup("People");
+    localStorage.setItem("apres-platform-open-nav-group", "People");
+    setTab("Customer Profiles");
   }
 
   function updateStaffPayOverride(staffId, patch) {
@@ -1295,9 +1304,9 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data, onboard
         {tab === "Staff" && effectiveRole === "Staff" && <MyShifts access={access} />}
         {tab === "Staff" && effectiveRole === "Staff" && scopedData.staff?.[0] && <EmployeeDocumentsPanel person={scopedData.staff[0]} access={access} legacyFiles={scopedData.hrFiles || []} compact />}
         {tab === "Admin" && <AdminDashboard data={scopedData} access={access} onOpenTab={setTab} onOpenBookingFocus={openBookingAdminFocus} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} onOpenInspectionView={openSiteScrFocusView} />}
-        {tab === "Customer Profiles" && <FamilyImportReview access={access} />}
+        {tab === "Customer Profiles" && <FamilyImportReview access={access} target={customerProfileTarget} onTargetHandled={() => setCustomerProfileTarget(null)} />}
         {tab === "Bookings" && <BookingAdmin data={enrichedData} access={access} initialFocus={bookingAdminFocus} onClearInitialFocus={() => setBookingAdminFocus("")} />}
-        {tab === "Registers" && <Registers access={access} />}
+        {tab === "Registers" && <Registers access={access} onViewParentAccount={openCustomerProfileFromRegister} />}
         {tab === "Booking Payments" && <BookingFinance data={enrichedData} access={access} onOpenBookingFocus={openBookingAdminFocus} />}
         {tab === "Pricing Groups" && ["Manager", "Admin", "Superadmin"].includes(effectiveRole) && <PricingGroupsModule access={access} />}
         {tab === "Finance" && <SchoolFinance data={enrichedData} access={access} />}
@@ -1658,7 +1667,7 @@ function isAfterSchoolRegisterRow(row = {}) {
   return /after[-\s]?school/.test(text);
 }
 
-function Registers({ access }) {
+function Registers({ access, onViewParentAccount }) {
   const today = new Date();
   const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const requestedRegisterDate = new URLSearchParams(window.location.search).get("registerDate");
@@ -1729,6 +1738,7 @@ function Registers({ access }) {
   const [childPhotoStatus, setChildPhotoStatus] = useState("");
   const registerRequestRef = useRef(0);
   const canManageChildPhoto = ["Manager", "Admin", "Superadmin"].includes(access?.role);
+  const canViewParentAccount = ["Admin", "Superadmin"].includes(access?.role) && typeof onViewParentAccount === "function";
 
   useEffect(() => {
     const nextDefault = canonicalSchoolName(access?.currentStaff?.defaultRegisterSite || "");
@@ -1926,10 +1936,7 @@ function Registers({ access }) {
   }
 
   function meaningfulCareValue(value) {
-    if (Array.isArray(value)) return value.some(meaningfulCareValue);
-    if (value && typeof value === "object") return Object.values(value).some(meaningfulCareValue);
-    const normalized = String(value || "").trim().toLowerCase();
-    return Boolean(normalized && !["no", "none", "n/a", "not applicable", "false"].includes(normalized));
+    return meaningfulProfileValue(value);
   }
 
   function sendDetails(row) {
@@ -1961,12 +1968,14 @@ function Registers({ access }) {
 
   function hasAllergyCare(row) {
     const registration = row.consents?.registration || {};
-    return meaningfulCareValue([
+    const recordedValues = [
       row.allergyNotes,
       registration.allergies,
       registration.autoInjectors,
-      (row.flags || []).filter((flag) => /\b(allerg|auto-injector|epipen|emerade)\b/i.test(String(flag))),
-    ]);
+    ];
+    const allergyFlags = (row.flags || []).filter((flag) => /\b(allerg|auto-injector|epipen|emerade)\b/i.test(String(flag)));
+    return meaningfulCareValue(recordedValues)
+      || (!containsExplicitNegativeProfileValue(recordedValues) && meaningfulCareValue(allergyFlags));
   }
 
   function hasCollectionRestriction(row) {
@@ -1981,10 +1990,10 @@ function Registers({ access }) {
 
   function careDetailLines(row) {
     return [
-      row.allergyNotes && `Allergy: ${row.allergyNotes}`,
-      row.medicalNotes && `Medical: ${row.medicalNotes}`,
-      row.dietaryNotes && `Dietary: ${row.dietaryNotes}`,
-      ...(row.flags || []),
+      meaningfulCareValue(row.allergyNotes) && `Allergy: ${row.allergyNotes}`,
+      meaningfulCareValue(row.medicalNotes) && `Medical: ${row.medicalNotes}`,
+      meaningfulCareValue(row.dietaryNotes) && `Dietary: ${row.dietaryNotes}`,
+      ...(row.flags || []).filter((flag) => meaningfulCareValue(String(flag).replace(/^(?:allerg(?:y|ies)|medical|dietary)\s*:\s*/i, ""))),
     ].filter(Boolean);
   }
 
@@ -2898,6 +2907,11 @@ function Registers({ access }) {
                 <strong>{selectedChild.parentName || "Parent not recorded"}</strong>
                 <a href={emergencyPhone(selectedChild) ? `tel:${emergencyPhone(selectedChild).replace(/\s/g, "")}` : undefined}>{emergencyPhone(selectedChild) || "Emergency phone not recorded"}</a>
               </div>
+              {canViewParentAccount && (
+                <button className="button light register-view-parent" type="button" onClick={() => onViewParentAccount(selectedChild.childId)}>
+                  View parent account
+                </button>
+              )}
             </section>
 
             <section>
@@ -3878,6 +3892,24 @@ function PlatformHeader({ role, actualRole, canPreviewRoles, viewRole, setViewRo
 
 const familyImportChildSections = ["Overview", "Contacts", "Consents", "Dietary", "Allergies", "Medication", "Medical", "SEND"];
 
+function isNegativeProfileText(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[.!]+$/g, "");
+  return /^(?:no|none|nil|n\/?a|not applicable|false|no known (?:allerg(?:y|ies)|medical conditions?|dietary needs?))$/.test(normalized);
+}
+
+function meaningfulProfileValue(value) {
+  if (Array.isArray(value)) return value.some(meaningfulProfileValue);
+  if (value && typeof value === "object") return Object.values(value).some(meaningfulProfileValue);
+  const normalized = String(value || "").trim();
+  return Boolean(normalized && !isNegativeProfileText(normalized));
+}
+
+function containsExplicitNegativeProfileValue(value) {
+  if (Array.isArray(value)) return value.some(containsExplicitNegativeProfileValue);
+  if (value && typeof value === "object") return Object.values(value).some(containsExplicitNegativeProfileValue);
+  return Boolean(String(value || "").trim() && isNegativeProfileText(value));
+}
+
 function reviewValue(value, fallback = "Not provided") {
   if (Array.isArray(value)) return value.filter(Boolean).map((item) => reviewValue(item, "")).filter(Boolean).join(" · ") || fallback;
   if (value && typeof value === "object") {
@@ -3901,7 +3933,7 @@ function migrationHealthReviewStatus(status) {
   return "Awaiting family import";
 }
 
-function FamilyImportReview({ access }) {
+function FamilyImportReview({ access, target = null, onTargetHandled }) {
   const [families, setFamilies] = useState([]);
   const [healthReviewItems, setHealthReviewItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3924,6 +3956,13 @@ function FamilyImportReview({ access }) {
   const [pricingDraft, setPricingDraft] = useState({ pricingGroupId: "", effectiveFrom: new Date().toISOString().slice(0, 10), notes: "" });
   const [pricingBusy, setPricingBusy] = useState(false);
   const [pricingMessage, setPricingMessage] = useState("");
+  const [parentBookings, setParentBookings] = useState([]);
+  const [parentBookingsLoading, setParentBookingsLoading] = useState(false);
+  const [parentBookingsError, setParentBookingsError] = useState("");
+  const [allergyRequestOpen, setAllergyRequestOpen] = useState(false);
+  const [allergyRequestNote, setAllergyRequestNote] = useState("");
+  const [allergyRequestBusy, setAllergyRequestBusy] = useState(false);
+  const [allergyRequestStatus, setAllergyRequestStatus] = useState("");
   const canReview = ["Admin", "Superadmin"].includes(access?.role);
 
   useEffect(() => {
@@ -3983,6 +4022,53 @@ function FamilyImportReview({ access }) {
   const activePricingAssignment = [...(selectedFamily?.parent_pricing_assignments || [])]
     .filter((item) => item.effective_from <= new Date().toISOString().slice(0, 10) && (!item.effective_to || item.effective_to >= new Date().toISOString().slice(0, 10)))
     .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
+
+  useEffect(() => {
+    if (!target?.childId || !families.length) return;
+    const family = families.find((candidate) => (candidate.child_profiles || []).some((child) => child.id === target.childId));
+    if (!family) return;
+    setSearch("");
+    setCentre("All centres");
+    setSelectedFamilyId(family.id);
+    setSelectedChildId(target.childId);
+    setChildSection(target.section || "Overview");
+    setAllergyRequestStatus("");
+    onTargetHandled?.();
+  }, [families, target?.requestedAt]);
+
+  useEffect(() => {
+    if (!selectedFamily?.id || !canReview) {
+      setParentBookings([]);
+      return undefined;
+    }
+    let active = true;
+    setParentBookingsLoading(true);
+    setParentBookingsError("");
+    loadSupabaseModule()
+      .then(({ fetchAdminParentBookings }) => fetchAdminParentBookings(selectedFamily.id, 30))
+      .then((items) => { if (active) setParentBookings(items); })
+      .catch((bookingError) => { if (active) setParentBookingsError(bookingError?.message || "Bookings could not be loaded."); })
+      .finally(() => { if (active) setParentBookingsLoading(false); });
+    return () => { active = false; };
+  }, [selectedFamily?.id, canReview]);
+
+  async function submitAllergyUpdateRequest(event) {
+    event.preventDefault();
+    if (!selectedChild?.id || allergyRequestBusy) return;
+    setAllergyRequestBusy(true);
+    setAllergyRequestStatus("");
+    try {
+      const module = await loadSupabaseModule();
+      const result = await module.requestChildProfileUpdate({ childId: selectedChild.id, section: "allergies", note: allergyRequestNote });
+      setAllergyRequestOpen(false);
+      setAllergyRequestNote("");
+      setAllergyRequestStatus(`Update request emailed to ${result.recipient}.`);
+    } catch (requestError) {
+      setAllergyRequestStatus(requestError?.message || "The allergy update request could not be sent.");
+    } finally {
+      setAllergyRequestBusy(false);
+    }
+  }
 
   async function submitParentPricing(event) {
     event.preventDefault();
@@ -4198,6 +4284,20 @@ function FamilyImportReview({ access }) {
         </div>
       )}
 
+      {allergyRequestOpen && selectedFamily && selectedChild && (
+        <div className="platform-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !allergyRequestBusy) setAllergyRequestOpen(false); }}>
+          <form className="hr-dismiss-modal family-allergy-request-modal" role="dialog" aria-modal="true" aria-labelledby="family-allergy-request-title" onSubmit={submitAllergyUpdateRequest}>
+            <button className="modal-close" type="button" aria-label="Close allergy update request" onClick={() => setAllergyRequestOpen(false)} disabled={allergyRequestBusy}><X size={18} /></button>
+            <p className="eyebrow">Care information</p>
+            <h3 id="family-allergy-request-title">Ask {selectedFamily.full_name} to review allergies?</h3>
+            <p>An email will link directly to {selectedChild.full_name}'s allergy section in the secure parent portal.</p>
+            <label className="family-allergy-request-note"><span>Optional message</span><textarea maxLength="500" rows="4" value={allergyRequestNote} onChange={(event) => setAllergyRequestNote(event.target.value)} placeholder="For example: The current register alert conflicts with the details shown. Please confirm whether there are any known allergies." /><small>{allergyRequestNote.length}/500</small></label>
+            {allergyRequestStatus && <p className="family-credit-message error" role="alert">{allergyRequestStatus}</p>}
+            <div className="dismiss-modal-actions"><button type="button" className="button secondary" onClick={() => setAllergyRequestOpen(false)} disabled={allergyRequestBusy}>Cancel</button><button type="submit" className="button book" disabled={allergyRequestBusy}>{allergyRequestBusy ? "Sending…" : "Send update request"}</button></div>
+          </form>
+        </div>
+      )}
+
       <section className="family-import-controls" aria-label="Filter imported families">
         <label><span>Search families</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Parent, email or child" /></label>
         <label><span>Centre</span><select value={centre} onChange={(event) => setCentre(event.target.value)}><option>All centres</option>{centres.map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -4247,6 +4347,23 @@ function FamilyImportReview({ access }) {
                 {pricingMessage && <p className="family-credit-status success" role="status">{pricingMessage}</p>}
               </section>
 
+              <details className="family-customer-bookings">
+                <summary><span><strong>Bookings</strong><small>{parentBookingsLoading ? "Loading…" : `${parentBookings.length} recent ${parentBookings.length === 1 ? "booking" : "bookings"}`}</small></span><ChevronRight aria-hidden="true" /></summary>
+                {parentBookingsError && <p className="platform-warning" role="alert">{parentBookingsError}</p>}
+                {!parentBookingsLoading && !parentBookingsError && parentBookings.length > 0 && (
+                  <div className="family-customer-booking-list">
+                    {parentBookings.map((booking) => (
+                      <article key={booking.id}>
+                        <div><strong>{booking.booking_reference}</strong><span>{formatShortDate(String(booking.created_at || "").slice(0, 10))} · {booking.status}</span></div>
+                        <div><strong>{formatCurrency(booking.total_amount)}</strong><span>{booking.booking_items?.length || 0} {(booking.booking_items?.length || 0) === 1 ? "session" : "sessions"}</span></div>
+                        <small>{[...new Set((booking.booking_items || []).map((item) => item.child_name).filter(Boolean))].join(" · ") || "Child not recorded"} · {[...new Set((booking.booking_items || []).map((item) => item.site_name).filter(Boolean))].join(" · ") || "Site not recorded"}</small>
+                      </article>
+                    ))}
+                  </div>
+                )}
+                {!parentBookingsLoading && !parentBookingsError && !parentBookings.length && <EmptyList title="No bookings found" text="No booking records are linked to this parent account." />}
+              </details>
+
               <div className="family-import-child-picker" aria-label="Imported children">
                 {selectedChildren.map((child) => <button type="button" className={selectedChild?.id === child.id ? "active" : ""} key={child.id} onClick={() => { setSelectedChildId(child.id); setChildSection("Overview"); }}><span>{selectedChild?.id === child.id ? "Selected child" : "Saved child"}</span><strong>{child.full_name}</strong><small>{child.school_name || "School missing"} · {child.year_group || "Year group missing"}</small></button>)}
               </div>
@@ -4262,7 +4379,7 @@ function FamilyImportReview({ access }) {
                     {childSection === "Contacts" && <div className="family-import-record-list"><article><div><span>Family emergency contacts</span><strong>{selectedFamily.emergency_contact?.contacts?.length || 0} recorded</strong><small>{reviewValue(selectedFamily.emergency_contact?.contacts, "No emergency contacts imported")}</small></div></article><article><div><span>Authorised collectors</span><strong>{selectedChild.authorised_collectors?.length || 0} recorded</strong><small>{reviewValue(selectedChild.authorised_collectors, "No authorised collectors imported")}</small></div></article><article><div><span>Collection password</span><strong>{registration.collectionPassword ? "Recorded" : "Not provided"}</strong><small>{registration.collectionPassword ? "Hidden during review" : "Parent will need to add this"}</small></div></article></div>}
                     {childSection === "Consents" && <div className="family-import-consent-list">{Object.entries(consentResponses).length ? Object.entries(consentResponses).map(([label, value]) => <article key={label}><span>{label}</span><strong className={value ? "yes" : "no"}>{value ? "Yes" : "No"}</strong></article>) : <EmptyList title="No consent responses imported" text="The parent will be asked to review current consents before booking." />}</div>}
                     {childSection === "Dietary" && <div className="family-import-record-list"><article><div><span>Dietary needs</span><strong>{selectedChild.dietary_notes || "No dietary needs recorded"}</strong><small>{selectedChild.dietary_notes ? "Review with parent" : "Nothing further required unless circumstances changed"}</small></div></article></div>}
-                    {childSection === "Allergies" && <div className="family-import-record-list"><article><div><span>Allergies</span><strong>{selectedChild.allergy_notes || "No allergies recorded"}</strong><small>{selectedChild.allergy_notes ? "Review triggers, symptoms and initial action with parent" : "Nothing further required unless circumstances changed"}</small></div></article></div>}
+                    {childSection === "Allergies" && <div className="family-import-record-list"><article><div><span>Allergies</span><strong>{meaningfulProfileValue(selectedChild.allergy_notes) ? selectedChild.allergy_notes : "No allergies recorded"}</strong><small>{meaningfulProfileValue(selectedChild.allergy_notes) ? "Review triggers, symptoms and initial action with parent" : "Nothing further required unless circumstances changed"}</small></div><button className="button light" type="button" onClick={() => { setAllergyRequestStatus(""); setAllergyRequestOpen(true); }}>Request allergy update</button></article>{allergyRequestStatus && <p className="family-credit-status success" role="status">{allergyRequestStatus}</p>}</div>}
                     {childSection === "Medication" && <div className="family-import-record-list"><article><div><span>Medication</span><strong>{reviewValue(registration.medications, "No medication recorded")}</strong><small>{registration.medications?.length ? "Medication details require parent confirmation" : "No action unless medication is now required"}</small></div></article><article><div><span>Auto-injectors</span><strong>{reviewValue(registration.autoInjectors, "No auto-injector recorded")}</strong><small>{registration.autoInjectors?.length ? "Check medicine name and expiry date" : "No action unless circumstances changed"}</small></div></article></div>}
                     {childSection === "Medical" && <div className="family-import-record-list"><article><div><span>Medical conditions</span><strong>{selectedChild.medical_notes || "No medical conditions recorded"}</strong><small>{selectedChild.medical_notes ? "Review care plan and staff instructions with parent" : "Nothing further required unless circumstances changed"}</small></div></article><article><div><span>Additional information</span><strong>{registration.additionalInfo || "Not provided"}</strong></div></article></div>}
                     {childSection === "SEND" && <div className="family-import-record-list"><article><div><span>SEND</span><strong>{reviewValue(registration.send, "No SEND information recorded")}</strong><small>{registration.send?.length ? "Review support needs and current plans with parent" : "No action unless support needs have changed"}</small></div></article><article><div><span>External agencies</span><strong>{reviewValue(registration.externalAgencies, "None recorded")}</strong></div></article></div>}

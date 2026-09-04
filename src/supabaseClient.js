@@ -992,6 +992,30 @@ export async function fetchMigrationReviewFamilies() {
   }));
 }
 
+export async function fetchAdminParentBookings(parentAccountId, limit = 30) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!parentAccountId) return [];
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("id,booking_reference,status,total_amount,discount_amount,outstanding_balance,created_at,booking_items(id,child_id,child_name,site_name,programme_name,session_label,starts_at,ends_at,status)")
+    .eq("parent_account_id", parentAccountId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function requestChildProfileUpdate({ childId, section = "allergies", note = "" } = {}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!childId) throw new Error("Choose a child profile.");
+  const { data, error } = await supabase.functions.invoke("request-child-profile-update", {
+    body: { childId, section, note: String(note || "").trim() },
+  });
+  if (error) throw new Error(data?.error || error.message || "The update request could not be sent.");
+  if (!data?.ok) throw new Error(data?.error || "The update request could not be sent.");
+  return data;
+}
+
 async function pricingActorId() {
   if (!supabase) return null;
   const { data } = await supabase.auth.getUser();

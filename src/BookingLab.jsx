@@ -105,6 +105,7 @@ function requestedParentAccountSection() {
   const section = new URLSearchParams(window.location.search).get("account");
   if (section === "payments") return "Payments";
   if (section === "support") return "Support";
+  if (section === "family") return "Family";
   return "Overview";
 }
 
@@ -539,16 +540,26 @@ function familyMatchesAccountEmail(family, email) {
   return Boolean(normalizedEmail && familyAccountHolderEmails(family).includes(normalizedEmail));
 }
 
+function meaningfulFamilyCareValue(value) {
+  if (Array.isArray(value)) return value.some(meaningfulFamilyCareValue);
+  if (value && typeof value === "object") return Object.values(value).some(meaningfulFamilyCareValue);
+  const normalized = String(value || "").trim().toLowerCase().replace(/[.!]+$/g, "");
+  if (!normalized) return false;
+  return !/^(?:no|none|nil|n\/?a|not applicable|false|no known (?:allerg(?:y|ies)|medical conditions?|dietary needs?))$/.test(normalized);
+}
+
 function normaliseLiveChildFlags(child) {
-  const flags = Array.isArray(child?.flags) ? child.flags.filter(Boolean) : [];
+  const flags = Array.isArray(child?.flags)
+    ? child.flags.filter((flag) => meaningfulFamilyCareValue(String(flag).replace(/^(?:allerg(?:y|ies)|medical|dietary)\s*:\s*/i, "")))
+    : [];
   const dietary = child?.dietaryNotes || child?.dietary_notes || "";
   const allergy = child?.allergyNotes || child?.allergy_notes || "";
   const medical = child?.medicalNotes || child?.medical_notes || "";
   return [
     ...flags,
-    dietary && !flags.some((flag) => /dietary/i.test(flag)) ? `Dietary: ${dietary}` : "",
-    allergy && !flags.some((flag) => /allerg/i.test(flag)) ? `Allergy: ${allergy}` : "",
-    medical && !flags.some((flag) => /medical/i.test(flag)) ? `Medical: ${medical}` : "",
+    meaningfulFamilyCareValue(dietary) && !flags.some((flag) => /dietary/i.test(flag)) ? `Dietary: ${dietary}` : "",
+    meaningfulFamilyCareValue(allergy) && !flags.some((flag) => /allerg/i.test(flag)) ? `Allergy: ${allergy}` : "",
+    meaningfulFamilyCareValue(medical) && !flags.some((flag) => /medical/i.test(flag)) ? `Medical: ${medical}` : "",
   ].filter(Boolean);
 }
 
@@ -582,11 +593,11 @@ function liveChildProfileToFamilyChild(child = {}) {
     collectionPassword: child.collectionPassword || consentRegistration.collectionPassword || "",
     emergencyContacts: child.emergencyContacts || [],
     authorisedCollectors: child.authorisedCollectors || child.authorised_collectors || [],
-    dietaryNeeds: child.dietaryNeeds || consentRegistration.dietaryNeeds || (dietaryNotes ? [{ need: dietaryNotes, details: "" }] : []),
-    allergies: child.allergies || consentRegistration.allergies || (allergyNotes ? [{ allergy: "Allergy information", details: allergyNotes }] : []),
+    dietaryNeeds: (child.dietaryNeeds || consentRegistration.dietaryNeeds || (meaningfulFamilyCareValue(dietaryNotes) ? [{ need: dietaryNotes, details: "" }] : [])).filter(meaningfulFamilyCareValue),
+    allergies: (child.allergies || consentRegistration.allergies || (meaningfulFamilyCareValue(allergyNotes) ? [{ allergy: "Allergy information", details: allergyNotes }] : [])).filter(meaningfulFamilyCareValue),
     medications: child.medications || consentRegistration.medications || [],
     autoInjectors: child.autoInjectors || consentRegistration.autoInjectors || [],
-    medicalConditions: child.medicalConditions || consentRegistration.medicalConditions || (medicalNotes ? [{ condition: "Medical information", details: medicalNotes }] : []),
+    medicalConditions: (child.medicalConditions || consentRegistration.medicalConditions || (meaningfulFamilyCareValue(medicalNotes) ? [{ condition: "Medical information", details: medicalNotes }] : [])).filter(meaningfulFamilyCareValue),
     send: child.send || consentRegistration.send || [],
     flags,
     medicalPlan: child.medicalPlan || child.medical_plan || flags.join(" · "),
@@ -1858,6 +1869,19 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     : launchChildSavedProfile?.name
       ? [launchChildSavedProfile]
       : [];
+  const requestedCareChildId = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("child") || "";
+  const requestedCareSection = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("care") || "";
+
+  useEffect(() => {
+    if (!isLaunchMode || !parentAccountSignedIn || requestedCareSection !== "allergies") return;
+    const child = launchRegisteredChildren.find((item) => item.id === requestedCareChildId);
+    if (!child) return;
+    setLaunchParentPortalOpen(true);
+    setLaunchBookingActive(false);
+    setLaunchAccountSection("Family");
+    setLaunchFamilyChildId(child.id);
+    setLaunchFamilyChildTab("Allergies");
+  }, [isLaunchMode, parentAccountSignedIn, requestedCareChildId, requestedCareSection, launchRegisteredChildren.length]);
   const launchAccountAuthenticated = !isLaunchMode || (parentAccountSignedIn && parentAccountMode === "live" && Boolean(launchSignedInEmail));
   const launchAccountCanBook = !isLaunchMode || (parentAccountSignedIn && Boolean(launchSignedInEmail));
   const launchNeedsAccount = isLaunchMode && !launchAccountCanBook;

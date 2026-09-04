@@ -20,6 +20,7 @@ const registerRecheckin = readFileSync(join(root, "supabase/migrations/0168_refr
 const registerGoingHome = readFileSync(join(root, "supabase/migrations/0169_checkout_child_from_active_afterschool_sessions.sql"), "utf8");
 const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}\n${registerDayReset}\n${registerDayResetRepair}\n${registerRecheckin}\n${registerGoingHome}`;
 const service = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
+const supabaseClientSource = readFileSync(join(root, "src/supabaseClient.js"), "utf8");
 const interfaceSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
 const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8");
 const stylesSource = readFileSync(join(root, "src/styles.css"), "utf8");
@@ -27,6 +28,7 @@ const appSource = readFileSync(join(root, "src/app.jsx"), "utf8");
 const adHocFunction = readFileSync(join(root, "supabase/functions/create-staff-adhoc-booking/index.ts"), "utf8");
 const parentBookingFunction = readFileSync(join(root, "supabase/functions/create-parent-booking/index.ts"), "utf8");
 const registerParentNotification = readFileSync(join(root, "supabase/functions/notify-register-parent/index.ts"), "utf8");
+const childProfileUpdateRequest = readFileSync(join(root, "supabase/functions/request-child-profile-update/index.ts"), "utf8");
 const failures = [];
 
 const checks = [
@@ -71,6 +73,11 @@ const checks = [
   ["register provides highlighted allergy medical and collection alerts", /register-need-icon allergy[\s\S]*register-need-icon medical[\s\S]*register-need-icon collection/],
   ["register provides an explicit ASC-wide checkout choice", /Only check out from[\s\S]*Check out all sessions/],
   ["register shows that Breakfast Club is unaffected by going home", /Breakfast Club and any expected sessions are not affected/],
+  ["register parent profile route is restricted to administrators", /const canViewParentAccount = \["Admin", "Superadmin"\][\s\S]*View parent account/],
+  ["customer profile route selects the matching family child and allergy section", /openCustomerProfileFromRegister[\s\S]*childId[\s\S]*section: "Allergies"[\s\S]*setTab\("Customer Profiles"\)/],
+  ["customer profile can request an allergy update", /(?=[\s\S]*Request allergy update)(?=[\s\S]*Send update request)(?=[\s\S]*requestChildProfileUpdate)/],
+  ["parent care values treat none as an empty allergy record", /meaningfulFamilyCareValue[\s\S]*no known[\s\S]*allergies:[\s\S]*filter\(meaningfulFamilyCareValue\)/],
+  ["parent allergy request links to the selected child care section", /account=family&child=\$\{encodeURIComponent\(child\.id\)\}&care=allergies[\s\S]*child_allergy_update_requested/],
   ["checked-out register rows are faded but can be checked in again", /status-checked_out[\s\S]*register-row-actions button:first-child/],
   ["register provides quick session filter buttons", /className="register-session-filters"[\s\S]*setSession\(item\)/],
   ["ad-hoc pupil search is server-backed and role protected", /staff_adhoc_booking_options[\s\S]*role in \('staff', 'manager', 'admin', 'superadmin'\)/],
@@ -108,7 +115,13 @@ const checks = [
 ];
 
 checks.forEach(([label, pattern]) => {
-  const source = label.startsWith("client")
+  const source = label === "parent allergy request links to the selected child care section"
+    ? childProfileUpdateRequest
+    : label === "parent care values treat none as an empty allergy record"
+      ? interfaceSource
+    : label === "customer profile can request an allergy update"
+      ? `${platformSource}\n${supabaseClientSource}`
+    : label.startsWith("client")
     ? service
     : label === "ad-hoc account debit sends a parent notification"
       ? adHocFunction
@@ -120,7 +133,7 @@ checks.forEach(([label, pattern]) => {
       ? appSource
     : label.startsWith("checked-out register")
       ? stylesSource
-    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register defaults") || label.startsWith("register allows") || label.startsWith("register applies") || label.startsWith("register renders") || label.startsWith("register orders") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("register highlights") || label.startsWith("register only offers") || label.startsWith("register reset UI") || label.startsWith("admin UI") || label.startsWith("staff form") || label.startsWith("staff dashboard") || label.startsWith("admin dashboard") || label.startsWith("every staff role")
+    : label.startsWith("compact register") || label.startsWith("pupil drawer") || label.startsWith("register selectors") || label.startsWith("register defaults") || label.startsWith("register allows") || label.startsWith("register applies") || label.startsWith("register renders") || label.startsWith("register orders") || label.startsWith("register provides") || label.startsWith("register exposes") || label.startsWith("register disables") || label.startsWith("register shows") || label.startsWith("register previews") || label.startsWith("register highlights") || label.startsWith("register only offers") || label.startsWith("register parent") || label.startsWith("register reset UI") || label.startsWith("customer profile route") || label.startsWith("admin UI") || label.startsWith("staff form") || label.startsWith("staff dashboard") || label.startsWith("admin dashboard") || label.startsWith("every staff role")
       ? platformSource
       : label.startsWith("staff UI")
         ? interfaceSource
