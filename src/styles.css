@@ -6412,6 +6412,23 @@ body.scr-drawer-open {
   gap: 12px;
 }
 
+.register-summary-block {
+  display: grid;
+  gap: 8px;
+}
+
+.register-visible-total {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.register-visible-total strong {
+  margin-left: 4px;
+  color: var(--royal-dark);
+}
+
 .register-summary-grid article {
   display: grid;
   gap: 4px;
@@ -6455,8 +6472,12 @@ body.scr-drawer-open {
   font-weight: 900;
 }
 
-.register-bulk-actions button:first-of-type,
-.register-row-actions button:first-child {
+.register-bulk-actions button {
+  background: #f7f9fd;
+  color: #586581;
+}
+
+.register-row-actions .register-action-checkin {
   border-color: #2e8952;
   background: #2e8952;
   color: #fff;
@@ -6485,51 +6506,29 @@ body.scr-drawer-open {
 .register-session-section > header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 17px 19px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 11px 16px;
   border-bottom: 1px solid #dce4f5;
   background: #f8faff;
-}
-
-.register-session-section > header p {
-  margin: 0 0 2px;
-  color: var(--orange);
-  font-size: 0.68rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .register-session-section > header h2 {
   margin: 0;
   color: var(--royal-dark);
-  font-size: 1.22rem;
+  font-size: 1.05rem;
 }
 
 .register-session-section > header span {
-  display: block;
-  margin-top: 3px;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 800;
 }
 
 .register-session-section > header > strong {
-  flex: 0 0 auto;
-  border-radius: 999px;
-  padding: 7px 11px;
-  font-size: 0.76rem;
-}
-
-.register-session-section > header > strong.has-bookings {
-  background: #e4f7eb;
-  color: #23673d;
-}
-
-.register-session-section > header > strong.no-bookings {
-  background: #eef2fb;
-  color: #65718c;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .register-session-section .register-table-wrap {
@@ -6560,16 +6559,16 @@ body.scr-drawer-open {
 }
 
 .register-table th:nth-child(1),
-.register-table td:nth-child(1) { width: 29%; }
+.register-table td:nth-child(1) { width: 34%; }
 
 .register-table th:nth-child(2),
-.register-table td:nth-child(2) { width: 14%; }
+.register-table td:nth-child(2) { width: 24%; }
 
 .register-table th:nth-child(3),
-.register-table td:nth-child(3) { width: 15%; }
+.register-table td:nth-child(3) { width: 17%; }
 
 .register-table th:nth-child(4),
-.register-table td:nth-child(4) { width: 42%; }
+.register-table td:nth-child(4) { width: 25%; }
 
 .register-table th {
   padding: 13px 15px;
@@ -6700,8 +6699,16 @@ body.scr-drawer-open {
   color: #a33a2f;
 }
 
-.register-no-needs {
-  color: #a8b0c1;
+.register-need-icon.allergy {
+  border: 1px solid #e7a535;
+  background: #fff3d8;
+  color: #874b00;
+}
+
+.register-need-icon.collection {
+  border: 1px solid #dc7777;
+  background: #fff0f0;
+  color: #922929;
 }
 
 .register-clear {
@@ -6755,6 +6762,12 @@ body.scr-drawer-open {
 .register-bulk-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.register-bulk-confirm {
+  border-color: #2e8952;
+  background: #2e8952;
+  color: #fff;
 }
 
 .register-empty {

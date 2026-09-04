@@ -1682,6 +1682,7 @@ function Registers({ access }) {
   const [fireDrill, setFireDrill] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingIds, setSavingIds] = useState([]);
+  const [bulkCheckInOpen, setBulkCheckInOpen] = useState(false);
   const [registerResetOpen, setRegisterResetOpen] = useState(false);
   const [registerResetSaving, setRegisterResetSaving] = useState(false);
   const [registerResetError, setRegisterResetError] = useState("");
@@ -1738,7 +1739,7 @@ function Registers({ access }) {
 
   const statusLabels = {
     booked: "Expected",
-    checked_in: "Checked in",
+    checked_in: "Present",
     checked_out: "Checked out",
     absent: "Absent",
     late_collection: "Late collection",
@@ -1851,7 +1852,6 @@ function Registers({ access }) {
   });
   const expectedCount = visibleRows.filter((row) => row.attendanceStatus === "booked").length;
   const presentCount = visibleRows.filter((row) => ["checked_in", "late_collection", "incident"].includes(row.attendanceStatus)).length;
-  const completedCount = visibleRows.filter((row) => ["checked_out", "absent"].includes(row.attendanceStatus)).length;
   const selectedChild = rows.find((row) => row.bookingItemId === selectedChildId) || null;
 
   async function saveDefaultSite() {
@@ -1953,12 +1953,29 @@ function Registers({ access }) {
     const registration = consents.registration || {};
     return meaningfulCareValue([
       row.medicalNotes,
+      registration.medications,
+      registration.medicalConditions,
+      (row.flags || []).filter((flag) => /\b(medical|medication|asthma)\b/i.test(String(flag))),
+    ]);
+  }
+
+  function hasAllergyCare(row) {
+    const registration = row.consents?.registration || {};
+    return meaningfulCareValue([
       row.allergyNotes,
       registration.allergies,
-      registration.medications,
       registration.autoInjectors,
-      registration.medicalConditions,
-      (row.flags || []).filter((flag) => /\b(medical|medication|allerg|asthma|auto-injector|epipen|emerade)/i.test(String(flag))),
+      (row.flags || []).filter((flag) => /\b(allerg|auto-injector|epipen|emerade)\b/i.test(String(flag))),
+    ]);
+  }
+
+  function hasCollectionRestriction(row) {
+    const registration = row.consents?.registration || {};
+    return meaningfulCareValue([
+      registration.collectionRestrictions,
+      registration.collectionRestriction,
+      registration.collectionNotes,
+      (row.flags || []).filter((flag) => /\b(collection|restricted pickup|restricted pick-up|do not release)\b/i.test(String(flag))),
     ]);
   }
 
@@ -2572,8 +2589,14 @@ function Registers({ access }) {
   }
 
   async function bulkUpdate(status) {
-    const actionable = visibleRows.filter((row) => !savingIds.includes(row.bookingItemId));
+    const actionable = visibleRows.filter((row) => {
+      if (savingIds.includes(row.bookingItemId)) return false;
+      if (status === "checked_in" || status === "absent") return row.attendanceStatus === "booked";
+      if (status === "checked_out") return ["checked_in", "late_collection", "incident"].includes(row.attendanceStatus);
+      return true;
+    });
     if (!actionable.length) return;
+    setBulkCheckInOpen(false);
     setSavingIds(actionable.map((row) => row.bookingItemId));
     const results = await Promise.allSettled(actionable.map((row) => updateStaffRegisterEntry({
       bookingItemId: row.bookingItemId,
@@ -2724,32 +2747,32 @@ function Registers({ access }) {
         <button className={fireDrill ? "button book" : "button light"} type="button" onClick={() => setFireDrill((current) => !current)}>{fireDrill ? "Exit fire-drill view" : "Fire-drill register"}</button>
       </div>
 
-      <div className="register-summary-grid" aria-label="Register totals">
-        <article><span>Visible</span><strong>{visibleRows.length}</strong></article>
-        <article><span>Expected</span><strong>{expectedCount}</strong></article>
-        <article><span>Present</span><strong>{presentCount}</strong></article>
-        <article><span>Complete</span><strong>{completedCount}</strong></article>
+      <div className="register-summary-block">
+        <p className="register-visible-total">Visible <strong>{visibleRows.length}</strong></p>
+        <div className="register-summary-grid" aria-label="Register totals">
+          <article><span>Expected</span><strong>{expectedCount}</strong></article>
+          <article><span>Present</span><strong>{presentCount}</strong></article>
+          <article><span>Checked out</span><strong>{visibleRows.filter((row) => row.attendanceStatus === "checked_out").length}</strong></article>
+          <article><span>Absent</span><strong>{visibleRows.filter((row) => row.attendanceStatus === "absent").length}</strong></article>
+        </div>
       </div>
 
       <div className="register-bulk-actions">
-        <span>Apply to the visible children:</span>
-        <button type="button" onClick={() => bulkUpdate("checked_in")} disabled={!visibleRows.length || savingIds.length}>Check in all</button>
-        <button type="button" onClick={() => bulkUpdate("checked_out")} disabled={!visibleRows.length || savingIds.length}>Check out all</button>
-        <button type="button" onClick={() => bulkUpdate("absent")} disabled={!visibleRows.length || savingIds.length}>Mark all absent</button>
+        <span>Bulk actions</span>
+        <button type="button" onClick={() => setBulkCheckInOpen(true)} disabled={!expectedCount || savingIds.length}>Check in all</button>
+        <button type="button" onClick={() => bulkUpdate("checked_out")} disabled={!presentCount || savingIds.length}>Check out all</button>
+        <button type="button" onClick={() => bulkUpdate("absent")} disabled={!expectedCount || savingIds.length}>Mark all absent</button>
       </div>
 
       <div className="register-session-sections">
         {sessionSections.map((section) => (
           <section className="register-session-section" key={section.label}>
             <header>
-              <div>
-                <p>Session</p>
-                <h2>{section.label}</h2>
-                {!!section.activityNames.length && <span>{section.activityNames.join(" · ")}</span>}
-              </div>
-              <strong className={section.rows.length ? "has-bookings" : "no-bookings"}>
-                {section.rows.length ? `${section.rows.length} ${section.rows.length === 1 ? "booking" : "bookings"}` : "No bookings"}
-              </strong>
+              <h2>{section.label}</h2>
+              {!!section.activityNames.length && <span aria-hidden="true">·</span>}
+              {!!section.activityNames.length && <span>{section.activityNames.join(" · ")}</span>}
+              <span aria-hidden="true">·</span>
+              <strong>{section.rows.length ? `${section.rows.length} ${section.rows.length === 1 ? "child" : "children"}` : "No children"}</strong>
             </header>
             <div className="register-table-wrap">
               <table className="register-table">
@@ -2758,8 +2781,11 @@ function Registers({ access }) {
                   {section.rows.map((row) => {
                     const busy = savingIds.includes(row.bookingItemId);
                     const canCheckOut = ["checked_in", "late_collection", "incident"].includes(row.attendanceStatus);
+                    const isExpected = row.attendanceStatus === "booked";
                     const hasSend = sendDetails(row).length > 0;
                     const hasMedical = hasMedicalCare(row);
+                    const hasAllergy = hasAllergyCare(row);
+                    const hasCollection = hasCollectionRestriction(row);
                     return (
                       <tr key={row.bookingItemId} className={`status-${row.attendanceStatus}`}>
                         <td>
@@ -2800,14 +2826,15 @@ function Registers({ access }) {
                         </td>
                         <td><div className="register-need-icons">
                           {hasSend && <span className="register-need-icon send" title="SEND information recorded" aria-label="SEND information recorded"><SendNeeds size={17} /><b>SEND</b></span>}
+                          {hasAllergy && <span className="register-need-icon allergy" title="Allergy information recorded" aria-label="Allergy information recorded"><b>Allergy</b></span>}
                           {hasMedical && <span className="register-need-icon medical" title="Medical information recorded" aria-label="Medical information recorded"><MedicalCross size={17} /><b>Medical</b></span>}
-                          {!hasSend && !hasMedical && <span className="register-no-needs" aria-label="No SEND or medical information recorded">—</span>}
+                          {hasCollection && <span className="register-need-icon collection" title="Collection restriction recorded" aria-label="Collection restriction recorded"><b>Collection restriction</b></span>}
                         </div></td>
                         <td><span className={`register-status status-${row.attendanceStatus}`}>{statusLabels[row.attendanceStatus] || row.attendanceStatus}</span></td>
                         <td><div className="register-row-actions">
-                          <button type="button" onClick={() => updateRow(row, "checked_in")} disabled={busy || row.attendanceStatus === "checked_in"}>Check in</button>
-                          <button type="button" onClick={() => requestCheckout(row)} disabled={busy || !canCheckOut}>Check out</button>
-                          <button type="button" onClick={() => updateRow(row, "absent")} disabled={busy || row.attendanceStatus === "absent"}>Absent</button>
+                          {!canCheckOut && <button className="register-action-checkin" type="button" onClick={() => updateRow(row, "checked_in")} disabled={busy}>Check in</button>}
+                          {isExpected && <button type="button" onClick={() => updateRow(row, "absent")} disabled={busy}>Absent</button>}
+                          {canCheckOut && <button type="button" onClick={() => requestCheckout(row)} disabled={busy}>Check out</button>}
                           {row.staffAdHoc && (
                             <button className="register-cancel-adhoc" type="button" onClick={() => openAdHocCancellation(row)} disabled={busy}>
                               Cancel ad-hoc
@@ -3636,6 +3663,36 @@ function Registers({ access }) {
               <button className="button light" type="button" onClick={() => setAdHocOpen(false)} disabled={adHocSaving}>Cancel</button>
               <button className="button book" type="button" onClick={submitAdHocBooking} disabled={adHocSaving || adHocPricingLoading || !adHocChildId || !adHocSessionIds.length}>
                 {adHocSaving ? "Adding to register…" : "Add to register"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {bulkCheckInOpen && (
+        <div className="register-adhoc-layer" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !savingIds.length) setBulkCheckInOpen(false);
+        }}>
+          <section className="register-adhoc-dialog register-cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="register-bulk-checkin-title">
+            <header>
+              <div>
+                <p className="eyebrow">Bulk attendance action</p>
+                <h2 id="register-bulk-checkin-title">Check in all {expectedCount} visible {expectedCount === 1 ? "child" : "children"}?</h2>
+                <p>Only children currently marked Expected in this filtered view will be changed.</p>
+              </div>
+              <button type="button" onClick={() => setBulkCheckInOpen(false)} disabled={Boolean(savingIds.length)} aria-label="Close bulk check-in warning"><X size={20} /></button>
+            </header>
+
+            <div className="register-cancel-summary register-bulk-confirm-summary">
+              <strong>Confirm before continuing</strong>
+              <p>This will record {expectedCount} {expectedCount === 1 ? "child" : "children"} as present. Any filters for school, session, care type, or search are respected.</p>
+            </div>
+
+            <footer>
+              <div><span>Children affected</span><strong>{expectedCount}</strong></div>
+              <button className="button light" type="button" onClick={() => setBulkCheckInOpen(false)} disabled={Boolean(savingIds.length)}>Cancel</button>
+              <button className="button register-bulk-confirm" type="button" onClick={() => bulkUpdate("checked_in")} disabled={!expectedCount || Boolean(savingIds.length)}>
+                {savingIds.length ? "Checking in…" : `Yes, check in ${expectedCount}`}
               </button>
             </footer>
           </section>
