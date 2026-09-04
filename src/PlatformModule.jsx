@@ -3983,6 +3983,7 @@ function FamilyImportReview({ access, target = null, onTargetHandled }) {
   const [supportDraft, setSupportDraft] = useState({});
   const [supportBusy, setSupportBusy] = useState(false);
   const [supportMessage, setSupportMessage] = useState("");
+  const [supportActorName, setSupportActorName] = useState("");
   const canReview = ["Admin", "Superadmin"].includes(access?.role);
 
   useEffect(() => {
@@ -4047,8 +4048,16 @@ function FamilyImportReview({ access, target = null, onTargetHandled }) {
   const supportChild = supportChildren.find((child) => child.id === supportChildId) || supportChildren[0] || null;
   const supportOutstanding = parentBookings.reduce((total, booking) => total + Math.max(0, Number(booking.outstanding_balance || 0)), 0);
 
-  function openParentSupportConnection() {
+  async function openParentSupportConnection() {
     if (!selectedFamily) return;
+    let actorName = access?.currentStaff?.fullName || access?.currentStaff?.name || access?.currentUser?.fullName || access?.currentUser?.name || access?.currentUser?.email || "Après School admin";
+    try {
+      const identity = await (await loadSupabaseModule()).fetchCurrentAdminIdentity();
+      actorName = identity?.full_name || actorName;
+    } catch {
+      // The current protected page has already established admin access; retain its displayed identity if profile refresh fails.
+    }
+    setSupportActorName(actorName);
     setSupportFamilyId(selectedFamily.id);
     setSupportChildId(selectedFamily.child_profiles?.[0]?.id || "");
     setSupportTab("Overview");
@@ -4508,7 +4517,7 @@ function FamilyImportReview({ access, target = null, onTargetHandled }) {
       {supportFamily && (
         <div className="parent-support-connection" role="dialog" aria-modal="true" aria-label={`Connected to ${supportFamily.full_name}'s parent account`}>
           <header className="parent-support-identity-bar">
-            <div><strong>Connected as {access?.currentUser?.name || access?.currentUser?.email || "Après School admin"}</strong><span>Viewing {supportFamily.full_name}'s family account · every change is audited</span></div>
+            <div><strong>Connected as {supportActorName || access?.currentUser?.name || access?.currentUser?.email || "Après School admin"}</strong><span>Viewing {supportFamily.full_name}'s family account · every change is audited</span></div>
             <button type="button" onClick={closeParentSupportConnection}>Log out &amp; return to admin</button>
           </header>
           <div className="parent-support-site-head"><div><strong>Après School</strong><span>Let's Learn and Play</span></div><span>Support connection</span></div>

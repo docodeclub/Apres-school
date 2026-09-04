@@ -1005,6 +1005,22 @@ export async function fetchAdminParentBookings(parentAccountId, limit = 30) {
   return data || [];
 }
 
+export async function fetchCurrentAdminIdentity() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData?.user) throw authError || new Error("Your staff session has expired.");
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id,full_name,email,role,active")
+    .eq("id", authData.user.id)
+    .single();
+  if (error) throw error;
+  if (!data?.active || !["admin", "superadmin"].includes(String(data.role || "").toLowerCase())) {
+    throw new Error("Admin access is required.");
+  }
+  return data;
+}
+
 export async function updateAdminParentProfile(parentAccountId, patch = {}) {
   if (!supabase) throw new Error("Supabase is not configured.");
   if (!parentAccountId) throw new Error("Choose a parent account.");
