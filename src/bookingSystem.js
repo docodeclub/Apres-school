@@ -586,6 +586,12 @@ async function notifyRegisterParent({ kind, recordId } = {}) {
   return data || {};
 }
 
+export async function sendRegisterReportToParent({ reportId } = {}) {
+  assertSupabase();
+  if (!reportId) throw new Error("Choose a saved report.");
+  return notifyRegisterParent({ kind: "report", recordId: reportId });
+}
+
 export async function fetchRegisterPupilReports({ limit = 200 } = {}) {
   assertSupabase();
   const { data, error } = await supabase.rpc("list_register_pupil_reports", {

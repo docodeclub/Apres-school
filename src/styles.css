@@ -20777,6 +20777,19 @@ th {
   color: #68728a;
 }
 
+.report-parent-email-fact .report-parent-email-send {
+  width: fit-content;
+  margin-top: 8px;
+}
+
+.report-parent-email-message {
+  display: block;
+  margin-top: 7px;
+  color: currentColor;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
 .report-review-row em {
   width: fit-content;
   margin-top: 3px;

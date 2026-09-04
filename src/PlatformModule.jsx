@@ -27,6 +27,7 @@ import {
   readSafeguardingDraft,
   resetStaffRegisterDay,
   saveSafeguardingDraft,
+  sendRegisterReportToParent,
   updateSafeguardingCase,
   uploadSafeguardingAttachments,
   updateRegisterPupilReport,
@@ -1337,7 +1338,7 @@ function ActivePlatform({ role, tab, setTab, userEmail, onSignOut, data, onboard
         {tab === "Pay" && <Pay data={payData} access={payAccess} targetStaffId={effectiveRole === "Manager" ? "" : staffProfileTargetId} onTargetHandled={() => setStaffProfileTargetId("")} onOpenTab={setTab} onOpenStaffProfile={(staffId) => { setStaffProfileTargetId(staffId); setTab("SCR"); }} />}
         {tab === "Rewards" && <Rewards data={scopedData} />}
         {tab === "Sessions" && <Sessions data={scopedData} access={access} />}
-        {tab === "Incidents" && <Incidents />}
+        {tab === "Incidents" && <Incidents canSendParentCopy={["Admin", "Superadmin"].includes(role)} />}
         {tab === "Safeguarding" && ["Manager", "Admin", "Superadmin"].includes(effectiveRole) && (
           <SafeguardingCases canManageAll={effectiveRole === "Superadmin"} />
         )}
@@ -15842,7 +15843,7 @@ function SafeguardingCases({ canManageAll = false }) {
   );
 }
 
-function Incidents() {
+function Incidents({ canSendParentCopy = false }) {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -15857,6 +15858,8 @@ function Incidents() {
   const [followUpNote, setFollowUpNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+  const [sendingParentCopy, setSendingParentCopy] = useState(false);
+  const [parentEmailMessage, setParentEmailMessage] = useState("");
 
   async function loadReports({ preserveSelection = true } = {}) {
     setLoading(true);
@@ -15918,6 +15921,7 @@ function Incidents() {
     setDraftStatus(selectedReport.status || (selectedReport.sensitivity === "safeguarding_restricted" ? "referred_to_dsl" : "new"));
     setFollowUpNote(selectedReport.followUpNote || "");
     setSaveMessage("");
+    setParentEmailMessage("");
   }, [selectedReport?.id]);
 
   const firstAidCount = rangeReports.filter((report) => report.type === "first_aid").length;
@@ -15943,6 +15947,27 @@ function Incidents() {
       setSaveMessage(error?.message || "The review could not be saved.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function sendParentCopy() {
+    if (!selectedReport || selectedReport.type === "safeguarding") return;
+    const confirmed = window.confirm(
+      `Send this ${registerReportTypeLabels[selectedReport.type] || "pupil"} report to ${selectedReport.childName || "the child's"} primary contact now?`,
+    );
+    if (!confirmed) return;
+    setSendingParentCopy(true);
+    setParentEmailMessage("");
+    try {
+      const result = await sendRegisterReportToParent({ reportId: selectedReport.id });
+      await loadReports();
+      setParentEmailMessage(result?.recipient
+        ? `Report sent to ${result.recipient}.`
+        : "The report was sent to the primary contact.");
+    } catch (error) {
+      setParentEmailMessage(error?.message || "The report could not be sent to the parent.");
+    } finally {
+      setSendingParentCopy(false);
     }
   }
 
@@ -16108,7 +16133,16 @@ function Incidents() {
               <dl className="report-review-facts">
                 <div><dt>Occurred</dt><dd>{registerReportDateTime(selectedReport.occurredAt || selectedReport.createdAt)}</dd></div>
                 <div><dt>Recorded by</dt><dd>{selectedReport.reporterName || "Staff member"}</dd></div>
-                <div className={`report-parent-email-fact ${registerParentEmailStatus(selectedReport).key}`}><dt>Email copy to parent</dt><dd>{registerParentEmailStatus(selectedReport).detail}</dd></div>
+                <div className={`report-parent-email-fact ${registerParentEmailStatus(selectedReport).key}`}>
+                  <dt>Email copy to parent</dt>
+                  <dd>{registerParentEmailStatus(selectedReport).detail}</dd>
+                  {canSendParentCopy && selectedReport.type !== "safeguarding" && registerParentEmailStatus(selectedReport).key !== "sent" ? (
+                    <button className="button light report-parent-email-send" type="button" onClick={sendParentCopy} disabled={sendingParentCopy}>
+                      {sendingParentCopy ? "Sending…" : "Send report to parent"}
+                    </button>
+                  ) : null}
+                  {parentEmailMessage ? <span className="report-parent-email-message" role="status">{parentEmailMessage}</span> : null}
+                </div>
                 {detailRows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
               </dl>
 
