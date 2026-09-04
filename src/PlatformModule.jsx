@@ -2757,6 +2757,7 @@ function Registers({ access }) {
                 <tbody>
                   {section.rows.map((row) => {
                     const busy = savingIds.includes(row.bookingItemId);
+                    const canCheckOut = ["checked_in", "late_collection", "incident"].includes(row.attendanceStatus);
                     const hasSend = sendDetails(row).length > 0;
                     const hasMedical = hasMedicalCare(row);
                     return (
@@ -2805,7 +2806,7 @@ function Registers({ access }) {
                         <td><span className={`register-status status-${row.attendanceStatus}`}>{statusLabels[row.attendanceStatus] || row.attendanceStatus}</span></td>
                         <td><div className="register-row-actions">
                           <button type="button" onClick={() => updateRow(row, "checked_in")} disabled={busy || row.attendanceStatus === "checked_in"}>Check in</button>
-                          <button type="button" onClick={() => requestCheckout(row)} disabled={busy || row.attendanceStatus === "checked_out"}>{isAfterSchoolRegisterRow(row) ? "Going home" : "Check out"}</button>
+                          <button type="button" onClick={() => requestCheckout(row)} disabled={busy || !canCheckOut}>Check out</button>
                           <button type="button" onClick={() => updateRow(row, "absent")} disabled={busy || row.attendanceStatus === "absent"}>Absent</button>
                           {row.staffAdHoc && (
                             <button className="register-cancel-adhoc" type="button" onClick={() => openAdHocCancellation(row)} disabled={busy}>
@@ -3686,14 +3687,14 @@ function Registers({ access }) {
             <header>
               <div>
                 <p className="eyebrow">After-school departure</p>
-                <h2 id="register-going-home-title">Is {goingHomeRow.childName} going home?</h2>
+                <h2 id="register-going-home-title">Check {goingHomeRow.childName} out from all sessions?</h2>
                 <p>They are still checked into {goingHomeActiveRows.length} after-school sessions today.</p>
               </div>
               <button type="button" onClick={() => setGoingHomeRow(null)} disabled={goingHomeSaving} aria-label="Close going home confirmation"><X size={20} /></button>
             </header>
 
             <div className="register-cancel-summary register-going-home-summary">
-              <strong>Choose how to record this departure</strong>
+              <strong>Choose how to record this checkout</strong>
               <ul>
                 {goingHomeActiveRows.map((row) => (
                   <li key={row.bookingItemId}>
@@ -3702,7 +3703,7 @@ function Registers({ access }) {
                   </li>
                 ))}
               </ul>
-              <p><strong>Going home</strong> checks the child out of every active after-school session shown above. Breakfast Club and any expected sessions are not affected.</p>
+              <p><strong>Check out all sessions</strong> checks the child out of every active after-school session shown above. Breakfast Club and any expected sessions are not affected.</p>
             </div>
 
             {goingHomeError && <p className="register-adhoc-error" role="alert">{goingHomeError}</p>}
@@ -3711,7 +3712,7 @@ function Registers({ access }) {
               <button className="button light" type="button" onClick={() => setGoingHomeRow(null)} disabled={goingHomeSaving}>Cancel</button>
               <button className="button light" type="button" onClick={confirmSingleAfterSchoolCheckout} disabled={goingHomeSaving}>Only check out from {goingHomeRow.sessionLabel}</button>
               <button className="button register-going-home-confirm" type="button" onClick={confirmGoingHome} disabled={goingHomeSaving}>
-                {goingHomeSaving ? "Checking out…" : "Going home — check out all"}
+                {goingHomeSaving ? "Checking out…" : "Check out all sessions"}
               </button>
             </footer>
           </section>
