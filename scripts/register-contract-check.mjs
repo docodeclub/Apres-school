@@ -74,6 +74,7 @@ const checks = [
   ["register provides an explicit ASC-wide checkout choice", /Only check out from[\s\S]*Check out all sessions/],
   ["register shows that Breakfast Club is unaffected by going home", /Breakfast Club and any expected sessions are not affected/],
   ["register parent profile route is restricted to administrators", /const canViewParentAccount = \["Admin", "Superadmin"\][\s\S]*View parent account/],
+  ["register parent profile route filters to the selected family", /setSearch\(family\.email \|\| family\.full_name \|\| ""\)/],
   ["customer profile route selects the matching family child and allergy section", /openCustomerProfileFromRegister[\s\S]*childId[\s\S]*section: "Allergies"[\s\S]*setTab\("Customer Profiles"\)/],
   ["customer profile can request an allergy update", /(?=[\s\S]*Request allergy update)(?=[\s\S]*Send update request)(?=[\s\S]*requestChildProfileUpdate)/],
   ["parent care values treat none as an empty allergy record", /meaningfulFamilyCareValue[\s\S]*no known[\s\S]*allergies:[\s\S]*filter\(meaningfulFamilyCareValue\)/],

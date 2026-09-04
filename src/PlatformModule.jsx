@@ -4027,7 +4027,10 @@ function FamilyImportReview({ access, target = null, onTargetHandled }) {
     if (!target?.childId || !families.length) return;
     const family = families.find((candidate) => (candidate.child_profiles || []).some((child) => child.id === target.childId));
     if (!family) return;
-    setSearch("");
+    // Keep the destination focused on the family opened from the register.
+    // Without this filter the selected profile can be obscured by the full
+    // customer directory, particularly on narrower screens.
+    setSearch(family.email || family.full_name || "");
     setCentre("All centres");
     setSelectedFamilyId(family.id);
     setSelectedChildId(target.childId);
