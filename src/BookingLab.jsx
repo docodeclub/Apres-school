@@ -17033,7 +17033,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   {launchFamilyChildTab === "Contacts"
                     ? <button type="button" onClick={openLaunchEmergencyContactsEditor}>Edit contacts</button>
                     : launchFamilyChildTab !== "Badges" && <button type="button" onClick={openSelectedSectionEditor}>Edit {launchFamilyChildTab.toLowerCase()}</button>}
-                  {activeFamilyIsPrimaryAccountHolder && <button className="danger" type="button" onClick={() => openGraduateChildWarning(selectedChild)}>Graduate child</button>}
+                  {activeFamilyIsPrimaryAccountHolder && <div className="lab-graduate-child-action"><button className="danger" type="button" onClick={() => openGraduateChildWarning(selectedChild)}>Graduate child</button><small>Remove child from account</small></div>}
                 </div>
               </div>
               {launchFamilyChildTab === "Overview" && (

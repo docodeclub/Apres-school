@@ -974,6 +974,8 @@ export async function fetchMigrationReviewFamilies() {
         consents,
         flags,
         active,
+        archived_at,
+        archive_reason,
         external_source,
         external_id,
         migration_metadata,
@@ -988,7 +990,9 @@ export async function fetchMigrationReviewFamilies() {
   return (data || []).map((family) => ({
     ...family,
     parent_account_credit_entries: [...(family.parent_account_credit_entries || [])].sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))),
-    child_profiles: [...(family.child_profiles || [])].sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || ""))),
+    child_profiles: [...(family.child_profiles || [])]
+      .filter((child) => child.active !== false && !child.archived_at)
+      .sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || ""))),
   }));
 }
 
@@ -1063,6 +1067,14 @@ export async function updateAdminChildProfile(childId, patch = {}) {
     .eq("id", childId)
     .select("id,parent_account_id,full_name,preferred_name,date_of_birth,school_name,year_group,class_name,medical_notes,allergy_notes,dietary_notes,updated_at")
     .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function graduateAdminParentChild(childId) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!childId) throw new Error("Choose a child to graduate.");
+  const { data, error } = await supabase.rpc("admin_graduate_parent_child", { p_child_id: childId });
   if (error) throw error;
   return data;
 }

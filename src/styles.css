@@ -21063,6 +21063,148 @@ th {
   overflow-wrap: anywhere;
 }
 
+.parent-support-child-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.parent-support-graduate-action,
+.booking-launch-page .lab-graduate-child-action {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.parent-support-graduate-action small,
+.booking-launch-page .lab-graduate-child-action small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.parent-support-graduate-action .button.danger {
+  border: 1px solid #d89898;
+  background: #fff;
+  color: #a42c2c;
+}
+
+.parent-support-graduate-backdrop {
+  position: fixed;
+  z-index: 10060;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  background: rgba(15, 25, 58, 0.64);
+  padding: 20px;
+}
+
+.parent-support-graduate-warning {
+  display: grid;
+  width: min(100%, 620px);
+  gap: 16px;
+  border: 1px solid rgba(164, 44, 44, 0.28);
+  border-radius: 24px;
+  background: #fff;
+  padding: clamp(18px, 4vw, 28px);
+  box-shadow: 0 30px 80px rgba(11, 21, 55, 0.3);
+}
+
+.parent-support-graduate-warning header,
+.parent-support-graduate-warning footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.parent-support-graduate-warning h3,
+.parent-support-graduate-warning p {
+  margin: 0;
+}
+
+.parent-support-graduate-warning h3 {
+  margin-top: 4px;
+  color: #8c2424;
+}
+
+.parent-support-graduate-warning header > button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #d8deec;
+  border-radius: 50%;
+  background: #fff;
+  color: #263459;
+  font: inherit;
+  font-size: 1.45rem;
+}
+
+.parent-support-graduate-warning > div {
+  display: grid;
+  gap: 9px;
+  color: #505a72;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.parent-support-graduate-warning > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  border: 1px solid #ecd2d2;
+  border-radius: 15px;
+  background: #fff7f7;
+  padding: 13px;
+  color: #652f2f;
+  font-weight: 820;
+  line-height: 1.4;
+}
+
+.parent-support-graduate-warning > label input {
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+}
+
+.parent-support-graduate-warning footer {
+  justify-content: flex-end;
+}
+
+.parent-support-graduate-warning footer button {
+  min-height: 44px;
+  border: 1px solid #cdd5e6;
+  border-radius: 999px;
+  background: #fff;
+  padding: 10px 18px;
+  color: #263459;
+  font: inherit;
+  font-weight: 900;
+}
+
+.parent-support-graduate-warning footer button.danger {
+  border-color: #a42c2c;
+  background: #a42c2c;
+  color: #fff;
+}
+
+.parent-support-graduate-warning footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.parent-support-graduate-error {
+  border-radius: 13px;
+  background: #fff0f0;
+  padding: 11px 13px;
+  color: #962727;
+  font-weight: 850;
+}
+
 .parent-support-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -21110,6 +21252,16 @@ th {
   .parent-support-heading > div:last-child {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .parent-support-child-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .parent-support-graduate-action {
+    justify-items: stretch;
+    text-align: center;
   }
 
   .parent-support-grid,
@@ -21358,6 +21510,17 @@ th {
     min-height: 42px;
     padding-inline: 14px;
     background: var(--soft);
+  }
+
+  .site-header.launch-booking-header .nav.open a {
+    background: #f3f6ff;
+    color: #263459;
+  }
+
+  .site-header.launch-booking-header .nav.open a:hover,
+  .site-header.launch-booking-header .nav.open a.active {
+    background: #e6ecff;
+    color: #18327a;
   }
 
   .hero-media {
@@ -42507,12 +42670,20 @@ th {
 
   .booking-launch-page .lab-parent-account-sections.is-open {
     display: grid;
+    background: #fff;
   }
 
   .booking-launch-page .lab-parent-account-sections button {
     width: 100%;
     min-height: 44px;
+    background: #f3f6ff;
+    color: #20366f;
     text-align: left;
+  }
+
+  .booking-launch-page .lab-parent-account-sections button.active {
+    background: var(--royal);
+    color: #fff;
   }
 
   .booking-launch-page .lab-parent-account-menu-toggle {

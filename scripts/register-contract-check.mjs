@@ -18,7 +18,8 @@ const registerDayReset = readFileSync(join(root, "supabase/migrations/0152_reset
 const registerDayResetRepair = readFileSync(join(root, "supabase/migrations/0153_fix_register_reset_audit_snapshot.sql"), "utf8");
 const registerRecheckin = readFileSync(join(root, "supabase/migrations/0168_refresh_register_timestamps_on_recheckin.sql"), "utf8");
 const registerGoingHome = readFileSync(join(root, "supabase/migrations/0169_checkout_child_from_active_afterschool_sessions.sql"), "utf8");
-const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}\n${registerDayReset}\n${registerDayResetRepair}\n${registerRecheckin}\n${registerGoingHome}`;
+const adminChildGraduation = readFileSync(join(root, "supabase/migrations/0170_admin_graduate_parent_child.sql"), "utf8");
+const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}\n${registerDayReset}\n${registerDayResetRepair}\n${registerRecheckin}\n${registerGoingHome}\n${adminChildGraduation}`;
 const service = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
 const supabaseClientSource = readFileSync(join(root, "src/supabaseClient.js"), "utf8");
 const interfaceSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
@@ -80,6 +81,8 @@ const checks = [
   ["register allows admins to send a saved report to the parent", /Incidents canSendParentCopy[\s\S]*sendRegisterReportToParent[\s\S]*Send report to parent/],
   ["admin UI provides an audited parent support connection", /(?=[\s\S]*Connect as parent)(?=[\s\S]*Connected as)(?=[\s\S]*Parent support connection opened)(?=[\s\S]*Log out &amp; return to admin)/],
   ["admin UI parent support mode blocks booking and payment actions", /(?=[\s\S]*Booking and payment actions are disabled)(?=[\s\S]*cannot book, pay, cancel sessions, delete the account or change its password)/],
+  ["admin UI parent support can graduate a child with preserved history", /(?=[\s\S]*graduateAdminParentChild)(?=[\s\S]*Graduate child)(?=[\s\S]*Historical bookings remain safely archived)(?=[\s\S]*Yes, graduate child)/],
+  ["admin graduation is role protected and audited", /admin_graduate_parent_child[\s\S]*current_user_app_role\(\) not in \('admin', 'superadmin'\)[\s\S]*admin_child_graduated[\s\S]*preservedBookingHistory/],
   ["customer profile route selects the matching family child and allergy section", /openCustomerProfileFromRegister[\s\S]*childId[\s\S]*section: "Allergies"[\s\S]*setTab\("Customer Profiles"\)/],
   ["customer profile can request an allergy update", /(?=[\s\S]*Request allergy update)(?=[\s\S]*Send update request)(?=[\s\S]*requestChildProfileUpdate)/],
   ["parent care values treat none as an empty allergy record", /meaningfulFamilyCareValue[\s\S]*no known[\s\S]*allergies:[\s\S]*filter\(meaningfulFamilyCareValue\)/],
