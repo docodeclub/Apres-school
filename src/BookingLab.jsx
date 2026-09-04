@@ -1344,6 +1344,31 @@ function isoDate(date) {
   return date.toISOString().slice(0, 10);
 }
 
+function localIsoDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function calendarMonthCells(monthKey) {
+  if (!/^\d{4}-\d{2}$/.test(String(monthKey || ""))) return [];
+  const [year, month] = monthKey.split("-").map(Number);
+  const first = new Date(year, month - 1, 1, 12);
+  const mondayOffset = (first.getDay() + 6) % 7;
+  const start = new Date(year, month - 1, 1 - mondayOffset, 12);
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return {
+      date,
+      iso: localIsoDate(date),
+      inMonth: date.getMonth() === month - 1,
+    };
+  });
+}
+
 function normaliseChildDob(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -1620,6 +1645,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [parentRegistrationSubmitAttempted, setParentRegistrationSubmitAttempted] = useState(false);
   const [childRegistrationSubmitAttempted, setChildRegistrationSubmitAttempted] = useState(false);
   const [selectedParentBookingId, setSelectedParentBookingId] = useState("");
+  const [parentBookingView, setParentBookingView] = useState("Calendar");
+  const [parentCalendarMonth, setParentCalendarMonth] = useState("");
+  const [parentCalendarDate, setParentCalendarDate] = useState("");
   const [parentSessionCancellingId, setParentSessionCancellingId] = useState("");
   const [parentEarlyDropOffPendingId, setParentEarlyDropOffPendingId] = useState("");
   const [liveParentLedger, setLiveParentLedger] = useState({
@@ -4561,6 +4589,46 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     });
   const parentBookedSessionRows = [...draftParentBookedSessionRows, ...liveOnlyBookedSessionRows]
     .sort((a, b) => (a.start?.getTime() || 0) - (b.start?.getTime() || 0));
+  const parentCalendarDatedRows = parentBookedSessionRows
+    .map((row) => ({ ...row, calendarIso: localIsoDate(row.start) || labDayIso(row.day) }))
+    .filter((row) => row.calendarIso);
+  const parentCalendarRowsByDate = parentCalendarDatedRows.reduce((index, row) => {
+    if (!index[row.calendarIso]) index[row.calendarIso] = [];
+    index[row.calendarIso].push(row);
+    return index;
+  }, {});
+  const parentCalendarCells = calendarMonthCells(parentCalendarMonth);
+  const parentCalendarSelectedRows = parentCalendarRowsByDate[parentCalendarDate] || [];
+  const parentCalendarMonthLabel = parentCalendarMonth
+    ? new Date(`${parentCalendarMonth}-01T12:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+    : "Your bookings";
+
+  useEffect(() => {
+    setParentBookingView("Calendar");
+    setParentCalendarMonth("");
+    setParentCalendarDate("");
+  }, [activeFamily.id]);
+
+  useEffect(() => {
+    if (parentCalendarMonth || !parentCalendarDatedRows.length) return;
+    const now = new Date();
+    const nextRow = parentCalendarDatedRows.find((row) => row.start && row.start >= now && row.status !== "Cancelled")
+      || [...parentCalendarDatedRows].reverse().find((row) => row.status !== "Cancelled")
+      || parentCalendarDatedRows[0];
+    setParentCalendarMonth(nextRow.calendarIso.slice(0, 7));
+    setParentCalendarDate(nextRow.calendarIso);
+  }, [parentCalendarMonth, parentCalendarDatedRows]);
+
+  function moveParentCalendarMonth(offset) {
+    const anchor = /^\d{4}-\d{2}$/.test(parentCalendarMonth)
+      ? new Date(`${parentCalendarMonth}-01T12:00:00`)
+      : new Date();
+    anchor.setMonth(anchor.getMonth() + offset);
+    const nextMonth = localIsoDate(anchor).slice(0, 7);
+    const firstBookedDate = Object.keys(parentCalendarRowsByDate).sort().find((iso) => iso.startsWith(nextMonth));
+    setParentCalendarMonth(nextMonth);
+    setParentCalendarDate(firstBookedDate || "");
+  }
   const earlyDropOffContextForBookedRow = (row) => {
     if (!row?.future || row.status === "Cancelled" || !row.liveItemIds?.length) return null;
     const rowItems = activeExistingBookingItems
@@ -23548,8 +23616,95 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <h3>{parentBookedSessionRows.length ? "Your booked sessions" : "No bookings yet"}</h3>
                   <p>{parentBookedSessionRows.length ? `${parentFutureSessionCount} upcoming · ${parentCancelledSessionCount} cancelled` : "Future bookings will appear here once payment has been completed."}</p>
                 </div>
+                {parentBookedSessionRows.length > 0 && (
+                  <div className="lab-parent-booking-view-toggle" role="group" aria-label="Choose booking view">
+                    {["Calendar", "List"].map((view) => (
+                      <button type="button" key={view} className={parentBookingView === view ? "active" : ""} aria-pressed={parentBookingView === view} onClick={() => setParentBookingView(view)}>
+                        {view}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="lab-parent-booking-table" role="table" aria-label="Your booked sessions">
+              {parentBookingView === "Calendar" && parentBookedSessionRows.length > 0 && (
+                <section className="lab-parent-booking-calendar" aria-label="Booking calendar">
+                  <header className="lab-parent-calendar-toolbar">
+                    <button type="button" onClick={() => moveParentCalendarMonth(-1)} aria-label="Previous month">‹</button>
+                    <div>
+                      <strong>{parentCalendarMonthLabel}</strong>
+                      <span>Select a booked day to see the details</span>
+                    </div>
+                    <button type="button" onClick={() => moveParentCalendarMonth(1)} aria-label="Next month">›</button>
+                  </header>
+                  <div className="lab-parent-calendar-weekdays" aria-hidden="true">
+                    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span key={day}>{day}</span>)}
+                  </div>
+                  <div className="lab-parent-calendar-grid">
+                    {parentCalendarCells.map((cell) => {
+                      const rows = parentCalendarRowsByDate[cell.iso] || [];
+                      const activeRows = rows.filter((row) => row.status !== "Cancelled");
+                      const cancelledOnly = rows.length > 0 && !activeRows.length;
+                      const selected = parentCalendarDate === cell.iso;
+                      const today = cell.iso === localIsoDate(new Date());
+                      return (
+                        <button
+                          type="button"
+                          key={cell.iso}
+                          className={`${cell.inMonth ? "" : "outside"} ${rows.length ? "has-bookings" : ""} ${cancelledOnly ? "cancelled-only" : ""} ${selected ? "selected" : ""} ${today ? "today" : ""}`.trim()}
+                          onClick={() => rows.length && setParentCalendarDate(cell.iso)}
+                          disabled={!rows.length}
+                          aria-label={`${cell.date.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${rows.length ? `, ${rows.length} booked ${rows.length === 1 ? "session" : "sessions"}` : ", no bookings"}`}
+                        >
+                          <span className="lab-parent-calendar-day-number">{cell.date.getDate()}</span>
+                          {rows.length > 0 && <span className="lab-parent-calendar-booking-count">{rows.length}<span className="wide-label"> {rows.length === 1 ? "booking" : "bookings"}</span></span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="lab-parent-calendar-detail" aria-live="polite">
+                    {parentCalendarDate ? (
+                      <>
+                        <header>
+                          <div>
+                            <span>Your day</span>
+                            <h4>{new Date(`${parentCalendarDate}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</h4>
+                          </div>
+                          <strong>{parentCalendarSelectedRows.length} {parentCalendarSelectedRows.length === 1 ? "session" : "sessions"}</strong>
+                        </header>
+                        <div className="lab-parent-calendar-detail-list">
+                          {parentCalendarSelectedRows.map((row) => {
+                            const invoiceRow = familyInvoiceRows.find((invoice) => invoice.draft?.id === row.draftId || invoice.liveBooking?.id === row.liveBookingId);
+                            const childNames = row.draft.children?.join(", ") || row.draft.childName || "Child not recorded";
+                            const sessionDetail = row.row.blocks.map((block) => `${block.label}${block.start || block.end ? ` · ${block.start}-${block.end}` : ""}`).join(" · ");
+                            return (
+                              <article key={`calendar-${row.id}`} className={`state-${row.status.toLowerCase()}`}>
+                                <div>
+                                  <span className={`lab-parent-booking-status state-${row.status.toLowerCase()}`}>{row.status}</span>
+                                  <strong>{sessionDetail || row.draft.activity}</strong>
+                                  <small>{row.draft.site}</small>
+                                </div>
+                                <div>
+                                  <span>Child</span>
+                                  <strong>{childNames}</strong>
+                                  <small>{row.draft.bookingReference || row.draft.reference || "Family booking"}</small>
+                                </div>
+                                <div>
+                                  <span>Payment</span>
+                                  <strong>{invoiceRow?.status || parentSafeStatusLabel(row.draft.status)}</strong>
+                                  <small>{money(row.cancelledSession && row.actualCreditAmount > 0 ? row.actualCreditAmount : row.creditAmount)} session value</small>
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      <p>There are no bookings in this month. Use the arrows to check another month.</p>
+                    )}
+                  </div>
+                </section>
+              )}
+              {parentBookingView === "List" && <div className="lab-parent-booking-table" role="table" aria-label="Your booked sessions">
                 {parentBookedSessionRows.length > 0 && (
                   <div className="lab-parent-booking-table-head" role="row">
                     <span role="columnheader">Booking</span>
@@ -23633,7 +23788,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   );
                 })}
                 {!parentBookedSessionRows.length && <p className="lab-parent-booking-empty">No booked sessions are attached to this account yet.</p>}
-              </div>
+              </div>}
+              {!parentBookedSessionRows.length && <p className="lab-parent-booking-empty">No booked sessions are attached to this account yet.</p>}
             </section>
             {realBookingServiceReady && !isLaunchMode && (
               <div className={`lab-live-ledger-strip ${liveParentLedger.error ? "warn" : ""}`}>

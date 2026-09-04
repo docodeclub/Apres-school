@@ -27914,7 +27914,288 @@ th {
 }
 
 .lab-parent-session-manager > .lab-parent-session-head {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.lab-parent-booking-view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f3f6ff;
+  padding: 4px;
+}
+
+.lab-parent-booking-view-toggle button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--royal-dark);
+  padding: 7px 14px;
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.lab-parent-booking-view-toggle button.active {
+  background: var(--royal);
+  color: #fff;
+  box-shadow: 0 5px 12px rgba(49, 75, 184, 0.22);
+}
+
+.lab-parent-booking-calendar {
+  display: grid;
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(49, 75, 184, 0.17);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.lab-parent-calendar-toolbar {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px 4px;
+}
+
+.lab-parent-calendar-toolbar > div {
+  display: grid;
+  gap: 2px;
+  text-align: center;
+}
+
+.lab-parent-calendar-toolbar strong {
+  color: var(--royal-dark);
+  font-size: 1.05rem;
+}
+
+.lab-parent-calendar-toolbar span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.lab-parent-calendar-toolbar button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #f5f7ff;
+  color: var(--royal);
+  font: inherit;
+  font-size: 1.65rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lab-parent-calendar-toolbar button:hover,
+.lab-parent-calendar-toolbar button:focus-visible {
+  border-color: var(--royal);
+  background: #eef3ff;
+}
+
+.lab-parent-calendar-weekdays,
+.lab-parent-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.lab-parent-calendar-weekdays {
+  padding: 0 10px;
+}
+
+.lab-parent-calendar-weekdays span {
+  color: var(--muted);
+  padding: 5px;
+  font-size: 0.7rem;
+  font-weight: 950;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.lab-parent-calendar-grid {
+  gap: 1px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--line);
+}
+
+.lab-parent-calendar-grid button {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 76px;
+  align-content: space-between;
+  justify-items: start;
+  gap: 6px;
+  border: 0;
+  background: #fff;
+  color: var(--royal-dark);
+  padding: 8px;
+  font: inherit;
+  text-align: left;
+}
+
+.lab-parent-calendar-grid button:disabled {
+  cursor: default;
+}
+
+.lab-parent-calendar-grid button.outside {
+  background: #fafbfe;
+  color: #abb2c2;
+}
+
+.lab-parent-calendar-grid button.has-bookings {
+  background: #edf3ff;
+  cursor: pointer;
+}
+
+.lab-parent-calendar-grid button.has-bookings:hover,
+.lab-parent-calendar-grid button.has-bookings:focus-visible {
+  z-index: 1;
+  background: #dfe8ff;
+  box-shadow: inset 0 0 0 2px var(--royal);
+}
+
+.lab-parent-calendar-grid button.has-bookings.selected {
+  z-index: 2;
+  background: var(--royal);
+  color: #fff;
+  box-shadow: inset 0 0 0 2px var(--royal-dark);
+}
+
+.lab-parent-calendar-grid button.cancelled-only {
+  background: #f2f4f8;
+  color: #70798d;
+}
+
+.lab-parent-calendar-grid button.today:not(.selected) .lab-parent-calendar-day-number {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--orange);
+  color: #fff;
+}
+
+.lab-parent-calendar-day-number {
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.lab-parent-calendar-booking-count {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--royal);
+  padding: 5px 6px;
+  font-size: 0.68rem;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-parent-calendar-grid button.selected .lab-parent-calendar-booking-count {
+  color: var(--royal-dark);
+}
+
+.lab-parent-calendar-detail {
+  display: grid;
+  gap: 10px;
+  padding: 4px 12px 12px;
+}
+
+.lab-parent-calendar-detail > header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lab-parent-calendar-detail > header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.lab-parent-calendar-detail > header span,
+.lab-parent-calendar-detail-list article > div > span:not(.lab-parent-booking-status) {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lab-parent-calendar-detail > header h4 {
+  margin: 0;
+  color: var(--royal-dark);
+  font-size: 1rem;
+}
+
+.lab-parent-calendar-detail > header > strong {
+  border-radius: 999px;
+  background: #eef3ff;
+  color: var(--royal);
+  padding: 6px 9px;
+  font-size: 0.76rem;
+}
+
+.lab-parent-calendar-detail > p {
+  margin: 0;
+  border-radius: 12px;
+  background: #f7f9fe;
+  color: var(--muted);
+  padding: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.lab-parent-calendar-detail-list {
+  display: grid;
+  gap: 7px;
+}
+
+.lab-parent-calendar-detail-list article {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.25fr) minmax(140px, 0.9fr) minmax(130px, 0.75fr);
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #c9dafd;
+  border-radius: 13px;
+  background: #f8fbff;
+  padding: 10px;
+}
+
+.lab-parent-calendar-detail-list article.state-cancelled {
+  border-color: #dfe3ec;
+  background: #f7f8fa;
+  opacity: 0.78;
+}
+
+.lab-parent-calendar-detail-list article > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lab-parent-calendar-detail-list strong,
+.lab-parent-calendar-detail-list small {
+  overflow-wrap: anywhere;
+}
+
+.lab-parent-calendar-detail-list strong {
+  color: var(--royal-dark);
+}
+
+.lab-parent-calendar-detail-list small {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .lab-parent-session-tabs {
@@ -28142,6 +28423,70 @@ th {
 }
 
 @media (max-width: 760px) {
+  .lab-parent-session-manager > .lab-parent-session-head {
+    grid-template-columns: 1fr;
+  }
+
+  .lab-parent-booking-view-toggle {
+    width: 100%;
+  }
+
+  .lab-parent-booking-view-toggle button {
+    flex: 1;
+  }
+
+  .lab-parent-calendar-toolbar {
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
+    padding-inline: 8px;
+  }
+
+  .lab-parent-calendar-toolbar button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .lab-parent-calendar-toolbar span {
+    display: none;
+  }
+
+  .lab-parent-calendar-weekdays {
+    padding-inline: 2px;
+  }
+
+  .lab-parent-calendar-weekdays span {
+    padding-inline: 1px;
+    font-size: 0.62rem;
+  }
+
+  .lab-parent-calendar-grid button {
+    min-height: 54px;
+    padding: 5px;
+  }
+
+  .lab-parent-calendar-booking-count {
+    width: 8px;
+    height: 8px;
+    justify-self: center;
+    border-radius: 50%;
+    background: var(--orange);
+    padding: 0;
+    color: transparent;
+    font-size: 0;
+  }
+
+  .lab-parent-calendar-grid button.selected .lab-parent-calendar-booking-count {
+    background: #fff;
+  }
+
+  .lab-parent-calendar-detail > header {
+    align-items: flex-start;
+  }
+
+  .lab-parent-calendar-detail-list article {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
   .lab-parent-booking-table {
     overflow: visible;
   }
