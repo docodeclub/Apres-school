@@ -40830,14 +40830,14 @@ th {
 
 .booking-launch-page .lab-camp-catalog-row {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr) 132px;
-  gap: 14px;
+  grid-template-columns: 112px minmax(0, 1fr) 190px;
+  gap: 12px;
   align-items: stretch;
   overflow: hidden;
   border: 1px solid rgba(37, 48, 79, 0.12);
   border-radius: 16px;
   background: #fff;
-  padding: 9px;
+  padding: 8px;
   box-shadow: 0 8px 20px rgba(28, 43, 92, 0.05);
 }
 
@@ -40848,9 +40848,9 @@ th {
 }
 
 .booking-launch-page .lab-camp-catalog-row > img {
-  width: 132px;
+  width: 112px;
   height: 100%;
-  min-height: 122px;
+  min-height: 112px;
   border-radius: 11px;
   object-fit: cover;
 }
@@ -40911,17 +40911,19 @@ th {
 
 .booking-launch-page .lab-camp-catalog-price {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: center;
   justify-items: stretch;
   gap: 4px;
   border-left: 0;
   border-radius: 12px;
   background: #3049b8;
-  padding: 12px;
-  text-align: right;
+  padding: 10px;
+  text-align: center;
 }
 
 .booking-launch-page .lab-camp-catalog-price > strong {
+  grid-column: 1 / -1;
   color: #fff;
   font-size: 1.06rem;
   line-height: 1.1;
@@ -40936,13 +40938,15 @@ th {
 }
 
 .booking-launch-page .lab-camp-catalog-price > small {
+  grid-column: 1 / -1;
   color: rgba(255, 255, 255, 0.82);
   font-size: 0.66rem;
   font-weight: 750;
 }
 
 .booking-launch-page .lab-camp-catalog-price > .lab-camp-book {
-  min-height: 34px;
+  min-height: 38px;
+  height: 38px;
   margin-top: 4px;
   border: 1px solid #fff;
   border-radius: 999px;
@@ -40971,6 +40975,7 @@ th {
 
 .booking-launch-page .lab-camp-catalog-price > .lab-camp-more-info {
   min-height: 38px;
+  height: 38px;
   border: 2px solid #ffd184;
   border-radius: 999px;
   background: #fff4df !important;
@@ -47649,6 +47654,14 @@ th {
     padding: 16px;
   }
 
+  .booking-launch-page.launch-step-choices .lab-camp-catalog-price > .lab-camp-book,
+  .booking-launch-page.launch-step-choices .lab-camp-catalog-price > .lab-camp-more-info {
+    min-height: 38px;
+    height: 38px;
+    border-radius: 999px;
+    padding: 6px 9px;
+  }
+
   .booking-launch-page.launch-step-choices .lab-parent-pathway button strong {
     font-size: 1.16rem;
   }
@@ -49470,6 +49483,10 @@ th {
     border-left: 0;
     padding: 10px;
     text-align: left;
+  }
+
+  .booking-launch-page .lab-camp-catalog-price > strong {
+    grid-column: 1;
   }
 
   .booking-launch-page .lab-camp-catalog-price > small {
