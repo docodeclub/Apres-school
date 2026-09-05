@@ -40976,6 +40976,7 @@ th {
 
 .booking-launch-page .lab-camp-catalog-copy > .lab-camp-more-info {
   justify-self: start;
+  width: fit-content !important;
   min-height: 0;
   height: auto;
   border: 0;
