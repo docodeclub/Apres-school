@@ -41954,6 +41954,66 @@ th {
   cursor: pointer;
 }
 
+.booking-launch-page .lab-parent-home-credit {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  border: 2px solid rgba(255, 159, 28, 0.34);
+  border-radius: 18px;
+  background: linear-gradient(110deg, #fff8e9 0%, #fff 72%);
+  padding: 14px 16px;
+  box-shadow: 0 9px 24px rgba(166, 95, 0, 0.07);
+}
+
+.booking-launch-page .lab-parent-home-credit-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--orange);
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 950;
+}
+
+.booking-launch-page .lab-parent-home-credit h3,
+.booking-launch-page .lab-parent-home-credit p {
+  margin: 0;
+}
+
+.booking-launch-page .lab-parent-home-credit h3 {
+  margin-top: 2px;
+  color: var(--royal-dark);
+  font-size: 1.08rem;
+}
+
+.booking-launch-page .lab-parent-home-credit p:not(.eyebrow) {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.booking-launch-page .lab-parent-home-credit > button {
+  min-height: 43px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--orange);
+  color: #fff;
+  padding: 10px 17px;
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.booking-launch-page .lab-parent-home-credit > button:hover,
+.booking-launch-page .lab-parent-home-credit > button:focus-visible {
+  background: #d87900;
+  transform: translateY(-1px);
+}
+
 .booking-launch-page .lab-parent-home-actions {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -42857,6 +42917,15 @@ th {
   }
 
   .booking-launch-page .lab-parent-home-next > button {
+    width: 100%;
+  }
+
+  .booking-launch-page .lab-parent-home-credit {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .booking-launch-page .lab-parent-home-credit > button {
+    grid-column: 1 / -1;
     width: 100%;
   }
 

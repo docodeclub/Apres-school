@@ -5957,6 +5957,15 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     window.setTimeout(() => scrollToFlowSection(".booking-lab-flow", "start"), 80);
   }
 
+  function openParentCreditTopUp() {
+    setLaunchAccountSection("Payments");
+    setLaunchFinanceSection("Payments");
+    setCreditTopUpOpen(true);
+    setCreditTopUpError("");
+    setLaunchAccountMenuOpen(false);
+    window.setTimeout(() => scrollToFlowSection(".lab-credit-topup-panel", "center"), 80);
+  }
+
   async function saveLaunchAccountTerms(event) {
     event.preventDefault();
     if (!launchAccountTerms.terms || !launchAccountTerms.privacy) {
@@ -23328,6 +23337,17 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     {parentHomeNextBooking ? <><h3>{parentHomeNextBooking.day}</h3><p>{parentHomeNextBooking.draft?.childName || (Array.isArray(parentHomeNextBooking.draft?.children) ? parentHomeNextBooking.draft.children.join(", ") : parentHomeNextBooking.draft?.children) || "Your child"} · {parentHomeNextBooking.draft?.site || "Après School"}</p><strong>{parentHomeNextBooking.row?.blocks?.map((block) => block.label).filter(Boolean).join(" · ") || parentHomeNextBooking.draft?.activity || "Care session"}{parentHomeNextBooking.row?.time ? ` · ${parentHomeNextBooking.row.time}` : ""}</strong></> : <><h3>No upcoming bookings</h3><p>Choose the care and dates you need when you are ready.</p></>}
                   </div>
                   <button type="button" onClick={() => { if (parentHomeNextBooking) { setLaunchAccountSection("Bookings"); setParentBookingView("Calendar"); } else openLaunchBookingFlow(); }}>{parentHomeNextBooking ? "View in calendar" : "Book care"}</button>
+                </article>
+                <article className="lab-parent-home-credit">
+                  <div className="lab-parent-home-credit-icon" aria-hidden="true">£</div>
+                  <div>
+                    <p className="eyebrow">Book faster</p>
+                    <h3>{displayedFamilyCreditBalance > 0 ? `${money(displayedFamilyCreditBalance)} account credit available` : "Top up your account credit"}</h3>
+                    <p>{displayedFamilyCreditBalance > 0
+                      ? "We apply your credit automatically at checkout. Add more now whenever you need it."
+                      : "Add credit securely now and we will apply it automatically to future bookings. Any unused balance stays on your account."}</p>
+                  </div>
+                  <button type="button" onClick={openParentCreditTopUp}>{displayedFamilyCreditBalance > 0 ? "Add more credit" : "Top up credit"}</button>
                 </article>
                 <div className="lab-parent-home-actions" aria-label="Common tasks">
                   <button type="button" onClick={openLaunchBookingFlow}><span>Book</span><strong>Book care</strong><small>Choose sessions and dates</small></button>
