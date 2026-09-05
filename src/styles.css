@@ -49464,7 +49464,7 @@ th {
 
   .booking-launch-page .lab-camp-catalog-price {
     grid-column: 1 / -1;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) 80px 80px;
     align-items: center;
     border-top: 0;
     border-left: 0;
@@ -49478,13 +49478,15 @@ th {
 
   .booking-launch-page .lab-camp-catalog-price > .lab-camp-book {
     grid-row: 1;
-    min-width: 94px;
+    min-width: 0;
+    width: 100%;
     margin-top: 0;
   }
 
   .booking-launch-page .lab-camp-catalog-price > .lab-camp-more-info {
     grid-row: 1;
-    min-width: 94px;
+    min-width: 0;
+    width: 100%;
   }
 }
 /* Daily school register sharing */
