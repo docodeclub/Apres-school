@@ -68,6 +68,7 @@ if (request) validateRequestShape(request);
   ["launch checkout starts at payment without a misleading child stage", bookingLabSource.includes('isLaunchMode ? ["Payment", "Review"]') && bookingLabSource.includes('`${checkoutStep === "Review" ? 5 : 4} of 5`')],
   ["booking failures preserve selections and explain that nothing was charged", bookingLabSource.includes("friendlyBookingFailure") && bookingLabSource.includes("nothing has been charged") && bookingLabSource.includes("Your selections are still here")],
   ["submission lock remains active while secure checkout is prepared", bookingLabSource.indexOf("bookingSubmissionRef.current = false;", bookingLabSource.indexOf("let checkoutPreparationIssue")) > bookingLabSource.indexOf("await createCheckoutSessionForBooking(booking)")],
+  ["journey session summary includes items already moved into the basket", bookingLabSource.includes("const launchJourneySessionCount = draftBookingBasket.length || selectedBlockCount || pickedDays.length")],
   ["authoritative parent quote applies sibling pricing", bookingSystemSource.includes('quote_current_parent_pricing_with_sibling')],
   ["booking creation persists sibling pricing", edgeFunction.includes('apply_booking_sibling_discount')],
   ["booking creation prefers a parent's owned account over linked-holder invitations", edgeFunction.indexOf('.from("parent_accounts")', edgeFunction.indexOf("async function resolveBookingActor")) < edgeFunction.indexOf('.from("parent_account_holders")', edgeFunction.indexOf("async function resolveBookingActor"))],

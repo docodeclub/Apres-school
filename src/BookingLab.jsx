@@ -5445,6 +5445,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ...draftBookingBasket.map((item) => item.childName),
   ].filter(Boolean))];
   const launchJourneyDates = [...new Set((draftBookingBasket.length ? draftBookingBasket.map((item) => item.day) : pickedDays).filter(Boolean))];
+  const launchJourneySessionCount = draftBookingBasket.length || selectedBlockCount || pickedDays.length;
   const launchJourneySteps = [
     {
       number: "1",
@@ -22557,7 +22558,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             <div>
               <span>{parentJourneyStatus}</span>
               <strong>{money(total)}</strong>
-              <small>{pickedDays.length} session{pickedDays.length === 1 ? "" : "s"} · {activePaymentPlan === "Monthly" ? monthlyScheduleSummary : selectedPaymentLabel}</small>
+              <small>{launchJourneySessionCount} session{launchJourneySessionCount === 1 ? "" : "s"} · {activePaymentPlan === "Monthly" ? monthlyScheduleSummary : selectedPaymentLabel}</small>
             </div>
           </div>
           <div className="lab-booking-journey" aria-label="Parent booking journey">
