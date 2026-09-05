@@ -40970,24 +40970,27 @@ th {
 }
 
 .booking-launch-page .lab-camp-catalog-price > .lab-camp-more-info {
-  min-height: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  min-height: 38px;
+  border: 2px solid #ffd184;
   border-radius: 999px;
-  background: transparent;
-  color: #fff;
+  background: #fff4df !important;
+  color: #233f9f !important;
   padding: 6px 9px;
   font: inherit;
-  font-size: 0.72rem;
-  font-weight: 900;
+  font-size: 0.78rem;
+  font-weight: 950;
   cursor: pointer;
+  opacity: 1 !important;
+  box-shadow: 0 5px 12px rgba(13, 25, 78, 0.18);
 }
 
 .booking-launch-page .lab-camp-catalog-price > .lab-camp-more-info:hover,
 .booking-launch-page .lab-camp-catalog-price > .lab-camp-more-info:focus-visible {
-  border-color: #ffd184;
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffd184;
+  border-color: #fff;
+  background: #ffd184 !important;
+  color: #173480 !important;
   outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 209, 132, 0.32), 0 6px 14px rgba(13, 25, 78, 0.22);
 }
 
 .lab-camp-info-backdrop {
