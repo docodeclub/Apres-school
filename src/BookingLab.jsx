@@ -5449,39 +5449,31 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const launchJourneySteps = [
     {
       number: "1",
-      label: "Children",
-      value: launchJourneyChildNames.join(", ") || "Choose child",
-      detail: launchJourneyChildNames.length ? `${launchJourneyChildNames.length} selected` : "Required before checkout",
-      ready: launchJourneyChildNames.length > 0,
-      active: launchFlowStep === "Dates" && !launchJourneyChildNames.length,
-    },
-    {
-      number: "2",
-      label: "Care",
+      label: "Choose care",
       value: activeSession.type === "Holiday Camp" ? "Holiday Camp" : "Wraparound",
       detail: selectedSchool,
       ready: Boolean(activeSession?.id && selectedSchool),
       active: launchFlowStep === "Choices",
     },
     {
-      number: "3",
+      number: "2",
       label: "Dates",
       value: launchJourneyDates.length ? `${launchJourneyDates.length} day${launchJourneyDates.length === 1 ? "" : "s"}` : "Choose dates",
       detail: launchJourneyDates.length ? `${draftBookingBasket.length || selectedBlockCount} child session${(draftBookingBasket.length || selectedBlockCount) === 1 ? "" : "s"}` : "Select the sessions needed",
       ready: launchJourneyDates.length > 0,
-      active: launchFlowStep === "Dates" && launchJourneyChildNames.length > 0,
+      active: launchFlowStep === "Dates",
     },
     {
-      number: "4",
-      label: "Payment",
+      number: "3",
+      label: "Payment method",
       value: checkoutStep === "Review" || confirmation ? selectedPaymentLabel : "Choose payment",
       detail: checkoutStep === "Review" || confirmation ? money(payableTodayAmount) : "Shown before confirmation",
       ready: checkoutStep === "Review" || Boolean(confirmation),
       active: launchFlowStep === "Checkout" && checkoutStep === "Payment",
     },
     {
-      number: "5",
-      label: "Confirm",
+      number: "4",
+      label: "Confirmation",
       value: confirmation ? "Complete" : "Final check",
       detail: confirmation ? "Saved to your account" : "Review before payment",
       ready: Boolean(confirmation),
@@ -24987,7 +24979,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <p className="eyebrow">Checkout</p>
                 <h3>{checkoutStep}</h3>
               </div>
-              <strong>{isLaunchMode ? `${checkoutStep === "Review" ? 5 : 4} of 5` : `${Math.round(checkoutProgress)}%`}</strong>
+              <strong>{isLaunchMode ? `${checkoutStep === "Review" ? 4 : 3} of 4` : `${Math.round(checkoutProgress)}%`}</strong>
             </div>
             <div className="lab-stepper" aria-label="Checkout steps">
               {checkoutSteps.map((step, index) => (
