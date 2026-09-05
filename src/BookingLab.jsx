@@ -26,6 +26,7 @@ import {
   readJson,
   schoolYearIndex,
 } from "./bookingLab/labUtils.js";
+import HolidayCampInfoDrawer from "./bookingLab/HolidayCampInfoDrawer.jsx";
 import {
   PONCHOPAY_ADAPTER_CONTRACT,
   PONCHOPAY_API_REQUIREMENTS,
@@ -962,6 +963,7 @@ function liveHolidayCampCatalog(rows = []) {
         pricing: row.pricing || {},
         imageUrl: row.presentation?.imageUrl || "",
         campType: row.presentation?.campType || "Multi-Activity",
+        campInfo: row.presentation?.campInfo || {},
         dayPresentation: {},
         features: ["Book individual days", "Full-week saving applied automatically", "Early Drop-Off available per day"],
       });
@@ -985,6 +987,7 @@ function liveHolidayCampCatalog(rows = []) {
       imageUrl: row.presentation?.imageUrl || camp.imageUrl || "",
       campType: row.presentation?.campType || camp.campType || "Multi-Activity",
       notes: row.presentation?.notes || "",
+      campInfo: row.presentation?.campInfo || camp.campInfo || {},
     };
     if (!camp.dayBlocks[day]) camp.dayBlocks[day] = [];
     camp.dayBlocks[day].push(block);
@@ -1582,6 +1585,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const [launchFocusedReviewMonth, setLaunchFocusedReviewMonth] = useState("");
   const [expandedCampPeriod, setExpandedCampPeriod] = useState("");
   const [showAllCampPeriod, setShowAllCampPeriod] = useState("");
+  const [campInfoRow, setCampInfoRow] = useState(null);
+  const campInfoTriggerRef = useRef(null);
   const [parentMessageFilter, setParentMessageFilter] = useState("All");
   const [expandedDateMonths, setExpandedDateMonths] = useState({});
   const [selectedAddOns, setSelectedAddOns] = useState([]);
@@ -1965,6 +1970,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         dateRange: campCatalogDateRange(days),
         imageUrl: presentation.imageUrl || session.imageUrl || launchCareGuides["Holiday Camp"].image800,
         campType: presentation.campType || session.campType || "Multi-Activity",
+        campInfo: presentation.campInfo || session.campInfo || {},
         period: String(session.title || "Holiday Camp").replace(/\s+[–-]\s+Week\s+\d+.*$/i, "").trim() || "Holiday Camp",
       };
     })
@@ -1978,6 +1984,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   }, []);
   const selectedRemainingCampRow = launchCampCatalogRows.slice(3).find((row) => row.session.id === activeSession.id);
   const visibleExpandedCampPeriod = expandedCampPeriod || selectedRemainingCampRow?.period || "";
+  const closeCampInfo = () => {
+    setCampInfoRow(null);
+    window.setTimeout(() => campInfoTriggerRef.current?.focus(), 0);
+  };
   const renderCampCatalogRow = (row) => {
     const selected = activeSession.id === row.session.id;
     const siblingPercent = Number(rules.siblingDiscountPercent || 0);
@@ -1999,6 +2009,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           <strong>{money(row.dayBlock?.price ?? row.session.price)} <span>per day</span></strong>
           <small>{row.days.length} bookable day{row.days.length === 1 ? "" : "s"}</small>
           <button
+            className="lab-camp-book"
             type="button"
             aria-pressed={selected}
             onClick={() => {
@@ -2008,6 +2019,20 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             }}
           >
             {selected ? "✓ Selected" : "Book"}
+          </button>
+          <button
+            className="lab-camp-more-info"
+            type="button"
+            onClick={(event) => {
+              campInfoTriggerRef.current = event.currentTarget;
+              setCampInfoRow({
+                ...row,
+                site: row.session.site,
+                title: row.session.title,
+              });
+            }}
+          >
+            More Info
           </button>
         </div>
       </article>
@@ -22543,6 +22568,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       {labView === "Readiness" && <ReadinessLab onExport={exportReadinessPlan} />}
 
       {labView === "Parent" && <section className={`booking-lab-flow parent-flow-simple ${parentCheckoutOpen ? "parent-checkout-open" : ""} ${!isLaunchMode && parentAccountSignedIn ? "parent-account-open" : ""}`} id="booking-lab-flow">
+        <HolidayCampInfoDrawer camp={campInfoRow} open={Boolean(campInfoRow)} onClose={closeCampInfo} />
         {isLaunchMode && launchBookingShellOpen && parentAccountSignedIn && (
           <nav className="lab-launch-booking-nav" aria-label="Booking navigation">
             <button type="button" onClick={openLaunchParentPortal}>← Back to account</button>

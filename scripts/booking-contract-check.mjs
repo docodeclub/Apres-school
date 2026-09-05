@@ -18,6 +18,10 @@ const siblingDiscountSql = readFileSync(join(root, "supabase/migrations/0157_ser
 const staffFamilyRegisterSql = readFileSync(join(root, "supabase/migrations/0158_register_staff_family_indicator.sql"), "utf8");
 const updateFunction = readFileSync(join(root, "supabase/functions/update-parent-booking/index.ts"), "utf8");
 const bookingLabSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
+const campInfoDrawerSource = readFileSync(join(root, "src/bookingLab/HolidayCampInfoDrawer.jsx"), "utf8");
+const campInfoSource = readFileSync(join(root, "src/bookingLab/holidayCampInfo.js"), "utf8");
+const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8");
+const campInfoSql = readFileSync(join(root, "supabase/migrations/0171_holiday_camp_more_info.sql"), "utf8");
 const termsUrl = "https://docs.google.com/document/d/1ursh4YbP1e8cLG7fiUy0z3JezZWBUBG2_-7eG8wA0u0/edit?usp=sharing";
 
 const launchSession = labSessions.find((session) => session.id === "lab-willington-after") || labSessions.find((session) => session.type === "Wraparound");
@@ -78,6 +82,14 @@ if (request) validateRequestShape(request);
   ["sibling pricing is visible in the basket", bookingLabSource.includes('10% sibling discount applied') && bookingLabSource.includes('basketPricingQuote.siblingDiscountTotal')],
   ["register identifies staff families server-side", staffFamilyRegisterSql.includes("parent_is_staff boolean") && staffFamilyRegisterSql.includes("parent_pricing_assignments") && staffFamilyRegisterSql.includes("staff_records")],
   ["register displays a labelled staff-family marker", bookingLabSource.includes('10% sibling discount applied') && readFileSync(join(root, "src/PlatformModule.jsx"), "utf8").includes('aria-label="Staff family"')],
+  ["holiday camp cards expose a distinct More Info action", bookingLabSource.includes('className="lab-camp-more-info"') && bookingLabSource.includes("setCampInfoRow")],
+  ["holiday camp information opens in an accessible modal drawer", campInfoDrawerSource.includes('role="dialog"') && campInfoDrawerSource.includes('aria-modal="true"') && campInfoDrawerSource.includes('aria-labelledby="camp-info-title"')],
+  ["holiday camp drawer supports Escape and focus management", campInfoDrawerSource.includes('event.key === "Escape"') && campInfoDrawerSource.includes("closeRef.current?.focus()") && bookingLabSource.includes("campInfoTriggerRef.current?.focus()")],
+  ["holiday camp drawer provides the required information sections", ["A typical camp day", "What to bring", "Food", "Special activities", "Additional information"].every((heading) => campInfoDrawerSource.includes(heading))],
+  ["Multi-Activity camp information has a schedule without fixed times", campInfoSource.includes('title: "Multi-Activity Holiday Camp"') && campInfoSource.includes('"Welcome & Guided Play"') && campInfoSource.includes('"Group Games & Home Time"') && !/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/.test(campInfoSource)],
+  ["holiday camp More Info openings expose analytics context", campInfoSource.includes("apres:holiday-camp-info-opened") && campInfoSource.includes("holiday_camp_more_info_opened") && campInfoSource.includes("holidayPeriod")],
+  ["holiday camp information can be overridden in admin", ["infoDescription", "infoTypicalDay", "infoWhatToBring", "infoFood", "infoSpecialActivities", "infoAdditional"].every((field) => platformSource.includes(field))],
+  ["holiday camp information overrides persist and return publicly", campInfoSql.includes("'campInfo', v_camp_info") && campInfoSql.includes("s.booking_metadata->'campInfo'")],
 ].forEach(([label, ok]) => {
   if (!ok) failures.push(label);
 });

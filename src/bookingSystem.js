@@ -1041,6 +1041,7 @@ export async function fetchAdminHolidayCampSchedule() {
       notes: row.booking_metadata?.notes || "",
       imageUrl: row.booking_metadata?.imageUrl || "",
       campType: row.booking_metadata?.campType || "Multi-Activity",
+      campInfo: row.booking_metadata?.campInfo || {},
       sessionBlocks: row.session_blocks || [],
       pricing: {
         dayPrice: Number(row.price || 0),

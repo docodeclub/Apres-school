@@ -15517,6 +15517,7 @@ function Sessions({ data, access }) {
     earlyDropOffEnabled: true, earlyDropOffStart: "08:00", earlyDropOffEnd: "09:00", earlyDropOffPrice: "5",
     fullWeek4Price: "180", fullWeek5Price: "225",
     cancellationHours: "24", notes: "", published: false,
+    infoDescription: "", infoTypicalDay: "", infoWhatToBring: "", infoFood: "", infoSpecialActivities: "", infoAdditional: "",
   });
 
   async function loadCampRows() {
@@ -15555,6 +15556,10 @@ function Sessions({ data, access }) {
     const dayBlock = blocks.find((block) => block.label === "Holiday Camp") || {};
     const earlyBlock = blocks.find((block) => block.label === "Early Drop-Off") || {};
     const toTime = (value, fallback) => value ? holidayCampDateTime(value, { hour: "2-digit", minute: "2-digit" }) : fallback;
+    const campInfo = first.campInfo || {};
+    const infoText = (value, separator = "\n") => Array.isArray(value)
+      ? value.map((item) => Array.isArray(item) ? item.join(" | ") : item).join(separator)
+      : String(value || "");
     setCampDraft((current) => ({
       ...current,
       site: first.siteName || camp.siteName || "",
@@ -15578,6 +15583,12 @@ function Sessions({ data, access }) {
       fullWeek4Price: String(first.pricing?.fullWeek4Price || ""),
       fullWeek5Price: String(first.pricing?.fullWeek5Price || ""),
       notes: first.notes || "",
+      infoDescription: infoText(campInfo.description, "\n\n"),
+      infoTypicalDay: infoText(campInfo.typicalDay),
+      infoWhatToBring: infoText(campInfo.whatToBring),
+      infoFood: infoText(campInfo.food, "\n\n"),
+      infoSpecialActivities: infoText(campInfo.specialActivities),
+      infoAdditional: infoText(campInfo.additionalInformation),
       published: first.published === true,
     }));
     setCampMessage(`Editing ${camp.campName} at ${camp.siteName}.`);
@@ -15643,6 +15654,18 @@ function Sessions({ data, access }) {
               <label className="holiday-camp-wide">Who can attend?<input value={campDraft.eligibility} onChange={(event) => updateCampDraft("eligibility", event.target.value)} /></label>
               <label className="holiday-camp-wide">Internal/public note<textarea rows="2" value={campDraft.notes} onChange={(event) => updateCampDraft("notes", event.target.value)} placeholder="Optional useful detail for this camp" /></label>
             </div>
+            <details className="holiday-camp-info-config">
+              <summary>More Info drawer content <span>Optional venue or programme overrides</span></summary>
+              <p>Leave a field blank to use the default Multi-Activity Holiday Camp wording.</p>
+              <div className="holiday-camp-form-grid">
+                <label className="holiday-camp-wide">Camp description<textarea rows="5" value={campDraft.infoDescription} onChange={(event) => updateCampDraft("infoDescription", event.target.value)} placeholder="Introductory paragraphs shown to parents" /></label>
+                <label className="holiday-camp-wide">Typical Day<textarea rows="7" value={campDraft.infoTypicalDay} onChange={(event) => updateCampDraft("infoTypicalDay", event.target.value)} placeholder="One stage per line: Welcome & Guided Play | Children settle in…" /><small>Use a vertical bar between each stage title and its description.</small></label>
+                <label className="holiday-camp-wide">What to Bring<textarea rows="5" value={campDraft.infoWhatToBring} onChange={(event) => updateCampDraft("infoWhatToBring", event.target.value)} placeholder="One item per line" /></label>
+                <label className="holiday-camp-wide">Food information<textarea rows="4" value={campDraft.infoFood} onChange={(event) => updateCampDraft("infoFood", event.target.value)} placeholder="Venue-specific food information" /></label>
+                <label className="holiday-camp-wide">Special Activities<textarea rows="5" value={campDraft.infoSpecialActivities} onChange={(event) => updateCampDraft("infoSpecialActivities", event.target.value)} placeholder="One activity per line" /></label>
+                <label className="holiday-camp-wide">Additional Information<textarea rows="4" value={campDraft.infoAdditional} onChange={(event) => updateCampDraft("infoAdditional", event.target.value)} placeholder="Medical, SEND, allergy or support guidance" /></label>
+              </div>
+            </details>
             <fieldset className="holiday-camp-weekdays"><legend>Days running</legend><div>{holidayCampWeekdays.map(([day, label]) => <button className={campDraft.weekdays.includes(day) ? "active" : ""} key={day} type="button" onClick={() => toggleCampWeekday(day)}>{label}</button>)}</div></fieldset>
             <div className="holiday-camp-publish-row">
               <label><input type="checkbox" checked={campDraft.earlyDropOffEnabled} onChange={(event) => updateCampDraft("earlyDropOffEnabled", event.target.checked)} /> Offer Early Drop-Off separately</label>

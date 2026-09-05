@@ -2750,6 +2750,11 @@ summary {
 .holiday-camp-publish-row { display: flex; align-items: center; flex-wrap: wrap; gap: .8rem 1.2rem; }
 .holiday-camp-publish-row label { display: flex; align-items: center; gap: .45rem; font-weight: 750; color: #33405e; }
 .holiday-camp-publish-row .button { margin-left: auto; }
+.holiday-camp-info-config { margin: 1rem 0; border: 1px solid #d9e2f3; border-radius: 14px; background: #f8faff; padding: .9rem 1rem; }
+.holiday-camp-info-config summary { cursor: pointer; color: #2745a6; font-weight: 900; }
+.holiday-camp-info-config summary span { margin-left: .45rem; color: #6a748c; font-size: .78rem; font-weight: 700; }
+.holiday-camp-info-config > p { margin: .7rem 0 1rem; color: #68738b; font-size: .84rem; }
+.holiday-camp-info-config .holiday-camp-form-grid { margin-top: .8rem; }
 .holiday-camp-message { padding: .75rem 1rem; border-radius: 10px; background: #edf4ff; color: #2442a0; font-weight: 750; }
 .holiday-camp-schedule-list { display: grid; gap: .7rem; padding-top: .4rem; border-top: 1px solid #e0e7f4; }
 .holiday-camp-schedule-list > article { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 2fr) auto; align-items: center; gap: 1rem; padding: .8rem; border: 1px solid #dce4f2; border-radius: 12px; background: #fff; }
@@ -40936,7 +40941,7 @@ th {
   font-weight: 750;
 }
 
-.booking-launch-page .lab-camp-catalog-price > button {
+.booking-launch-page .lab-camp-catalog-price > .lab-camp-book {
   min-height: 34px;
   margin-top: 4px;
   border: 1px solid #fff;
@@ -40951,17 +40956,263 @@ th {
   box-shadow: 0 6px 14px rgba(13, 25, 78, 0.2);
 }
 
-.booking-launch-page .lab-camp-catalog-price > button:hover,
-.booking-launch-page .lab-camp-catalog-price > button:focus-visible {
+.booking-launch-page .lab-camp-catalog-price > .lab-camp-book:hover,
+.booking-launch-page .lab-camp-catalog-price > .lab-camp-book:focus-visible {
   background: #fff7e9 !important;
   color: #8b5103 !important;
 }
 
-.booking-launch-page .lab-camp-catalog-row.active .lab-camp-catalog-price > button {
+.booking-launch-page .lab-camp-catalog-row.active .lab-camp-catalog-price > .lab-camp-book {
   border-color: #c65f00;
   background: #c65f00 !important;
   color: #fff !important;
   box-shadow: 0 7px 16px rgba(139, 81, 3, 0.28);
+}
+
+.booking-launch-page .lab-camp-catalog-price > .lab-camp-more-info {
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  padding: 6px 9px;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.booking-launch-page .lab-camp-catalog-price > .lab-camp-more-info:hover,
+.booking-launch-page .lab-camp-catalog-price > .lab-camp-more-info:focus-visible {
+  border-color: #ffd184;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffd184;
+  outline: none;
+}
+
+.lab-camp-info-backdrop {
+  position: fixed;
+  z-index: 10080;
+  inset: 0;
+  display: grid;
+  justify-items: end;
+  background: rgba(17, 28, 65, 0.58);
+}
+
+.lab-camp-info-drawer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(100%, 500px);
+  height: 100%;
+  overflow: hidden;
+  background: #f7f9ff;
+  box-shadow: -20px 0 60px rgba(13, 25, 78, 0.25);
+  animation: lab-camp-info-in 180ms ease-out;
+}
+
+@keyframes lab-camp-info-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.lab-camp-info-drawer > header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  border-bottom: 1px solid #dce4f6;
+  background: #fff;
+  padding: 22px 24px 18px;
+  box-shadow: 0 5px 16px rgba(28, 43, 92, 0.06);
+}
+
+.lab-camp-info-drawer > header h2 {
+  margin: 3px 0 5px;
+  color: #25304f;
+  font-size: clamp(1.45rem, 4vw, 1.9rem);
+  line-height: 1.15;
+}
+
+.lab-camp-info-drawer > header span {
+  color: #63708c;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.lab-camp-info-drawer > header > button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid #ced8ee;
+  border-radius: 50%;
+  background: #f5f7ff;
+  color: #2844a5;
+  font: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lab-camp-info-drawer > header > button:hover,
+.lab-camp-info-drawer > header > button:focus-visible {
+  border-color: #ed9428;
+  background: #fff8ea;
+  outline: none;
+}
+
+.lab-camp-info-body {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 20px 24px 32px;
+  scroll-behavior: smooth;
+}
+
+.lab-camp-info-intro {
+  display: grid;
+  gap: 10px;
+  border-left: 4px solid #ed9428;
+  border-radius: 12px;
+  background: #fff8ea;
+  padding: 15px 16px;
+}
+
+.lab-camp-info-intro p,
+.lab-camp-info-body section p {
+  margin: 0;
+  color: #4e5974;
+  line-height: 1.55;
+}
+
+.lab-camp-info-body > nav {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  background: #f7f9ff;
+  padding: 2px 0 8px;
+}
+
+.lab-camp-info-body > nav button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  border: 1px solid #ced8ee;
+  border-radius: 999px;
+  background: #fff;
+  color: #2844a5;
+  padding: 7px 11px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.lab-camp-info-body > nav button:hover,
+.lab-camp-info-body > nav button:focus-visible {
+  border-color: #ed9428;
+  outline: none;
+}
+
+.lab-camp-info-body > section {
+  display: grid;
+  gap: 11px;
+  scroll-margin-top: 58px;
+  border: 1px solid #dce4f6;
+  border-radius: 18px;
+  background: #fff;
+  padding: 17px;
+}
+
+.lab-camp-info-body > section > span {
+  color: #ed9428;
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.lab-camp-info-body > section h3 {
+  margin: -6px 0 0;
+  color: #25304f;
+  font-size: 1.18rem;
+}
+
+.lab-camp-info-body ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 20px;
+  color: #3f4e77;
+  line-height: 1.4;
+}
+
+.lab-camp-info-body section > small {
+  border-radius: 10px;
+  background: #f1f4ff;
+  padding: 10px 11px;
+  color: #475578;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.lab-camp-info-timeline {
+  display: grid;
+  gap: 4px;
+}
+
+.lab-camp-info-timeline article {
+  display: grid;
+  grid-template-columns: 31px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 9px 0;
+}
+
+.lab-camp-info-timeline article + article {
+  border-top: 1px solid #e8edf8;
+}
+
+.lab-camp-info-timeline b {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: #eef3ff;
+  color: #3451bd;
+  font-size: 0.69rem;
+}
+
+.lab-camp-info-timeline strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #263459;
+}
+
+.lab-camp-info-timeline p {
+  font-size: 0.86rem;
+}
+
+@media (max-width: 620px) {
+  .lab-camp-info-backdrop { align-items: end; }
+  .lab-camp-info-drawer {
+    width: 100%;
+    height: min(94vh, 900px);
+    border-radius: 22px 22px 0 0;
+    animation-name: lab-camp-info-mobile-in;
+  }
+  @keyframes lab-camp-info-mobile-in {
+    from { transform: translateY(24px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .lab-camp-info-drawer > header { padding: 18px 18px 15px; }
+  .lab-camp-info-body { padding: 16px 16px 28px; }
 }
 
 .booking-launch-page .lab-camp-pricing-summary-top {
@@ -49210,7 +49461,7 @@ th {
 
   .booking-launch-page .lab-camp-catalog-price {
     grid-column: 1 / -1;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
     border-top: 0;
     border-left: 0;
@@ -49222,11 +49473,15 @@ th {
     display: none;
   }
 
-  .booking-launch-page .lab-camp-catalog-price > button {
-    grid-column: 2;
+  .booking-launch-page .lab-camp-catalog-price > .lab-camp-book {
     grid-row: 1;
-    min-width: 108px;
+    min-width: 94px;
     margin-top: 0;
+  }
+
+  .booking-launch-page .lab-camp-catalog-price > .lab-camp-more-info {
+    grid-row: 1;
+    min-width: 94px;
   }
 }
 /* Daily school register sharing */
