@@ -2004,22 +2004,6 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             {siblingPercent > 0 && <span>{siblingPercent}% sibling discount</span>}
           </div>
           <small>{row.addOnBlocks.length ? `Add-ons: ${row.addOnBlocks.map((block) => `${block.label} ${block.start}–${block.end} +${money(block.price)} per day`).join(" · ")}` : "No add-ons are currently offered for this camp."}</small>
-        </div>
-        <div className="lab-camp-catalog-price">
-          <strong>{money(row.dayBlock?.price ?? row.session.price)} <span>per day</span></strong>
-          <small>{row.days.length} bookable day{row.days.length === 1 ? "" : "s"}</small>
-          <button
-            className="lab-camp-book"
-            type="button"
-            aria-pressed={selected}
-            onClick={() => {
-              setExpandedCampPeriod(row.period);
-              if (remainingCampCatalogGroups.find((group) => group.period === row.period)?.rows.indexOf(row) >= 2) setShowAllCampPeriod(row.period);
-              chooseSession(row.session, { advance: false });
-            }}
-          >
-            {selected ? "✓ Selected" : "Book"}
-          </button>
           <button
             className="lab-camp-more-info"
             type="button"
@@ -2033,6 +2017,22 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             }}
           >
             More Info
+          </button>
+        </div>
+        <div className="lab-camp-catalog-price">
+          <strong>{money(row.dayBlock?.price ?? row.session.price)} <span>per day</span></strong>
+          <small>{row.days.length} bookable day{row.days.length === 1 ? "" : "s"}</small>
+          <button
+            className="lab-camp-book"
+            type="button"
+            onClick={() => {
+              setExpandedCampPeriod(row.period);
+              if (remainingCampCatalogGroups.find((group) => group.period === row.period)?.rows.indexOf(row) >= 2) setShowAllCampPeriod(row.period);
+              chooseSession(row.session, { advance: false });
+              moveLaunchFlowStep("Dates", ".lab-date-picker-panel");
+            }}
+          >
+            Select Dates
           </button>
         </div>
       </article>
