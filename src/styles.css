@@ -40023,7 +40023,15 @@ th {
 }
 
 .booking-launch-page .lab-booking-journey-shell {
-  display: none;
+  position: sticky;
+  z-index: 45;
+  top: 86px;
+  display: grid;
+  gap: 7px;
+  border-color: rgba(37, 48, 79, 0.14);
+  border-radius: 16px;
+  box-shadow: 0 14px 34px rgba(24, 34, 68, 0.12);
+  padding: 7px;
 }
 
 .booking-launch-page .lab-launch-booking-nav {
@@ -40067,19 +40075,20 @@ th {
 }
 
 .booking-launch-page .lab-booking-journey-head {
+  grid-template-columns: minmax(0, 1fr) auto;
   background: #fff;
   border: 0;
-  padding: 10px 12px 4px;
+  padding: 5px 8px 2px;
 }
 
 .booking-launch-page .lab-booking-journey-head h2 {
-  font-size: clamp(1.65rem, 2.1vw, 2.35rem);
+  font-size: clamp(1.02rem, 1.5vw, 1.28rem);
   letter-spacing: 0;
 }
 
 .booking-launch-page .lab-booking-journey-head p:not(.eyebrow) {
   max-width: 680px;
-  font-size: 1rem;
+  font-size: 0.76rem;
   line-height: 1.35;
 }
 
@@ -40092,20 +40101,24 @@ th {
 }
 
 .booking-launch-page .lab-booking-journey {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .booking-launch-page .lab-booking-journey article {
-  min-height: 72px;
-  border-radius: 14px;
-  gap: 9px;
-  padding: 10px;
+  min-height: 56px;
+  border-radius: 11px;
+  gap: 7px;
+  padding: 7px;
 }
 
 .booking-launch-page .lab-booking-journey article > span {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
+}
+
+.booking-launch-page .lab-booking-journey-shell .lab-launch-account-strip {
+  display: none;
 }
 
 .booking-launch-page .lab-launch-account-strip {
@@ -45968,6 +45981,7 @@ th {
   }
 
   .booking-launch-page .lab-booking-journey-shell {
+    top: 8px;
     gap: 6px;
     padding: 6px;
   }
@@ -45998,8 +46012,8 @@ th {
   }
 
   .booking-launch-page .lab-booking-journey {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
   }
 
   .booking-launch-page .lab-launch-account-strip {
@@ -46054,9 +46068,12 @@ th {
   }
 
   .booking-launch-page .lab-booking-journey article {
-    min-height: 46px;
-    gap: 6px;
-    padding: 6px;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    min-height: 52px;
+    gap: 3px;
+    padding: 5px 2px;
+    text-align: center;
   }
 
   .booking-launch-page .lab-booking-journey article > span {
@@ -46066,11 +46083,16 @@ th {
   }
 
   .booking-launch-page .lab-booking-journey small {
-    font-size: 0.58rem;
+    display: block;
+    overflow: hidden;
+    max-width: 100%;
+    font-size: 0.57rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .booking-launch-page .lab-booking-journey strong {
-    font-size: 0.78rem;
+    display: none;
   }
 
   .booking-launch-page .lab-booking-journey em {

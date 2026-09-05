@@ -5350,7 +5350,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     ["Temporary password", latestParentInviteRun?.temporaryPassword || "Not generated", latestParentInviteRun?.emailed ? "Sent by email" : "Visible for manual handover/testing"],
   ];
   const canManageParentAccounts = activeRole === "Admin";
-  const checkoutSteps = isLaunchMode ? ["Children", "Payment", "Review"] : ["Children", "Extras", "Details", "Payment", "Review"];
+  const checkoutSteps = isLaunchMode ? ["Payment", "Review"] : ["Children", "Extras", "Details", "Payment", "Review"];
   const checkoutStepIndex = Math.max(0, checkoutSteps.indexOf(checkoutStep));
   const checkoutProgress = checkoutSteps.length > 1 ? ((checkoutStepIndex + 1) / checkoutSteps.length) * 100 : 100;
   const nextCheckoutStep = checkoutSteps[Math.min(checkoutSteps.length - 1, checkoutStepIndex + 1)];
@@ -5440,10 +5440,70 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       active: checkoutStep === "Payment" || checkoutStep === "Review",
     },
   ];
-  const parentJourneyStatus = journeySteps.every((step) => step.ready)
+  const launchJourneyChildNames = [...new Set([
+    ...selectedChildren.map((child) => child.name),
+    ...draftBookingBasket.map((item) => item.childName),
+  ].filter(Boolean))];
+  const launchJourneyDates = [...new Set((draftBookingBasket.length ? draftBookingBasket.map((item) => item.day) : pickedDays).filter(Boolean))];
+  const launchJourneySteps = [
+    {
+      number: "1",
+      label: "Children",
+      value: launchJourneyChildNames.join(", ") || "Choose child",
+      detail: launchJourneyChildNames.length ? `${launchJourneyChildNames.length} selected` : "Required before checkout",
+      ready: launchJourneyChildNames.length > 0,
+      active: launchFlowStep === "Dates" && !launchJourneyChildNames.length,
+    },
+    {
+      number: "2",
+      label: "Care",
+      value: activeSession.type === "Holiday Camp" ? "Holiday Camp" : "Wraparound",
+      detail: selectedSchool,
+      ready: Boolean(activeSession?.id && selectedSchool),
+      active: launchFlowStep === "Choices",
+    },
+    {
+      number: "3",
+      label: "Dates",
+      value: launchJourneyDates.length ? `${launchJourneyDates.length} day${launchJourneyDates.length === 1 ? "" : "s"}` : "Choose dates",
+      detail: launchJourneyDates.length ? `${draftBookingBasket.length || selectedBlockCount} child session${(draftBookingBasket.length || selectedBlockCount) === 1 ? "" : "s"}` : "Select the sessions needed",
+      ready: launchJourneyDates.length > 0,
+      active: launchFlowStep === "Dates" && launchJourneyChildNames.length > 0,
+    },
+    {
+      number: "4",
+      label: "Payment",
+      value: checkoutStep === "Review" || confirmation ? selectedPaymentLabel : "Choose payment",
+      detail: checkoutStep === "Review" || confirmation ? money(payableTodayAmount) : "Shown before confirmation",
+      ready: checkoutStep === "Review" || Boolean(confirmation),
+      active: launchFlowStep === "Checkout" && checkoutStep === "Payment",
+    },
+    {
+      number: "5",
+      label: "Confirm",
+      value: confirmation ? "Complete" : "Final check",
+      detail: confirmation ? "Saved to your account" : "Review before payment",
+      ready: Boolean(confirmation),
+      active: launchFlowStep === "Checkout" && checkoutStep === "Review" && !confirmation,
+    },
+  ];
+  const displayedJourneySteps = isLaunchMode ? launchJourneySteps : journeySteps;
+  const parentJourneyStatus = displayedJourneySteps.every((step) => step.ready)
     ? "Ready to book"
-    : `${journeySteps.filter((step) => step.ready).length}/${journeySteps.length} ready`;
+    : `${displayedJourneySteps.filter((step) => step.ready).length}/${displayedJourneySteps.length} ready`;
   const stageClass = (stage) => checkoutStep === stage ? "active" : checkoutSteps.indexOf(stage) < checkoutStepIndex ? "complete" : "";
+  const bookingStatusNeedsAttention = /choose|could not|unable|failed|full|already booked|update|required|not available|not ready|no bookable|no payment has been|needs attention/i.test(status);
+  const friendlyBookingFailure = (message) => {
+    const detail = String(message || "").trim();
+    if (/capacity|full|no (places|spaces)|availability/i.test(detail)) return "One or more sessions have just filled up. Return to the dates and choose another session.";
+    if (/already booked|duplicate|conflict/i.test(detail)) return "One or more of these sessions is already booked or awaiting payment. Review the basket and remove the duplicate.";
+    if (/timeout|compute|resource|temporar|gateway|unavailable/i.test(detail)) return "The booking service is temporarily busy. Your selections are still here—please wait a moment and try again.";
+    if (/network|fetch|offline|connection/i.test(detail)) return "We could not reach the booking service. Check your connection and try again; your selections are still here.";
+    if (/session block|inactive|closed|not found|no bookable/i.test(detail)) return "A selected session is no longer available. Return to the dates and choose an open session.";
+    if (/auth|sign.?in|session expired|token|unauthor/i.test(detail)) return "Your secure sign-in has expired. Sign in again and your saved basket will remain available.";
+    if (/price|pricing|quote|amount/i.test(detail)) return "We could not confirm the latest price, so checkout has stopped before payment. Please try again.";
+    return "The booking could not be completed. Your selections are still here—please try again or contact support if it continues.";
+  };
   const scrollToFlowSection = (selector, block = "start") => {
     window.setTimeout(() => {
       const target = document.querySelector(selector);
@@ -16352,16 +16412,14 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         };
       }
       if (!realBookingResult?.booking) {
-        const bookingError = realBookingResult?.message || "The booking could not be saved to your account.";
+        const bookingError = friendlyBookingFailure(realBookingResult?.message);
         bookingSubmissionRef.current = false;
         setBookingSubmitting(false);
-        setStatus(`We could not reserve these sessions, so no payment has been opened. ${bookingError}`);
+        setStatus(`We could not reserve these sessions and nothing has been charged. ${bookingError}`);
         setConfirmation(null);
         return;
       }
     }
-    bookingSubmissionRef.current = false;
-    setBookingSubmitting(false);
     const realCheckout = realBookingResult?.checkout || null;
     const confirmedWithoutPayment = Boolean(
       realBookingResult?.booking
@@ -16394,8 +16452,11 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           message: "Booking confirmed at £0.00. No payment link is required.",
         }
       : null;
-    const ponchoCheckout = realCheckout
-      ? {
+    let checkoutPreparationIssue = "";
+    let ponchoCheckout;
+    try {
+      ponchoCheckout = realCheckout
+        ? {
           mode: "supabase",
           status: realCheckout.status || "ready_for_payment",
           invoiceId: realCheckout.invoiceId || realBookingResult.booking?.invoiceId || `inv_${booking.id}`,
@@ -16406,11 +16467,25 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           response: realCheckout,
           message: realCheckout.message || "Real booking checkout prepared.",
         }
-      : creditCoveredCheckout
-        ? creditCoveredCheckout
-      : noPaymentRequiredCheckout
-        ? noPaymentRequiredCheckout
-      : await createCheckoutSessionForBooking(booking);
+        : creditCoveredCheckout
+          ? creditCoveredCheckout
+        : noPaymentRequiredCheckout
+          ? noPaymentRequiredCheckout
+        : await createCheckoutSessionForBooking(booking);
+    } catch (checkoutError) {
+      checkoutPreparationIssue = friendlyBookingFailure(checkoutError instanceof Error ? checkoutError.message : "Secure checkout could not be prepared.");
+      ponchoCheckout = {
+        mode: "error",
+        status: "provider_error",
+        invoiceId: realBookingResult?.booking?.invoiceId || `inv_${booking.id}`,
+        providerPaymentId: null,
+        providerReference: null,
+        checkoutUrl: null,
+        requiresProviderConfig: false,
+        response: null,
+        message: checkoutPreparationIssue,
+      };
+    }
     const bookingWithCheckout = {
       ...booking,
       total: Number(realBookingResult?.booking?.totalAmount ?? booking.total),
@@ -16472,8 +16547,10 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       : realBookingResult?.message
         ? ` ${realBookingResult.message}`
         : "";
-    const launchCheckoutStatus = realBookingResult?.credit?.fullyCovered
-      ? `Booking confirmed. ${money(Number(realBookingResult.credit.applied || 0))} account credit was used and no card payment was needed.`
+    const launchCheckoutStatus = checkoutPreparationIssue
+      ? `Your sessions were reserved, but secure payment could not open. Nothing has been charged. ${checkoutPreparationIssue}`
+      : realBookingResult?.credit?.fullyCovered
+        ? `Booking confirmed. ${money(Number(realBookingResult.credit.applied || 0))} account credit was used and no card payment was needed.`
       : confirmedWithoutPayment
         ? "Booking confirmed at £0.00. Your pricing benefit covered it in full, so PonchoPay and a card guarantee were not required."
       : isWaitlist
@@ -16498,6 +16575,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           : effectivePaymentMethod === "card"
             ? `Prototype booking saved. No real payment has been taken.${checkoutSuffix}`
             : `Prototype booking saved with payment reconciliation pending.${checkoutSuffix}`);
+    bookingSubmissionRef.current = false;
+    setBookingSubmitting(false);
   }
 
   const fieldError = (message) => message ? <small className="field-error">{message}</small> : null;
@@ -22472,8 +22551,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           <div className="lab-booking-journey-head">
             <div>
               <p className="eyebrow">{isLaunchMode ? "Book care" : "Guided booking"}</p>
-              <h2>{isLaunchMode ? (activeSession.type === "Holiday Camp" ? "Book holiday camp." : "Book wraparound care.") : activeSession.type === "Holiday Camp" ? "Build the camp week." : "Build the wraparound plan."}</h2>
-              <p>{isLaunchMode ? "Pick school, dates and payment in a few guided steps." : "Choose care, confirm children, pick dates and complete the payment route in one flow."}</p>
+              <h2>{isLaunchMode ? `${activeSession.type === "Holiday Camp" ? "Holiday Camp" : "Wraparound care"} at ${selectedSchool}` : activeSession.type === "Holiday Camp" ? "Build the camp week." : "Build the wraparound plan."}</h2>
+              <p>{isLaunchMode ? `${launchJourneyChildNames.join(", ") || "Choose a child"} · Your choices are kept when you go back.` : "Choose care, confirm children, pick dates and complete the payment route in one flow."}</p>
             </div>
             <div>
               <span>{parentJourneyStatus}</span>
@@ -22482,7 +22561,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             </div>
           </div>
           <div className="lab-booking-journey" aria-label="Parent booking journey">
-            {journeySteps.map((step) => (
+            {displayedJourneySteps.map((step) => (
               <article className={`${step.ready ? "ready" : ""} ${step.active ? "active" : ""}`} key={step.label}>
                 <span>{step.ready ? "OK" : step.number}</span>
                 <div>
@@ -24864,7 +24943,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <p className="eyebrow">Checkout</p>
                 <h3>{checkoutStep}</h3>
               </div>
-              <strong>{isLaunchMode ? `${checkoutStepIndex + 1} of ${checkoutSteps.length}` : `${Math.round(checkoutProgress)}%`}</strong>
+              <strong>{isLaunchMode ? `${checkoutStep === "Review" ? 5 : 4} of 5` : `${Math.round(checkoutProgress)}%`}</strong>
             </div>
             <div className="lab-stepper" aria-label="Checkout steps">
               {checkoutSteps.map((step, index) => (
@@ -24875,7 +24954,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               ))}
             </div>
             <div className="lab-progress-track"><span style={{ width: `${checkoutProgress}%` }} /></div>
-            {status && <div className={status.includes("Choose") ? "form-status warn" : "form-status success"}>{status}</div>}
+            {status && <div className={bookingStatusNeedsAttention ? "form-status warn" : "form-status success"} role={bookingStatusNeedsAttention ? "alert" : "status"} aria-live="polite">{status}</div>}
             {confirmation && (
               <div className="lab-confirmation">
                 <div className="lab-confirmation-head">
@@ -25185,7 +25264,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             </section>}
             <section className={`lab-checkout-stage ${stageClass("Payment")}`}>
               <div className="lab-stage-heading">
-                <span>{isLaunchMode ? "2" : "4"}</span>
+                <span>4</span>
                 <div>
                   <h3>{isLaunchMode ? checkoutPaymentHeading : "Payment route"}</h3>
                   <p>{isLaunchMode ? "Choose the option that suits you. PonchoPay securely processes card payments and automatically matches Tax-Free Childcare or childcare voucher payments to your booking." : `${activePaymentRoute}. Take card payment now, or reserve while TFC and vouchers are reconciled.`}</p>
@@ -25330,7 +25409,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             </section>
             <section className={`lab-checkout-stage ${stageClass("Review")}`}>
               <div className="lab-stage-heading">
-                <span>{isLaunchMode ? "3" : "5"}</span>
+                <span>5</span>
                 <div>
                   <h3>{isLaunchMode ? "Review and book" : "Review and confirm"}</h3>
                   <p>{isLaunchMode ? "Check the child, sessions and payment before confirming." : "Check price, policies and required consents before saving the booking locally."}</p>
