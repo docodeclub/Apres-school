@@ -41774,7 +41774,7 @@ th {
 
 .booking-launch-page .lab-parent-account-sections {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   border: 1px solid rgba(49, 75, 184, 0.16);
   border-radius: 16px;
@@ -41855,6 +41855,141 @@ th {
   box-shadow: 0 8px 20px rgba(49, 75, 184, 0.2);
 }
 
+.booking-launch-page .lab-parent-account-sections button.book-action {
+  border-color: #e5a238;
+  background: #fff7e8;
+  color: #754400;
+}
+
+.booking-launch-page .lab-parent-account-subsections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  border: 1px solid rgba(49, 75, 184, 0.13);
+  border-radius: 14px;
+  background: #f8faff;
+  padding: 7px;
+}
+
+.booking-launch-page .lab-parent-account-subsections button {
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #52607f;
+  padding: 8px 13px;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.booking-launch-page .lab-parent-account-subsections button.active {
+  border-color: rgba(49, 75, 184, 0.18);
+  background: #fff;
+  color: var(--royal-dark);
+  box-shadow: 0 5px 14px rgba(28, 51, 121, 0.08);
+}
+
+.booking-launch-page .lab-parent-home {
+  display: grid !important;
+  gap: 12px;
+}
+
+.booking-launch-page .lab-parent-home-next {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  border: 1px solid rgba(49, 75, 184, 0.16);
+  border-radius: 20px;
+  background: linear-gradient(135deg, #f4f7ff 0%, #fff 70%);
+  padding: clamp(17px, 2.6vw, 24px);
+}
+
+.booking-launch-page .lab-parent-home-next h3,
+.booking-launch-page .lab-parent-home-next p {
+  margin: 0;
+}
+
+.booking-launch-page .lab-parent-home-next h3 {
+  margin-top: 3px;
+  color: var(--royal-dark);
+  font-size: clamp(1.35rem, 3vw, 1.85rem);
+}
+
+.booking-launch-page .lab-parent-home-next p:not(.eyebrow) {
+  margin-top: 5px;
+  color: var(--muted);
+}
+
+.booking-launch-page .lab-parent-home-next > div > strong {
+  display: block;
+  margin-top: 9px;
+  color: #243966;
+}
+
+.booking-launch-page .lab-parent-home-next > button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--royal);
+  color: #fff;
+  padding: 11px 18px;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.booking-launch-page .lab-parent-home-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.booking-launch-page .lab-parent-home-actions button {
+  display: grid;
+  gap: 4px;
+  min-height: 116px;
+  border: 1px solid rgba(49, 75, 184, 0.15);
+  border-radius: 17px;
+  background: #fff;
+  padding: 15px;
+  color: var(--royal-dark);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(28, 51, 121, 0.06);
+}
+
+.booking-launch-page .lab-parent-home-actions button:hover,
+.booking-launch-page .lab-parent-home-actions button:focus-visible {
+  border-color: rgba(49, 75, 184, 0.4);
+  transform: translateY(-1px);
+}
+
+.booking-launch-page .lab-parent-home-actions span {
+  color: #b26a00;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.booking-launch-page .lab-parent-home-actions strong {
+  font-size: 1.03rem;
+}
+
+.booking-launch-page .lab-parent-home-actions small {
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.booking-launch-page .lab-parent-mobile-nav {
+  display: none;
+}
+
 .booking-launch-page .lab-parent-portal.has-account-sections > .lab-parent-credit-balance,
 .booking-launch-page .lab-parent-portal.has-account-sections > .lab-credit-topup-panel,
 .booking-launch-page .lab-parent-portal.has-account-sections > .lab-payment-return-notice,
@@ -41878,7 +42013,6 @@ th {
   display: grid !important;
 }
 
-.booking-launch-page .lab-parent-portal.account-section-overview > .lab-parent-portal-cards,
 .booking-launch-page .lab-parent-portal.account-section-overview > .lab-payment-return-notice,
 .booking-launch-page .lab-parent-portal.account-section-family > .lab-launch-family-console,
 .booking-launch-page .lab-parent-portal.account-section-badges > .lab-parent-badge-book,
@@ -41888,6 +42022,7 @@ th {
 .booking-launch-page .lab-parent-portal.account-section-payments > .lab-credit-topup-panel,
 .booking-launch-page .lab-parent-portal.account-section-payments > .lab-live-ledger-strip,
 .booking-launch-page .lab-parent-portal.account-section-payments > .lab-parent-invoice-centre,
+.booking-launch-page .lab-parent-portal.account-section-support > .lab-parent-portal-grid,
 .booking-launch-page .lab-parent-portal.account-section-messages > .lab-parent-portal-grid,
 .booking-launch-page .lab-parent-portal.account-section-account > .lab-parent-security-settings,
 .booking-launch-page .lab-parent-portal.account-section-account > .lab-parent-linked-access,
@@ -42606,11 +42741,14 @@ th {
   opacity: 0.48;
 }
 
+.booking-launch-page .lab-parent-portal.account-section-support > .lab-parent-portal-grid,
 .booking-launch-page .lab-parent-portal.account-section-messages > .lab-parent-portal-grid,
 .booking-launch-page .lab-parent-portal.account-section-account > .lab-parent-portal-grid {
   grid-template-columns: 1fr;
 }
 
+.booking-launch-page .lab-parent-portal.account-section-support > .lab-parent-portal-grid > article:first-child,
+.booking-launch-page .lab-parent-portal.account-section-support > .lab-parent-portal-grid > article:nth-child(3),
 .booking-launch-page .lab-parent-portal.account-section-messages > .lab-parent-portal-grid > article:first-child,
 .booking-launch-page .lab-parent-portal.account-section-messages > .lab-parent-portal-grid > article:nth-child(3),
 .booking-launch-page .lab-parent-portal.account-section-account > .lab-parent-portal-grid > article:first-child,
@@ -42686,8 +42824,110 @@ th {
     color: #fff;
   }
 
-  .booking-launch-page .lab-parent-account-menu-toggle {
+  .booking-launch-page .lab-parent-account-sections button.book-action {
+    background: #fff7e8;
+    color: #754400;
+  }
+
+  .booking-launch-page .lab-parent-account-subsections {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .booking-launch-page .lab-parent-account-subsections button {
+    width: 100%;
+    text-align: left;
+  }
+
+  .booking-launch-page .lab-parent-home-next {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-launch-page .lab-parent-home-next > button {
+    width: 100%;
+  }
+
+  .booking-launch-page .lab-parent-home-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .booking-launch-page .lab-parent-mobile-nav {
+    position: fixed;
+    z-index: 1000;
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 10px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    border: 1px solid rgba(49, 75, 184, 0.18);
+    border-radius: 19px;
+    background: rgba(255, 255, 255, 0.97);
+    padding: 7px;
+    box-shadow: 0 18px 46px rgba(25, 41, 92, 0.24);
+    backdrop-filter: blur(16px);
+  }
+
+  .booking-launch-page .lab-parent-mobile-nav button {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    min-width: 0;
+    min-height: 51px;
+    border: 0;
+    border-radius: 13px;
+    background: transparent;
+    color: #5b6681;
+    padding: 6px 3px;
+    font: inherit;
+  }
+
+  .booking-launch-page .lab-parent-mobile-nav button span {
+    font-size: 1.05rem;
+    line-height: 1;
+  }
+
+  .booking-launch-page .lab-parent-mobile-nav button strong {
+    overflow: hidden;
+    max-width: 100%;
+    font-size: 0.7rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .booking-launch-page .lab-parent-mobile-nav button.active {
+    background: #edf1ff;
+    color: var(--royal-dark);
+  }
+
+  .booking-launch-page .lab-parent-mobile-nav button.book {
+    background: var(--royal);
+    color: #fff;
+  }
+
+  .booking-launch-page .lab-parent-mobile-nav em {
+    position: absolute;
+    top: 3px;
+    right: 10px;
+    display: grid;
+    min-width: 18px;
+    height: 18px;
+    place-items: center;
+    border-radius: 999px;
+    background: #c43d3d;
+    color: #fff;
+    font-size: 0.65rem;
+    font-style: normal;
+    font-weight: 950;
+  }
+
+  .booking-launch-page.launch-parent-portal-open {
+    padding-bottom: 96px;
+  }
+
+  .booking-launch-page .lab-parent-account-menu-toggle {
+    display: none;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 3px 12px;
     align-items: center;

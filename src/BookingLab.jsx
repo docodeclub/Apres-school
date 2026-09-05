@@ -4668,6 +4668,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     : [];
   const parentFutureSessionCount = parentBookedSessionRows.filter((row) => row.status === "Future").length;
   const parentCancelledSessionCount = parentBookedSessionRows.filter((row) => row.status === "Cancelled").length;
+  const parentHomeNextBooking = parentBookedSessionRows.find((row) => row.future && row.status !== "Cancelled") || null;
+  const parentAccountAreaOpen = ["Family", "Badges", "Payments", "Messages", "Support", "Account"].includes(launchAccountSection);
   const parentDemoUsername = activeFamily.email || "parent@example.com";
   const parentDemoPassword = "apres-demo";
   const familyInvoiceRowsFromDrafts = familyDrafts.map((draft) => {
@@ -23119,7 +23121,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
 
         <div className="lab-booking-panel">
           {(!isLaunchMode || (launchParentPortalOpen && !launchBookingActive)) && <section className={`lab-parent-portal${isLaunchMode && parentAccountSignedIn ? ` has-account-sections account-section-${launchAccountSection.toLowerCase()}` : ""}`}>
-            {isLaunchMode && parentAccountSignedIn && (
+            {isLaunchMode && parentAccountSignedIn && launchAccountSection === "Overview" && (
               <section className="lab-parent-booking-cta" aria-label="Make a booking">
                 <div>
                   <p className="eyebrow">Book care</p>
@@ -23192,37 +23194,30 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   aria-controls="parent-account-sections"
                   onClick={() => setLaunchAccountMenuOpen((current) => !current)}
                 >
-                  <span>Account menu</span>
-                  <strong>{launchAccountSection === "Payments" ? "Payments & credit" : launchAccountSection === "Badges" ? "Children’s rewards" : launchAccountSection === "Support" ? "Support tickets" : launchAccountSection === "Account" ? "Account settings" : launchAccountSection}{parentSupportUnreadCount > 0 && <span className="lab-parent-tab-unread" aria-label={`${parentSupportUnreadCount} unread support replies`}>{parentSupportUnreadCount}</span>}</strong>
+                  <span>Parent menu</span>
+                  <strong>{launchAccountSection === "Overview" ? "Home" : launchAccountSection === "Bookings" ? "Calendar" : parentAccountAreaOpen ? "Account" : launchAccountSection}{parentSupportUnreadCount > 0 && <span className="lab-parent-tab-unread" aria-label={`${parentSupportUnreadCount} unread support replies`}>{parentSupportUnreadCount}</span>}</strong>
                   <b aria-hidden="true">{launchAccountMenuOpen ? "Close" : "Open"}</b>
                 </button>
                 <nav id="parent-account-sections" className={`lab-parent-account-sections${launchAccountMenuOpen ? " is-open" : ""}`} aria-label="Parent account sections">
-                  {[
-                    ["Overview", "Overview"],
-                    ["Family", "Family"],
-                    ["Badges", "Children’s rewards"],
-                    ["Bookings", "Bookings"],
-                    ["Payments", "Payments & credit"],
-                    ["Messages", "Messages"],
-                    ["Support", "Support tickets"],
-                    ["Account", "Account settings"],
-                  ].map(([section, label]) => (
-                    <button
-                      type="button"
-                      key={section}
-                      aria-current={launchAccountSection === section ? "page" : undefined}
-                      className={launchAccountSection === section ? "active" : ""}
-                      onClick={() => {
-                        setLaunchAccountSection(section);
-                        setLaunchAccountMenuOpen(false);
-                      }}
-                    >
-                      {label}{section === "Support" && parentSupportUnreadCount > 0 && <span className="lab-parent-tab-unread" aria-label={`${parentSupportUnreadCount} unread support replies`}>{parentSupportUnreadCount}</span>}
-                    </button>
-                  ))}
+                  <button type="button" aria-current={launchAccountSection === "Overview" ? "page" : undefined} className={launchAccountSection === "Overview" ? "active" : ""} onClick={() => { setLaunchAccountSection("Overview"); setLaunchAccountMenuOpen(false); }}>Home</button>
+                  <button type="button" className="book-action" onClick={() => { setLaunchAccountMenuOpen(false); openLaunchBookingFlow(); }}>Book care</button>
+                  <button type="button" aria-current={launchAccountSection === "Bookings" ? "page" : undefined} className={launchAccountSection === "Bookings" ? "active" : ""} onClick={() => { setLaunchAccountSection("Bookings"); setParentBookingView("Calendar"); setLaunchAccountMenuOpen(false); }}>Calendar</button>
+                  <button type="button" aria-current={parentAccountAreaOpen ? "page" : undefined} className={parentAccountAreaOpen ? "active" : ""} onClick={() => { setLaunchAccountSection("Account"); setLaunchAccountMenuOpen(false); }}>Account{parentSupportUnreadCount > 0 && <span className="lab-parent-tab-unread" aria-label={`${parentSupportUnreadCount} unread support replies`}>{parentSupportUnreadCount}</span>}</button>
                 </nav>
+                {parentAccountAreaOpen && <nav className="lab-parent-account-subsections" aria-label="Account options">
+                  <button type="button" className={["Family", "Badges"].includes(launchAccountSection) ? "active" : ""} onClick={() => setLaunchAccountSection("Family")}>Children</button>
+                  <button type="button" className={launchAccountSection === "Payments" ? "active" : ""} onClick={() => setLaunchAccountSection("Payments")}>Payments &amp; credit</button>
+                  <button type="button" className={["Messages", "Support"].includes(launchAccountSection) ? "active" : ""} onClick={() => setLaunchAccountSection("Support")}>Help &amp; messages{parentSupportUnreadCount > 0 && <span className="lab-parent-tab-unread" aria-label={`${parentSupportUnreadCount} unread support replies`}>{parentSupportUnreadCount}</span>}</button>
+                  <button type="button" className={launchAccountSection === "Account" ? "active" : ""} onClick={() => setLaunchAccountSection("Account")}>Account settings</button>
+                </nav>}
               </div>
             )}
+            {isLaunchMode && parentAccountSignedIn && <nav className="lab-parent-mobile-nav" aria-label="Quick parent navigation">
+              <button type="button" className={launchAccountSection === "Overview" ? "active" : ""} onClick={() => setLaunchAccountSection("Overview")}><span aria-hidden="true">⌂</span><strong>Home</strong></button>
+              <button type="button" className="book" onClick={openLaunchBookingFlow}><span aria-hidden="true">＋</span><strong>Book</strong></button>
+              <button type="button" className={launchAccountSection === "Bookings" ? "active" : ""} onClick={() => { setLaunchAccountSection("Bookings"); setParentBookingView("Calendar"); }}><span aria-hidden="true">□</span><strong>Calendar</strong></button>
+              <button type="button" className={parentAccountAreaOpen ? "active" : ""} onClick={() => setLaunchAccountSection("Account")}><span aria-hidden="true">●</span><strong>Account</strong>{parentSupportUnreadCount > 0 && <em aria-label={`${parentSupportUnreadCount} unread support replies`}>{parentSupportUnreadCount}</em>}</button>
+            </nav>}
             {isLaunchMode && parentAccountSignedIn && familyInvoiceOutstandingTotal > 0 && (
               <section className="lab-parent-balance-alert" role="status" aria-label="Outstanding account balance">
                 <div>
@@ -23245,6 +23240,23 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </section>
             )}
             {isLaunchMode && parentAccountSignedIn && launchAccountSection === "Overview" && renderLaunchCompletionChecklist()}
+            {isLaunchMode && parentAccountSignedIn && launchAccountSection === "Overview" && (
+              <section className="lab-parent-home" aria-label="Parent home">
+                <article className="lab-parent-home-next">
+                  <div>
+                    <p className="eyebrow">Next booking</p>
+                    {parentHomeNextBooking ? <><h3>{parentHomeNextBooking.day}</h3><p>{parentHomeNextBooking.draft?.childName || (Array.isArray(parentHomeNextBooking.draft?.children) ? parentHomeNextBooking.draft.children.join(", ") : parentHomeNextBooking.draft?.children) || "Your child"} · {parentHomeNextBooking.draft?.site || "Après School"}</p><strong>{parentHomeNextBooking.row?.blocks?.map((block) => block.label).filter(Boolean).join(" · ") || parentHomeNextBooking.draft?.activity || "Care session"}{parentHomeNextBooking.row?.time ? ` · ${parentHomeNextBooking.row.time}` : ""}</strong></> : <><h3>No upcoming bookings</h3><p>Choose the care and dates you need when you are ready.</p></>}
+                  </div>
+                  <button type="button" onClick={() => { if (parentHomeNextBooking) { setLaunchAccountSection("Bookings"); setParentBookingView("Calendar"); } else openLaunchBookingFlow(); }}>{parentHomeNextBooking ? "View in calendar" : "Book care"}</button>
+                </article>
+                <div className="lab-parent-home-actions" aria-label="Common tasks">
+                  <button type="button" onClick={openLaunchBookingFlow}><span>Book</span><strong>Book care</strong><small>Choose sessions and dates</small></button>
+                  <button type="button" onClick={() => { setLaunchAccountSection("Bookings"); setParentBookingView("Calendar"); }}><span>Calendar</span><strong>{parentFutureSessionCount} upcoming</strong><small>View or manage booked days</small></button>
+                  <button type="button" onClick={() => setLaunchAccountSection("Family")}><span>Children</span><strong>{launchRegisteredChildren.length} saved</strong><small>Profiles, care details and rewards</small></button>
+                  <button type="button" onClick={() => setLaunchAccountSection(familyInvoiceOutstandingTotal > 0 ? "Payments" : "Support")}><span>{familyInvoiceOutstandingTotal > 0 ? "Payment needed" : "Help"}</span><strong>{familyInvoiceOutstandingTotal > 0 ? `${money(familyInvoiceOutstandingTotal)} to pay` : "Get support"}</strong><small>{familyInvoiceOutstandingTotal > 0 ? "Review payments and credit" : "Messages and support tickets"}</small></button>
+                </div>
+              </section>
+            )}
             {parentAccountSignedIn && (
               <section className={`lab-parent-credit-balance${familyCreditNeedsReconciliation ? " is-pending" : ""}`} aria-label="Account credit balance">
                 <div>
