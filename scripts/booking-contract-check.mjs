@@ -73,6 +73,7 @@ if (request) validateRequestShape(request);
   ["booking failures preserve selections and explain that nothing was charged", bookingLabSource.includes("friendlyBookingFailure") && bookingLabSource.includes("nothing has been charged") && bookingLabSource.includes("Your selections are still here")],
   ["submission lock remains active while secure checkout is prepared", bookingLabSource.indexOf("bookingSubmissionRef.current = false;", bookingLabSource.indexOf("let checkoutPreparationIssue")) > bookingLabSource.indexOf("await createCheckoutSessionForBooking(booking)")],
   ["journey session summary includes items already moved into the basket", bookingLabSource.includes("const launchJourneySessionCount = draftBookingBasket.length || selectedBlockCount || pickedDays.length")],
+  ["parent calendar and list preserve each booked session's child", bookingLabSource.includes("childName: block.childName || block.child_name") && (bookingLabSource.match(/row\.childNames\?\.join\(", "\)/g) || []).length >= 2],
   ["parent home promotes secure account credit top-ups", bookingLabSource.includes('className="lab-parent-home-credit"') && bookingLabSource.includes("openParentCreditTopUp") && bookingLabSource.includes("Any unused balance stays on your account")],
   ["authoritative parent quote applies sibling pricing", bookingSystemSource.includes('quote_current_parent_pricing_with_sibling')],
   ["booking creation persists sibling pricing", edgeFunction.includes('apply_booking_sibling_discount')],

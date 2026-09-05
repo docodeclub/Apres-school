@@ -1138,6 +1138,8 @@ function bookingBlockRows(draft) {
           start: block.start || "",
           end: block.end || "",
           price: Number(block.price || 0),
+          childId: block.childId || block.child_id || "",
+          childName: block.childName || block.child_name || "",
         })),
       };
     });
@@ -4427,6 +4429,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         || liveBooking?.source === "staff_adhoc"
         || liveItems.some((item) => item.metadata?.staffAdHoc)
       );
+      const draftChildNames = (draft.children || [draft.childName]).filter(Boolean);
       const activeRows = bookingBlockRows(draft).map((row) => {
       const start = bookingRowStart(row);
       const future = start ? start > new Date() : false;
@@ -4452,17 +4455,20 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         : 0;
       const rowDate = labDayIso(row.day);
       const rowBlockLabels = row.blocks.map((block) => String(block.label || "").trim()).filter(Boolean);
-      const draftChildNames = (draft.children || [draft.childName]).filter(Boolean);
-      const liveItemIds = liveItems
+      const liveItemsForRow = liveItems
         .filter((item) => {
           const sameDay = rowDate && bookingItemDate(item) === rowDate;
           const sameBlock = !rowBlockLabels.length || rowBlockLabels.includes(bookingItemLabel(item));
-          const childName = bookingItemChildName(item);
-          const sameChild = !childName || !draftChildNames.length || draftChildNames.includes(childName);
-          return sameDay && sameBlock && sameChild;
-        })
+          return sameDay && sameBlock;
+        });
+      const liveItemIds = liveItemsForRow
         .map((item) => item.id)
         .filter(Boolean);
+      const childNames = [...new Set([
+        ...row.blocks.map((block) => block.childName).filter(Boolean),
+        ...liveItemsForRow.map(bookingItemChildName).filter(Boolean),
+      ])];
+      if (!childNames.length && draftChildNames.length === 1) childNames.push(draftChildNames[0]);
       return {
         id: `${draft.id}::${safeDomId(row.day)}`,
         draft,
@@ -4487,6 +4493,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         cancelledSession,
         liveBookingId,
         liveItemIds,
+        childNames,
         usesRealApi: staffAdHoc
           ? realBookingServiceReady && Boolean(liveBookingId)
           : realBookingServiceReady && Boolean(liveBookingId && liveItemIds.length),
@@ -4534,6 +4541,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           status: "Cancelled",
           canCancel: false,
           cancelledSession: item,
+          childNames: [...new Set([
+            ...(item.childNames || []),
+            item.childName,
+            ...(item.blocks || []).map((block) => block.childName || block.child_name),
+            ...(draftChildNames.length === 1 ? draftChildNames : []),
+          ].filter(Boolean))],
         }));
       return [...activeRows, ...cancelledRows];
     })
@@ -4607,6 +4620,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             cancelledSession: null,
             liveBookingId: booking.id,
             liveItemIds: item.id ? [item.id] : [],
+            childNames: [childName],
             usesRealApi: realBookingServiceReady && Boolean(booking.id && item.id),
             staffAdHoc,
           };
@@ -23827,7 +23841,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         <div className="lab-parent-calendar-detail-list">
                           {parentCalendarSelectedRows.map((row) => {
                             const invoiceRow = familyInvoiceRows.find((invoice) => invoice.draft?.id === row.draftId || invoice.liveBooking?.id === row.liveBookingId);
-                            const childNames = row.draft.children?.join(", ") || row.draft.childName || "Child not recorded";
+                            const childNames = row.childNames?.join(", ") || row.draft.children?.join(", ") || row.draft.childName || "Child not recorded";
                             const sessionDetail = row.row.blocks.map((block) => `${block.label}${block.start || block.end ? ` · ${block.start}-${block.end}` : ""}`).join(" · ");
                             return (
                               <article key={`calendar-${row.id}`} className={`state-${row.status.toLowerCase()}`}>
@@ -23870,7 +23884,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 )}
                 {parentBookedSessionRows.map((row) => {
                   const invoiceRow = familyInvoiceRows.find((invoice) => invoice.draft?.id === row.draftId || invoice.liveBooking?.id === row.liveBookingId);
-                  const childNames = row.draft.children?.join(", ") || row.draft.childName || "Child not recorded";
+                  const childNames = row.childNames?.join(", ") || row.draft.children?.join(", ") || row.draft.childName || "Child not recorded";
                   const sessionDetail = row.row.blocks.map((block) => `${block.label}${block.start || block.end ? ` · ${block.start}-${block.end}` : ""}`).join(" · ");
                   const paymentCheckInProgress = /payment being checked|awaiting ponchopay confirmation/i.test(`${row.draft.status || ""} ${row.draft.paymentStatus || ""}`);
                   const earlyDropOffContext = earlyDropOffContextForBookedRow(row);
