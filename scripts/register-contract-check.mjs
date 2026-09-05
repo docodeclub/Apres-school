@@ -109,6 +109,7 @@ const checks = [
   ["register only offers sessions matching the selected pupil school", /const matchingAdHocSessions = selectedAdHocChild[\s\S]*matchingAdHocSessions\.map/],
   ["register shows the optional non-booking fee control", /Add £2\.50 non-booking fee/],
   ["register previews pricing group savings before confirmation", /Family pricing[\s\S]*Pricing benefit[\s\S]*Family charge/],
+  ["register previews a crossed-out standard ad-hoc price only when a real discount applies", /discountTotal \|\| 0\) > 0[\s\S]*Standard price <s>[\s\S]*Family charge[\s\S]*<strong>Charge/],
   ["register report queue is restricted to administrators", /list_register_pupil_reports[\s\S]*v_role not in \('admin', 'superadmin'\)/],
   ["restricted safeguarding reports require superadmin access", /sensitivity = 'standard'[\s\S]*v_role = 'superadmin'/],
   ["report review updates are written to the audit log", /Register pupil report reviewed/],

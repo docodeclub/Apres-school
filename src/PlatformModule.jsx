@@ -3670,11 +3670,15 @@ function Registers({ access, onViewParentAccount }) {
                 </div>
                 {!adHocPricingLoading && adHocPricingQuote && (
                   <div className="register-adhoc-pricing-values">
-                    <span>Standard <s>£{Number(adHocPricingQuote.grossTotal || 0).toFixed(2)}</s></span>
-                    {Number(adHocPricingQuote.discountTotal || 0) > 0 && (
-                      <span className="saving">Pricing benefit −£{Number(adHocPricingQuote.discountTotal).toFixed(2)}</span>
+                    {Number(adHocPricingQuote.discountTotal || 0) > 0 ? (
+                      <>
+                        <span>Standard price <s>£{Number(adHocPricingQuote.grossTotal || 0).toFixed(2)}</s></span>
+                        <span className="saving">Pricing benefit −£{Number(adHocPricingQuote.discountTotal).toFixed(2)}</span>
+                        <strong>Family charge £{Number(adHocPricingQuote.totalAmount || 0).toFixed(2)}</strong>
+                      </>
+                    ) : (
+                      <strong>Charge £{Number(adHocPricingQuote.totalAmount || 0).toFixed(2)}</strong>
                     )}
-                    <strong>Family charge £{Number(adHocPricingQuote.totalAmount || 0).toFixed(2)}</strong>
                   </div>
                 )}
               </aside>
