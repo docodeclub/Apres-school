@@ -23329,6 +23329,29 @@ export default function BookingLab({ setPage, mode = "lab" }) {
               </section>
             )}
             {isLaunchMode && parentAccountSignedIn && launchAccountSection === "Overview" && renderLaunchCompletionChecklist()}
+            {isLaunchMode && parentAccountSignedIn && launchAccountSection === "Account" && (
+              <section className="lab-parent-account-overview" aria-labelledby="parent-account-settings-title">
+                <div>
+                  <p className="eyebrow">Account settings</p>
+                  <h3 id="parent-account-settings-title">Manage your account</h3>
+                  <p>Update your details, control family access and review your account preferences.</p>
+                </div>
+                <nav aria-label="Account setting shortcuts">
+                  <button type="button" onClick={() => scrollToFlowSection(".lab-parent-security-settings", "start")}>
+                    <span>Your details</span>
+                    <strong>Contact and password</strong>
+                  </button>
+                  <button type="button" onClick={() => scrollToFlowSection(".lab-parent-linked-access", "start")}>
+                    <span>Family access</span>
+                    <strong>Second account holder</strong>
+                  </button>
+                  <button type="button" onClick={() => scrollToFlowSection(".lab-parent-terms-review", "start")}>
+                    <span>Preferences</span>
+                    <strong>Terms and notifications</strong>
+                  </button>
+                </nav>
+              </section>
+            )}
             {isLaunchMode && parentAccountSignedIn && launchAccountSection === "Overview" && (
               <section className="lab-parent-home" aria-label="Parent home">
                 <article className="lab-parent-home-next">

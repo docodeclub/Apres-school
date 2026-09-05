@@ -42063,6 +42063,94 @@ th {
   display: none;
 }
 
+.booking-launch-page .lab-parent-account-overview {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.28fr);
+  gap: 18px;
+  align-items: center;
+  border: 1px solid rgba(49, 75, 184, 0.18);
+  border-radius: 22px;
+  background: linear-gradient(135deg, #f2f6ff 0%, #fff 74%);
+  padding: clamp(16px, 2.5vw, 24px);
+  box-shadow: 0 12px 28px rgba(28, 51, 121, 0.07);
+}
+
+.booking-launch-page .lab-parent-account-overview h3 {
+  margin: 3px 0 6px;
+  color: var(--royal-dark);
+  font-size: clamp(1.38rem, 2.5vw, 1.78rem);
+}
+
+.booking-launch-page .lab-parent-account-overview p:not(.eyebrow) {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 720;
+  line-height: 1.45;
+}
+
+.booking-launch-page .lab-parent-account-overview nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.booking-launch-page .lab-parent-account-overview button {
+  display: grid;
+  min-height: 76px;
+  gap: 4px;
+  align-content: center;
+  border: 1px solid #d8e0f3;
+  border-radius: 15px;
+  background: #fff;
+  padding: 12px 14px;
+  color: var(--royal-dark);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.booking-launch-page .lab-parent-account-overview button:hover,
+.booking-launch-page .lab-parent-account-overview button:focus-visible {
+  border-color: var(--royal);
+  box-shadow: 0 7px 18px rgba(49, 75, 184, 0.12);
+  outline: none;
+}
+
+.booking-launch-page .lab-parent-account-overview button span {
+  color: #65708d;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.booking-launch-page .lab-parent-account-overview button strong {
+  font-size: 0.91rem;
+  line-height: 1.25;
+}
+
+.booking-launch-page .lab-parent-portal.account-section-account > .lab-parent-account-overview { order: 1; }
+.booking-launch-page .lab-parent-portal.account-section-account > .lab-parent-security-settings { order: 2; }
+.booking-launch-page .lab-parent-portal.account-section-account > .lab-parent-linked-access { order: 3; }
+.booking-launch-page .lab-parent-portal.account-section-account > .lab-parent-terms-review { order: 4; }
+.booking-launch-page .lab-parent-portal.account-section-account > .lab-parent-portal-grid { order: 5; }
+.booking-launch-page .lab-parent-portal.account-section-account > .lab-parent-account-admin { order: 6; }
+.booking-launch-page .lab-parent-portal.account-section-account > .lab-parent-account-danger { order: 7; }
+
+@media (max-width: 880px) {
+  .booking-launch-page .lab-parent-account-overview {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .booking-launch-page .lab-parent-account-overview nav {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-launch-page .lab-parent-account-overview button {
+    min-height: 62px;
+  }
+}
+
 .booking-launch-page .lab-parent-portal.has-account-sections > .lab-parent-credit-balance,
 .booking-launch-page .lab-parent-portal.has-account-sections > .lab-credit-topup-panel,
 .booking-launch-page .lab-parent-portal.has-account-sections > .lab-payment-return-notice,
