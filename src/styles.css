@@ -40101,7 +40101,7 @@ th {
 }
 
 .booking-launch-page .lab-booking-journey {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -40115,6 +40115,17 @@ th {
 .booking-launch-page .lab-booking-journey article > span {
   width: 24px;
   height: 24px;
+}
+
+.booking-launch-page .lab-booking-journey small {
+  display: block;
+  overflow: hidden;
+  color: #68728c;
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .booking-launch-page .lab-booking-journey-shell .lab-launch-account-strip {
