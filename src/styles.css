@@ -40227,14 +40227,14 @@ th {
 
 .booking-launch-page .lab-booking-journey article.ready.active,
 .booking-launch-page .lab-booking-journey article.ready:not(.active) {
-  border-color: rgba(47, 125, 75, 0.32);
-  background: #f1fbf6;
-  box-shadow: inset 0 -3px 0 #2f7d4b;
+  border-color: rgba(237, 148, 40, 0.48);
+  background: #fff8ea;
+  box-shadow: inset 0 -3px 0 #ed9428;
 }
 
 .booking-launch-page .lab-booking-journey article.ready.active > span,
 .booking-launch-page .lab-booking-journey article.ready:not(.active) > span {
-  background: #2f7d4b;
+  background: var(--royal);
   color: #fff;
 }
 
