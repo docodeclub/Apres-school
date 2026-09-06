@@ -1,11 +1,3 @@
-@font-face {
-  font-family: "Canda Tawa";
-  src: url("/assets/fonts/canda-tawa-regular.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-}
-
 :root {
   --royal: #4a68da;
   --royal-dark: #263fa9;
@@ -356,9 +348,7 @@ button:disabled,
 
 .brand strong {
   color: var(--royal-dark);
-  font-family: "Canda Tawa", cursive;
-  font-size: 2.5rem;
-  font-weight: 400;
+  font-size: 1.44rem;
   line-height: 1;
 }
 
@@ -22125,7 +22115,7 @@ th {
   }
 
   .brand strong {
-    font-size: 1.8rem;
+    font-size: 1.18rem;
   }
 
   .brand span {
@@ -22342,7 +22332,7 @@ th {
   }
 
   .club-finder h2 {
-    font-size: 1.65rem;
+    font-size: 1.32rem;
   }
 
   .club-finder form {
@@ -23043,7 +23033,7 @@ th {
   }
 
   .brand strong {
-    font-size: 1.32rem;
+    font-size: 1.06rem;
   }
 
   .site-header > .button.book,
