@@ -4049,8 +4049,8 @@ function FamilyImportReview({ access, target = null, onTargetHandled }) {
   const unresolvedHealthItems = healthReviewItems.filter((item) => item.status !== "resolved");
   const parentUpdateHealthItems = unresolvedHealthItems.filter((item) => item.status === "parent_update_required").length;
   const activePricingAssignment = [...(selectedFamily?.parent_pricing_assignments || [])]
-    .filter((item) => item.effective_from <= new Date().toISOString().slice(0, 10) && (!item.effective_to || item.effective_to >= new Date().toISOString().slice(0, 10)))
-    .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
+    .filter((item) => !item.deleted_at && item.effective_from <= new Date().toISOString().slice(0, 10) && (!item.effective_to || item.effective_to >= new Date().toISOString().slice(0, 10)))
+    .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)) || String(b.assigned_at).localeCompare(String(a.assigned_at)))[0];
   const supportFamily = families.find((family) => family.id === supportFamilyId) || null;
   const supportChildren = supportFamily?.child_profiles || [];
   const supportChild = supportChildren.find((child) => child.id === supportChildId) || supportChildren[0] || null;

@@ -31,6 +31,7 @@ const checks = [
   [platform.includes('"Pricing Groups", "Credit Notes"') && platform.includes("Pricing-group performance") && platform.includes("Customer spend") && platform.includes("Total saved"), "pricing-group performance is easy to find in finance"],
   [platform.includes("buildPricingGroupFinancePerformance") && platform.includes('new Set(["confirmed", "payment_pending", "payment_plan_active"])') && platform.includes('["cancelled", "waitlist"]'), "finance pricing totals exclude incomplete and cancelled activity"],
   [supabaseClient.includes("fetchPricingGroupFinanceData") && supabaseClient.includes('from("booking_pricing_adjustments")') && supabaseClient.includes(".range(from, from + pageSize - 1)"), "finance pricing ledger loads every page of frozen adjustments"],
+  [supabaseClient.includes("parent_pricing_assignments(\n        id,\n        pricing_group_id,\n        effective_from,\n        effective_to,\n        deleted_at,") && platform.includes("!item.deleted_at") && platform.includes("String(b.assigned_at).localeCompare(String(a.assigned_at))"), "customer profiles ignore superseded pricing assignments and match checkout ordering"],
   [createBooking.includes('rpc("apply_booking_pricing"'), "parent bookings priced server-side"],
   [amendBooking.match(/rpc\("apply_booking_pricing"/g)?.length === 2, "add/remove amendments refresh totals"],
   [adHoc.includes('rpc("apply_booking_pricing"'), "staff ad-hoc bookings use family pricing"],

@@ -944,6 +944,7 @@ export async function fetchMigrationReviewFamilies() {
         pricing_group_id,
         effective_from,
         effective_to,
+        deleted_at,
         notes,
         assigned_at,
         pricing_groups(id,name),
