@@ -28331,13 +28331,26 @@ th {
 
 .lab-parent-calendar-detail-list article {
   display: grid;
-  grid-template-columns: minmax(190px, 1.25fr) minmax(140px, 0.9fr) minmax(130px, 0.75fr);
+  grid-template-columns: minmax(190px, 1.25fr) minmax(140px, 0.9fr) minmax(130px, 0.75fr) minmax(150px, auto);
   gap: 12px;
   align-items: center;
   border: 1px solid #c9dafd;
   border-radius: 13px;
   background: #f8fbff;
   padding: 10px;
+}
+
+.lab-parent-calendar-detail-list .lab-parent-calendar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.lab-parent-calendar-actions button {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: 0.76rem;
 }
 
 .lab-parent-calendar-detail-list article.state-cancelled {
