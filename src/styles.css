@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "Canda Tawa";
+  src: url("/assets/fonts/canda-tawa-regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   --royal: #4a68da;
   --royal-dark: #263fa9;
@@ -348,7 +356,9 @@ button:disabled,
 
 .brand strong {
   color: var(--royal-dark);
+  font-family: "Canda Tawa", cursive;
   font-size: 1.44rem;
+  font-weight: 400;
   line-height: 1;
 }
 
