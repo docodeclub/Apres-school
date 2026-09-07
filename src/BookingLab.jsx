@@ -898,6 +898,24 @@ function formatSessionDay(date) {
   }).format(date);
 }
 
+function formatAdHocBookingAddedAt(value) {
+  if (!value) return "";
+  const addedAt = new Date(value);
+  if (Number.isNaN(addedAt.getTime())) return "";
+  const time = addedAt.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/London",
+  });
+  const date = addedAt.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Europe/London",
+  });
+  return `Ad-hoc booking added at ${time} on ${date}`;
+}
+
 function generateSessionDays(startDate, endDate, weekdays) {
   if (!startDate || !endDate) return [];
   const start = new Date(`${startDate}T12:00:00`);
@@ -4515,6 +4533,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           ? realBookingServiceReady && Boolean(liveBookingId)
           : realBookingServiceReady && Boolean(liveBookingId && liveItemIds.length),
         staffAdHoc,
+        addedAt: staffAdHoc ? liveBooking?.createdAt || liveInvoice?.createdAt || draft.createdAt || "" : "",
       };
       }));
       const activeSessionSet = new Set(activeRows.map((row) => `${row.day}::${row.sessionKey}`));
@@ -4618,6 +4637,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             status: Number(invoice?.balance || 0) > 0 ? "Payment pending" : "Confirmed",
             total: Number(booking.totalAmount || invoice?.totalAmount || amount),
             staffAdHoc,
+            createdAt: booking.createdAt || invoice?.createdAt || "",
           };
           return {
             id: `${booking.id}::${item.id || `${bookingItemDate(item)}-${sessionLabel}-${childName}`}`,
@@ -4645,6 +4665,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             childNames: [childName],
             usesRealApi: realBookingServiceReady && Boolean(booking.id && item.id),
             staffAdHoc,
+            addedAt: staffAdHoc ? booking.createdAt || invoice?.createdAt || "" : "",
           };
         });
     });
@@ -5547,6 +5568,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     : `${displayedJourneySteps.filter((step) => step.ready).length}/${displayedJourneySteps.length} ready`;
   const stageClass = (stage) => checkoutStep === stage ? "active" : checkoutSteps.indexOf(stage) < checkoutStepIndex ? "complete" : "";
   const bookingStatusNeedsAttention = /choose|could not|unable|failed|full|already booked|update|required|not available|not ready|no bookable|no payment has been|needs attention/i.test(status);
+  const outstandingBalanceBookingFailure = /^Payment needed before booking\./i.test(status);
   const friendlyBookingFailure = (message) => {
     const detail = String(message || "").trim();
     if (/capacity|full|no (places|spaces)|availability/i.test(detail)) return "One or more sessions have just filled up. Return to the dates and choose another session.";
@@ -5557,6 +5579,17 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     if (/auth|sign.?in|session expired|token|unauthor/i.test(detail)) return "Your secure sign-in has expired. Sign in again and your saved basket will remain available.";
     if (/price|pricing|quote|amount/i.test(detail)) return "We could not confirm the latest price, so checkout has stopped before payment. Please try again.";
     return "The booking could not be completed. Your selections are still here—please try again or contact support if it continues.";
+  };
+  const parentBookingFailureStatus = (message) => {
+    const detail = String(message || "").trim();
+    if (/outstanding balance|negative balance|payments?\s*&\s*credit|select pay now/i.test(detail)) {
+      const amount = detail.match(/£\s*([\d,]+(?:\.\d{1,2})?)/)?.[1];
+      const balanceLabel = amount
+        ? `You have an outstanding balance of £${amount}.`
+        : "You have an outstanding balance on your family account.";
+      return `Payment needed before booking. ${balanceLabel} Open Account → Payments & credit and select Pay now. Once it is paid, return here to complete this booking. Nothing has been charged for this attempt, and your selected sessions have been kept.`;
+    }
+    return `We could not reserve these sessions and nothing has been charged. ${friendlyBookingFailure(detail)}`;
   };
   const scrollToFlowSection = (selector, block = "start") => {
     window.setTimeout(() => {
@@ -5983,6 +6016,18 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     setLaunchChildSavedNotice("");
     setLabView("Parent");
     window.setTimeout(() => scrollToFlowSection(".lab-parent-portal", "start"), 80);
+  }
+
+  function openLaunchParentPayments() {
+    setLaunchBookingActive(false);
+    setLaunchParentPortalOpen(true);
+    setLaunchAccountSection("Payments");
+    setLaunchFinanceSection("Payments");
+    setInvoiceFilter("All");
+    setLaunchAccountMenuOpen(false);
+    setLaunchChildRegistrationOpen(false);
+    setLabView("Parent");
+    window.setTimeout(() => scrollToFlowSection(".lab-parent-invoice-centre", "start"), 80);
   }
 
   function openLaunchBookingFlow() {
@@ -16491,10 +16536,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         };
       }
       if (!realBookingResult?.booking) {
-        const bookingError = friendlyBookingFailure(realBookingResult?.message);
         bookingSubmissionRef.current = false;
         setBookingSubmitting(false);
-        setStatus(`We could not reserve these sessions and nothing has been charged. ${bookingError}`);
+        setStatus(parentBookingFailureStatus(realBookingResult?.message));
         setConfirmation(null);
         return;
       }
@@ -23887,6 +23931,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                                   <span className={`lab-parent-booking-status state-${row.status.toLowerCase()}`}>{row.status}</span>
                                   <strong>{sessionDetail || row.draft.activity}</strong>
                                   <small>{row.draft.site}</small>
+                                  {row.staffAdHoc && row.addedAt && <small className="lab-parent-ad-hoc-added">{formatAdHocBookingAddedAt(row.addedAt)}</small>}
                                 </div>
                                 <div>
                                   <span>Child</span>
@@ -23945,6 +23990,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                       <div role="cell" data-label="Booking">
                         <strong>{row.draft.activity}</strong>
                         <small>{row.draft.site}</small>
+                        {row.staffAdHoc && row.addedAt && <small className="lab-parent-ad-hoc-added">{formatAdHocBookingAddedAt(row.addedAt)}</small>}
                         <span className={`lab-parent-booking-status state-${row.status.toLowerCase()}`}>{row.status}</span>
                       </div>
                       <div role="cell" data-label="Child">
@@ -25812,7 +25858,13 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                 <button type="button" onClick={() => moveCheckoutStep(-1)}>Back</button>
                 <button className="button book large" type="submit" disabled={rulesBlocked || bookingSubmitting}>{bookingSubmitting ? "Reserving sessions…" : primaryCheckoutLabel}</button>
               </div>
-              {isLaunchMode && checkoutStep === "Review" && status ? <div className="lab-checkout-action-status" role="status" aria-live="polite">{status}</div> : null}
+              {isLaunchMode && checkoutStep === "Review" && status ? (
+                <div className={`lab-checkout-action-status${outstandingBalanceBookingFailure ? " payment-needed" : ""}`} role={outstandingBalanceBookingFailure ? "alert" : "status"} aria-live="polite">
+                  {outstandingBalanceBookingFailure ? <strong>Payment needed before booking</strong> : null}
+                  <span>{outstandingBalanceBookingFailure ? status.replace(/^Payment needed before booking\.\s*/i, "") : status}</span>
+                  {outstandingBalanceBookingFailure ? <button type="button" onClick={openLaunchParentPayments}>Open Payments &amp; credit</button> : null}
+                </div>
+              ) : null}
             </section>
             {!confirmation && <div className="lab-mobile-checkout-bar" aria-label="Mobile checkout action">
               <div>

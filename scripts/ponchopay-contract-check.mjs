@@ -111,7 +111,7 @@ const checks = [
   [files.createParentBooking, "outstanding balance message tells parents where to pay", /Open Payments & credit in your family account and select Pay now/],
   [files.createParentBooking, "booking checkout separates active sessions from removed sessions", /const bookableItems = savedItems\.filter/],
   [files.bookingLab, "launch opens hosted PonchoPay checkout", /openPonchoCheckoutWindow[\s\S]*window\.open\(checkoutUrl/],
-  [files.bookingLab, "launch blocks payment without a durable booking", /if \(!realBookingResult\?\.booking\)[\s\S]*no payment has been opened[\s\S]*return;/],
+  [files.bookingLab, "launch blocks payment without a durable booking", /if \(!realBookingResult\?\.booking\)[\s\S]*parentBookingFailureStatus[\s\S]*return;/],
   [files.bookingLab, "parent voucher copy includes card guarantee", /Card guarantee[\s\S]*guaranteed card can be charged/],
   [files.bookingLab, "launch copy avoids premature confirmation", /booking confirms only after payment is authorised/],
   [files.bookingLab, "cancellation wording follows net posted credit", /netPostedCreditAmount[\s\S]*Credit applied to account[\s\S]*Payment refunded[\s\S]*No payment taken/],

@@ -28536,6 +28536,17 @@ th {
   overflow-wrap: anywhere;
 }
 
+.lab-parent-booking-row .lab-parent-ad-hoc-added,
+.lab-parent-calendar-detail-list .lab-parent-ad-hoc-added {
+  width: fit-content;
+  border-radius: 7px;
+  background: #fff2d7;
+  color: #85520a;
+  padding: 3px 6px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
 .lab-parent-booking-status {
   width: fit-content;
   margin-top: 3px;
@@ -45338,6 +45349,33 @@ th {
   font-weight: 750;
   line-height: 1.4;
   text-align: center;
+}
+
+.booking-launch-page .lab-checkout-action-status.payment-needed {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  border-color: rgba(196, 119, 8, 0.38);
+  background: #fff9ed;
+  color: #25304f;
+}
+
+.booking-launch-page .lab-checkout-action-status.payment-needed strong {
+  color: #9a5a00;
+  font-size: 1rem;
+}
+
+.booking-launch-page .lab-checkout-action-status.payment-needed button {
+  min-height: 40px;
+  margin-top: 2px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: #4f6de8;
+  color: #fff;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
 }
 
 .booking-launch-page .lab-payment-route-guide,
