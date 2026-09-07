@@ -5571,6 +5571,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const outstandingBalanceBookingFailure = /^Payment needed before booking\./i.test(status);
   const friendlyBookingFailure = (message) => {
     const detail = String(message || "").trim();
+    if (/booking that was cancelled|previous booking cancelled|old selections/i.test(detail)) return "These dates were previously cancelled. Return to Choose dates, remove the old selections and select the sessions again to make a new booking. Nothing has been charged.";
+    if (/already (confirmed|paid)|no further payment|invoice (?:is )?already paid/i.test(detail)) return "This booking is already confirmed. Open My bookings to see the child, date and sessions—do not try to pay again.";
     if (/capacity|full|no (places|spaces)|availability/i.test(detail)) return "One or more sessions have just filled up. Return to the dates and choose another session.";
     if (/already booked|duplicate|conflict/i.test(detail)) return "One or more of these sessions is already booked or awaiting payment. Review the basket and remove the duplicate.";
     if (/timeout|compute|resource|temporar|gateway|unavailable/i.test(detail)) return "The booking service is temporarily busy. Your selections are still here—please wait a moment and try again.";
@@ -16549,6 +16551,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       && Number(realBookingResult.booking.dueToday ?? realBookingResult.booking.totalAmount ?? 0) <= 0
       && String(realBookingResult.booking.status || "").toLowerCase() === "confirmed"
     );
+    const existingPaidBooking = Boolean(realBookingResult?.existing && realBookingResult?.alreadyPaid);
     const creditCoveredCheckout = realBookingResult?.credit?.fullyCovered
       ? {
           mode: "supabase",
@@ -16674,6 +16677,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       ? `Your sessions were reserved, but secure payment could not open. Nothing has been charged. ${checkoutPreparationIssue}`
       : realBookingResult?.credit?.fullyCovered
         ? `Booking confirmed. ${money(Number(realBookingResult.credit.applied || 0))} account credit was used and no card payment was needed.`
+      : existingPaidBooking
+        ? "This booking was already confirmed and paid. No duplicate booking or payment has been created. Open My bookings to see the child, date and sessions."
       : confirmedWithoutPayment
         ? "Booking confirmed at £0.00. Your pricing benefit covered it in full, so PonchoPay and a card guarantee were not required."
       : isWaitlist

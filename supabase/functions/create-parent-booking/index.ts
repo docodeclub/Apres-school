@@ -145,6 +145,70 @@ serve(async (request) => {
     let booking = reservationResult.booking;
     let savedItems = reservationResult.items || [];
 
+    if (reservationResult.existing) {
+      const activeExistingItems = savedItems.filter((item) => ["reserved", "confirmed", "attended"]
+        .includes(stringValue(item.status).toLowerCase()));
+      if (!activeExistingItems.length) {
+        return json({
+          error: "These selections belong to a booking that was cancelled. Return to Choose dates, remove the old selections and select the sessions again to create a new booking. Nothing has been charged.",
+          code: "PREVIOUS_BOOKING_CANCELLED",
+          bookingReference: stringValue(booking.bookingReference),
+        }, 409);
+      }
+      const bookingId = stringValue(booking.id);
+      const invoiceId = stringValue(booking.invoiceId);
+      const invoiceFilters = [
+        invoiceId ? `id.eq.${invoiceId}` : "",
+        bookingId ? `booking_id.eq.${bookingId}` : "",
+      ].filter(Boolean).join(",");
+      const { data: settledInvoices, error: settledInvoiceError } = await supabase
+        .from("booking_invoices")
+        .select("id, payment_status, provider_payment_id, provider_reference")
+        .or(invoiceFilters)
+        .in("payment_status", [
+          "paid",
+          "bank_confirmed",
+          "reconciled",
+          "paid_by_fallback_card",
+          "payment_guaranteed",
+          "payment_plan_active",
+          "captured",
+        ])
+        .limit(1);
+      if (settledInvoiceError) throw settledInvoiceError;
+
+      const settledInvoice = settledInvoices?.[0];
+      if (settledInvoice) {
+        booking = {
+          ...booking,
+          status: "confirmed",
+          dueToday: 0,
+          outstandingBalance: 0,
+        };
+        return json({
+          created: false,
+          existing: true,
+          alreadyPaid: true,
+          booking,
+          parent: reservationResult.parent,
+          items: savedItems,
+          checkout: {
+            status: "already_paid",
+            invoiceId: settledInvoice.id,
+            providerPaymentId: settledInvoice.provider_payment_id,
+            providerReference: settledInvoice.provider_reference,
+            checkoutUrl: null,
+            message: "This booking is already confirmed and paid. No further payment is needed.",
+          },
+          credit: {
+            applied: 0,
+            dueToday: 0,
+            fullyCovered: false,
+          },
+        });
+      }
+    }
+
     if (!reservationResult.existing) {
       const { data: basePricingData, error: pricingError } = await supabase.rpc("apply_booking_pricing", {
         p_booking_id: stringValue(booking.id),

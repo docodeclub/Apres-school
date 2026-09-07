@@ -21,7 +21,8 @@ const bookingLabSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
 const campInfoDrawerSource = readFileSync(join(root, "src/bookingLab/HolidayCampInfoDrawer.jsx"), "utf8");
 const campInfoSource = readFileSync(join(root, "src/bookingLab/holidayCampInfo.js"), "utf8");
 const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8");
-const campInfoSql = readFileSync(join(root, "supabase/migrations/0171_holiday_camp_more_info.sql"), "utf8");
+const campInfoSql = readFileSync(join(root, "supabase/migrations/0172_holiday_camp_more_info.sql"), "utf8");
+const creditReconciliationSql = readFileSync(join(root, "supabase/migrations/0173_preserve_spent_cancellation_credit.sql"), "utf8");
 const termsUrl = "https://docs.google.com/document/d/1ursh4YbP1e8cLG7fiUy0z3JezZWBUBG2_-7eG8wA0u0/edit?usp=sharing";
 
 const launchSession = labSessions.find((session) => session.id === "lab-willington-after") || labSessions.find((session) => session.type === "Wraparound");
@@ -84,6 +85,9 @@ if (request) validateRequestShape(request);
   ["booking creation persists sibling pricing", edgeFunction.includes('apply_booking_sibling_discount')],
   ["booking creation prefers a parent's owned account over linked-holder invitations", edgeFunction.indexOf('.from("parent_accounts")', edgeFunction.indexOf("async function resolveBookingActor")) < edgeFunction.indexOf('.from("parent_account_holders")', edgeFunction.indexOf("async function resolveBookingActor"))],
   ["booking creation surfaces database error messages", edgeFunction.includes('readableErrorMessage(error, "Unable to create booking")') && edgeFunction.includes("stringValue(error.message)")],
+  ["paid booking retries cannot create duplicate payment", edgeFunction.includes("alreadyPaid: true") && edgeFunction.includes('status: "already_paid"') && edgeFunction.includes("No further payment is needed")],
+  ["cancelled booking retries are explained instead of reported as successful", edgeFunction.includes('code: "PREVIOUS_BOOKING_CANCELLED"') && bookingLabSource.includes("These dates were previously cancelled")],
+  ["delayed provider updates preserve issued cancellation credit", creditReconciliationSql.includes("v_issued_credit") && creditReconciliationSql.includes("new.refunded_amount = 0") && creditReconciliationSql.includes("greatest(v_target_credit, v_issued_credit)")],
   ["sibling pricing requires at least two distinct children", siblingDiscountSql.includes("count(distinct") && siblingDiscountSql.includes("v_child_count < 2")],
   ["sibling pricing is visible in the basket", bookingLabSource.includes('10% sibling discount applied') && bookingLabSource.includes('basketPricingQuote.siblingDiscountTotal')],
   ["register identifies staff families server-side", staffFamilyRegisterSql.includes("parent_is_staff boolean") && staffFamilyRegisterSql.includes("parent_pricing_assignments") && staffFamilyRegisterSql.includes("staff_records")],
