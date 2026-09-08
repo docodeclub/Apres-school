@@ -150,10 +150,14 @@ const parentSchoolPriority = [
 ];
 
 function normaliseParentSchool(value) {
-  const school = String(value || "").trim();
+  const school = String(value || "").replace(/\s+/g, " ").trim();
   if (/^willington(?:\s+(?:prep|school))?$/i.test(school)) return "Willington Prep";
   if (/^ripley\s+court(?:\s+school)?$/i.test(school)) return "Ripley Court";
   return school;
+}
+
+function parentSchoolsMatch(left, right) {
+  return normaliseParentSchool(left).toLocaleLowerCase("en-GB") === normaliseParentSchool(right).toLocaleLowerCase("en-GB");
 }
 
 function holidayCampYearRange(site, rules, eligibility = {}) {
@@ -6564,7 +6568,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const eligibilityCareType = basketCheckoutActive ? draftBookingBasket[0]?.careType || activeSession.type : activeSession.type;
   const eligibilityIssues = eligibilityChildren.flatMap((child) => {
     const issues = [];
-    if (rules.schoolOnlyStrict && eligibilityCareType === "Wraparound" && child.school !== eligibilitySite && child.school !== "Guest") {
+    if (rules.schoolOnlyStrict && eligibilityCareType === "Wraparound" && !parentSchoolsMatch(child.school, eligibilitySite) && !parentSchoolsMatch(child.school, "Guest")) {
       issues.push(`${child.name} is not linked to ${eligibilitySite}`);
     }
     const holidayIssue = eligibilityCareType === "Holiday Camp"
@@ -6577,8 +6581,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   const schoolEligibilityIssueChild = eligibilityChildren.find((child) => (
     rules.schoolOnlyStrict
     && eligibilityCareType === "Wraparound"
-    && child.school !== eligibilitySite
-    && child.school !== "Guest"
+    && !parentSchoolsMatch(child.school, eligibilitySite)
+    && !parentSchoolsMatch(child.school, "Guest")
   ));
   const yearEligibilityIssueChild = eligibilityChildren.find((child) => {
     return eligibilityCareType === "Holiday Camp"
@@ -16380,8 +16384,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       const careTypes = childItems.length ? childItems.map((item) => item.careType) : [activeSession.type];
       const sites = childItems.length ? childItems.map((item) => item.site) : [activeSession.site];
       const issues = [];
-      if (rules.schoolOnlyStrict && careTypes.includes("Wraparound") && sites.some((site) => child.school !== site && child.school !== "Guest")) {
-        issues.push(`${child.name} is not linked to ${sites.find((site) => child.school !== site) || activeSession.site}`);
+      if (rules.schoolOnlyStrict && careTypes.includes("Wraparound") && sites.some((site) => !parentSchoolsMatch(child.school, site) && !parentSchoolsMatch(child.school, "Guest"))) {
+        issues.push(`${child.name} is not linked to ${sites.find((site) => !parentSchoolsMatch(child.school, site)) || activeSession.site}`);
       }
       const holidayItems = childItems.length
         ? childItems.filter((item) => item.careType === "Holiday Camp")
