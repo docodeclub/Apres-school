@@ -15225,6 +15225,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       reason: options.reason || "invoice",
       amountOverride: options.amountOverride,
       source: options.source || "",
+      error: "",
     });
   }
 
@@ -15441,7 +15442,12 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const method = parentCheckoutMethod;
     const confirmedTotal = parentCheckoutTotal;
     let checkoutResult = null;
-    if (parentCheckoutRows.length === 1 && confirmedTotal > 0) {
+    if (parentCheckoutRows.length > 1) {
+      setParentPaymentCheckout((current) => current ? { ...current, error: "Please pay each invoice separately so every payment is securely matched to the correct booking. Nothing has been charged." } : current);
+      return;
+    }
+    setParentPaymentCheckout((current) => current ? { ...current, error: "" } : current);
+    if (method === "card" && confirmedTotal > 0) {
       try {
         checkoutResult = await createCheckoutSessionForBooking(parentCheckoutRows[0].draft, {
           amount: confirmedTotal,
@@ -15449,19 +15455,16 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           idempotencyKey: `apres:${parentCheckoutRows[0].id}:${parentCheckoutReason}:${confirmedTotal.toFixed(2)}`,
         });
       } catch (error) {
-        checkoutResult = {
-          mode: "error",
-          status: "provider_error",
-          checkoutUrl: null,
-          message: error instanceof Error ? error.message : "PonchoPay checkout could not be created.",
-        };
+        const message = `${error instanceof Error ? error.message : "PonchoPay checkout could not be created."} No payment has been taken.`;
+        setParentPaymentCheckout((current) => current ? { ...current, error: message } : current);
+        return;
+      }
+      if (!checkoutResult?.checkoutUrl) {
+        setParentPaymentCheckout((current) => current ? { ...current, error: `${checkoutResult?.message || "PonchoPay did not return a secure payment link."} No payment has been taken.` } : current);
+        return;
       }
     }
-    if (parentPaymentCheckout.mode === "next") {
-      parentCheckoutRows.forEach((row) => payNextPlanInstallment(row.id, method));
-    } else if (parentPaymentCheckout.mode === "bulk") {
-      payFamilyOutstanding(method);
-    } else if (method === "card" && checkoutResult?.checkoutUrl && parentCheckoutRows.length === 1) {
+    if (method === "card") {
       attachPonchoCheckoutToBooking(
         parentCheckoutRows[0].id,
         checkoutResult,
@@ -15469,6 +15472,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         parentCheckoutIsAmendment ? "amendment" : "invoice",
       );
       setStatus("PonchoPay checkout link is ready. Open it to complete payment.");
+    } else if (parentPaymentCheckout.mode === "next") {
+      parentCheckoutRows.forEach((row) => payNextPlanInstallment(row.id, method));
     } else {
       parentCheckoutRows.forEach((row) => payParentBooking(row.id, method, {
         amountOverride: parentPaymentCheckout.amountOverride,
@@ -17465,7 +17470,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     ["tfc", "Tax-Free Childcare", "Auto reconcile"],
                     ["voucher", "Voucher", "Auto reconcile"],
                   ].map(([method, label, detail]) => (
-                    <button className={parentCheckoutMethod === method ? "active" : ""} key={method} type="button" onClick={() => setParentPaymentCheckout((current) => ({ ...current, method }))}>
+                    <button className={parentCheckoutMethod === method ? "active" : ""} key={method} type="button" onClick={() => setParentPaymentCheckout((current) => ({ ...current, method, error: "" }))}>
                       <span>{label}</span>
                       <small>{detail}</small>
                     </button>
@@ -17500,6 +17505,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                     </article>
                   ))}
                 </div>
+                {parentPaymentCheckout.error && <p className="lab-credit-topup-error" role="alert">{parentPaymentCheckout.error}</p>}
               </>
             )}
             <div className="lab-parent-payment-actions">
@@ -24082,8 +24088,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                   <h3>{familyOutstandingInvoices.length ? `${familyOutstandingInvoices.length} invoice${familyOutstandingInvoices.length === 1 ? " needs" : "s need"} attention` : "All invoices are settled"}</h3>
                   <p>{money(familyPaidInvoiceTotal)} paid · {money(familyInvoiceOutstandingTotal)} outstanding</p>
                 </div>
-                {familyOutstandingBookingInvoices.length ? (
-                  <button type="button" onClick={() => openParentPaymentCheckout("bulk", familyOutstandingBookingInvoices.map((row) => row.id))}>Pay all outstanding</button>
+                {familyNextInvoicePayment ? (
+                  <button type="button" onClick={() => openParentPaymentCheckout(familyNextInvoicePayment.isMonthlyPlan ? "next" : "single", familyNextInvoicePayment.id, familyNextInvoicePayment.draft.paymentMethod || "card")}>{familyOutstandingBookingInvoices.length > 1 ? `Pay next invoice · ${money(familyNextInvoicePayment.balance)}` : "Pay now"}</button>
                 ) : familyOutstandingInvoices.length ? (
                   <span className="lab-parent-invoice-settled">Payment being checked</span>
                 ) : (
