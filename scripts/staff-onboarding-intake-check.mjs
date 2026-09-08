@@ -2,7 +2,7 @@ import fs from "node:fs";
 
 const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const migration = read("supabase/migrations/0130_staff_onboarding_intake.sql");
-const complianceMigration = read("supabase/migrations/0174_admin_staff_compliance_checklist.sql");
+const complianceMigration = read("supabase/migrations/0174_admin_staff_compliance_checklist.sql") + read("supabase/migrations/0175_staff_compliance_duties.sql");
 const module = read("src/StaffOnboardingModule.jsx");
 const offer = read("supabase/functions/manage-staff-offer/index.ts");
 const platform = read("src/PlatformModule.jsx");
@@ -20,7 +20,9 @@ const checks = [
   ["save and return", module.includes("Save progress") && client.includes("save_my_staff_onboarding")],
   ["admin approval gate", migration.includes("review_staff_onboarding") && platform.includes("onboardingOnly")],
   ["structured admin compliance checklist", module.includes("Recruitment & right to work") && module.includes("School-specific compliance") && !module.includes("JSON.stringify({ personal:")],
-  ["all supplied compliance areas", ["DBS & safeguarding checks", "Core training — all staff", "Additional training — ASC staff", "Additional training — managers", "Systems & equipment", "Final ready-to-work check"].every((label) => module.includes(label))],
+  ["all supplied compliance areas", ["DBS & safeguarding checks", "Core training — all staff", "Additional training — staff working with children", "Additional training — managers", "Systems & equipment", "Final ready-to-work check"].every((label) => module.includes(label))],
+  ["practical duties drive requirements", ["Works with children", "Handles food", "Coaches sport", "Required for selected duties"].every((label) => module.includes(label)) && complianceMigration.includes("worksWithChildren") && complianceMigration.includes("handlesFood") && complianceMigration.includes("coachesSport")],
+  ["not applicable available throughout", module.includes('<option value="not_applicable">Not applicable</option>') && !module.includes("allowNA")],
   ["school checks repeat by assignment", module.includes("schoolChecks.map") && module.includes("schoolChecklistItems")],
   ["server-side ready-to-work guard", complianceMigration.includes("admin_staff_compliance_complete") && complianceMigration.includes("require_staff_clearance_before_approval")],
   ["clearance is audited", complianceMigration.includes("staff_cleared_to_work") && complianceMigration.includes("cleared_to_work_by")],

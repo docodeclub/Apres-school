@@ -46,8 +46,8 @@ const adminChecklistGroups = [
     ["safeguardingTraining", "Safeguarding training"], ["foodHygiene", "Food Hygiene"], ["allergyAwareness", "Allergy Awareness"], ["companyInduction", "Company induction"],
     ["safeguardingProcedures", "Après School safeguarding procedures read"], ["policiesAcknowledged", "Employee Handbook and policies acknowledged"],
   ] },
-  { id: "ascTraining", title: "5. Additional training — ASC staff", applies: (checklist) => checklist.workAreas?.afterSchool, items: [["paediatricFirstAid", "Paediatric First Aid"]] },
-  { id: "managerTraining", title: "6. Additional training — managers", applies: (checklist) => checklist.workAreas?.manager, items: [
+  { id: "ascTraining", title: "5. Additional training — staff working with children", applies: (checklist) => checklist.workAreas?.worksWithChildren || checklist.workAreas?.coachesSport, items: [["paediatricFirstAid", "Paediatric First Aid"]] },
+  { id: "managerTraining", title: "6. Additional training — managers", applies: (checklist) => /manager|lead/i.test(checklist.employee?.role || ""), items: [
     ["safeguardingLead", "Safeguarding Lead training"], ["senTraining", "SEN training"], ["inclusionTraining", "Inclusion training"],
     ["paediatricFirstAid", "Paediatric First Aid"], ["managerProcedures", "Manager responsibilities and setting procedures covered"],
   ] },
@@ -75,25 +75,43 @@ function normaliseAdminChecklist(record) {
       startDate: saved.employee?.startDate || record?.staffStartDate || record?.personalDetails?.startDate || "",
       schools,
     },
-    workAreas: { afterSchool: false, manager: /manager|lead/i.test(saved.employee?.role || record?.staffRole || ""), ...(saved.workAreas || {}) },
+    workAreas: {
+      worksWithChildren: Boolean(saved.workAreas?.worksWithChildren ?? saved.workAreas?.afterSchool),
+      handlesFood: Boolean(saved.workAreas?.handlesFood),
+      coachesSport: Boolean(saved.workAreas?.coachesSport),
+    },
     items: saved.items || {},
     schoolChecks: schools.map((school) => saved.schoolChecks?.find((item) => item.school === school) || { school, items: {} }),
     notes: saved.notes || "",
   };
 }
 
+function dutyRequired(checklist, group, key) {
+  const worksWithChildren = checklist.workAreas?.worksWithChildren || checklist.workAreas?.coachesSport;
+  if (worksWithChildren && ((group === "dbs" && ["dbsApplication", "dbsCertificate", "dbsDetailsRecorded"].includes(key)) ||
+    (group === "coreTraining" && ["safeguardingTraining", "companyInduction", "safeguardingProcedures", "policiesAcknowledged"].includes(key)) ||
+    (group === "ascTraining" && key === "paediatricFirstAid"))) return true;
+  if (checklist.workAreas?.handlesFood && group === "coreTraining" && ["foodHygiene", "allergyAwareness"].includes(key)) return true;
+  if (checklist.workAreas?.coachesSport && group === "recruitment" && key === "qualifications") return true;
+  return false;
+}
+
+function statusResolved(checklist, group, key, status) {
+  return status === "complete" || (status === "not_applicable" && !dutyRequired(checklist, group, key));
+}
+
 function checklistProgress(checklist) {
   const activeGroups = adminChecklistGroups.filter((group) => !group.applies || group.applies(checklist));
-  const general = activeGroups.flatMap((group) => group.items.map(([key]) => checklist.items?.[group.id]?.[key])).filter(Boolean);
+  const general = activeGroups.flatMap((group) => group.items.map(([key]) => [group.id, key, checklist.items?.[group.id]?.[key]]));
   const school = (checklist.schoolChecks || []).flatMap((entry) => schoolChecklistItems.map(([key]) => entry.items?.[key])).filter(Boolean);
-  const complete = [...general, ...school].filter((status) => status === "complete" || status === "not_applicable").length;
+  const complete = general.filter(([group, key, status]) => statusResolved(checklist, group, key, status)).length + school.filter((status) => status === "complete" || status === "not_applicable").length;
   const total = activeGroups.reduce((sum, group) => sum + group.items.length, 0) + (checklist.schoolChecks?.length || 0) * schoolChecklistItems.length;
   return { complete, total, outstanding: Math.max(0, total - complete) };
 }
 
-function ChecklistStatus({ value, allowNA, onChange }) {
+function ChecklistStatus({ value, onChange }) {
   return <select className={`onboarding-check-status ${value || "outstanding"}`} value={value || "outstanding"} onChange={(event) => onChange(event.target.value)} aria-label="Checklist status">
-    <option value="outstanding">Outstanding</option><option value="complete">Complete</option>{allowNA && <option value="not_applicable">Not applicable</option>}
+    <option value="outstanding">Outstanding</option><option value="complete">Complete</option><option value="not_applicable">Not applicable</option>
   </select>;
 }
 
@@ -276,7 +294,7 @@ function AdminReview() {
           <div><label>Role<input value={checklist.employee.role} onChange={(event) => setChecklist((current) => ({ ...current, employee: { ...current.employee, role: event.target.value } }))} placeholder="e.g. Playworker or Manager" /></label></div>
           <div><label>Start date<input type="date" value={checklist.employee.startDate} onChange={(event) => setChecklist((current) => ({ ...current, employee: { ...current.employee, startDate: event.target.value } }))} /></label></div>
           <div className="wide"><label>School(s)<input value={checklist.employee.schools.join(", ")} onChange={(event) => setSchools(event.target.value)} placeholder="Separate multiple schools with commas" /></label></div>
-          <fieldset className="wide"><legend>Work areas</legend><label><input type="checkbox" checked={Boolean(checklist.workAreas.afterSchool)} onChange={(event) => setChecklist((current) => ({ ...current, workAreas: { ...current.workAreas, afterSchool: event.target.checked } }))} /> After-school Club</label><label><input type="checkbox" checked={Boolean(checklist.workAreas.manager)} onChange={(event) => setChecklist((current) => ({ ...current, workAreas: { ...current.workAreas, manager: event.target.checked } }))} /> Manager</label></fieldset>
+          <fieldset className="wide"><legend>What will this employee do?</legend><p className="compliance-duty-help">These duties highlight the checks and training that must be completed rather than marked not applicable.</p><label><input type="checkbox" checked={Boolean(checklist.workAreas.worksWithChildren)} onChange={(event) => setChecklist((current) => ({ ...current, workAreas: { ...current.workAreas, worksWithChildren: event.target.checked } }))} /> Works with children</label><label><input type="checkbox" checked={Boolean(checklist.workAreas.handlesFood)} onChange={(event) => setChecklist((current) => ({ ...current, workAreas: { ...current.workAreas, handlesFood: event.target.checked } }))} /> Handles food</label><label><input type="checkbox" checked={Boolean(checklist.workAreas.coachesSport)} onChange={(event) => setChecklist((current) => ({ ...current, workAreas: { ...current.workAreas, coachesSport: event.target.checked, worksWithChildren: event.target.checked || current.workAreas.worksWithChildren } }))} /> Coaches sport</label></fieldset>
         </section>
 
         <details className="candidate-evidence" open><summary>Candidate information and uploaded evidence</summary>
@@ -291,11 +309,11 @@ function AdminReview() {
         </details>
 
         <div className="compliance-checklist">
-          {adminChecklistGroups.filter((group) => !group.applies || group.applies(checklist)).map((group) => <details key={group.id} open><summary><span>{group.title}</span><strong>{group.items.filter(([key]) => ["complete","not_applicable"].includes(checklist.items?.[group.id]?.[key])).length}/{group.items.length}</strong></summary><div className="compliance-check-rows">{group.items.map(([key, label, allowNA]) => <div className="compliance-check-row" key={key}><span>{label}</span><ChecklistStatus value={checklist.items?.[group.id]?.[key]} allowNA={allowNA} onChange={(value) => updateItem(group.id, key, value)} /></div>)}</div></details>)}
+          {adminChecklistGroups.filter((group) => !group.applies || group.applies(checklist)).map((group) => <details key={group.id} open><summary><span>{group.title}</span><strong>{group.items.filter(([key]) => statusResolved(checklist, group.id, key, checklist.items?.[group.id]?.[key])).length}/{group.items.length}</strong></summary><div className="compliance-check-rows">{group.items.map(([key, label]) => { const required = dutyRequired(checklist, group.id, key); return <div className="compliance-check-row" key={key}><span>{label}{required && <small className="compliance-required-duty">Required for selected duties</small>}</span><ChecklistStatus value={checklist.items?.[group.id]?.[key]} onChange={(value) => updateItem(group.id, key, value)} /></div>; })}</div></details>)}
 
           <details open><summary><span>7. School-specific compliance</span><strong>{checklist.schoolChecks.length} school{checklist.schoolChecks.length === 1 ? "" : "s"}</strong></summary>
             {!checklist.schoolChecks.length && <p className="onboarding-alert">Add at least one school above before final clearance.</p>}
-            {checklist.schoolChecks.map((school, index) => <section className="school-compliance-block" key={school.school}><h3>{school.school}</h3>{schoolChecklistItems.map(([key, label, allowNA]) => <div className="compliance-check-row" key={key}><span>{label}</span><ChecklistStatus value={school.items?.[key]} allowNA={allowNA} onChange={(value) => updateSchoolItem(index, key, value)} /></div>)}</section>)}
+            {checklist.schoolChecks.map((school, index) => <section className="school-compliance-block" key={school.school}><h3>{school.school}</h3>{schoolChecklistItems.map(([key, label]) => <div className="compliance-check-row" key={key}><span>{label}</span><ChecklistStatus value={school.items?.[key]} onChange={(value) => updateSchoolItem(index, key, value)} /></div>)}</section>)}
           </details>
         </div>
 
