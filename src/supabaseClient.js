@@ -71,11 +71,17 @@ function mapStaffOnboarding(record = {}) {
     overseasCheck: record.overseas_check || {},
     sectionStatus: record.section_status || {},
     adminReview: record.admin_review || {},
+    complianceChecklist: record.compliance_checklist || {},
+    clearedToWorkAt: record.cleared_to_work_at || "",
+    clearedToWorkBy: record.cleared_to_work_by || "",
     submittedAt: record.submitted_at || "",
     reviewedAt: record.reviewed_at || "",
     updatedAt: record.updated_at || "",
     staffName: record.staffName || "",
     staffEmail: record.staffEmail || "",
+    staffRole: record.staffRole || "",
+    staffStartDate: record.staffStartDate || "",
+    staffSchools: record.staffSchools || [],
   };
 }
 
@@ -118,7 +124,7 @@ export async function fetchAdminStaffOnboarding() {
   const ids = rows.map((row) => row.staff_record_id);
   let staff = [];
   if (ids.length) {
-    const result = await supabase.from("staff_records").select("id, preferred_name, profile_id, profiles!staff_records_profile_id_fkey(full_name,email)").in("id", ids);
+    const result = await supabase.from("staff_records").select("id, preferred_name, profile_id, job_role, start_date, primary_site, site_assignments, profiles!staff_records_profile_id_fkey(full_name,email)").in("id", ids);
     if (result.error) throw result.error;
     staff = result.data || [];
   }
@@ -126,8 +132,30 @@ export async function fetchAdminStaffOnboarding() {
   return rows.map((row) => {
     const person = byId[row.staff_record_id] || {};
     const profile = Array.isArray(person.profiles) ? person.profiles[0] : person.profiles;
-    return mapStaffOnboarding({ ...row, staffName: profile?.full_name || person.preferred_name || "Staff member", staffEmail: profile?.email || "" });
+    const assignedSchools = Array.from(new Set([
+      person.primary_site,
+      ...(person.site_assignments || []).filter((assignment) => !assignment.endDate && !["Inactive", "Ended"].includes(assignment.status)).map((assignment) => assignment.school),
+    ].filter(Boolean)));
+    return mapStaffOnboarding({
+      ...row,
+      staffName: profile?.full_name || person.preferred_name || "Staff member",
+      staffEmail: profile?.email || "",
+      staffRole: person.job_role || "",
+      staffStartDate: person.start_date || "",
+      staffSchools: assignedSchools,
+    });
   });
+}
+
+export async function saveAdminStaffComplianceChecklist(submissionId, checklist, clearToWork = false) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.rpc("save_admin_staff_compliance_checklist", {
+    p_submission_id: submissionId,
+    p_checklist: checklist,
+    p_clear_to_work: clearToWork,
+  });
+  if (error) throw error;
+  return mapStaffOnboarding(data);
 }
 
 export async function reviewStaffOnboarding(submissionId, decision, note = "") {

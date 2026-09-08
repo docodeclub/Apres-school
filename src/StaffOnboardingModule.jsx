@@ -26,6 +26,77 @@ const steps = [
   ["declarations", "Declarations"], ["overseas", "Overseas check"],
 ];
 
+const adminChecklistGroups = [
+  { id: "recruitment", title: "1. Recruitment & right to work", items: [
+    ["applicationForm", "Application form completed"], ["identityChecked", "Identity documents checked"], ["rightToWork", "Right to Work check completed"],
+    ["qualifications", "Qualifications verified where required", true], ["employmentHistory", "Employment history reviewed"], ["employmentGaps", "Employment gaps satisfactorily explained"],
+    ["referencesRequested", "Two professional references requested"], ["referencesReceived", "Two satisfactory references received"], ["discrepanciesResolved", "Safeguarding concerns or recruitment discrepancies resolved", true],
+  ] },
+  { id: "dbs", title: "2. DBS & safeguarding checks", items: [
+    ["dbsApplication", "Enhanced DBS application submitted through Care Check"], ["dbsCertificate", "DBS certificate received and checked"], ["barredList", "Children's Barred List check completed where applicable", true],
+    ["dbsDetailsRecorded", "DBS certificate number and issue date recorded"], ["updateServiceInstruction", "Employee instructed to join the DBS Update Service within 30 days"],
+    ["updateServiceConfirmed", "Update Service registration subsequently confirmed"], ["prohibitionChecks", "Additional prohibition checks completed where applicable", true],
+  ] },
+  { id: "employment", title: "3. Employment", items: [
+    ["offerConfirmed", "Offer confirmed"], ["startDate", "Start date agreed"], ["contractIssued", "Employment contract issued"], ["contractSigned", "Contract electronically signed"],
+    ["payConfirmed", "Pay rate or salary confirmed"], ["hoursConfirmed", "Contracted hours confirmed"], ["locationsConfirmed", "Work location(s) confirmed"],
+    ["payrollCollected", "Payroll information collected"], ["pensionProcessed", "Pension or auto-enrolment information processed"], ["emergencyContact", "Emergency contact recorded"],
+  ] },
+  { id: "coreTraining", title: "4. Core training — all staff", items: [
+    ["safeguardingTraining", "Safeguarding training"], ["foodHygiene", "Food Hygiene"], ["allergyAwareness", "Allergy Awareness"], ["companyInduction", "Company induction"],
+    ["safeguardingProcedures", "Après School safeguarding procedures read"], ["policiesAcknowledged", "Employee Handbook and policies acknowledged"],
+  ] },
+  { id: "ascTraining", title: "5. Additional training — ASC staff", applies: (checklist) => checklist.workAreas?.afterSchool, items: [["paediatricFirstAid", "Paediatric First Aid"]] },
+  { id: "managerTraining", title: "6. Additional training — managers", applies: (checklist) => checklist.workAreas?.manager, items: [
+    ["safeguardingLead", "Safeguarding Lead training"], ["senTraining", "SEN training"], ["inclusionTraining", "Inclusion training"],
+    ["paediatricFirstAid", "Paediatric First Aid"], ["managerProcedures", "Manager responsibilities and setting procedures covered"],
+  ] },
+  { id: "systems", title: "8. Systems & equipment", items: [
+    ["accountCreated", "Après School account created"], ["permissionsAssigned", "Correct system permissions assigned"], ["schoolsAssigned", "Staff added to appropriate school(s)"],
+    ["rotaAdded", "Staff added to rota"], ["companyEmail", "Company email created if required", true], ["equipmentIssued", "Equipment or uniform issued and recorded", true],
+    ["systemAccessExplained", "Employee knows how to access rotas, policies and staff information"],
+  ] },
+];
+
+const schoolChecklistItems = [
+  ["schoolAssigned", "School assigned"], ["safeguardingRequirements", "School-specific safeguarding requirements checked"], ["policiesIssued", "Required school policies issued"],
+  ["policiesAcknowledged", "Policies read and acknowledged by employee"], ["schoolTraining", "School-specific training completed", true], ["siteInduction", "Site induction completed where required", true],
+  ["emergencyProcedures", "Emergency and fire procedures understood"], ["collectionProcedures", "Collection and dismissal procedures understood"],
+  ["medicalProcedures", "School-specific medical and allergy procedures understood"], ["assuranceLetter", "Letter of Assurance prepared or updated"],
+  ["complianceInformation", "School provided with required compliance information"], ["additionalRequirements", "School confirms any additional requirements are satisfied", true],
+];
+
+function normaliseAdminChecklist(record) {
+  const saved = structuredClone(record?.complianceChecklist || {});
+  const schools = saved.employee?.schools?.length ? saved.employee.schools : record?.staffSchools || [];
+  return {
+    employee: {
+      role: saved.employee?.role || record?.staffRole || "",
+      startDate: saved.employee?.startDate || record?.staffStartDate || record?.personalDetails?.startDate || "",
+      schools,
+    },
+    workAreas: { afterSchool: false, manager: /manager|lead/i.test(saved.employee?.role || record?.staffRole || ""), ...(saved.workAreas || {}) },
+    items: saved.items || {},
+    schoolChecks: schools.map((school) => saved.schoolChecks?.find((item) => item.school === school) || { school, items: {} }),
+    notes: saved.notes || "",
+  };
+}
+
+function checklistProgress(checklist) {
+  const activeGroups = adminChecklistGroups.filter((group) => !group.applies || group.applies(checklist));
+  const general = activeGroups.flatMap((group) => group.items.map(([key]) => checklist.items?.[group.id]?.[key])).filter(Boolean);
+  const school = (checklist.schoolChecks || []).flatMap((entry) => schoolChecklistItems.map(([key]) => entry.items?.[key])).filter(Boolean);
+  const complete = [...general, ...school].filter((status) => status === "complete" || status === "not_applicable").length;
+  const total = activeGroups.reduce((sum, group) => sum + group.items.length, 0) + (checklist.schoolChecks?.length || 0) * schoolChecklistItems.length;
+  return { complete, total, outstanding: Math.max(0, total - complete) };
+}
+
+function ChecklistStatus({ value, allowNA, onChange }) {
+  return <select className={`onboarding-check-status ${value || "outstanding"}`} value={value || "outstanding"} onChange={(event) => onChange(event.target.value)} aria-label="Checklist status">
+    <option value="outstanding">Outstanding</option><option value="complete">Complete</option>{allowNA && <option value="not_applicable">Not applicable</option>}
+  </select>;
+}
+
 const emptyReference = { name: "", email: "", phone: "", type: "", organisation: "", relationship: "", knownFor: "", notes: "" };
 const defaultPayload = {
   personalDetails: { legalName: "", preferredName: "", dateOfBirth: "", email: "", phone: "", nationalInsuranceNumber: "", address: "", nationality: "", emergencyContactName: "", emergencyContactPhone: "", startDate: "" },
@@ -165,15 +236,79 @@ function StaffIntake({ onApproved }) {
 function AdminReview() {
   const [records, setRecords] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [checklist, setChecklist] = useState(() => normaliseAdminChecklist(null));
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(true);
+  const [clearanceConfirmed, setClearanceConfirmed] = useState(false);
   async function load() { setBusy(true); try { const { fetchAdminStaffOnboarding } = await import("./supabaseClient.js"); const rows = await fetchAdminStaffOnboarding(); setRecords(rows); setSelected((current) => rows.find((row) => row.id === current?.id) || rows[0] || null); } catch (error) { setMessage(error.message); } finally { setBusy(false); } }
   useEffect(() => { load(); }, []);
+  useEffect(() => { setChecklist(normaliseAdminChecklist(selected)); setClearanceConfirmed(false); }, [selected?.id, selected?.updatedAt]);
   async function decide(decision) { if (!selected) return; setBusy(true); setMessage(""); try { const { reviewStaffOnboarding } = await import("./supabaseClient.js"); await reviewStaffOnboarding(selected.id, decision, note); setMessage(decision === "approved" ? "Onboarding approved and normal staff access enabled." : "Changes requested; onboarding-only access remains in place."); setNote(""); await load(); } catch (error) { setMessage(error.message); setBusy(false); } }
+  async function saveChecklist(clearToWork = false) {
+    if (!selected) return;
+    setBusy(true); setMessage("");
+    try {
+      const { saveAdminStaffComplianceChecklist } = await import("./supabaseClient.js");
+      await saveAdminStaffComplianceChecklist(selected.id, checklist, clearToWork);
+      setMessage(clearToWork ? `${selected.staffName} has been cleared to work. The decision is recorded in the audit trail.` : "Compliance checklist saved.");
+      setClearanceConfirmed(false); await load();
+    } catch (error) { setMessage(error.message || "The compliance checklist could not be saved."); setBusy(false); }
+  }
   async function openEvidence(path) { try { const { createStaffOnboardingEvidenceUrl } = await import("./supabaseClient.js"); const url = await createStaffOnboardingEvidenceUrl(path); window.open(url, "_blank", "noopener,noreferrer"); } catch (error) { setMessage(error.message); } }
   const evidence = selected ? [...(selected.identityDocuments?.documents || []), { name: selected.dbsDetails?.certificateName, path: selected.dbsDetails?.certificatePath }, { name: selected.safeguardingTraining?.certificateName, path: selected.safeguardingTraining?.certificatePath }, { name: selected.professionalDetails?.qualificationName, path: selected.professionalDetails?.qualificationPath }, { name: selected.professionalDetails?.firstAid?.certificateName, path: selected.professionalDetails?.firstAid?.certificatePath }].filter((file) => file.path) : [];
-  return <section className="onboarding-shell"><header className="onboarding-hero"><div><p className="eyebrow">Safer recruitment</p><h1>Staff onboarding review</h1><p>Only Admin and Superadmin can inspect evidence or approve access.</p></div></header><div className="onboarding-admin-layout"><aside className="onboarding-review-list">{busy && !records.length ? <p>Loading…</p> : records.map((row) => <button key={row.id} className={selected?.id === row.id ? "active" : ""} onClick={() => { setSelected(row); setNote(""); }}><strong>{row.staffName}</strong><span>{row.staffEmail}</span><small>{row.status.replace(/_/g," ")}</small></button>)}</aside>{selected ? <article className="onboarding-card"><div className="onboarding-card-head"><div><span>{selected.staffEmail}</span><h2>{selected.staffName}</h2></div><span className="status-chip">{selected.status.replace(/_/g," ")}</span></div><div className="onboarding-review-summary">{steps.map(([key,label]) => <div key={key}><span>{label}</span><strong>{selected.sectionStatus?.[key] ? "Complete" : "Incomplete"}</strong></div>)}</div><details open><summary>Personal details and declarations</summary><pre>{JSON.stringify({ personal: selected.personalDetails, declarations: selected.annualDeclarations, overseas: selected.overseasCheck }, null, 2)}</pre></details><details><summary>DBS, training and professional details</summary><pre>{JSON.stringify({ dbs: selected.dbsDetails, safeguarding: selected.safeguardingTraining, professional: selected.professionalDetails }, null, 2)}</pre></details><details><summary>References</summary><pre>{JSON.stringify(selected.referencesDetails, null, 2)}</pre></details><div className="onboarding-evidence"><h3>Evidence files</h3>{evidence.length ? evidence.map((file) => <button type="button" className="button" key={file.path} onClick={() => openEvidence(file.path)}>View {file.name || "evidence"}</button>) : <p>No evidence uploaded.</p>}</div>{selected.status === "submitted" && <><Input label="Review note" multiline value={note} onChange={(e) => setNote(e.target.value)} /><div className="onboarding-actions"><button className="button" disabled={busy} onClick={() => decide("changes_requested")}>Request changes</button><button className="button book" disabled={busy} onClick={() => decide("approved")}>Approve onboarding</button></div></>}{message && <p className="onboarding-message">{message}</p>}</article> : <article className="onboarding-card"><h2>No onboarding records yet</h2></article>}</div></section>;
+  const progress = checklistProgress(checklist);
+  const updateItem = (group, key, value) => setChecklist((current) => ({ ...current, items: { ...current.items, [group]: { ...(current.items?.[group] || {}), [key]: value } } }));
+  const updateSchoolItem = (index, key, value) => setChecklist((current) => ({ ...current, schoolChecks: current.schoolChecks.map((school, itemIndex) => itemIndex === index ? { ...school, items: { ...school.items, [key]: value } } : school) }));
+  const setSchools = (value) => {
+    const schools = Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean)));
+    setChecklist((current) => ({ ...current, employee: { ...current.employee, schools }, schoolChecks: schools.map((school) => current.schoolChecks.find((item) => item.school === school) || { school, items: {} }) }));
+  };
+  const readable = (value) => value === true ? "Yes" : value === false ? "No" : value || "Not supplied";
+  return <section className="onboarding-shell admin-compliance-shell">
+    <header className="onboarding-hero"><div><p className="eyebrow">Safer recruitment</p><h1>New staff compliance</h1><p>Review evidence, record each mandatory check and make one auditable ready-to-work decision.</p></div>{selected && <div className="onboarding-progress"><strong>{progress.complete} of {progress.total}</strong><span>checks resolved</span></div>}</header>
+    <div className="onboarding-admin-layout">
+      <aside className="onboarding-review-list">{busy && !records.length ? <p>Loading…</p> : records.map((row) => <button key={row.id} className={selected?.id === row.id ? "active" : ""} onClick={() => { setSelected(row); setNote(""); setMessage(""); }}><strong>{row.staffName}</strong><span>{row.staffEmail}</span><small>{row.clearedToWorkAt ? "Cleared to work" : row.status.replace(/_/g," ")}</small></button>)}</aside>
+      {selected ? <article className="onboarding-card admin-compliance-card">
+        <div className="onboarding-card-head"><div><span>{selected.staffEmail}</span><h2>{selected.staffName}</h2></div><span className={`status-chip${selected.clearedToWorkAt ? " complete" : ""}`}>{selected.clearedToWorkAt ? "Cleared to work" : selected.status.replace(/_/g," ")}</span></div>
+
+        <section className="compliance-employee-summary">
+          <div><label>Role<input value={checklist.employee.role} onChange={(event) => setChecklist((current) => ({ ...current, employee: { ...current.employee, role: event.target.value } }))} placeholder="e.g. Playworker or Manager" /></label></div>
+          <div><label>Start date<input type="date" value={checklist.employee.startDate} onChange={(event) => setChecklist((current) => ({ ...current, employee: { ...current.employee, startDate: event.target.value } }))} /></label></div>
+          <div className="wide"><label>School(s)<input value={checklist.employee.schools.join(", ")} onChange={(event) => setSchools(event.target.value)} placeholder="Separate multiple schools with commas" /></label></div>
+          <fieldset className="wide"><legend>Work areas</legend><label><input type="checkbox" checked={Boolean(checklist.workAreas.afterSchool)} onChange={(event) => setChecklist((current) => ({ ...current, workAreas: { ...current.workAreas, afterSchool: event.target.checked } }))} /> After-school Club</label><label><input type="checkbox" checked={Boolean(checklist.workAreas.manager)} onChange={(event) => setChecklist((current) => ({ ...current, workAreas: { ...current.workAreas, manager: event.target.checked } }))} /> Manager</label></fieldset>
+        </section>
+
+        <details className="candidate-evidence" open><summary>Candidate information and uploaded evidence</summary>
+          <div className="candidate-detail-grid">
+            <div><span>Legal name</span><strong>{readable(selected.personalDetails?.legalName)}</strong></div><div><span>Date of birth</span><strong>{readable(selected.personalDetails?.dateOfBirth)}</strong></div>
+            <div><span>Phone</span><strong>{readable(selected.personalDetails?.phone)}</strong></div><div><span>Address</span><strong>{readable(selected.personalDetails?.address)}</strong></div>
+            <div><span>Emergency contact</span><strong>{readable(selected.personalDetails?.emergencyContactName)}</strong></div><div><span>DBS certificate</span><strong>{readable(selected.dbsDetails?.certificateNumber)}</strong></div>
+            <div><span>Safeguarding training</span><strong>{readable(selected.safeguardingTraining?.trainingLevel)}</strong></div><div><span>First aid</span><strong>{readable(selected.professionalDetails?.firstAid?.qualification)}</strong></div>
+            <div><span>References supplied</span><strong>{selected.referencesDetails?.filter((item) => item.name).length || 0} of 2</strong></div><div><span>Overseas history</span><strong>{readable(selected.overseasCheck?.hasLivedOverseas)}</strong></div>
+          </div>
+          <div className="onboarding-evidence"><h3>Evidence files</h3>{evidence.length ? evidence.map((file) => <button type="button" className="button light" key={file.path} onClick={() => openEvidence(file.path)}>View {file.name || "evidence"}</button>) : <p>No evidence uploaded.</p>}</div>
+        </details>
+
+        <div className="compliance-checklist">
+          {adminChecklistGroups.filter((group) => !group.applies || group.applies(checklist)).map((group) => <details key={group.id} open><summary><span>{group.title}</span><strong>{group.items.filter(([key]) => ["complete","not_applicable"].includes(checklist.items?.[group.id]?.[key])).length}/{group.items.length}</strong></summary><div className="compliance-check-rows">{group.items.map(([key, label, allowNA]) => <div className="compliance-check-row" key={key}><span>{label}</span><ChecklistStatus value={checklist.items?.[group.id]?.[key]} allowNA={allowNA} onChange={(value) => updateItem(group.id, key, value)} /></div>)}</div></details>)}
+
+          <details open><summary><span>7. School-specific compliance</span><strong>{checklist.schoolChecks.length} school{checklist.schoolChecks.length === 1 ? "" : "s"}</strong></summary>
+            {!checklist.schoolChecks.length && <p className="onboarding-alert">Add at least one school above before final clearance.</p>}
+            {checklist.schoolChecks.map((school, index) => <section className="school-compliance-block" key={school.school}><h3>{school.school}</h3>{schoolChecklistItems.map(([key, label, allowNA]) => <div className="compliance-check-row" key={key}><span>{label}</span><ChecklistStatus value={school.items?.[key]} allowNA={allowNA} onChange={(value) => updateSchoolItem(index, key, value)} /></div>)}</section>)}
+          </details>
+        </div>
+
+        <Input label="Compliance notes" multiline value={checklist.notes} onChange={(event) => setChecklist((current) => ({ ...current, notes: event.target.value }))} placeholder="Record evidence references, exceptions or follow-up actions" />
+        <div className="compliance-save-bar"><div><strong>{progress.outstanding ? `${progress.outstanding} checks outstanding` : "All checklist items resolved"}</strong><span>{selected.clearedToWorkAt ? `Cleared ${new Date(selected.clearedToWorkAt).toLocaleDateString("en-GB")}` : "Save at any time and return later."}</span></div><button className="button light" type="button" disabled={busy} onClick={() => saveChecklist(false)}>{busy ? "Saving…" : "Save progress"}</button></div>
+
+        {!selected.clearedToWorkAt && <section className="final-clearance"><div><p className="eyebrow">9. Final ready-to-work check</p><h3>Clear {selected.staffName} to work</h3><p>This unlocks the final approval step and records your name and today’s date in the audit trail.</p></div><label><input type="checkbox" checked={clearanceConfirmed} onChange={(event) => setClearanceConfirmed(event.target.checked)} /><span>I confirm all mandatory checks, training and school-specific requirements are complete.</span></label><button className="button book" type="button" disabled={busy || progress.outstanding > 0 || !clearanceConfirmed} onClick={() => saveChecklist(true)}>Clear to work</button></section>}
+
+        {selected.status === "submitted" && <section className="onboarding-review-decision"><Input label="Review note" multiline value={note} onChange={(event) => setNote(event.target.value)} /><div className="onboarding-actions"><button className="button" disabled={busy} onClick={() => decide("changes_requested")}>Request changes</button><button className="button book" disabled={busy || !selected.clearedToWorkAt} onClick={() => decide("approved")}>Approve access</button></div>{!selected.clearedToWorkAt && <small>Complete final clearance before approving normal staff access.</small>}</section>}
+        {message && <p className="onboarding-message" role="status">{message}</p>}
+      </article> : <article className="onboarding-card"><h2>No onboarding records yet</h2></article>}
+    </div>
+  </section>;
 }
 
 export default function StaffOnboardingModule({ role, onboardingOnly, onApproved }) {
