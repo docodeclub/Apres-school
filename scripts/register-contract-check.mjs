@@ -19,7 +19,9 @@ const registerDayResetRepair = readFileSync(join(root, "supabase/migrations/0153
 const registerRecheckin = readFileSync(join(root, "supabase/migrations/0168_refresh_register_timestamps_on_recheckin.sql"), "utf8");
 const registerGoingHome = readFileSync(join(root, "supabase/migrations/0169_checkout_child_from_active_afterschool_sessions.sql"), "utf8");
 const adminChildGraduation = readFileSync(join(root, "supabase/migrations/0170_admin_graduate_parent_child.sql"), "utf8");
-const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}\n${registerDayReset}\n${registerDayResetRepair}\n${registerRecheckin}\n${registerGoingHome}\n${adminChildGraduation}`;
+const staffAdHocCancellation = readFileSync(join(root, "supabase/migrations/0176_allow_same_day_staff_adhoc_cancellation.sql"), "utf8");
+const staffAdHocLedgerReversal = readFileSync(join(root, "supabase/migrations/0177_reverse_cancelled_staff_adhoc_ledger_charge.sql"), "utf8");
+const migration = `${registerFoundation}\n${registerDetails}\n${adHocBookings}\n${adHocFinance}\n${adHocPricing}\n${adHocSchoolSafety}\n${pupilReports}\n${reportReviewQueue}\n${guidedIncidentWorkflow}\n${firstAidProviderRequirement}\n${registerPreferences}\n${registerFullNames}\n${registerDayReset}\n${registerDayResetRepair}\n${registerRecheckin}\n${registerGoingHome}\n${adminChildGraduation}\n${staffAdHocCancellation}\n${staffAdHocLedgerReversal}`;
 const service = readFileSync(join(root, "src/bookingSystem.js"), "utf8");
 const supabaseClientSource = readFileSync(join(root, "src/supabaseClient.js"), "utf8");
 const interfaceSource = readFileSync(join(root, "src/BookingLab.jsx"), "utf8");
@@ -27,6 +29,7 @@ const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8"
 const stylesSource = readFileSync(join(root, "src/styles.css"), "utf8");
 const appSource = readFileSync(join(root, "src/app.jsx"), "utf8");
 const adHocFunction = readFileSync(join(root, "supabase/functions/create-staff-adhoc-booking/index.ts"), "utf8");
+const adHocCancellationFunction = readFileSync(join(root, "supabase/functions/cancel-staff-adhoc-booking/index.ts"), "utf8");
 const parentBookingFunction = readFileSync(join(root, "supabase/functions/create-parent-booking/index.ts"), "utf8");
 const registerParentNotification = readFileSync(join(root, "supabase/functions/notify-register-parent/index.ts"), "utf8");
 const childProfileUpdateRequest = readFileSync(join(root, "supabase/functions/request-child-profile-update/index.ts"), "utf8");
@@ -103,6 +106,11 @@ const checks = [
   ["ad-hoc quote applies the selected family's pricing group", /quote_staff_adhoc_pricing[\s\S]*calculate_parent_price/],
   ["outstanding family finance blocks new parent bookings", /parent_booking_finance_gate[\s\S]*OUTSTANDING_ACCOUNT_BALANCE/],
   ["ad-hoc account debit sends a parent notification", /staff_adhoc_account_debit/],
+  ["staff can cancel same-day ad-hoc care after it starts", /p_staff_actor_id[\s\S]*Europe\/London[\s\S]*Staff can only cancel future or same-day ad-hoc care/],
+  ["parent ad-hoc cancellation remains future-only", /p_staff_actor_id is not null[\s\S]*Only future ad-hoc care can be cancelled from the parent portal/],
+  ["staff cancellation records the staff actor", /p_staff_actor_id: userData\.user\.id/],
+  ["cancelled staff ad-hoc care reverses its family ledger charge", /v_is_staff_adhoc[\s\S]*v_booking\.status[\s\S]*v_target_credit := 0[\s\S]*Ad-hoc care charge reversed/],
+  ["staff ad-hoc cancellation emails the parent", /staff_adhoc_cancelled[\s\S]*emailSent/],
   ["register exposes the ad-hoc booking action", /onClick=\{openAdHocBooking\}>Ad-hoc booking/],
   ["register disables sessions already booked for that pupil", /childAlreadyBookedInSession\(adHocChildId, option\.id\)/],
   ["register highlights the pupil school before session selection", /register-adhoc-selected-child[\s\S]*Only sessions at this school can be added/],
@@ -135,6 +143,8 @@ checks.forEach(([label, pattern]) => {
     ? service
     : label === "ad-hoc account debit sends a parent notification"
       ? adHocFunction
+    : label === "staff cancellation records the staff actor" || label === "staff ad-hoc cancellation emails the parent"
+      ? adHocCancellationFunction
       : label === "outstanding family finance blocks new parent bookings"
       ? `${migration}\n${parentBookingFunction}`
     : label.startsWith("parent first aid email")

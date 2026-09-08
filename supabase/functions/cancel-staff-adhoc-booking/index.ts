@@ -75,6 +75,7 @@ serve(async (request) => {
       p_parent_id: parentId,
       p_booking_id: bookingId,
       p_reason: reason,
+      p_staff_actor_id: userData.user.id,
     });
     if (cancellationError) throw new Error(cancellationError.message || "The ad-hoc booking could not be cancelled.");
 
