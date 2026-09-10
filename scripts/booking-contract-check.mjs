@@ -23,6 +23,7 @@ const campInfoSource = readFileSync(join(root, "src/bookingLab/holidayCampInfo.j
 const platformSource = readFileSync(join(root, "src/PlatformModule.jsx"), "utf8");
 const campInfoSql = readFileSync(join(root, "supabase/migrations/0172_holiday_camp_more_info.sql"), "utf8");
 const creditReconciliationSql = readFileSync(join(root, "supabase/migrations/0173_preserve_spent_cancellation_credit.sql"), "utf8");
+const topupReconciliationSql = readFileSync(join(root, "supabase/migrations/0178_apply_topups_to_outstanding_adhoc_invoices.sql"), "utf8");
 const termsUrl = "https://docs.google.com/document/d/1ursh4YbP1e8cLG7fiUy0z3JezZWBUBG2_-7eG8wA0u0/edit?usp=sharing";
 
 const launchSession = labSessions.find((session) => session.id === "lab-willington-after") || labSessions.find((session) => session.type === "Wraparound");
@@ -89,6 +90,9 @@ if (request) validateRequestShape(request);
   ["paid booking retries cannot create duplicate payment", edgeFunction.includes("alreadyPaid: true") && edgeFunction.includes('status: "already_paid"') && edgeFunction.includes("No further payment is needed")],
   ["cancelled booking retries are explained instead of reported as successful", edgeFunction.includes('code: "PREVIOUS_BOOKING_CANCELLED"') && bookingLabSource.includes("These dates were previously cancelled")],
   ["delayed provider updates preserve issued cancellation credit", creditReconciliationSql.includes("v_issued_credit") && creditReconciliationSql.includes("new.refunded_amount = 0") && creditReconciliationSql.includes("greatest(v_target_credit, v_issued_credit)")],
+  ["parent top-ups clear older ad-hoc invoice balances", topupReconciliationSql.includes("apply_topup_credit_to_outstanding_adhoc_invoices") && topupReconciliationSql.includes("invoice.balance > 0") && topupReconciliationSql.includes("v_applied := least(v_remaining, v_invoice.balance)")],
+  ["top-up reconciliation keeps booking and invoice balances aligned", topupReconciliationSql.includes("outstanding_balance = v_balance_after") && topupReconciliationSql.includes("balance = v_balance_after") && topupReconciliationSql.includes("creditAppliedAtCreation")],
+  ["top-up reconciliation records audit evidence", topupReconciliationSql.includes("parent_topup_applied_to_adhoc_invoice") && topupReconciliationSql.includes("topUpEntryId") && topupReconciliationSql.includes("amountApplied")],
   ["sibling pricing requires at least two distinct children", siblingDiscountSql.includes("count(distinct") && siblingDiscountSql.includes("v_child_count < 2")],
   ["sibling pricing is visible in the basket", bookingLabSource.includes('10% sibling discount applied') && bookingLabSource.includes('basketPricingQuote.siblingDiscountTotal')],
   ["register identifies staff families server-side", staffFamilyRegisterSql.includes("parent_is_staff boolean") && staffFamilyRegisterSql.includes("parent_pricing_assignments") && staffFamilyRegisterSql.includes("staff_records")],

@@ -159,6 +159,8 @@ UI visibility improves usability but is not the security boundary. RLS, database
 6. Callbacks update booking, invoice and account-credit state.
 7. Confirmation, invoice and operational records are generated from saved data.
 
+When a parent tops up their account, the credit ledger automatically clears the oldest outstanding staff-added ad-hoc care first. The corresponding invoice and booking balances are updated in the same transaction, and any unused amount remains available as family credit.
+
 Frozen line pricing is an audit requirement: later rule changes must not silently reprice an existing booking.
 
 ## Build and deployment
