@@ -23,11 +23,20 @@ declare
   checkout_status text;
   result_status text := 'processed';
   actual_booking_status text;
+  linked_booking_id text;
 begin
-  -- Consistent lock order: invoice first, then event. All mutations below are
-  -- one transaction, so a crash either commits everything or nothing.
+  -- Cancellation/repricing locks booking before invoice. Match that order;
+  -- locking the invoice first can deadlock with a simultaneous cancellation.
+  select booking_id into linked_booking_id from public.booking_invoices where id=p_invoice_id;
+  if linked_booking_id is not null then
+    perform 1 from public.bookings where id::text=linked_booking_id for update;
+  end if;
   select * into i from public.booking_invoices where id=p_invoice_id for update;
   if not found then raise exception 'Invoice not found'; end if;
+  -- If a concurrent writer changed the link, retry from a fresh snapshot/order.
+  if i.booking_id is distinct from linked_booking_id then
+    return jsonb_build_object('status','conflict','invoiceId',i.id);
+  end if;
   select * into e from public.ponchopay_webhook_events where id=p_event_id for update;
   if not found or e.signature_status <> 'verified' or e.invoice_id is distinct from p_invoice_id then
     raise exception 'Verified event does not belong to invoice';
@@ -73,7 +82,7 @@ begin
     end if;
     if i.booking_id is not null then
       if p_booking_status not in ('confirmed','payment_pending') then raise exception 'Invalid booking status'; end if;
-      update public.bookings set status=p_booking_status,outstanding_balance=greatest(0,i.balance),
+      update public.bookings set status=p_booking_status::public.booking_status,outstanding_balance=greatest(0,i.balance),
         invoice_id=i.id,updated_at=clock_timestamp() where id::text=i.booking_id::text and status <> 'cancelled'
         returning status into actual_booking_status;
       if actual_booking_status='confirmed' then

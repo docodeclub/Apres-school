@@ -2,11 +2,9 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-export async function checkSessionCancellation(sql) {
+export async function checkSessionCancellation(sql, { commit, successEvent }) {
   const id = n => `00000000-0000-4000-9000-${String(n).padStart(12, '0')}`;
-  await sql(`create type booking_status as enum ('reserved','confirmed','cancelled','waitlist');
-    alter table bookings alter column status type booking_status using status::booking_status;
-    alter table bookings add column booking_reference text, add column total_amount numeric,
+  await sql(`alter table bookings add column booking_reference text, add column total_amount numeric,
       add column amendment_deadline timestamptz, add column parent_name text;
     alter table booking_items alter column booking_id type uuid using booking_id::uuid;
     alter table booking_items add column id uuid default gen_random_uuid(), add column session_id uuid,
@@ -123,4 +121,36 @@ export async function checkSessionCancellation(sql) {
   assert.deepEqual(await register(),[]);
   assert.equal(await sql(`select status from bookings where id='${id(7)}';`),'cancelled','Repricing must not reopen fully cancelled bookings');
   console.log('PASS: actual follow-up repricing retains recorded staff discount, exact cumulative credits, empty register and cancelled booking');
+  // Reset only these synthetic fixtures for an unpaid cancellation/payment race.
+  await sql(`update bookings set status='confirmed',total_amount=40,outstanding_balance=40 where id='${id(7)}';
+    update booking_items set status='confirmed' where booking_id='${id(7)}';
+    update booking_invoices set paid_amount=0,total_amount=40,balance=40,payment_status='pending' where id='synthetic-siblings';
+    delete from parent_account_credit_entries where parent_account_id='${id(2)}';`);
+  const raceEvent = {...successEvent,id:id(30),provider_event_id:'cancel-race',invoice_id:'synthetic-siblings',amount:40,expected_amount:40};
+  await sql(`insert into ponchopay_webhook_events(id,provider_event_id,event_type,invoice_id,signature_status,raw_payload_hash) values('${id(30)}','cancel-race','payment_completed','synthetic-siblings','verified','synthetic');`);
+  const invoice = () => sql("select row_to_json(i) from booking_invoices i where id='synthetic-siblings';").then(JSON.parse);
+  const before = await invoice();
+  // Hold the booking row while the payment worker starts. The cancellation and
+  // pricing share one transaction here, allowing genuine lock contention.
+  const cancellation = sql(`begin; select id from bookings where id='${id(7)}' for update; select pg_sleep(0.3);
+    select amend_parent_booking_remove_items('${id(2)}','${id(7)}',array['${id(8)}']::uuid[],'Race','parent'); select apply_booking_pricing('${id(7)}'); commit;`);
+  const payment = sql(`select pg_sleep(0.1); ${commit(raceEvent,before)}`);
+  const outcomes = await Promise.allSettled([cancellation,payment]);
+  for (const outcome of outcomes) if(outcome.status === 'rejected') throw outcome.reason;
+  await sql(commit(raceEvent,await invoice())); // Conflicting snapshot / duplicate retry.
+  assert.equal(Number((await invoice()).total_amount),30);
+  assert.equal(Number((await invoice()).paid_amount),40);
+  assert.equal(Number((await invoice()).balance),0);
+  assert.equal(await balance(),10);
+  assert.deepEqual(await register(),[id(9),id(10)]);
+  // Actual handler failure window: removal commits, repricing rolls back.
+  await cancel(id(2),id(9));
+  await assert.rejects(sql(`begin; select apply_booking_pricing('${id(7)}'); select 1/0; commit;`),/division by zero/);
+  assert.equal(Number((await invoice()).total_amount),10);
+  assert.equal(await balance(),30);
+  assert.equal((await cancel(id(2),id(9))).amended,false);
+  await reprice();
+  assert.equal(await balance(),30);
+  assert.deepEqual(await register(),[id(10)]);
+  console.log('PASS: concurrent payment/removal retry and failed repricing recovery preserve invoice, credit and sibling');
 }

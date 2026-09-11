@@ -76,7 +76,8 @@ try {
     await sql(definition);
   }
   await sql(`create role anon; create role authenticated; create role service_role;
-    create table bookings(id uuid primary key,status text,outstanding_balance numeric,invoice_id text,updated_at timestamptz);
+    create type booking_status as enum ('reserved','confirmed','cancelled','waitlist','payment_pending');
+    create table bookings(id uuid primary key,status booking_status,outstanding_balance numeric,invoice_id text,updated_at timestamptz);
     create table booking_items(booking_id text,status text,updated_at timestamptz);
     create table audit_log(action text,table_name text,record_id text,metadata jsonb);
     update booking_invoices set booking_id='00000000-0000-4000-8000-000000000020',payment_status='pending',paid_amount=0,balance=100;
@@ -172,7 +173,7 @@ try {
   await sql(commit(refundedTopup,refundSnapshot));
   assert.equal(await balance(),110,"Duplicate refund must not reverse credit twice");
   console.log("PASS: zero-total cancellation retained, cancelled booking not reopened, spent credit preserved, top-up refund and duplicate refund");
-  await (await import('./payment-session-cancellation-check.mjs')).checkSessionCancellation(sql);
+  await (await import('./payment-session-cancellation-check.mjs')).checkSessionCancellation(sql, { commit, successEvent });
   console.log(JSON.stringify({ isolatedPostgres: true, tcpEnabled: false, twoConnections: true,
     staleWriteReproduced: true, rowLockContentionVerified: true, releaseSafe: false,
     legacyFinalStatus: lost.payment_status, legacyFinalPaid: lost.paid_amount,

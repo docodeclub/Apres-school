@@ -110,3 +110,15 @@ The baseline failed at the last step: the zero-price auto-confirm branch reopene
 Scope: recorded-discount snapshot path, real cancellation/pricing/ledger/register functions, synthetic supporting schema. Fresh pricing-rule calculation, camp full-week changes, monthly balances, complete HTTP/browser workflow and concurrent cancellation-versus-payment remain unverified. The HTTP handler makes cancellation and repricing in separate transactions; this test is sequential, not proof of all-or-nothing recovery between calls.
 
 Next task: test payment arriving concurrently with cancellation/repricing, including a failure between those two calls. Verify invoice, booking and credit cannot diverge before preparing the production release.
+
+## Concurrent cancellation/payment and repricing recovery
+
+Extended the local PostgreSQL suite with overlapping connections: cancellation holds the booking row, payment starts against the old invoice snapshot, then cancellation/removal and pricing finish. The baseline exposed a missing cast from RPC text to the real booking_status enum; the harness now uses that enum from the start rather than a text fixture. After correcting the cast, the baseline exposed a deadlock caused by payment locking invoice before booking while cancellation does the reverse.
+
+Draft 0179 now locks the linked booking before invoice and event. If the invoice's booking link changes during acquisition, it returns conflict for a fresh retry. The explicit booking_status cast is included. This edits an undeployed migration only. Top-up-trigger multi-booking lock ordering and other legacy writers still require separate review; this is not a blanket concurrency guarantee.
+
+After the fixes, the overlapping two-connection scenario and retry produce invoice total £30, paid £40, balance £0 and ledger credit £10, retaining the other session and sibling on the register. A subsequent committed £20 session removal followed by an injected repricing transaction failure leaves £30 total credit and the correct £10 invoice; replaying removal is a no-op and repricing retry preserves those amounts and the sibling. Synthetic prior-case ledger entries are cleared only within the private test cluster when resetting the scenario, because the production trigger correctly preserves historical cancellation credit.
+
+All PostgreSQL scenarios and processor reliability checks pass. Evidence: `/var/folders/nt/xywj28hj06vc566919dsjssm0000gn/T/apres-payment-test-MeNBvo`. No production access/writes, deployments or emails. Failure injection tests database recovery, not an HTTP/network retry or automatic recovery worker. The current handler still executes removal and pricing separately.
+
+Next task: make individual cancellation plus repricing a single server-only transaction, update the handler to call it, and test rollback/retry. This removes the partial-success window rather than relying on the parent retrying after a repricing error.
