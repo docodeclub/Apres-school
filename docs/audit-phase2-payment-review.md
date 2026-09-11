@@ -100,3 +100,13 @@ Local PostgreSQL checks load the actual four function definitions, simulate expl
 `scripts/booking-change-auth-check.mjs` executes the real update-parent-booking handler with synthetic substitutes: missing/invalid login, inactive account and failed profile lookup cause no mutation; body-supplied identity/role and user-editable auth metadata cannot replace the verified user and database profile role. Existing handler already implements this correctly; no handler change was necessary. This is not a live authentication or profile-RLS audit.
 
 Next task: integrate the handler's follow-up `apply_booking_pricing` step into the two-child cancellation regression. The prior test proves the cancellation function and ledger, but the HTTP handler reprices afterwards; confirm discounts, credit and remaining sessions stay correct through that entire sequence. Production signature/grant verification and profile-role write permissions remain release gates.
+
+## Post-cancellation repricing regression
+
+The synthetic two-child test now loads the actual `apply_booking_pricing` definition from 0133 and invokes it after removal, matching the handler's two database calls. Fixtures contain existing 50% staff pricing-adjustment snapshots: gross £80, paid net £40 across three child-sessions. Removing the £10 item retains net £30 and £30 recorded discount, leaves the two remaining register entries, and preserves £10 ledger credit on repeat pricing. Subsequent individual removals produce cumulative £30 then £40 credit and an empty register.
+
+The baseline failed at the last step: the zero-price auto-confirm branch reopened the fully cancelled booking as confirmed. Draft migration 0181 preserves cancelled bookings in that branch; it otherwise copies the latest 0133 function unchanged. The full local PostgreSQL suite and handler authentication tests pass after the fix. Evidence: `/var/folders/nt/xywj28hj06vc566919dsjssm0000gn/T/apres-payment-test-yMuoZ6`. No deployment, real records or email sends.
+
+Scope: recorded-discount snapshot path, real cancellation/pricing/ledger/register functions, synthetic supporting schema. Fresh pricing-rule calculation, camp full-week changes, monthly balances, complete HTTP/browser workflow and concurrent cancellation-versus-payment remain unverified. The HTTP handler makes cancellation and repricing in separate transactions; this test is sequential, not proof of all-or-nothing recovery between calls.
+
+Next task: test payment arriving concurrently with cancellation/repricing, including a failure between those two calls. Verify invoice, booking and credit cannot diverge before preparing the production release.

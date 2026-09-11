@@ -88,4 +88,39 @@ export async function checkSessionCancellation(sql) {
   assert.equal(await balance(),10);
   assert.equal(await sql(`select status from booking_items where id='${id(9)}';`),'confirmed');
   console.log('PASS: real parent cancellation and register RPCs: two children, individual £10 credit, sibling/other session retained, hold released, duplicate safe, ownership and notice checks');
+  // Existing bookings have immutable pricing-adjustment snapshots. Exercise the
+  // same repricing RPC called by the HTTP handler after individual removal.
+  await sql(`alter table bookings add column payment_plan text,add column gross_total numeric,add column discount_amount numeric,add column pricing_group_id uuid,add column pricing_group_name text;
+    alter table booking_items add column quantity integer default 1;
+    alter table sessions add column price numeric,add column booking_metadata jsonb,add column programme_id uuid;
+    create table session_blocks(id uuid,label text,price numeric);
+    create table programmes(id uuid,name text,category text,location_id uuid);
+    create table locations(id uuid);
+    create table booking_pricing_adjustments(id uuid,booking_item_id uuid,original_unit_amount numeric,final_unit_amount numeric,discount_amount numeric,pricing_group_id uuid,pricing_group_name text);
+    insert into programmes values('${id(20)}','After-school Club','wraparound',null);
+    update sessions set programme_id='${id(20)}';
+    insert into session_blocks values('${id(21)}','Session 1',20),('${id(22)}','Session 2',40);
+    update booking_items set session_block_id=case when session_id='${id(5)}' then '${id(21)}'::uuid else '${id(22)}'::uuid end where booking_id='${id(7)}';
+    insert into booking_pricing_adjustments select gen_random_uuid(),id,line_total*2,line_total,line_total,null,'Synthetic 50% Staff' from booking_items where booking_id='${id(7)}';
+    update booking_items set starts_at=current_date+interval '7 days 16 hours' where id='${id(9)}';`);
+  const pricingSource = await readFile(new URL('../supabase/migrations/0133_willington_holiday_camp_pricing.sql',import.meta.url),'utf8');
+  await sql(pricingSource.slice(pricingSource.indexOf('create or replace function public.apply_booking_pricing(')));
+  await sql(await readFile(new URL('../supabase/migrations/0181_preserve_cancelled_booking_during_repricing.sql',import.meta.url),'utf8'));
+  const reprice = async () => JSON.parse(await sql(`set role service_role; select apply_booking_pricing('${id(7)}');`));
+  const repriced = await reprice();
+  assert.equal(Number(repriced.totalAmount),30);
+  assert.equal(Number(repriced.discountTotal),30,'Existing 50% discount retained');
+  assert.equal(await balance(),10);
+  assert.deepEqual(await register(),[id(9),id(10)]);
+  await reprice();
+  assert.equal(await balance(),10);
+  await cancel(id(2),id(9));
+  await reprice();
+  assert.equal(await balance(),30);
+  await cancel(id(2),id(10));
+  await reprice();
+  assert.equal(await balance(),40);
+  assert.deepEqual(await register(),[]);
+  assert.equal(await sql(`select status from bookings where id='${id(7)}';`),'cancelled','Repricing must not reopen fully cancelled bookings');
+  console.log('PASS: actual follow-up repricing retains recorded staff discount, exact cumulative credits, empty register and cancelled booking');
 }
