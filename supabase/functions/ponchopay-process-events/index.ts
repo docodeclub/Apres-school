@@ -53,9 +53,11 @@ serve(async (request) => {
   if (!supabaseUrl || !serviceRoleKey) return json({ error: "Supabase service role is not configured" }, 500);
   const serviceRoleAuthorised =
     request.headers.get("authorization") === `Bearer ${serviceRoleKey}` ||
-    request.headers.get("apikey") === serviceRoleKey ||
-    bearerRole(request.headers.get("authorization")) === "service_role";
-  if (processorToken && request.headers.get("x-processor-token") !== processorToken && !serviceRoleAuthorised) {
+    request.headers.get("apikey") === serviceRoleKey;
+  // Fail closed even if the optional processor token is not configured.
+  // A decoded JWT role is not proof that its signature was verified.
+  const processorAuthorised = Boolean(processorToken) && request.headers.get("x-processor-token") === processorToken;
+  if (!processorAuthorised && !serviceRoleAuthorised) {
     return json({ error: "Not authorised to process PonchoPay events" }, 401);
   }
 
@@ -673,6 +675,22 @@ async function processEvent(event: WebhookEvent) {
       };
     }
     const nextInvoice = buildInvoiceState(event, currentInvoice);
+    if (nextInvoice.retainSettledPayment) {
+      // A failed attempt does not reverse money already received. Keep the
+      // event for review without changing checkout, booking, receipt or email.
+      const { error: reviewError } = await supabase.from("audit_log").insert({
+        action: "ponchopay_adverse_event_after_settlement",
+        table_name: "booking_invoices",
+        record_id: null,
+        metadata: { invoiceId, providerEventId: event.provider_event_id, eventType: event.event_type,
+          settledPaymentId: currentInvoice.provider_payment_id || null, incomingPaymentId: event.payment_id,
+          reason: nextInvoice.processingOutcome },
+      });
+      if (reviewError) throw reviewError;
+      await markEvent(event.id, "skipped", nextInvoice.processingOutcome);
+      return { providerEventId: event.provider_event_id, eventType: event.event_type, invoiceId,
+        status: "skipped", reason: "adverse_event_after_settlement" };
+    }
     await upsertInvoice(nextInvoice);
     await updateCheckoutSessionFromEvent(event, nextInvoice.id);
 
@@ -855,7 +873,18 @@ function buildInvoiceState(event: WebhookEvent, currentInvoice: Record<string, u
     },
     updated_at: new Date().toISOString(),
     processingOutcome: "",
+    retainSettledPayment: false,
   };
+
+  if (["payment_failed", "payment_cancelled"].includes(event.event_type)
+    && ["paid", "reconciled", "bank_confirmed", "paid_by_fallback_card"].includes(stringValue(currentInvoice?.payment_status))
+    && moneyValue(currentInvoice?.total_amount) > 0
+    && currentPaid >= moneyValue(currentInvoice?.total_amount) && currentRefunded === 0) {
+    return { ...base, retainSettledPayment: true,
+      provider_payment_id: stringValue(currentInvoice?.provider_payment_id) || null,
+      provider_reference: stringValue(currentInvoice?.provider_reference) || null,
+      processingOutcome: "Failure/cancellation received after full settlement; existing paid state retained, payment attempt requires finance review" };
+  }
 
   switch (event.event_type) {
     case "guarantee_created":
@@ -1017,7 +1046,7 @@ function buildInvoiceState(event: WebhookEvent, currentInvoice: Record<string, u
 }
 
 async function upsertInvoice(invoice: ReturnType<typeof buildInvoiceState>) {
-  const { processingOutcome, ...row } = invoice;
+  const { processingOutcome, retainSettledPayment, ...row } = invoice;
   const { error } = await supabase
     .from("booking_invoices")
     .upsert(row, { onConflict: "id" });
@@ -1347,19 +1376,6 @@ function metadataObject(value: unknown) {
     return isObject(parsed) ? parsed : null;
   } catch {
     return null;
-  }
-}
-
-function bearerRole(authorization: string | null) {
-  const token = stringValue(authorization).replace(/^Bearer\s+/i, "");
-  const payload = token.split(".")[1];
-  if (!payload) return "";
-  try {
-    const normalised = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
-    const claims = JSON.parse(atob(normalised));
-    return stringValue(claims?.role);
-  } catch {
-    return "";
   }
 }
 
