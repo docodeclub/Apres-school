@@ -31,7 +31,7 @@ for (const headers of [{ "x-processor-token": "synthetic-processor-secret" }, { 
 }
 const p = processor();
 const original = { id: "synthetic-invoice", total_amount: 100, paid_amount: 0, refunded_amount: 0, currency: "GBP" };
-const event = type => ({ id: "synthetic-event", event_type: type, invoice_id: original.id, amount: 100, expected_amount: 100, currency: "GBP", raw_payload: {} });
+const event = type => ({ id: "synthetic-event", provider_event_id: type, event_type: type, invoice_id: original.id, amount: 100, expected_amount: 100, currency: "GBP", raw_payload: {} });
 const paid = p.context.buildInvoiceState(event("payment_completed"), original);
 const replayed = p.context.buildInvoiceState(event("payment_completed"), paid);
 assert.equal(replayed.paid_amount, 100);
@@ -52,7 +52,12 @@ for (const status of ["paid", "reconciled", "bank_confirmed", "paid_by_fallback_
       assert.equal(next.provider_payment_id, "settled-attempt");
       assert.equal(next.retainSettledPayment, true);
       const writes = [];
-      const database = { from(table) {
+      const database = { async rpc(name, args) {
+        assert.equal(name, "commit_ponchopay_event");
+        assert.equal(args.p_next.retainSettledPayment, true);
+        writes.push(["atomic_rpc", args]);
+        return { data: { status: "skipped", reason: "adverse_event_after_settlement" }, error: null };
+      }, from(table) {
         return {
           select() { assert.equal(table, "booking_invoices"); return { eq() { return { maybeSingle: async () => ({ data: settled }) }; } }; },
           update(value) { assert.equal(table, "ponchopay_webhook_events"); writes.push([table, value]); return { eq: async () => ({ error: null }) }; },
@@ -62,7 +67,7 @@ for (const status of ["paid", "reconciled", "bank_confirmed", "paid_by_fallback_
       const isolated = processor(undefined, database);
       const result = await isolated.context.processEvent(incoming);
       assert.equal(result.reason, "adverse_event_after_settlement");
-      assert.ok(writes.some(([table]) => table === "audit_log"));
+      assert.ok(writes.some(([table]) => table === "atomic_rpc"));
       replayCases++;
     }
   }
@@ -77,4 +82,37 @@ assert.equal(refund.refunded_amount, 20);
 assert.equal(refund.retainSettledPayment, false);
 assert.equal(p.context.buildInvoiceState(event("recurring_payment_cancelled"), paid).payment_status, "payment_plan_cancelled");
 console.log(`PASS: ${replayCases} adverse-event state and processor-path replays; refunds, plan cancellation and unpaid failures unchanged`);
+function outboxDatabase(row) {
+  return { from(table) {
+    assert.equal(table, "payment_notification_outbox");
+    let change = null;
+    const filters = [];
+    function execute(single = false) {
+      if (!filters.every(test => test(row))) return { data: single ? null : [], error: null };
+      if (change) Object.assign(row, change);
+      return { data: single ? structuredClone(row) : [structuredClone(row)], error: null };
+    }
+    const query = {
+      select() { return query; }, update(value) { change = value; return query; },
+      eq(key,value) { filters.push(r => r[key] === value); return query; },
+      lt(key,value) { filters.push(r => r[key] < value); return query; },
+      order() { return query; }, limit() { return Promise.resolve(execute()); },
+      maybeSingle() { return Promise.resolve(execute(true)); },
+      then(resolve,reject) { return Promise.resolve(execute()).then(resolve,reject); },
+    };
+    return query;
+  } };
+}
+for (const scenario of ["parallel", "uncertain", "abandoned"]) {
+  const row = { event_id: "synthetic-notification", status: scenario === "abandoned" ? "sending" : "pending",
+    updated_at: "2000-01-01T00:00:00Z", payload: { event: {}, invoice: {}, receiptId: null, bookingStatus: "confirmed" } };
+  const worker = processor(undefined,outboxDatabase(row));
+  let sends = 0;
+  worker.context.sendPaymentLifecycleEmail = async () => { sends++; if (scenario === "uncertain") throw new Error("Synthetic uncertain delivery"); return { status: "sent" }; };
+  await Promise.all([worker.context.drainPaymentNotifications(),worker.context.drainPaymentNotifications()]);
+  await worker.context.drainPaymentNotifications();
+  assert.equal(sends,scenario === "abandoned" ? 0 : 1);
+  assert.equal(row.status,scenario === "parallel" ? "sent" : "review");
+}
+console.log("PASS: notification concurrent claim, uncertain delivery and interrupted-worker review without blind resend");
 console.log(JSON.stringify({ authCasesPassed: 11, duplicateCompletion: "passes pure state calculation", weakerReportedComplete: "preserves paid", lateFailure: { status: lateFailure.payment_status, paid: lateFailure.paid_amount, balance: lateFailure.balance }, limits: "No database transaction, provider callback or email executed" }, null, 2));

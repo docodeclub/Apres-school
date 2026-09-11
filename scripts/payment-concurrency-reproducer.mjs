@@ -40,8 +40,13 @@ vm.runInContext(`
   markEvent = async () => {};
 `, context);
 const event = type => ({ id: type, provider_event_id: type, event_type: type, invoice_id: invoice.id, amount: 100, expected_amount: 100, currency: "GBP", raw_payload: {} });
-const results = await Promise.all([context.processEvent(event("payment_completed")), context.processEvent(event("payment_failed"))]);
-assert.ok(results.every(result => result.status === "processed"));
+// Historical unguarded algorithm retained as a negative control. The current
+// processor uses commit_ponchopay_event; see the real PostgreSQL regression test.
+async function legacyProcess(e) {
+  const current = await context.testRead();
+  await context.testWrite(context.buildInvoiceState(e, current));
+}
+await Promise.all([legacyProcess(event("payment_completed")), legacyProcess(event("payment_failed"))]);
 assert.deepEqual(writes, ["paid", "failed"]);
 assert.equal(invoice.payment_status, "failed");
 assert.equal(invoice.paid_amount, 0);

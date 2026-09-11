@@ -69,9 +69,60 @@ try {
   lock.stdin.end("rollback;\n");
   await exited;
   assert.ok(contentionRejected, "A separate writer is blocked by the row lock");
+  const foundation = await readFile(new URL("../supabase/migrations/0041_booking_payment_foundations_backfill.sql", import.meta.url), "utf8");
+  for (const table of ["ponchopay_webhook_events", "booking_receipts", "ponchopay_checkout_sessions"]) {
+    const definition = foundation.match(new RegExp(`create table if not exists ${table} \\([\\s\\S]*?\\n\\);`))?.[0];
+    assert.ok(definition);
+    await sql(definition);
+  }
+  await sql(`create role anon; create role authenticated; create role service_role;
+    create table bookings(id text primary key,status text,outstanding_balance numeric,invoice_id text,updated_at timestamptz);
+    create table booking_items(booking_id text,status text,updated_at timestamptz);
+    create table audit_log(action text,table_name text,record_id text,metadata jsonb);
+    update booking_invoices set booking_id='synthetic-booking',payment_status='pending',paid_amount=0,balance=100;
+    insert into bookings values('synthetic-booking','payment_pending',100,'synthetic-invoice',now());
+    insert into booking_items values('synthetic-booking','reserved',now());
+    insert into ponchopay_checkout_sessions(invoice_id) values('synthetic-invoice');`);
+  await sql(await readFile(new URL("../supabase/migrations/0179_atomic_payment_event_commit.sql", import.meta.url), "utf8"));
+  const successEvent = { ...event("payment_completed"), id: "00000000-0000-4000-8000-000000000010", provider_event_id: "atomic-success" };
+  const failureEvent = { ...event("payment_failed"), id: "00000000-0000-4000-8000-000000000011", provider_event_id: "atomic-failure" };
+  for (const e of [successEvent, failureEvent]) await sql(`insert into ponchopay_webhook_events(id,provider_event_id,event_type,invoice_id,signature_status,raw_payload_hash) values('${e.id}','${e.provider_event_id}','${e.event_type}','synthetic-invoice','verified','synthetic');`);
+  const snapshot = (await read()).invoice;
+  function commit(e, current) {
+    const next = context.buildInvoiceState(e,current);
+    return `select commit_ponchopay_event('${e.id}','synthetic-invoice',${quoted(current)},${quoted(next)},'${context.bookingStatusForInvoice(next.payment_status)}',${e.event_type === "payment_completed" ? quoted({ receipt_number: "synthetic-receipt", amount: 100 }) : "null"});`;
+  }
+  const outcomes = await Promise.all([sql(commit(successEvent,snapshot)), sql(commit(failureEvent,snapshot))]);
+  assert.equal(outcomes.map(JSON.parse).filter(r => r.status === "conflict").length,1);
+  const loser = JSON.parse(outcomes[0]).status === "conflict" ? successEvent : failureEvent;
+  await sql(commit(loser,(await read()).invoice));
+  assert.equal((await read()).invoice.payment_status,"paid");
+  assert.equal(Number((await read()).invoice.paid_amount),100);
+  assert.equal(await sql("select status from bookings;"),"confirmed");
+  assert.equal(await sql("select status from booking_items;"),"confirmed");
+  assert.equal(await sql("select status from ponchopay_checkout_sessions;"),"paid");
+  assert.equal(await sql("select count(*) from booking_receipts;"),"1");
+  const outboxBefore = await sql("select count(*) from payment_notification_outbox;");
+  assert.equal(JSON.parse(await sql(commit(successEvent,snapshot))).status,"existing");
+  assert.equal(await sql("select count(*) from payment_notification_outbox;"),outboxBefore);
+  // Emulate a crash after every statement executed but before transaction commit.
+  const crash = { ...successEvent,id:"00000000-0000-4000-8000-000000000012",provider_event_id:"atomic-crash" };
+  await sql(`insert into ponchopay_webhook_events(id,provider_event_id,event_type,invoice_id,signature_status,raw_payload_hash) values('${crash.id}','atomic-crash','payment_completed','synthetic-invoice','verified','synthetic');`);
+  await sql(`begin; ${commit(crash,(await read()).invoice)} rollback;`);
+  assert.equal((await read()).invoice.payment_status,"paid");
+  assert.equal(await sql(`select processing_status from ponchopay_webhook_events where id='${crash.id}';`),"received");
+  assert.equal(await sql(`select count(*) from payment_notification_outbox where event_id='${crash.id}';`),"0");
+  const retrySnapshot = (await read()).invoice;
+  const retries = await Promise.all([sql(commit(crash,retrySnapshot)),sql(commit(crash,retrySnapshot))]);
+  assert.deepEqual(retries.map(text => JSON.parse(text).status).sort(),["existing","processed"]);
+  assert.equal(await sql(`select count(*) from payment_notification_outbox where event_id='${crash.id}';`),"1");
+  assert.equal(await sql("select has_function_privilege('anon','commit_ponchopay_event(uuid,text,jsonb,jsonb,text,jsonb)','EXECUTE');"),"f");
+  assert.equal(await sql("select has_function_privilege('authenticated','commit_ponchopay_event(uuid,text,jsonb,jsonb,text,jsonb)','EXECUTE');"),"f");
+  console.log("PASS: atomic conflict/retry, paid booking/items/checkout, one receipt, duplicate delivery intent prevention, crash rollback and server-only grants");
   console.log(JSON.stringify({ isolatedPostgres: true, tcpEnabled: false, twoConnections: true,
     staleWriteReproduced: true, rowLockContentionVerified: true, releaseSafe: false,
-    finalStatus: lost.payment_status, finalPaid: lost.paid_amount, evidenceDirectory: root,
+    legacyFinalStatus: lost.payment_status, legacyFinalPaid: lost.paid_amount,
+    atomicFinalStatus: (await read()).invoice.payment_status, atomicConcurrencyPassed: true, evidenceDirectory: root,
     scope: "Real PostgreSQL invoice table and real state function; not full Supabase/provider/end-to-end integration." }, null, 2));
 } finally {
   if (started) await run(join(bin, "pg_ctl"), ["-D", data, "-m", "fast", "-w", "stop"], { env });

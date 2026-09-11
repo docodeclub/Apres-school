@@ -108,6 +108,8 @@ serve(async (request) => {
       results.push(await processEvent(event));
     }
 
+    await drainPaymentNotifications();
+
     return json({
       processed: results.filter((result) => result.status === "processed").length,
       skipped: results.filter((result) => result.status === "skipped").length,
@@ -656,84 +658,63 @@ async function recordVerifiedCardPayment(input: {
 
 async function processEvent(event: WebhookEvent) {
   const invoiceId = await resolveInvoiceId(event);
-  if (!invoiceId) {
-    await markEvent(event.id, "skipped", "No invoice id found; leaving for finance review");
-    return { providerEventId: event.provider_event_id, eventType: event.event_type, status: "skipped", reason: "missing_invoice_id" };
-  }
-
+  if (!invoiceId) return { providerEventId: event.provider_event_id, status: "skipped", reason: "missing_invoice_id" };
   try {
-    const currentInvoice = await getInvoice(invoiceId);
-    if (!currentInvoice) {
-      const outcome = `Invoice ${invoiceId} was not found; event left for finance review`;
-      await markEvent(event.id, "skipped", outcome);
-      return {
-        providerEventId: event.provider_event_id,
-        eventType: event.event_type,
-        invoiceId,
-        status: "skipped",
-        reason: "invoice_not_found",
-      };
-    }
-    const nextInvoice = buildInvoiceState(event, currentInvoice);
-    if (nextInvoice.retainSettledPayment) {
-      // A failed attempt does not reverse money already received. Keep the
-      // event for review without changing checkout, booking, receipt or email.
-      const { error: reviewError } = await supabase.from("audit_log").insert({
-        action: "ponchopay_adverse_event_after_settlement",
-        table_name: "booking_invoices",
-        record_id: null,
-        metadata: { invoiceId, providerEventId: event.provider_event_id, eventType: event.event_type,
-          settledPaymentId: currentInvoice.provider_payment_id || null, incomingPaymentId: event.payment_id,
-          reason: nextInvoice.processingOutcome },
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const currentInvoice = await getInvoice(invoiceId);
+      if (!currentInvoice) return { providerEventId: event.provider_event_id, status: "skipped", reason: "invoice_not_found" };
+      const nextInvoice = buildInvoiceState(event, currentInvoice);
+      const suffix = event.provider_event_id.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(-14);
+      const receipt = shouldIssueReceipt(event.event_type) ? {
+        receipt_number: `APR-${new Date().getFullYear()}-${suffix}`,
+        amount: normaliseEventAmount(event.amount || event.expected_amount, 0),
+      } : null;
+      const { data, error } = await supabase.rpc("commit_ponchopay_event", {
+        p_event_id: event.id, p_invoice_id: invoiceId, p_expected: currentInvoice,
+        p_next: nextInvoice, p_booking_status: bookingStatusForInvoice(nextInvoice.payment_status), p_receipt: receipt,
       });
-      if (reviewError) throw reviewError;
-      await markEvent(event.id, "skipped", nextInvoice.processingOutcome);
-      return { providerEventId: event.provider_event_id, eventType: event.event_type, invoiceId,
-        status: "skipped", reason: "adverse_event_after_settlement" };
+      if (error) throw error;
+      if (data?.status === "conflict") continue;
+      return { providerEventId: event.provider_event_id, eventType: event.event_type, ...data };
     }
-    await upsertInvoice(nextInvoice);
-    await updateCheckoutSessionFromEvent(event, nextInvoice.id);
-
-    let receiptId: string | null = null;
-    if (shouldIssueReceipt(event.event_type)) {
-      receiptId = await ensureReceipt(event, nextInvoice.id);
-    }
-    const bookingStatus = await updateBookingFromInvoice(event, nextInvoice);
-    const emailLog = await sendPaymentLifecycleEmail(event, nextInvoice, receiptId, bookingStatus);
-
-    await markEvent(event.id, "processed", nextInvoice.processingOutcome);
-    await supabase.from("audit_log").insert({
-      action: "ponchopay_invoice_event_processed",
-      table_name: "booking_invoices",
-      record_id: null,
-      metadata: {
-        invoiceId: nextInvoice.id,
-        providerEventId: event.provider_event_id,
-        eventType: event.event_type,
-        paymentStatus: nextInvoice.payment_status,
-        parentPortalStatus: nextInvoice.parent_portal_status,
-        receiptId,
-        emailLogId: stringValue(emailLog?.id),
-        emailStatus: stringValue(emailLog?.status),
-        bookingStatus,
-      },
-    });
-
-    return {
-      providerEventId: event.provider_event_id,
-      eventType: event.event_type,
-      invoiceId: nextInvoice.id,
-      status: "processed",
-      paymentStatus: nextInvoice.payment_status,
-      parentPortalStatus: nextInvoice.parent_portal_status,
-      receiptId,
-      emailLog,
-      bookingStatus,
-    };
+    return { providerEventId: event.provider_event_id, status: "failed", reason: "concurrent_update_retry" };
   } catch (error) {
-    const message = errorMessage(error) || "Processing failed";
-    await markEvent(event.id, "retry", message);
-    return { providerEventId: event.provider_event_id, eventType: event.event_type, status: "failed", reason: message };
+    // Do not overwrite a terminal event status after an uncertain commit response.
+    // The next poll retries the still-received event; the RPC detects committed duplicates.
+    return { providerEventId: event.provider_event_id, status: "failed", reason: errorMessage(error) };
+  }
+}
+
+async function drainPaymentNotifications() {
+  // An interrupted send has an uncertain external outcome. Surface it for
+  // review after 30 minutes; never reset it to pending and risk a duplicate.
+  const { error: recoveryError } = await supabase.from("payment_notification_outbox")
+    .update({ status: "review", updated_at: new Date().toISOString() }).eq("status", "sending")
+    .lt("updated_at", new Date(Date.now() - 30 * 60 * 1000).toISOString());
+  if (recoveryError) throw recoveryError;
+  const { data: pending, error } = await supabase.from("payment_notification_outbox")
+    .select("event_id").eq("status", "pending").order("created_at", { ascending: true }).limit(20);
+  if (error) throw error;
+  for (const item of pending || []) {
+    const { data: claimed, error: claimError } = await supabase.from("payment_notification_outbox")
+      .update({ status: "sending", updated_at: new Date().toISOString() })
+      .eq("event_id", item.event_id).eq("status", "pending").select("*").maybeSingle();
+    if (claimError) throw claimError;
+    if (!claimed) continue;
+    try {
+      const payload = claimed.payload;
+      const result = await sendPaymentLifecycleEmail(payload.event, payload.invoice, payload.receiptId, payload.bookingStatus);
+      const status = !result || result.status === "sent" ? "sent" : "review";
+      const { error: finishError } = await supabase.from("payment_notification_outbox")
+        .update({ status, updated_at: new Date().toISOString() }).eq("event_id", item.event_id).eq("status", "sending");
+      if (finishError) throw finishError;
+    } catch (error) {
+      // Delivery may have succeeded before the connection failed. Never blindly
+      // resend: leave durable review evidence without reprocessing financial state.
+      await supabase.from("payment_notification_outbox")
+        .update({ status: "review", updated_at: new Date().toISOString() }).eq("event_id", item.event_id).eq("status", "sending");
+      console.error("Payment notification requires review", item.event_id, errorMessage(error));
+    }
   }
 }
 

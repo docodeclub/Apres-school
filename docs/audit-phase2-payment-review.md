@@ -47,3 +47,22 @@ The first run passed its reproduction assertions: two real PostgreSQL connection
 This is a working isolated PostgreSQL test environment, not a full Supabase emulator. Auth/storage, provider callbacks, email and the entire migration chain are not exercised. The late-event fix remains blocked from release. Next implement an atomic per-invoice transaction/outbox path and extend this harness to prove financial and downstream idempotency under parallel workers and crash/retry conditions.
 
 Rerun with Node 22.13+ (or the available Node 24 runtime): `node scripts/payment-postgres-concurrency-check.mjs`. PostgreSQL binaries are resolved only from `/opt/homebrew/opt/postgresql@17/bin`; no production credentials are loaded.
+
+## Atomic implementation — local, not deployed
+
+Migration 0179 adds a service-only commit RPC and RLS-protected notification outbox. The RPC locks the invoice then event, validates a verified matching event, rejects stale invoice snapshots, and atomically commits invoice, checkout, receipt, booking/item changes, audit, event completion and notification intent. Existing database triggers execute within that same transaction. Duplicate events return existing without replaying writes. The processor rereads and recomputes on a conflict (up to four attempts), leaving unresolved events available for a subsequent invocation. An uncertain commit response does not reset a completed event.
+
+Notification delivery is outside the financial transaction. Concurrent workers claim a pending row once. A known failure or uncertain send goes to review; a sending row abandoned for 30 minutes goes to review on the next invocation rather than being blindly resent. This deliberately does not promise exactly-once email delivery: a crash can leave delivery uncertain, requiring provider/log review. No test used the actual email function/provider.
+
+Passed local tests:
+
+- Real PostgreSQL conflicting workers: one commits, one conflicts, loser rereads; paid invoice, confirmed booking/item and paid checkout remain consistent.
+- Concurrent duplicate recovery: one processed, one existing; only one durable notification intent.
+- Transaction rollback before commit preserves the original invoice and received event; subsequent retry succeeds.
+- Duplicate retry after commit produces no second receipt or notification intent.
+- Anonymous/authenticated roles cannot execute the service RPC.
+- 11 processor access cases, 24 adverse-event replay cases, three notification recovery/concurrency scenarios, and existing 105-check provider contract.
+
+Release gates still open: the PostgreSQL harness uses the repository's invoice/event/receipt/checkout definitions but minimal booking/item/audit fixtures, not the full migration chain. Run the full credit/top-up/booking-capacity trigger stack and test migration compatibility before production. Manual repair actions still contain direct writes; review their interaction with the new path. Add an operational view/owner for notification review items and ensure a regular processor invocation drains pending items after crashes. These are not reasons to revert the live authorisation fix, which remains separate.
+
+Next task: run full-ledger top-up, credit and cancellation regression tests against the complete isolated schema, then prepare a coordinated migration-and-function release. Deploying only the new function would fail because the RPC/outbox are required. No production migration or additional function deployment was performed in this batch.
