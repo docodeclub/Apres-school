@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { bookedSessionValue, bookingItemValue } from "./bookingLab/sessionValue.js";
 import {
   defaultFamilyAccounts,
   defaultLabRules,
@@ -4474,7 +4475,18 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         && (item.sessionKey ? item.sessionKey === sessionKey : (item.blocks || []).some((savedBlock) => bookingBlockIdentity(savedBlock) === sessionKey))
       ));
       const childMultiplier = Math.max(1, Number(draft.childCount || draft.children?.length || 1));
-      const creditAmount = Math.max(0, Number(sessionRow.price || 0) * childMultiplier);
+      const rowDate = labDayIso(row.day);
+      const rowBlockLabels = sessionRow.blocks.map((savedBlock) => String(savedBlock.label || "").trim()).filter(Boolean);
+      const liveItemsForRow = liveItems.filter((item) => {
+        const sameDay = rowDate && bookingItemDate(item) === rowDate;
+        const sameBlock = !rowBlockLabels.length || rowBlockLabels.includes(bookingItemLabel(item));
+        const itemChildId = item.childId || item.child_id;
+        const sameChild = block.childId && itemChildId
+          ? String(block.childId) === String(itemChildId)
+          : !block.childName || block.childName.trim().toLowerCase() === bookingItemChildName(item).trim().toLowerCase();
+        return sameDay && sameBlock && sameChild;
+      });
+      const creditAmount = bookedSessionValue(liveItemsForRow, block, childMultiplier);
       const livePaidBalance = Math.max(0, Number(liveInvoice?.paidAmount || 0) - Number(liveInvoice?.refundedAmount || 0));
       const liveInvoiceTotal = Math.max(0, Number(liveInvoice?.totalAmount || 0));
       const postedCreditAmount = (liveParentLedger.creditEntries || [])
@@ -4491,14 +4503,6 @@ export default function BookingLab({ setPage, mode = "lab" }) {
           ? Math.min(creditAmount, Math.max(0, livePaidBalance - liveInvoiceTotal))
           : Math.max(0, Number(cancelledSession.creditAmount || 0))
         : 0;
-      const rowDate = labDayIso(row.day);
-      const rowBlockLabels = sessionRow.blocks.map((savedBlock) => String(savedBlock.label || "").trim()).filter(Boolean);
-      const liveItemsForRow = liveItems
-        .filter((item) => {
-          const sameDay = rowDate && bookingItemDate(item) === rowDate;
-          const sameBlock = !rowBlockLabels.length || rowBlockLabels.includes(bookingItemLabel(item));
-          return sameDay && sameBlock;
-        });
       const liveItemIds = liveItemsForRow
         .map((item) => item.id)
         .filter(Boolean);
@@ -4624,7 +4628,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
             : "Date saved";
           const startTime = validStart ? startsAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : "";
           const endTime = validEnd ? endsAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : "";
-          const amount = Math.max(0, Number(item.unitAmount || item.unit_amount || 0));
+          const amount = bookingItemValue(item);
           const future = validStart ? startsAt > new Date() : false;
           const cancellationPolicy = individualSessionCancellationPolicy(validStart ? startsAt : null, rules.cancellationHours);
           const syntheticDraft = {
