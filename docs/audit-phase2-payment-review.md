@@ -37,3 +37,13 @@ This is an in-memory reproduction, not a database staging test or evidence of a 
 Current accessible projects are Après School (production) and the unrelated docode-studio. Neither is an approved isolated test target. Docker, Podman and psql were unavailable, and no Docker/Postgres application was found. Do not create test financial records in either remote project.
 
 Next task: provision/identify isolated PostgreSQL/Supabase staging, then implement and verify atomic per-invoice processing, including event claiming and downstream side effects. A JavaScript process-local lock is insufficient across independent workers. Test conflicting events, worker crashes/retries, receipts, credit and notification deduplication before releasing the late-event change. The deployed authorisation-only fix is unaffected.
+
+## Local PostgreSQL environment established
+
+With approval, PostgreSQL 17.11 was installed through Homebrew (including its required dependencies). No background service was enabled. `scripts/payment-postgres-concurrency-check.mjs` creates a fresh disposable cluster for each run, rejects TCP connections, uses a private Unix socket, ignores database environment variables, and stops the server in its finally block. It never accepts a remote database URL. Synthetic evidence directories are retained in the macOS temporary directory for inspection.
+
+The first run passed its reproduction assertions: two real PostgreSQL connections read the same pending invoice; the actual processor's state calculation produced a paid update and a stale failed update; applying those to the repository's invoice-table definition reproduced failed/£0. A separate row-lock test confirmed that a competing writer times out while another transaction holds the invoice row lock.
+
+This is a working isolated PostgreSQL test environment, not a full Supabase emulator. Auth/storage, provider callbacks, email and the entire migration chain are not exercised. The late-event fix remains blocked from release. Next implement an atomic per-invoice transaction/outbox path and extend this harness to prove financial and downstream idempotency under parallel workers and crash/retry conditions.
+
+Rerun with Node 22.13+ (or the available Node 24 runtime): `node scripts/payment-postgres-concurrency-check.mjs`. PostgreSQL binaries are resolved only from `/opt/homebrew/opt/postgresql@17/bin`; no production credentials are loaded.
