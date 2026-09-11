@@ -90,7 +90,7 @@ try {
   const snapshot = (await read()).invoice;
   function commit(e, current) {
     const next = context.buildInvoiceState(e,current);
-    return `select commit_ponchopay_event('${e.id}','synthetic-invoice',${quoted(current)},${quoted(next)},'${context.bookingStatusForInvoice(next.payment_status)}',${e.event_type === "payment_completed" ? quoted({ receipt_number: "synthetic-receipt", amount: 100 }) : "null"});`;
+    return `select commit_ponchopay_event('${e.id}','synthetic-invoice',${quoted(current)},${quoted(next)},'${context.bookingStatusForInvoice(next.payment_status)}',${e.event_type === "payment_completed" ? quoted({ receipt_number: `synthetic-${e.provider_event_id}`, amount: 100 }) : "null"});`;
   }
   const outcomes = await Promise.all([sql(commit(successEvent,snapshot)), sql(commit(failureEvent,snapshot))]);
   assert.equal(outcomes.map(JSON.parse).filter(r => r.status === "conflict").length,1);
