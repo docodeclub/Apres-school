@@ -1,5 +1,11 @@
 # Payment and cancellation release approval checklist
 
+## Permissions-only fix deployed — 11 September 2026
+
+Following explicit approval, applied only the transactional SQL in 0180 to linked production project `djkfuftbtfthjpezvjuu` using `db query --linked --file`. Before execution, the three parent booking-change functions had PUBLIC EXECUTE; the ad-hoc function was already restricted. Afterwards, catalog checks confirm all four functions deny anon/authenticated EXECUTE and retain service_role EXECUTE. Each ACL is now `{postgres=X/postgres,service_role=X/postgres}`.
+
+No Edge functions, other migrations, customer records or emails were changed. Verification was by permissions inspection, not real customer booking mutations. The SQL was applied directly; this does not claim a Supabase migration-history entry was added. Future release tooling must account for this already-applied, idempotent permissions change. The larger rollout below remains gated and undeployed.
+
 ## Read-only production review — 11 September 2026
 
 Target confirmed from linked project: `djkfuftbtfthjpezvjuu` (Après School). Only catalog SELECTs were issued; no customer rows, booking mutations, function execution tests or emails. CLI uses its authenticated Management API path.
