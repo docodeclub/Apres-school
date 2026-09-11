@@ -76,12 +76,12 @@ try {
     await sql(definition);
   }
   await sql(`create role anon; create role authenticated; create role service_role;
-    create table bookings(id text primary key,status text,outstanding_balance numeric,invoice_id text,updated_at timestamptz);
+    create table bookings(id uuid primary key,status text,outstanding_balance numeric,invoice_id text,updated_at timestamptz);
     create table booking_items(booking_id text,status text,updated_at timestamptz);
     create table audit_log(action text,table_name text,record_id text,metadata jsonb);
-    update booking_invoices set booking_id='synthetic-booking',payment_status='pending',paid_amount=0,balance=100;
-    insert into bookings values('synthetic-booking','payment_pending',100,'synthetic-invoice',now());
-    insert into booking_items values('synthetic-booking','reserved',now());
+    update booking_invoices set booking_id='00000000-0000-4000-8000-000000000020',payment_status='pending',paid_amount=0,balance=100;
+    insert into bookings values('00000000-0000-4000-8000-000000000020','payment_pending',100,'synthetic-invoice',now());
+    insert into booking_items values('00000000-0000-4000-8000-000000000020','reserved',now());
     insert into ponchopay_checkout_sessions(invoice_id) values('synthetic-invoice');`);
   await sql(await readFile(new URL("../supabase/migrations/0179_atomic_payment_event_commit.sql", import.meta.url), "utf8"));
   const successEvent = { ...event("payment_completed"), id: "00000000-0000-4000-8000-000000000010", provider_event_id: "atomic-success" };
@@ -90,7 +90,7 @@ try {
   const snapshot = (await read()).invoice;
   function commit(e, current) {
     const next = context.buildInvoiceState(e,current);
-    return `select commit_ponchopay_event('${e.id}','synthetic-invoice',${quoted(current)},${quoted(next)},'${context.bookingStatusForInvoice(next.payment_status)}',${e.event_type === "payment_completed" ? quoted({ receipt_number: `synthetic-${e.provider_event_id}`, amount: 100 }) : "null"});`;
+    return `select commit_ponchopay_event('${e.id}','${current.id}',${quoted(current)},${quoted(next)},'${context.bookingStatusForInvoice(next.payment_status)}',${e.event_type === "payment_completed" ? quoted({ receipt_number: `synthetic-${e.provider_event_id}`, amount: e.amount }) : "null"});`;
   }
   const outcomes = await Promise.all([sql(commit(successEvent,snapshot)), sql(commit(failureEvent,snapshot))]);
   assert.equal(outcomes.map(JSON.parse).filter(r => r.status === "conflict").length,1);
@@ -119,6 +119,59 @@ try {
   assert.equal(await sql("select has_function_privilege('anon','commit_ponchopay_event(uuid,text,jsonb,jsonb,text,jsonb)','EXECUTE');"),"f");
   assert.equal(await sql("select has_function_privilege('authenticated','commit_ponchopay_event(uuid,text,jsonb,jsonb,text,jsonb)','EXECUTE');"),"f");
   console.log("PASS: atomic conflict/retry, paid booking/items/checkout, one receipt, duplicate delivery intent prevention, crash rollback and server-only grants");
+  await sql(`alter table profiles add column email text, add column active boolean default true;
+    create schema auth; create function auth.uid() returns uuid language sql as 'select null::uuid';
+    create table parent_accounts(id uuid primary key,profile_id uuid,email text);
+    create table parent_account_holders(parent_account_id uuid,profile_id uuid,status text);
+    alter table bookings add column parent_account_id uuid, add column parent_id uuid, add column source text,
+      add column metadata jsonb default '{}'::jsonb, add column due_today numeric;
+    alter table audit_log add column actor_id uuid;`);
+  for (const file of ["0057_parent_account_credit_ledger.sql","0059_parent_credit_topups.sql","0173_preserve_spent_cancellation_credit.sql","0177_reverse_cancelled_staff_adhoc_ledger_charge.sql","0178_apply_topups_to_outstanding_adhoc_invoices.sql"]) {
+    await sql(await readFile(new URL(`../supabase/migrations/${file}`,import.meta.url),"utf8"));
+  }
+  const account = "00000000-0000-4000-8000-000000000030";
+  const care = "00000000-0000-4000-8000-000000000031";
+  await sql(`insert into parent_accounts(id,email) values('${account}','synthetic@example.invalid');
+    insert into bookings(id,status,parent_account_id,source,invoice_id,outstanding_balance) values('${care}','confirmed','${account}','staff_adhoc','synthetic-care',30);
+    insert into booking_invoices(id,booking_id,total_amount,balance,metadata) values('synthetic-care','${care}',30,30,'{"staffAdHoc":true}');
+    insert into booking_invoices(id,parent_email,total_amount,balance,metadata) values('synthetic-topup','synthetic@example.invalid',100,100,'{"creditTopUp":true,"parentAccountId":"${account}"}');`);
+  const balance = () => sql(`select coalesce(sum(amount),0) from parent_account_credit_entries where parent_account_id='${account}' and status='posted';`).then(Number);
+  assert.equal(await balance(),-30);
+  const get = id => sql(`select row_to_json(i) from booking_invoices i where id='${id}';`).then(JSON.parse);
+  const topup = { ...successEvent,id:"00000000-0000-4000-8000-000000000032",provider_event_id:"topup-success",invoice_id:"synthetic-topup" };
+  await sql(`insert into ponchopay_webhook_events(id,provider_event_id,event_type,invoice_id,signature_status,raw_payload_hash) values('${topup.id}','topup-success','payment_completed','synthetic-topup','verified','synthetic');`);
+  const topupSnapshot = await get("synthetic-topup");
+  await sql(commit(topup,topupSnapshot));
+  assert.equal(await balance(),70,"£100 top-up minus £30 ad-hoc care");
+  assert.equal(Number((await get("synthetic-care")).balance),0);
+  assert.equal((await get("synthetic-care")).payment_status,"paid_with_credit");
+  assert.equal(Number(await sql(`select outstanding_balance from bookings where id='${care}';`)),0);
+  await sql(commit(topup,topupSnapshot));
+  assert.equal(await balance(),70,"Duplicate top-up must not create credit twice");
+  await sql(`update bookings set status='cancelled' where id='${care}'; update booking_invoices set payment_status='cancelled',balance=0 where id='synthetic-care';`);
+  assert.equal(await balance(),100,"Cancelled ad-hoc care restores its ledger debit");
+  await sql(`update booking_invoices set finance_status=finance_status where id='synthetic-care';`);
+  assert.equal(await balance(),100,"Cancellation credit reconciliation is idempotent");
+  console.log("PASS: real ledger triggers, £100 top-up, £30 ad-hoc settlement, duplicate top-up and cancellation debit reversal");
+  const cancelledBooking = "00000000-0000-4000-8000-000000000040";
+  await sql(`insert into bookings(id,status,parent_account_id,invoice_id) values('${cancelledBooking}','cancelled','${account}','synthetic-cancelled');
+    insert into booking_invoices(id,booking_id,total_amount,paid_amount,balance,payment_status) values('synthetic-cancelled','${cancelledBooking}',0,50,0,'cancelled_credit');`);
+  assert.equal(await balance(),150);
+  await sql(`insert into parent_account_credit_entries(parent_account_id,entry_type,amount,description) values('${account}','credit_applied',-20,'Synthetic later booking');`);
+  const delayed = { ...successEvent,id:"00000000-0000-4000-8000-000000000041",provider_event_id:"delayed-cancelled",invoice_id:"synthetic-cancelled",amount:50,expected_amount:50 };
+  await sql(`insert into ponchopay_webhook_events(id,provider_event_id,event_type,invoice_id,signature_status,raw_payload_hash) values('${delayed.id}','delayed-cancelled','payment_completed','synthetic-cancelled','verified','synthetic');`);
+  await sql(commit(delayed,await get("synthetic-cancelled")));
+  assert.equal(Number((await get("synthetic-cancelled")).total_amount),0,"Callback must retain amended zero total");
+  assert.equal(await sql(`select status from bookings where id='${cancelledBooking}';`),"cancelled","No resurrection of cancelled care");
+  assert.equal(await balance(),130,"Previously spent cancellation credit stays spent");
+  const refundedTopup = { ...topup,id:"00000000-0000-4000-8000-000000000042",provider_event_id:"topup-refund",event_type:"payment_refunded",amount:20 };
+  await sql(`insert into ponchopay_webhook_events(id,provider_event_id,event_type,invoice_id,signature_status,raw_payload_hash) values('${refundedTopup.id}','topup-refund','payment_refunded','synthetic-topup','verified','synthetic');`);
+  const refundSnapshot = await get("synthetic-topup");
+  await sql(commit(refundedTopup,refundSnapshot));
+  assert.equal(await balance(),110,"Cash refund reverses only the refunded top-up credit");
+  await sql(commit(refundedTopup,refundSnapshot));
+  assert.equal(await balance(),110,"Duplicate refund must not reverse credit twice");
+  console.log("PASS: zero-total cancellation retained, cancelled booking not reopened, spent credit preserved, top-up refund and duplicate refund");
   console.log(JSON.stringify({ isolatedPostgres: true, tcpEnabled: false, twoConnections: true,
     staleWriteReproduced: true, rowLockContentionVerified: true, releaseSafe: false,
     legacyFinalStatus: lost.payment_status, legacyFinalPaid: lost.paid_amount,

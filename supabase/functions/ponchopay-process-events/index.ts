@@ -805,7 +805,10 @@ async function getInvoice(invoiceId: string) {
 }
 
 function buildInvoiceState(event: WebhookEvent, currentInvoice: Record<string, unknown> | null) {
-  const totalAmount = moneyValue(currentInvoice?.total_amount) || normaliseEventAmount(event.expected_amount || event.amount, 0);
+  // Zero is an authoritative amended/cancelled invoice total, not missing data.
+  const totalAmount = currentInvoice?.total_amount != null
+    ? moneyValue(currentInvoice.total_amount)
+    : normaliseEventAmount(event.expected_amount || event.amount, 0);
   const currentPaid = moneyValue(currentInvoice?.paid_amount) || 0;
   const currentRefunded = moneyValue(currentInvoice?.refunded_amount) || 0;
   const eventAmount = normaliseEventAmount(event.amount, totalAmount);

@@ -66,3 +66,19 @@ Passed local tests:
 Release gates still open: the PostgreSQL harness uses the repository's invoice/event/receipt/checkout definitions but minimal booking/item/audit fixtures, not the full migration chain. Run the full credit/top-up/booking-capacity trigger stack and test migration compatibility before production. Manual repair actions still contain direct writes; review their interaction with the new path. Add an operational view/owner for notification review items and ensure a regular processor invocation drains pending items after crashes. These are not reasons to revert the live authorisation fix, which remains separate.
 
 Next task: run full-ledger top-up, credit and cancellation regression tests against the complete isolated schema, then prepare a coordinated migration-and-function release. Deploying only the new function would fail because the RPC/outbox are required. No production migration or additional function deployment was performed in this batch.
+
+## Ledger integration batch
+
+The local PostgreSQL harness now applies the actual ledger and top-up trigger migrations 0057, 0059, 0173, 0177 and 0178, together with proposed 0179. Supporting parent/profile/booking tables remain synthetic fixtures. This is broader trigger integration coverage, not the complete Supabase schema or parent cancellation endpoint.
+
+Passed: a £100 completed top-up clears a £30 staff ad-hoc invoice and booking balance, leaving £70 ledger credit; duplicate callback leaves £70; cancelling that care restores the £30 ledger debit once; a £50 cancellation credit remains correct after £20 is spent; a £20 top-up cash refund removes £20 once, including on duplicate callback. No actual notifications or provider calls were made.
+
+The tests reproduced a zero-total regression: buildInvoiceState used a truthy fallback, replacing an authoritative £0 amended invoice total with the old callback amount. That is now a null/missing check. Atomic booking updates now exclude cancelled bookings, and the queued notification receives the actual updated booking status rather than an assumed confirmed status. Tests verify the £0 total, cancelled booking and previously spent credit survive delayed completion.
+
+All PostgreSQL scenarios, the 11 access cases, 24 adverse-event replays, notification recovery cases and 105 provider contract checks pass. Test server stops automatically. Changes are committed locally; production is unchanged.
+
+### Release preparation
+
+Keep migration 0179 and the processor changes in the same release, separate from Phase 1 public content. Before approval: verify full deployed schema compatibility and existing trigger side effects; exercise actual parent cancellation RPC/window/ownership rules with two children; confirm cancelled sessions disappear from registers without changing the other child's sessions; provide an owner/operational route for outbox review and periodic draining. Do not roll back to the old non-atomic writer while new workers are active. Keep the already-deployed access fix in any rollback build.
+
+Next task: two-child, individual-session cancellation through the actual parent RPC and register projection in isolated staging, including the credit outcome. This closes a remaining gap that direct invoice-ledger fixtures cannot prove.

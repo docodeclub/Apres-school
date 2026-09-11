@@ -22,6 +22,7 @@ declare
   receipt_id uuid;
   checkout_status text;
   result_status text := 'processed';
+  actual_booking_status text;
 begin
   -- Consistent lock order: invoice first, then event. All mutations below are
   -- one transaction, so a crash either commits everything or nothing.
@@ -73,8 +74,9 @@ begin
     if i.booking_id is not null then
       if p_booking_status not in ('confirmed','payment_pending') then raise exception 'Invalid booking status'; end if;
       update public.bookings set status=p_booking_status,outstanding_balance=greatest(0,i.balance),
-        invoice_id=i.id,updated_at=clock_timestamp() where id::text=i.booking_id::text;
-      if p_booking_status='confirmed' then
+        invoice_id=i.id,updated_at=clock_timestamp() where id::text=i.booking_id::text and status <> 'cancelled'
+        returning status into actual_booking_status;
+      if actual_booking_status='confirmed' then
         update public.booking_items set status='confirmed',updated_at=clock_timestamp()
         where booking_id::text=i.booking_id::text and status='reserved';
       end if;
@@ -82,7 +84,7 @@ begin
     -- Durable intent. No provider/network call is allowed inside this transaction.
     insert into public.payment_notification_outbox(event_id,payload)
     values(e.id,jsonb_build_object('event',to_jsonb(e),'invoice',to_jsonb(i),
-      'receiptId',receipt_id,'bookingStatus',case when i.booking_id is not null then p_booking_status end))
+      'receiptId',receipt_id,'bookingStatus',actual_booking_status))
     on conflict(event_id) do nothing;
   end if;
   update public.ponchopay_webhook_events set processing_status=result_status,
