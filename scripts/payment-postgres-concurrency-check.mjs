@@ -172,6 +172,7 @@ try {
   await sql(commit(refundedTopup,refundSnapshot));
   assert.equal(await balance(),110,"Duplicate refund must not reverse credit twice");
   console.log("PASS: zero-total cancellation retained, cancelled booking not reopened, spent credit preserved, top-up refund and duplicate refund");
+  await (await import('./payment-session-cancellation-check.mjs')).checkSessionCancellation(sql);
   console.log(JSON.stringify({ isolatedPostgres: true, tcpEnabled: false, twoConnections: true,
     staleWriteReproduced: true, rowLockContentionVerified: true, releaseSafe: false,
     legacyFinalStatus: lost.payment_status, legacyFinalPaid: lost.paid_amount,
