@@ -22851,6 +22851,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         <label className="lab-checkbox-row"><input type="checkbox" checked={parentRegistration.marketingSms} onChange={(event) => updateParentRegistration("marketingSms", event.target.checked)} /> Text me useful updates from Après School</label>
                         <label className="lab-checkbox-row"><input type="checkbox" checked={parentRegistration.terms} onChange={(event) => updateParentRegistration("terms", event.target.checked)} /> <span>I accept the <a className="lab-terms-link" href={APRES_TERMS_URL} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Terms and Conditions</a></span></label>
                         <label className="lab-checkbox-row"><input type="checkbox" checked={parentRegistration.privacy} onChange={(event) => updateParentRegistration("privacy", event.target.checked)} /> I accept the Après School privacy policy</label>
+                        <a href="/policies#privacy-families" target="_blank" rel="noopener noreferrer">Read family privacy information (opens in a new tab)</a>
                       </div>
                       <div className="lab-launch-form-actions">
                         <button type="submit">Create account</button>

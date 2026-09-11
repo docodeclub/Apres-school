@@ -4,6 +4,9 @@ import {
   services,
 } from "./data.js";
 import { serializeStructuredData, structuredDataForPage } from "./structuredData.js";
+import { applicationDeclarations, validateApplicationDeclarations } from "../supabase/functions/_shared/application-declarations.js";
+import { defaultMultiActivityCampInfo } from "./bookingLab/holidayCampInfo.js";
+import { publicServiceFacts } from "./publicServiceFacts.js";
 
 const hasSupabaseConfig = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 let supabaseModulePromise;
@@ -1301,6 +1304,7 @@ function Header({ page, setPage, platform, setPlatform, platformUnlocked, menu, 
             {item}
           </a>
         ))}
+        {!platform && <a href="/launch-booking?account=overview">Parent login / My bookings</a>}
         {!platform && <a className="nav-staff-login" href="/staff-login" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); setPlatform(true); setMenu(false); }}>Staff Login</a>}
         {platform && platformUnlocked && <span className="secure-label">Signed in</span>}
       </nav>
@@ -1483,36 +1487,7 @@ function CampAnnouncement({ setPage }) {
   }
 
   return (
-    <aside className="camp-announcement" role="dialog" aria-modal="true" aria-label="New Après School booking system announcement">
-      <div className="camp-announcement-card">
-        <button className="announcement-close" type="button" onClick={close} aria-label="Close booking system announcement">×</button>
-        <div className="announcement-copy">
-          <div className="announcement-pills">
-            <span>Now live</span>
-            <span>Built for Après families</span>
-          </div>
-          <h2>We’ve launched our brand-new booking system</h2>
-          <p className="announcement-lede">We’ve been listening.</p>
-          <p>Over the past year, many parents shared their thoughts on our previous booking system. We took that feedback seriously and invested in designing and building our own platform from the ground up.</p>
-          <p>The result is a faster, simpler and more intuitive way to book with Après School.</p>
-          <p>Because we developed it ourselves, we can introduce new features and improvements much more quickly. We’ve already made enhancements based directly on parent feedback since launch.</p>
-          <div className="hero-actions">
-            <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Try it today</button>
-            <button className="button light" type="button" onClick={() => setPage("Contact")}>Share feedback</button>
-          </div>
-        </div>
-        <div className="announcement-theme-panel">
-          <p className="eyebrow">Designed around you</p>
-          <div className="announcement-themes">
-            <article><strong>01</strong><span>Faster and simpler</span><small>A clearer journey from choosing care through to confirmation.</small></article>
-            <article><strong>02</strong><span>Built from feedback</span><small>Parent experiences directly shaped the platform you see today.</small></article>
-            <article><strong>03</strong><span>Always improving</span><small>Owning the system means we can respond and release improvements quickly.</small></article>
-          </div>
-          <p>If you spot something we could improve or have an idea for a new feature, we’d genuinely love to hear from you. Your feedback will continue to shape the platform.</p>
-          <p>Thank you for being part of the Après School community. We hope you enjoy using the new system.</p>
-        </div>
-      </div>
-    </aside>
+    <aside className="booking-inline-notice" aria-label="Booking system notice"><p><strong>New booking system:</strong> use your Après family account to book and manage care.</p><a href="/launch-booking?account=overview">Open family account</a><button type="button" onClick={close} aria-label="Dismiss booking notice">×</button></aside>
   );
 }
 
@@ -2116,12 +2091,12 @@ function HolidayClubs({ setPage }) {
             <span>Simple online booking</span>
           </div>
           <div className="hero-actions">
-            <button className="button book large" type="button" onClick={() => setPage("Launch Booking")}>View Holiday Clubs</button>
+            <a className="button book large" href="#camp-venues">View Holiday Clubs</a>
             <button className="button white" type="button" onClick={() => setPage("Contact")}>Ask a Question</button>
           </div>
         </div>
       </section>
-      <section className="camp-site-directory">
+      <section className="camp-site-directory" id="camp-venues">
         <div className="section-kicker">
           <p className="eyebrow">Our five venues</p>
           <h2>Five locations. One family booking system.</h2>
@@ -2141,7 +2116,7 @@ function HolidayClubs({ setPage }) {
         </div>
         <div className="camp-site-grid">
           {holidaySites.map((site) => {
-            const liveBlocks = scheduleForSite(site);
+            const liveBlocks = scheduleForSite(site).filter((row) => row.sessionDate >= new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" })).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
             const liveDates = liveBlocks.filter((row) => row.blockLabel === "Holiday Camp");
             const campWeeks = campWeekRanges(liveDates);
             const firstDate = liveDates[0];
@@ -2165,27 +2140,31 @@ function HolidayClubs({ setPage }) {
                   <span>{site.area}</span>
                   <span>{site.ages}</span>
                 </div>
+                <PublicServiceFacts title={site.title} />
                 <div className="camp-site-schedule" aria-live="polite">
                   {campScheduleState === "loading" && <span>Checking upcoming dates…</span>}
                   {campScheduleState === "error" && <span>Open booking to check current availability.</span>}
                   {campScheduleState === "ready" && liveDates.length > 0 && <>
                     <strong>{campWeeks.length} published camp week{campWeeks.length === 1 ? "" : "s"} · {liveDates.length} bookable dates</strong>
                     <div className="camp-week-list" aria-label={`Published holiday camp dates for ${site.title}`}>
-                      {campWeeks.map((week) => (
+                      {campWeeks.slice(0, 1).map((week) => (
                         <div className="camp-week-row" key={`${site.title}-${week.name}-${week.firstDate}`}>
                           <span>{week.name}</span>
                           <strong>{formatCampRange(week)}</strong>
                         </div>
                       ))}
                     </div>
+                    {campWeeks.length > 1 && <details><summary>Later holidays ({campWeeks.length - 1})</summary>{campWeeks.slice(1).map((week) => <div className="camp-week-row" key={week.firstDate}><span>{week.name}</span><strong>{formatCampRange(week)}</strong></div>)}</details>}
                     <small>{formatCampTime(firstDate.startsAt)}–{formatCampTime(firstDate.endsAt)} · £{firstDate.price.toFixed(2)} per day · Book the full week and save 10%.</small>
+                    {firstDate.ageRange && <small>Eligibility: {firstDate.ageRange}</small>}
+                    {[4, 5].map(days => { const price = Number(firstDate.pricing?.[`fullWeek${days}Price`]); return Number.isFinite(price) && price > 0 ? <small key={days}>{days}-day full week: £{price.toFixed(2)}</small> : null; })}
                     {earlyDropOff && <small>Early Drop-Off {formatCampTime(earlyDropOff.startsAt)}–{formatCampTime(earlyDropOff.endsAt)} · +£{earlyDropOff.price.toFixed(2)} per day</small>}
                   </>}
                   {campScheduleState === "ready" && !liveDates.length && <><strong>Dates not yet published</strong><small>We will show bookable dates here as soon as they are released.</small></>}
                   {campScheduleState === "unavailable" && <span>Open booking to check current availability.</span>}
                 </div>
                 <p className="camp-site-context-links">
-                  Read our <a href="/policies" onClick={(event) => handlePublicPageLink(event, "Policies", setPage)}>holiday-club policies and safeguarding information</a>, then <a href={site.url}>book {holidayVenueName(site.title)} through your family account</a>.
+                  Read our <a href="/policies" onClick={(event) => handlePublicPageLink(event, "Policies", setPage)}>holiday-club policies and safeguarding information</a>, read <a href="/cancellations">cancellation guidance</a>.
                 </p>
                 {liveDates.length
                   ? <a className="button book" href={site.url} aria-label={`Start an Après School booking for ${site.title}`}>Book {holidayVenueName(site.title)}</a>
@@ -2194,6 +2173,14 @@ function HolidayClubs({ setPage }) {
             </article>
           );})}
         </div>
+      </section>
+      <section className="public-practical-info" id="camp-practical-info">
+        <h2>Plan your child's camp day</h2>
+        <details><summary>Food and what to bring</summary>{defaultMultiActivityCampInfo.food.map((text) => <p key={text}>{text}</p>)}<ul>{[...defaultMultiActivityCampInfo.whatToBring, ...defaultMultiActivityCampInfo.weatherItems].map((text) => <li key={text}>{text}</li>)}</ul><p>{defaultMultiActivityCampInfo.bringNote}</p></details>
+        <details><summary>A typical day</summary>{defaultMultiActivityCampInfo.typicalDay.map(([title, text]) => <p key={title}><strong>{title}:</strong> {text}</p>)}<p>{defaultMultiActivityCampInfo.typicalDayNote}</p></details>
+        <details><summary>Eligibility, arrival and collection</summary><p>Check the school access information on your venue card. For exact age eligibility, the entrance to use and collection arrangements, <a href="/contact">ask our team</a> before booking. Tell us your venue and dates.</p></details>
+        <details><summary>Medical needs, allergies and additional support</summary><p>{defaultMultiActivityCampInfo.additionalInformation}</p><p><a href="/contact">Contact our team to arrange a discussion</a> about support before booking. Please do not include detailed medical information in a general enquiry.</p></details>
+        <p><a href="/payments">Payment methods and credit</a> · <a href="/cancellations">Cancellation deadlines and outcomes</a></p>
       </section>
       <section className="camp-promise">
         {[
@@ -2287,6 +2274,27 @@ function Wraparound({ setPage }) {
         </div>
       </section>
 
+      <section className="wraparound-booking-panel">
+        <div>
+          <p className="eyebrow">Family booking system</p>
+          <h2>Book wraparound care directly with Après School.</h2>
+          <p>Sign in to your family account, choose your school and select the sessions and dates you need.</p>
+          <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Open Booking System</button>
+        </div>
+        <div className="wraparound-booking-list">
+          {wraparoundSites.map((site) => (
+            <article key={site.title}>
+              <div>
+                <strong>{site.title}</strong>
+                <span>{site.type}</span>
+              </div>
+              <p>{site.schedule}</p>
+              <small>{site.provider}</small>
+              <PublicServiceFacts title={site.title} />
+            </article>
+          ))}
+        </div>
+      </section>
       <section className="wraparound-rhythm">
         <div>
           <p className="eyebrow">Daily rhythm</p>
@@ -2338,46 +2346,8 @@ function Wraparound({ setPage }) {
         ))}
       </section>
 
-      <section className="wraparound-flow">
-        <div>
-          <p className="eyebrow">How a session feels</p>
-          <h2>A predictable rhythm, with room for children to choose.</h2>
-        </div>
-        <div className="wraparound-flow-steps">
-          {[
-            ["Arrive", "Children are registered and welcomed by the team."],
-            ["Snack", "A familiar food and water routine helps everyone reset."],
-            ["Play", "Active games, table activities and quieter choices are available."],
-            ["Collect", "The session winds down with a clear dismissal routine."],
-          ].map(([title, text]) => (
-            <article key={title}>
-              <strong>{title}</strong>
-              <span>{text}</span>
-            </article>
-          ))}
-        </div>
-      </section>
 
-      <section className="wraparound-booking-panel">
-        <div>
-          <p className="eyebrow">Family booking system</p>
-          <h2>Book wraparound care directly with Après School.</h2>
-          <p>Sign in to your family account, choose your school and select the sessions and dates you need.</p>
-          <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Open Booking System</button>
-        </div>
-        <div className="wraparound-booking-list">
-          {wraparoundSites.map((site) => (
-            <article key={site.title}>
-              <div>
-                <strong>{site.title}</strong>
-                <span>{site.type}</span>
-              </div>
-              <p>{site.schedule}</p>
-              <small>{site.provider}</small>
-            </article>
-          ))}
-        </div>
-      </section>
+
     </PageShell>
   );
 }
@@ -2493,7 +2463,7 @@ function GuidePage({ eyebrow, title, intro, heroTitle, platform, routeLabel, sum
 
 function Payments({ setPage }) {
   return (
-    <PageShell eyebrow="Payments" title="Clear, secure payments with records in your family account.">
+    <PageShell eyebrow="Payments" title="How to pay, use credit and find your receipts.">
       <SupportHero
         label="Parent payments"
         title="Review the total and payment method before confirming."
@@ -2510,6 +2480,13 @@ function Payments({ setPage }) {
           ["Account credit", "Eligible future bookings.", "Any available balance is shown in your account and applied through the Après School checkout."],
         ]}
       />
+      <section className="public-practical-info">
+        <h2>Understand your payment status</h2>
+        <details open><summary>Card, Tax-Free Childcare and vouchers</summary><p>Checkout offers card payments through PonchoPay and supported Tax-Free Childcare and childcare voucher routes. Choose the method shown for your booking and follow its instructions, including any card guarantee. A payment started is not the same as a confirmed booking: check the saved status in your family account.</p></details>
+        <details><summary>Pending or interrupted payment</summary><p>If checkout is interrupted, open the existing booking in your account to check its status and available payment action. Only a confirmed booking confirms your place. Do not assume a bank transfer or a return from the payment page has completed the booking.</p></details>
+        <details><summary>Top-ups and account credit</summary><p>Use Payments &amp; credit to top up and check your balance. Credit covers outstanding staff-added care first; the remainder is available for eligible bookings. Checkout shows the credit used and any amount left to pay. A top-up adds funds; it does not itself book a session.</p></details>
+        <details><summary>Invoices and receipts</summary><p>Open Payments &amp; credit in your family account to find invoice and receipt records. If an email is delayed, check the account for the current payment and booking status.</p></details>
+      </section>
       <section className="support-process">
         <div>
           <p className="eyebrow">Before paying</p>
@@ -2546,6 +2523,7 @@ function Cancellations({ setPage }) {
           ["Need help?", "A change is not available online.", "Send us the school, session date and booking reference so the team can review it."],
         ]}
       />
+      <section className="public-practical-info"><h2>Cancel only the session you need</h2><p>Open the booking from your calendar or list, choose the individual child and session, then review the cancellation before confirming. Check the deadline shown for that session; programme rules can differ.</p><p>The review shows the affected sessions and any account credit. Cancelling one session does not require cancelling all care for that day. Account credit is distinct from a refund to your payment method. Where an unpaid charge is removed, no payment has been refunded.</p><p>If the cancellation option is unavailable, check the displayed deadline and contact the team with your booking reference.</p></section>
       <section className="support-process warning">
         <div>
           <p className="eyebrow">Best route</p>
@@ -2823,6 +2801,7 @@ function Schools({ setPage }) {
           <label>Your role<input required name="role" placeholder="Headteacher, SBM, operations lead..." /></label>
           <label>Provision needed<select name="subject"><option>Wraparound care</option><option>Holiday clubs</option><option>Enrichment clubs</option><option>Staffing support</option></select></label>
           <label>Message<textarea required name="message" rows="4" placeholder="Tell us about timings, numbers, site needs or current challenges." /></label>
+          <p><a href="/policies#privacy-enquiries">How we use school enquiry information</a></p>
           <button className="button book" type="submit" disabled={schoolStatus?.state === "sending"}>{schoolStatus?.state === "sending" ? "Sending..." : "Send School Enquiry"}</button>
           {schoolStatus && <p className={`form-submit-status ${schoolStatus.state}`} role="status">{schoolStatus.message}</p>}
         </form>
@@ -2895,7 +2874,7 @@ function Policies({ setPage }) {
     ["Behaviour", "Session culture", "We use calm, consistent routines that help children feel safe, respected and able to enjoy the session."],
     ["Health and Safety", "Site routines", "Site routines, risk awareness, collection arrangements and activity planning are managed with school-friendly discipline."],
     ["Complaints", "Clear follow-up", "Families and schools can raise concerns clearly, with follow-up recorded and handled by the appropriate lead."],
-    ["Privacy", "Data care", "Personal information is handled only for legitimate childcare, staffing and operational purposes, with GDPR-ready workflows planned."],
+    ["Privacy", "Data care", "Read how information is used for bookings, recruitment and enquiries below. Contact us with questions about your information."],
     ["Terms", "Booking terms", "Booking terms depend on the activity and programme. Parents should review the terms shown before confirming payment."],
     ["First Aid", "Planned cover", "First aid provision is planned by programme, site and staffing model, with qualifications tracked where required."],
     ["Code of Conduct", "Staff expectations", "Staff are expected to model warm, professional behaviour and follow clear boundaries in every setting."],
@@ -2912,7 +2891,7 @@ function Policies({ setPage }) {
           <ShieldCheck />
           <strong>For partner schools</strong>
           <p>Schools can request concise policy summaries, insurance details, safer recruitment assurances and safeguarding documentation.</p>
-          <button className="button book" type="button" onClick={() => setPage("Contact")}>Request Assurance Pack</button>
+          <a className="button book" href="/contact?type=School&subject=Assurance%20pack&source=policies">Request Assurance Pack</a>
         </aside>
       </section>
       <section className="policy-trust-row">
@@ -2947,6 +2926,14 @@ function Policies({ setPage }) {
           </article>
         ))}
       </div>
+      <section className="public-practical-info" id="privacy-information">
+        <h2>Personal information</h2>
+        <p>These summaries describe information used by this platform. To request further privacy information or ask about your records, contact <a href="mailto:hello@apres-school.co.uk">hello@apres-school.co.uk</a>.</p>
+        <article id="privacy-families"><h3>Parents and children</h3><p>Your family account holds contact and child details, care information, bookings, attendance and payment records. These support booking, safe care, collection and account administration. Payments are processed through PonchoPay. Your account provides access to bookings, invoices and receipts.</p></article>
+        <article id="privacy-recruitment"><h3>Applicants and staff</h3><p>Application contact details, employment history, references and declarations are submitted securely for recruitment review. Authorised recruitment administrators review applications. An applicant's declaration is separate from a verified check. Please contact us to discuss sensitive information privately.</p></article>
+        <article id="privacy-enquiries"><h3>Parents, schools and other enquiries</h3><p>We use the name, contact details, organisation and message you submit to record and respond to your enquiry. The platform stores the enquiry and sends a notification to the team. Please avoid including detailed medical, safeguarding or identity-document information in general enquiries.</p></article>
+        <p><a href="#cookie-information">Cookies and browser storage</a> are explained separately below.</p>
+      </section>
       <section className="cookie-information" id="cookie-information">
         <div className="cookie-information-head">
           <div>
@@ -2986,6 +2973,7 @@ function Policies({ setPage }) {
 }
 
 function Contact({ setPage }) {
+  const [context] = useState(() => { const p = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search); return { type: ["Parent", "School", "Staff", "Other"].includes(p.get("type")) ? p.get("type") : "Parent", subject: p.get("subject") === "Assurance pack" ? "Assurance pack" : "" }; });
   const [status, setStatus] = useState(null);
   function applyTemplate(type, text) {
     const form = document.querySelector(".contact-form");
@@ -3077,13 +3065,15 @@ function Contact({ setPage }) {
           <label>Name<input required name="name" autoComplete="name" placeholder="Your name" /></label>
           <label>Email<input required type="email" inputMode="email" name="email" autoComplete="email" placeholder="you@example.com" /></label>
           <label>Organisation or school<input name="organisation" placeholder="Optional" /></label>
-          <label>Enquiry type<select name="type"><option>Parent</option><option>School</option><option>Staff</option><option>Other</option></select></label>
-          <label className="full">Message<textarea required name="message" rows="6" placeholder="Tell us the school, camp, booking route or question..." /></label>
+          <input type="hidden" name="subject" value={context.subject} />
+          <label>Enquiry type<select name="type" defaultValue={context.type}><option>Parent</option><option>School</option><option>Staff</option><option>Other</option></select></label>
+          <label className="full">Message<textarea defaultValue={context.subject ? "Please send us the school assurance pack for: " : ""} required name="message" rows="6" placeholder="Tell us the school, camp, booking route or question..." /></label>
           <div className="contact-shortcuts full">
             <button type="button" onClick={(event) => setTemplate(event, "Parent", "I have a question about booking for:")}>Parent booking question</button>
             <button type="button" onClick={(event) => setTemplate(event, "School", "We would like to discuss wraparound care or holiday provision for:")}>School partnership enquiry</button>
             <button type="button" onClick={(event) => setTemplate(event, "Staff", "I would like to ask about staff opportunities or onboarding:")}>Staff or recruitment enquiry</button>
           </div>
+          <p className="full"><a href="/policies#privacy-enquiries">How we use enquiry information</a>. Please avoid including medical or safeguarding details here.</p>
           <button className="button primary" type="submit" disabled={status?.state === "sending"}>{status?.state === "sending" ? "Sending..." : "Send Enquiry"}</button>
           {status && <p className={`form-submit-status ${status.state}`} role="status">{status.message}</p>}
         </form>
@@ -3099,7 +3089,8 @@ function StaffApplication() {
   async function submit(event) {
     event.preventDefault();
     if (submitting) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const application = {
       name: form.get("name"),
       email: form.get("email"),
@@ -3110,28 +3101,30 @@ function StaffApplication() {
       preferredSchool: form.get("preferredSchool"),
       availability: form.get("availability"),
       qualifications: form.get("qualifications"),
-      hasQualification: form.get("hasQualification") || "No",
+      hasQualification: form.get("hasQualification") || "",
       references: form.get("references"),
       employmentHistory: form.get("employmentHistory"),
-      employmentGaps: form.get("employmentGaps") || "No",
-      criminalDisclosure: form.get("criminalDisclosure") || "No",
-      barredListDisclosure: form.get("barredListDisclosure") || "No",
+      employmentGaps: form.get("employmentGaps") || "",
+      criminalDisclosure: form.get("criminalDisclosure") || "",
+      barredListDisclosure: form.get("barredListDisclosure") || "",
       firstAidDetails: form.get("firstAidDetails"),
-      dbsUpdateService: form.get("dbsUpdateService") || "No",
-      medicalFitness: form.get("medicalFitness") || "Confirmed",
-      livedAbroad: form.get("livedAbroad") || "No",
+      dbsUpdateService: form.get("dbsUpdateService") || "",
+      medicalFitness: form.get("medicalFitness") || "",
+      livedAbroad: form.get("livedAbroad") || "",
       overseasDetails: form.get("overseasDetails"),
-      rightToWork: form.get("rightToWork") || "No",
-      rightToWorkType: form.get("rightToWorkType") || "Permanent",
+      rightToWork: form.get("rightToWork") || "",
+      rightToWorkType: form.get("rightToWorkType") || "",
       personalStatement: form.get("personalStatement"),
-      safeguardingStatement: form.get("safeguardingStatement") || "No",
+      safeguardingStatement: form.get("safeguardingStatement") || "",
     };
+    const declarationError = validateApplicationDeclarations(application);
+    if (declarationError) { setSubmitError(declarationError); return; }
     setSubmitting(true);
     setSubmitError("");
     try {
       const { submitStaffApplication } = await loadSupabaseModule();
       await submitStaffApplication(application);
-      event.currentTarget.reset();
+      formElement.reset();
       setSubmitted(true);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Unable to submit securely. Please try again.");
@@ -3145,35 +3138,36 @@ function StaffApplication() {
         <div className="application-intro">
           <h2>Start your staff onboarding here.</h2>
           <p>Tell us about your experience, availability and training. Applications are reviewed before any staff account or site assignment is created.</p>
-          <div className="proof-row blue"><span>Admin approval required</span><span>SCR ready</span><span>Account after approval</span></div>
+          <p>Choose “Needs discussion” to discuss an answer privately with recruitment. A person reviews disclosures; they do not automatically reject your application. Self-declarations do not verify recruitment checks.</p>
         </div>
         <form className="contact-form staff-application-form" onSubmit={submit}>
           {submitted && <div className="form-status success">Application received. An admin will review it before account creation.</div>}
           {submitError && <div className="form-status error" role="alert">{submitError}</div>}
           <label>Name<input required name="name" placeholder="First and last name" /></label>
           <label>Email<input required type="email" name="email" /></label>
-          <label>Phone<input required name="phone" /></label>
+          <label>Phone<input required type="tel" autoComplete="tel" name="phone" /></label>
           <label>Date of birth<input required type="date" name="dateOfBirth" /></label>
           <label className="full">Address<textarea required name="address" rows="3" /></label>
           <label>Preferred role<select name="preferredRole"><option>Playworker</option><option>Club Manager</option><option>Camp Lead</option><option>Enrichment Lead</option><option>Cover Staff</option></select></label>
           <label>Preferred school/site<input name="preferredSchool" placeholder="School or area preference" /></label>
-          <label>Teaching or childcare qualifications?<select name="hasQualification"><option>No</option><option>Yes</option></select></label>
-          <label>Right to work confirmed?<select name="rightToWork"><option>No</option><option>Yes</option></select></label>
+          <DeclarationSelect name="hasQualification" />
+          <DeclarationSelect name="rightToWork" />
           <label className="full">Qualifications / training<textarea name="qualifications" rows="3" placeholder="List qualifications, first aid, safeguarding or relevant training." /></label>
           <label className="full">Availability<textarea name="availability" rows="3" placeholder="Which days, breakfast club, after-school care or holiday camps?" /></label>
           <label className="full">Two referees<textarea required name="references" rows="4" placeholder="Names, relationship, email/phone and organisation." /></label>
           <label className="full">Employment history<textarea name="employmentHistory" rows="4" placeholder="Include dates and any gaps if you do not have a CV ready." /></label>
-          <label>Any employment gaps?<select name="employmentGaps"><option>No</option><option>Yes</option></select></label>
-          <label>Criminal disclosure?<select name="criminalDisclosure"><option>No</option><option>Yes</option></select></label>
-          <label>Barred from working with children?<select name="barredListDisclosure"><option>No</option><option>Yes</option></select></label>
-          <label>DBS update service?<select name="dbsUpdateService"><option>No</option><option>Yes</option></select></label>
+          <DeclarationSelect name="employmentGaps" />
+          <DeclarationSelect name="criminalDisclosure" />
+          <DeclarationSelect name="barredListDisclosure" />
+          <DeclarationSelect name="dbsUpdateService" />
           <label className="full">First aid details<textarea name="firstAidDetails" rows="3" placeholder="Qualification level, awarding organisation and expiry date." /></label>
-          <label>Medical fitness declaration<select name="medicalFitness"><option>Confirmed</option><option>Needs discussion</option></select></label>
-          <label>Lived outside the UK for 3+ months?<select name="livedAbroad"><option>No</option><option>Yes</option></select></label>
+          <DeclarationSelect name="medicalFitness" />
+          <DeclarationSelect name="livedAbroad" />
           <label className="full">Overseas check details<textarea name="overseasDetails" rows="3" placeholder="Countries and dates lived abroad." /></label>
-          <label>Right to work type<select name="rightToWorkType"><option>Permanent</option><option>Time limited</option></select></label>
+          <DeclarationSelect name="rightToWorkType" />
           <label className="full">Personal statement<textarea name="personalStatement" rows="4" placeholder="Why do you want to work with Après School?" /></label>
           <label className="full checkbox-line"><input required type="checkbox" name="safeguardingStatement" value="Confirmed" /> I understand the role is subject to safer recruitment checks and safeguarding requirements.</label>
+          <p className="full"><a href="/policies#privacy-recruitment">How we use application information</a></p>
           <button className="button book" type="submit" disabled={submitting}>{submitting ? "Submitting securely..." : "Submit Application"}</button>
         </form>
       </section>
@@ -3288,3 +3282,11 @@ function Footer({ setPage }) {
     </footer>
   );
 }
+
+function PublicServiceFacts({ title }) {
+  const facts = publicServiceFacts(title);
+  const labels = { ageEligibility: "Ages", otherSchoolEligibility: "School eligibility", address: "Address", arrival: "Arrival", collection: "Collection", standardPrices: "Standard prices" };
+  return <div className="public-service-facts">{Object.entries(facts).filter(([, value]) => value).map(([key, value]) => <p key={key}><strong>{labels[key]}: </strong>{value}</p>)}</div>;
+}
+
+function DeclarationSelect({ name }) { const question = applicationDeclarations[name]; return <label>{question.label}<select name={name} required defaultValue=""><option value="" disabled>Choose an answer</option>{question.options.map((answer) => <option key={answer}>{answer}</option>)}</select></label>; }

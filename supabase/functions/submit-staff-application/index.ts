@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { enforcePublicRateLimit, sha256 } from "../_shared/public-rate-limit.ts";
+import { validateApplicationDeclarations, declarationRecord } from "../_shared/application-declarations.js";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://www.apres-school.co.uk",
@@ -32,7 +33,7 @@ serve(async (request) => {
       phone: application.phone,
       date_of_birth: application.dateOfBirth,
       address: application.address,
-      application_data: application.details,
+      application_data: { ...application.details, declarationRecord: declarationRecord(application.details, new Date().toISOString()) },
       source_ip_hash: await sha256(address),
     }).select("id, status, created_at").single();
     if (error) throw error;
@@ -54,7 +55,7 @@ function validate(application: ReturnType<typeof normalize>) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(application.email)) return "Enter a valid email address.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(application.dateOfBirth)) return "Enter a valid date of birth.";
   if (!application.details.references || !application.details.safeguardingStatement) return "Complete the references and safeguarding declaration.";
-  return "";
+  return validateApplicationDeclarations(application.details);
 }
 function json(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
