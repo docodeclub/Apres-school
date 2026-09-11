@@ -28,6 +28,27 @@ export async function checkSessionCancellation(sql) {
   for (const file of ['0142_individual_session_cancellation_window.sql','0163_register_secured_booking_fallback.sql']) {
     await sql(await readFile(new URL(`../supabase/migrations/${file}`,import.meta.url),'utf8'));
   }
+  await sql("create type booking_item_status as enum ('reserved','confirmed','cancelled','waitlist','attended');");
+  for (const file of ['0032_cancel_parent_booking.sql','0034_amend_parent_booking_add_items.sql','0176_allow_same_day_staff_adhoc_cancellation.sql']) {
+    await sql(await readFile(new URL(`../supabase/migrations/${file}`,import.meta.url),'utf8'));
+  }
+  const signatures = [
+    'amend_parent_booking_remove_items(uuid,uuid,uuid[],text,text)',
+    'cancel_parent_booking(uuid,uuid,text,text)',
+    'amend_parent_booking_add_items(uuid,uuid,jsonb,text,text)',
+    'cancel_parent_staff_adhoc_booking(uuid,uuid,text,uuid)',
+  ];
+  // Simulate both inherited PUBLIC and explicit old API-role grants.
+  for (const signature of signatures) await sql(`grant execute on function ${signature} to anon,authenticated;`);
+  const permissionsMigration = await readFile(new URL('../supabase/migrations/0180_booking_change_rpc_permissions.sql',import.meta.url),'utf8');
+  await sql(permissionsMigration);
+  await sql(permissionsMigration); // Safe to reapply.
+  for (const signature of signatures) {
+    for (const role of ['anon','authenticated','service_role']) {
+      assert.equal(await sql(`select has_function_privilege('${role}','${signature}','execute');`),role === 'service_role' ? 't' : 'f');
+    }
+  }
+  await sql('grant usage on schema public to anon,authenticated,service_role;');
   await sql(`insert into profiles(id,email,role) values('${id(1)}','staff@example.invalid','staff'),('${id(2)}','family@example.invalid','parent');
     insert into parent_accounts(id,email) values('${id(2)}','family@example.invalid');
     insert into child_profiles(id,parent_account_id,full_name) values('${id(3)}','${id(2)}','Synthetic Child A'),('${id(4)}','${id(2)}','Synthetic Child B');
@@ -43,7 +64,11 @@ export async function checkSessionCancellation(sql) {
     insert into booking_capacity_holds select id,'held',null,starts_at from booking_items where booking_id='${id(7)}';`);
   const balance = async () => Number(await sql(`select coalesce(sum(amount),0) from parent_account_credit_entries where parent_account_id='${id(2)}' and status='posted';`));
   const register = async () => JSON.parse(await sql(`set test.auth_uid='${id(1)}'; select coalesce(jsonb_agg(booking_item_id order by booking_item_id),'[]') from staff_register_for_day(current_date+7,'Synthetic School','ASC');`));
-  const cancel = (parent, item) => sql(`select amend_parent_booking_remove_items('${parent}','${id(7)}',array['${item}']::uuid[],'Synthetic test','parent');`).then(JSON.parse);
+  const cancel = (parent, item) => sql(`set role service_role; select amend_parent_booking_remove_items('${parent}','${id(7)}',array['${item}']::uuid[],'Synthetic test','parent');`).then(JSON.parse);
+  for (const role of ['anon','authenticated']) {
+    await assert.rejects(sql(`set role ${role}; select amend_parent_booking_remove_items('${id(2)}','${id(7)}',array['${id(8)}']::uuid[],'Forged staff request','superadmin');`),/permission denied for function/);
+  }
+  console.log('PASS: all four booking-change RPC grants are server-only; forged staff/parent identity blocked before mutation');
   assert.deepEqual(await register(),[id(8),id(9),id(10)]);
   await assert.rejects(cancel(id(99),id(8)),/Booking was not found/);
   await assert.rejects(cancel(id(2),id(99)),/do not belong/);
