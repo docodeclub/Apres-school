@@ -27,3 +27,13 @@ Neither Docker nor psql was available on PATH during inspection. No isolated dat
 ## Suggested next task
 
 Review the late-event protection and validate it in isolated staging, including concurrent workers, then approve its deployment. Follow with top-up/credit settlement and two-child reservation-to-register tests. Production deployment should not be bundled silently with public content changes.
+
+## Concurrent-worker follow-up — release blocked
+
+`scripts/payment-concurrency-reproducer.mjs` deterministically interleaves two calls to the actual processEvent implementation with substituted I/O. Both read the pending £100 invoice. Completion writes paid/£100 first; the stale failure then writes failed/£0. Both workers report processed. The local sequential-event guard cannot prevent this lost update.
+
+This is an in-memory reproduction, not a database staging test or evidence of a particular affected customer. No customer records or emails were accessed. The reproducer exits successfully when it reproduces the defect and explicitly reports releaseSafe=false; it is not a passing correctness test.
+
+Current accessible projects are Après School (production) and the unrelated docode-studio. Neither is an approved isolated test target. Docker, Podman and psql were unavailable, and no Docker/Postgres application was found. Do not create test financial records in either remote project.
+
+Next task: provision/identify isolated PostgreSQL/Supabase staging, then implement and verify atomic per-invoice processing, including event claiming and downstream side effects. A JavaScript process-local lock is insufficient across independent workers. Test conflicting events, worker crashes/retries, receipts, credit and notification deduplication before releasing the late-event change. The deployed authorisation-only fix is unaffected.
