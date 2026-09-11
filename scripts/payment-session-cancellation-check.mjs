@@ -153,4 +153,30 @@ export async function checkSessionCancellation(sql, { commit, successEvent }) {
   assert.equal(await balance(),30);
   assert.deepEqual(await register(),[id(10)]);
   console.log('PASS: concurrent payment/removal retry and failed repricing recovery preserve invoice, credit and sibling');
+  await sql(await readFile(new URL('../supabase/migrations/0182_atomic_session_removal.sql',import.meta.url),'utf8'));
+  for (const role of ['anon','authenticated','service_role']) {
+    assert.equal(await sql(`select has_function_privilege('${role}','remove_parent_booking_items_atomic(uuid,uuid,uuid[],text,text)','execute');`),role==='service_role'?'t':'f');
+  }
+  await sql(`update booking_capacity_holds set released_at=null,status='held' where booking_item_id='${id(10)}';
+    create function synthetic_fail_pricing() returns trigger language plpgsql as $$begin raise exception 'Synthetic pricing failure'; end$$;
+    create trigger synthetic_fail_pricing before update of gross_total on bookings for each row execute function synthetic_fail_pricing();`);
+  const snapshot = () => sql(`select jsonb_build_object('booking',(select to_jsonb(b) from bookings b where id='${id(7)}'),
+    'invoice',(select to_jsonb(i) from booking_invoices i where id='synthetic-siblings'),
+    'items',(select jsonb_agg(to_jsonb(bi) order by id) from booking_items bi where booking_id='${id(7)}'),
+    'holds',(select jsonb_agg(to_jsonb(h) order by booking_item_id) from booking_capacity_holds h),
+    'credit',(select jsonb_agg(to_jsonb(c) order by id) from parent_account_credit_entries c where parent_account_id='${id(2)}'),
+    'auditCount',(select count(*) from audit_log));`);
+  const atomic = () => sql(`set role service_role; select remove_parent_booking_items_atomic('${id(2)}','${id(7)}',array['${id(10)}']::uuid[],'Atomic test','parent');`).then(JSON.parse);
+  const unchanged = await snapshot();
+  await assert.rejects(atomic(),/Synthetic pricing failure/);
+  assert.equal(await snapshot(),unchanged,'Pricing failure rolls back booking, invoice, items, holds, ledger and audit');
+  await sql('drop trigger synthetic_fail_pricing on bookings; drop function synthetic_fail_pricing();');
+  assert.equal((await atomic()).amended,true);
+  assert.equal(await balance(),40);
+  assert.deepEqual(await register(),[]);
+  const committed = await snapshot();
+  assert.equal((await atomic()).amended,false);
+  assert.equal(await snapshot(),committed,'Retry of final cancellation cannot mutate or credit twice');
+  await assert.rejects(sql(`set role service_role; select remove_parent_booking_items_atomic('${id(99)}','${id(7)}',array['${id(10)}']::uuid[]);`),/not found for this parent/);
+  console.log('PASS: atomic removal rolls all state back on pricing failure; final-session retry is a no-op and server-only access retained');
 }

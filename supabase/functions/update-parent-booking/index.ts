@@ -126,7 +126,7 @@ serve(async (request) => {
     if (action === "remove_items" || action === "remove_sessions" || action === "amend_remove_items") {
       const bookingItemIds = normaliseStringArray(body.bookingItemIds || body.booking_item_ids);
       if (!bookingItemIds.length) return json({ error: "Choose at least one session to remove." }, 400);
-      const { data, error } = await supabase.rpc("amend_parent_booking_remove_items", {
+      const { data, error } = await supabase.rpc("remove_parent_booking_items_atomic", {
         p_parent_id: actor.id,
         p_booking_id: bookingId,
         p_booking_item_ids: bookingItemIds,
@@ -134,10 +134,8 @@ serve(async (request) => {
         p_actor_role: actor.role || "parent",
       });
       if (error) throw error;
-      const { data: pricing, error: pricingError } = await supabase.rpc("apply_booking_pricing", { p_booking_id: bookingId });
-      if (pricingError) throw pricingError;
-      const result = { ...(data as Record<string, unknown>), pricing, booking: isObject(pricing) && isObject(pricing.booking) ? pricing.booking : (data as Record<string, unknown>)?.booking };
-      const email = await sendBookingChangeEmail({
+      const result = data as Record<string, unknown>;
+      const email = result.amended === false ? null : await sendBookingChangeEmail({
         actor,
         action: "remove_items",
         result,

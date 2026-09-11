@@ -60,7 +60,7 @@ const checks = [
   ]),
   checkFile("Parent booking update Edge Function", "code", "supabase/functions/update-parent-booking/index.ts", [
     "cancel_parent_booking",
-    "amend_parent_booking_remove_items",
+    "remove_parent_booking_items_atomic",
     "amend_parent_booking_add_items",
     "resend_payment_link",
     "resend_receipt",

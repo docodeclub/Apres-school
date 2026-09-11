@@ -20,8 +20,7 @@ const client = {
   },
   async rpc(name,args) {
     calls.push({name,args});
-    if (name === 'apply_booking_pricing') return {data:{booking:{id:'synthetic-booking'}}};
-    assert.equal(name,'amend_parent_booking_remove_items');
+    assert.equal(name,'remove_parent_booking_items_atomic');
     return {data:{amended:true,booking:{id:'synthetic-booking'},removedItems:1,removedTotal:10}};
   },
 };
@@ -40,6 +39,7 @@ assert.equal((await request()).status,500);
 assert.equal(calls.length,0,'Rejected auth must never mutate bookings');
 profileFailure=false;
 assert.equal((await request()).status,200);
+assert.equal(calls.length,1,'Removal and pricing must use one atomic RPC');
 assert.equal(calls[0].args.p_parent_id,'verified-parent');
 assert.equal(calls[0].args.p_actor_role,'parent','Body and user-editable metadata cannot grant staff privileges');
 role='manager'; calls.length=0;

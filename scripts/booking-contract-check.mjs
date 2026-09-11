@@ -53,7 +53,7 @@ if (request) validateRequestShape(request);
   ["individual session cancellation uses configured notice hours", individualCancellationSql.includes("selected_session.cancellation_hours") && individualCancellationSql.includes("make_interval")],
   ["amendment RPC releases removed capacity holds", amendmentSql.includes("amend_parent_booking_remove_items") && amendmentSql.includes("released_at")],
   ["amendment RPC updates invoice balance", amendmentSql.includes("amended_credit_review") && amendmentSql.includes("balance = greatest")],
-  ["booking update function calls amendment RPC", updateFunction.includes("amend_parent_booking_remove_items")],
+  ["booking update function calls atomic amendment RPC", updateFunction.includes("remove_parent_booking_items_atomic")],
   ["parent portal enables live individual-session cancellation", bookingLabSource.includes("individualSessionCancellationPolicy") && bookingLabSource.includes("usesRealApi: realBookingServiceReady && Boolean(booking.id && item.id)")],
   ["parent portal uses four task-focused primary destinations", bookingLabSource.includes('aria-label="Quick parent navigation"') && bookingLabSource.includes(">Home</strong>") && bookingLabSource.includes(">Book</strong>") && bookingLabSource.includes(">Calendar</strong>") && bookingLabSource.includes(">Account</strong>")],
   ["parent home prioritises the next booking and common tasks", bookingLabSource.includes('aria-label="Parent home"') && bookingLabSource.includes("Next booking") && bookingLabSource.includes('aria-label="Common tasks"')],

@@ -122,3 +122,13 @@ After the fixes, the overlapping two-connection scenario and retry produce invoi
 All PostgreSQL scenarios and processor reliability checks pass. Evidence: `/var/folders/nt/xywj28hj06vc566919dsjssm0000gn/T/apres-payment-test-MeNBvo`. No production access/writes, deployments or emails. Failure injection tests database recovery, not an HTTP/network retry or automatic recovery worker. The current handler still executes removal and pricing separately.
 
 Next task: make individual cancellation plus repricing a single server-only transaction, update the handler to call it, and test rollback/retry. This removes the partial-success window rather than relying on the parent retrying after a repricing error.
+
+## Atomic individual cancellation
+
+Draft 0182 adds `remove_parent_booking_items_atomic`, a service-only wrapper around the existing removal and repricing functions. It locks and validates booking ownership, propagates pricing errors so all database changes roll back, and handles a retry of the final cancelled item as a no-op. The Edge handler now calls this once for removal aliases; it no longer makes a separate repricing RPC in that branch. No-op replies skip cancellation email generation. Session addition remains unchanged and still uses separate calls.
+
+Tests inject a real PostgreSQL trigger exception during the pricing update after removal has run. Full snapshots confirm booking, invoice, items, holds, ledger and audit count are unchanged. Removing the failure allows cancellation to commit with correct £40 cumulative credit and empty register; final-session replay changes no state. Wrong-parent access is rejected and the wrapper is service-only. Handler auth tests enforce a single atomic RPC and preserve verified identity/role handling. All local PostgreSQL scenarios pass. Evidence: `/var/folders/nt/xywj28hj06vc566919dsjssm0000gn/T/apres-payment-test-9mxyhX`.
+
+Release requirement: apply 0182 (with the corrected pricing function from 0181 and underlying secured functions present) before deploying update-parent-booking. Do not deploy the handler alone. No deployment or email was performed. Notification delivery remains outside the transaction and is not made durable by this change; this only suppresses no-op retry notifications.
+
+Next task: perform a read-only production compatibility review of function signatures, grants and dependencies, then prepare the exact migration/function deployment and rollback checklist for approval. No production rollout is authorised by these local tests.
