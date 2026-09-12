@@ -1,5 +1,13 @@
 # Payment and cancellation release approval checklist
 
+## Profile browser-write permissions fix deployed — 12 September 2026
+
+With explicit approval, applied only transactional migration 0183 directly to linked production `djkfuftbtfthjpezvjuu`. Authenticated users previously had table-wide UPDATE and the own-profile update policy; no profile protection trigger existed. Removed browser table/column grants and restored only authenticated SELECT (existing RLS retained) and own-row password-change acknowledgement updates. Server-role grants are unchanged. Anonymous/browser INSERT, DELETE, TRUNCATE, REFERENCES and TRIGGER grants were also removed.
+
+`scripts/profile-permissions-check.mjs` passed against isolated PostgreSQL: sensitive field writes and destructive operations denied, own password-state update/read allowed, another user's password state unchanged, server updates/inserts allowed, migration repeatable. Production catalog verification confirms only the two password-state columns remain browser-updatable, all columns remain server-updatable, and browser insertion/deletion/truncation is denied. No customer rows changed and no emails sent. This closes the direct profile-table write gap, not a complete review of every SECURITY DEFINER function or evidence about historical exploitation.
+
+Applied via `db query --linked --file`; no migration-history entry was added. Future release tooling must account for already-applied 0183. Larger payment rollout remains gated on full-schema rehearsal and operational recovery requirements.
+
 ## Permissions-only fix deployed — 11 September 2026
 
 Following explicit approval, applied only the transactional SQL in 0180 to linked production project `djkfuftbtfthjpezvjuu` using `db query --linked --file`. Before execution, the three parent booking-change functions had PUBLIC EXECUTE; the ad-hoc function was already restricted. Afterwards, catalog checks confirm all four functions deny anon/authenticated EXECUTE and retain service_role EXECUTE. Each ACL is now `{postgres=X/postgres,service_role=X/postgres}`.
