@@ -1620,7 +1620,7 @@ function Home({ setPage, setPlatform }) {
 
   return (
     <>
-      <section className="hero">
+      <section className="hero home-discovery-hero">
         <div className="hero-media">
           <div className="hero-copy">
             <h1>Wraparound care and holiday camps children look forward to.</h1>
@@ -1628,7 +1628,7 @@ function Home({ setPage, setPlatform }) {
               Breakfast clubs, after-school care and holiday camps with friendly teams, active days and simple booking routes for parents and schools.
             </p>
             <div className="hero-actions">
-              <button className="button book large" type="button" onClick={() => setPage("Launch Booking")}>Book Now</button>
+              <a className="button book large" href="#find-your-club">Find your school or camp</a>
               <button className="button white" type="button" onClick={() => setPage("Holiday Clubs")}>Holiday Clubs</button>
               <button className="button ghost" type="button" onClick={() => setPage("Schools")}>For Schools</button>
             </div>
@@ -1640,23 +1640,28 @@ function Home({ setPage, setPlatform }) {
           </div>
         </div>
       </section>
-      <section className="club-finder">
+      <section className="club-finder" id="find-your-club" aria-labelledby="club-finder-title">
         <div>
-          <h2>Find your club</h2>
+          <h2 id="club-finder-title">Find your club</h2>
           <p>Choose term-time care or holiday clubs, then pick your school or camp.</p>
         </div>
-        <form className="route-picker">
+        <form className="route-picker" onSubmit={(event) => event.preventDefault()}>
+          <label>1. Choose care
           <select aria-label="Care type" value={homeType} onChange={(event) => chooseHomeType(event.target.value)}>
             <option value="Wraparound">Wraparound care</option>
             <option value="Holiday Camps">Holiday clubs</option>
           </select>
+          </label>
+          <label>2. Choose your school or camp
           <select aria-label="School or camp" value={selectedHomeSite?.title || ""} onChange={(event) => setHomeSiteTitle(event.target.value)}>
             {homeSites.map((site) => <option key={site.title} value={site.title}>{site.title}</option>)}
           </select>
+          </label>
           {selectedHomeSite
             ? <a className="button book" href={selectedHomeSite.url} aria-label={`Start an Après School booking for ${selectedHomeSite.title}`}>Start booking</a>
             : <button className="button book" type="button" onClick={() => setPage("Launch Booking")}>Start booking</button>}
         </form>
+        {selectedHomeSite && <p className="home-route-summary" aria-live="polite"><strong>{selectedHomeSite.title}</strong> · {homeType === "Wraparound" ? "Term-time care" : "Holiday clubs"}. Your school will stay selected when you sign in. Choose your sessions and dates in your family account.</p>}
       </section>
       <section className="club-tabs">
         {homeServices.map(({ title, text, detail, target, image, imagePosition, action, Icon }) => (

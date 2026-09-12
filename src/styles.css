@@ -49775,6 +49775,19 @@ th {
   .compliance-save-bar { align-items: stretch; flex-direction: column; }
 }
 /* Public discovery and collection points. */
+#find-your-club { scroll-margin-top: 120px; }
+.route-picker label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: .85rem; font-weight: 700; }
+.route-picker label select { width: 100%; min-height: 48px; }
+.club-finder .route-picker { align-items: end; }
+.club-finder .home-route-summary { grid-column: 1 / -1; margin: 0; font-size: .9rem; line-height: 1.5; }
+@media(max-width:760px) {
+  .home-discovery-hero .hero-media { min-height: 0; padding: 28px 18px 36px; }
+  .home-discovery-hero h1 { font-size: clamp(1.75rem, 7vw, 2.2rem); }
+  .home-discovery-hero .hero-highlights { display: none; }
+  .home-discovery-hero .hero-actions { gap: 8px; }
+  #find-your-club { margin-top: 0; }
+  .club-finder .home-route-summary { margin-top: 4px; }
+}
 .booking-inline-notice { display:flex; align-items:center; gap:16px; padding:12px max(4vw,16px); background:#f5f6ff; color:#26355e; }
 .booking-inline-notice p { margin:0; flex:1; }
 .booking-inline-notice a { font-weight:700; }
