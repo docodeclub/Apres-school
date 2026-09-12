@@ -49774,3 +49774,15 @@ th {
   .admin-compliance-shell .onboarding-review-list { grid-template-columns: 1fr; }
   .compliance-save-bar { align-items: stretch; flex-direction: column; }
 }
+/* Public discovery and collection points. */
+.booking-inline-notice { display:flex; align-items:center; gap:16px; padding:12px max(4vw,16px); background:#f5f6ff; color:#26355e; }
+.booking-inline-notice p { margin:0; flex:1; }
+.booking-inline-notice a { font-weight:700; }
+.booking-inline-notice button { background:transparent; border:0; min-width:44px; min-height:44px; font-size:24px; }
+#camp-venues, .school-enquiry, .contact-form, .public-practical-info article, #privacy-information, #cookie-information { scroll-margin-top:130px; }
+.public-practical-info { margin:28px 0; padding:24px; border:1px solid #dde2fa; border-radius:20px; background:#fff; }
+.public-practical-info details { padding:14px 0; border-bottom:1px solid #e4e7f5; }
+.public-practical-info summary, .camp-site-schedule summary { cursor:pointer; font-weight:700; padding:8px 0; }
+.public-practical-info a { text-decoration:underline; }
+.camp-site-schedule .camp-week-list { max-height:none; overflow:visible; }
+@media(max-width:760px) { .booking-inline-notice { flex-wrap:wrap; gap:8px; } .booking-inline-notice p { flex-basis:80%; } .public-practical-info { padding:16px; } }
