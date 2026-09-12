@@ -6,7 +6,7 @@ const facts = (ageEligibility) => ({ ageEligibility, arrival: signage, collectio
 const receptionToYearSix = "Reception (age 4) to Year 6 (age 11).";
 export const approvedPublicServiceFacts = {
   "Willington Prep": facts("Ages 3–11."),
-  "Holiday Camp at Willington Prep": facts("Ages 4–11."),
+  "Holiday Camp at Willington Prep": facts("Nursery to Year 6."),
   "Ripley Court School": facts("Ages 3–11."),
   "Holiday Camp at Ripley Court School": facts("Ages 4–11."),
   "King's House School": facts(receptionToYearSix),

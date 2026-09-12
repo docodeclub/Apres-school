@@ -49775,6 +49775,12 @@ th {
   .compliance-save-bar { align-items: stretch; flex-direction: column; }
 }
 /* Public discovery and collection points. */
+.camp-venue-picker { margin: 20px 0; padding: 20px; border: 1px solid #dde2fa; border-radius: 18px; background: #f5f6ff; }
+.camp-venue-picker label { display: block; margin-bottom: 8px; font-weight: 700; }
+.camp-venue-picker select { width: 100%; max-width: 560px; min-height: 48px; }
+.camp-venue-picker p { margin: 10px 0; }
+.camp-venue-picker a { text-decoration: underline; }
+#camp-practical-info { scroll-margin-top: 120px; }
 #find-your-club { scroll-margin-top: 120px; }
 .route-picker label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: .85rem; font-weight: 700; }
 .route-picker label select { width: 100%; min-height: 48px; }

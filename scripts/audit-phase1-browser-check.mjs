@@ -49,6 +49,20 @@ try {
     assert.ok(await page.locator("#camp-venues").evaluate(el => el.getBoundingClientRect().top >= 0));
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Camp overflow at ${width}`);
     await page.screenshot({ path: `output/audit-phase1/camps-${width}.png`, fullPage: true });
+    const allHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+    await page.getByLabel("Choose your camp venue", { exact: true }).selectOption("Holiday Camp at Willington Prep");
+    assert.equal(await page.locator(".camp-site-card").count(), 1);
+    assert.ok((await page.locator(".camp-site-card").innerText()).includes("Nursery to Year 6"));
+    assert.ok(!(await page.locator(".camp-site-card").innerText()).includes("Ages 4–11"));
+    assert.ok(await page.evaluate(() => document.documentElement.scrollHeight) < allHeight);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    for (const title of ["Holiday Camp at King's House School", "Holiday Camp at Ripley Court School", "Holiday Camp at The Rowans School", "Holiday Camp at Shrewsbury House School"]) {
+      await page.getByLabel("Choose your camp venue", { exact: true }).selectOption(title);
+      assert.equal(await page.locator(".camp-site-card").count(), 1);
+      assert.equal(await page.locator(".camp-site-card h3").innerText(), title);
+    }
+    await page.getByLabel("Choose your camp venue", { exact: true }).selectOption("");
+    assert.equal(await page.locator(".camp-site-card").count(), 5);
     await page.goto(`${base}/wraparound`);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Wraparound overflow at ${width}`);
     await page.screenshot({ path: `output/audit-phase1/wraparound-${width}.png`, fullPage: true });

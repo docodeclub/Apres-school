@@ -789,7 +789,7 @@ const bookingSites = [
     image: APRES_IMG.willingtonTile,
     imagePosition: "center",
     schedule: "Holiday enrichment dates published by programme.",
-    ages: "Primary-age children.",
+    ages: "Nursery to Year 6.",
     bookingNote: "Sign in to your family account, then choose the camp and dates you need.",
     beforeBooking: "Willington Prep will already be selected when the booking journey opens.",
   },
@@ -2011,6 +2011,7 @@ function Notice({ title, text }) {
 }
 
 function HolidayClubs({ setPage }) {
+  const [selectedCampVenue, setSelectedCampVenue] = useState("");
   const [campSchedule, setCampSchedule] = useState([]);
   const [campScheduleState, setCampScheduleState] = useState(hasSupabaseConfig ? "loading" : "unavailable");
   const holidaySites = bookingSites
@@ -2090,7 +2091,7 @@ function HolidayClubs({ setPage }) {
             During the school holidays, children can move, make, reset and belong through themed activities run by friendly staff at familiar school sites.
           </p>
           <div className="camp-hero-pills">
-            <span>Primary-age children</span>
+            <span>Check venue age ranges</span>
             <span>Five venues</span>
             <span>Simple online booking</span>
           </div>
@@ -2118,8 +2119,17 @@ function HolidayClubs({ setPage }) {
             <p>Review availability, pricing and booking details before confirming.</p>
           </article>
         </div>
+        <div className="camp-venue-picker">
+          <label htmlFor="camp-venue-choice">Choose your camp venue</label>
+          <select id="camp-venue-choice" value={selectedCampVenue} onChange={(event) => setSelectedCampVenue(event.target.value)}>
+            <option value="">All five venues</option>
+            {holidaySites.map((site) => <option key={site.title} value={site.title}>{holidayVenueName(site.title)}</option>)}
+          </select>
+          <p role="status">{selectedCampVenue ? `Showing ${holidayVenueName(selectedCampVenue)}. Choose All five venues to compare.` : "Choose a venue to see just its dates, prices and booking button."}</p>
+          <a href="#camp-practical-info">Food, what to bring and practical information</a>
+        </div>
         <div className="camp-site-grid">
-          {holidaySites.map((site) => {
+          {holidaySites.filter((site) => !selectedCampVenue || site.title === selectedCampVenue).map((site) => {
             const liveBlocks = scheduleForSite(site).filter((row) => row.sessionDate >= new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" })).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
             const liveDates = liveBlocks.filter((row) => row.blockLabel === "Holiday Camp");
             const campWeeks = campWeekRanges(liveDates);
@@ -2160,7 +2170,7 @@ function HolidayClubs({ setPage }) {
                     </div>
                     {campWeeks.length > 1 && <details><summary>Later holidays ({campWeeks.length - 1})</summary>{campWeeks.slice(1).map((week) => <div className="camp-week-row" key={week.firstDate}><span>{week.name}</span><strong>{formatCampRange(week)}</strong></div>)}</details>}
                     <small>{formatCampTime(firstDate.startsAt)}–{formatCampTime(firstDate.endsAt)} · £{firstDate.price.toFixed(2)} per day · Book the full week and save 10%.</small>
-                    {firstDate.ageRange && <small>Eligibility: {firstDate.ageRange}</small>}
+                    {!publicServiceFacts(site.title).ageEligibility && firstDate.ageRange && <small>Eligibility: {firstDate.ageRange}</small>}
                     {[4, 5].map(days => { const price = Number(firstDate.pricing?.[`fullWeek${days}Price`]); return Number.isFinite(price) && price > 0 ? <small key={days}>{days}-day full week: £{price.toFixed(2)}</small> : null; })}
                     {earlyDropOff && <small>Early Drop-Off {formatCampTime(earlyDropOff.startsAt)}–{formatCampTime(earlyDropOff.endsAt)} · +£{earlyDropOff.price.toFixed(2)} per day</small>}
                   </>}
