@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { bookedSessionValue, bookingItemValue } from "./bookingLab/sessionValue.js";
+import { bookedSessionValue, bookingItemValue, sessionPaymentLabel } from "./bookingLab/sessionValue.js";
 import {
   defaultFamilyAccounts,
   defaultLabRules,
@@ -23960,7 +23960,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                                 </div>
                                 <div>
                                   <span>Payment</span>
-                                  <strong>{invoiceRow?.status || parentSafeStatusLabel(row.draft.status)}</strong>
+                                  <strong>{sessionPaymentLabel(row, invoiceRow, parentSafeStatusLabel(row.draft.status))}</strong>
                                   <small>{money(row.cancelledSession && row.actualCreditAmount > 0 ? row.actualCreditAmount : row.creditAmount)} session value</small>
                                 </div>
                                 <div className="lab-parent-calendar-actions">
@@ -24022,7 +24022,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
                         <small>{sessionDetail || row.row.time || "Session time saved"}</small>
                       </div>
                       <div role="cell" data-label="Payment">
-                        <strong>{invoiceRow?.status || parentSafeStatusLabel(row.draft.status)}</strong>
+                        <strong>{sessionPaymentLabel(row, invoiceRow, parentSafeStatusLabel(row.draft.status))}</strong>
                         <small>{row.draft.paymentLabel || row.draft.paymentMethod || "Payment route saved"}</small>
                       </div>
                       <div role="cell" data-label={row.cancelledSession && row.cancellationOutcome === "credit" ? "Credit" : "Amount"}>
