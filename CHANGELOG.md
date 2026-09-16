@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-16 - Independent sibling session cancellations
+
+- Include the child in saved session identities so cancelling one sibling does not hide or block another sibling on the same day.
+- Recover active live booking items omitted by older browser drafts and match older cancellation history using its recorded child.
+- Preserve the existing 24-hour cancellation checks and server-side ownership rules.
+
 ## 2026-08-27 - Application-led employee onboarding
 
 - Added an Admin onboarding wizard directly to each protected staff application for candidates who have already accepted the role and signed their contract.

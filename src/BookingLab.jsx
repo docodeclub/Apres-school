@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { bookedSessionValue, bookingItemValue, sessionPaymentLabel } from "./bookingLab/sessionValue.js";
+import { bookingBlockIdentity, cancellationMatchesBlock } from "./bookingLab/sessionIdentity.js";
 import {
   defaultFamilyAccounts,
   defaultLabRules,
@@ -1203,12 +1204,6 @@ function bookingRowStart(row) {
   const match = String(timeText).match(/(\d{1,2}):(\d{2})/);
   if (match) day.setHours(Number(match[1]), Number(match[2]), 0, 0);
   return day;
-}
-
-function bookingBlockIdentity(block) {
-  return [block?.label, block?.start, block?.end]
-    .map((value) => String(value || "").trim().toLowerCase())
-    .join("|");
 }
 
 function activeBookingItemStatus(status) {
@@ -4472,7 +4467,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       const cancellationPolicy = individualSessionCancellationPolicy(start, rules.cancellationHours);
       const cancelledSession = (draft.cancelledSessions || []).find((item) => (
         item.day === row.day
-        && (item.sessionKey ? item.sessionKey === sessionKey : (item.blocks || []).some((savedBlock) => bookingBlockIdentity(savedBlock) === sessionKey))
+        && cancellationMatchesBlock(item, block)
       ));
       const childMultiplier = Math.max(1, Number(draft.childCount || draft.children?.length || 1));
       const rowDate = labDayIso(row.day);
@@ -4557,9 +4552,9 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         .flatMap((item) => {
           const cancelledBlocks = item.blocks?.length ? item.blocks : [{ label: "Cancelled session", start: "", end: "", price: Number(item.amount || 0) }];
           return cancelledBlocks
-            .filter((block) => !activeSessionSet.has(`${item.day}::${item.sessionKey || bookingBlockIdentity(block)}`))
+            .filter((block) => !activeSessionSet.has(`${item.day}::${bookingBlockIdentity(block)}`))
             .map((block, blockIndex) => ({
-          id: `${draft.id}::cancelled::${safeDomId(item.day)}::${safeDomId(item.sessionKey || bookingBlockIdentity(block) || blockIndex)}`,
+          id: `${draft.id}::cancelled::${safeDomId(item.day)}::${safeDomId(bookingBlockIdentity(block) || blockIndex)}`,
           draft,
           draftId: draft.id,
           day: item.day,
@@ -4600,9 +4595,8 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       return [...activeRows, ...cancelledRows];
     })
     .sort((a, b) => (a.start?.getTime() || 0) - (b.start?.getTime() || 0));
-  const draftLiveBookingIds = new Set(draftParentBookedSessionRows.map((row) => String(row.liveBookingId || "")).filter(Boolean));
+  const representedLiveItemIds = new Set(draftParentBookedSessionRows.flatMap((row) => row.liveItemIds || []).map(String));
   const liveOnlyBookedSessionRows = (liveParentLedger.bookings || [])
-    .filter((booking) => !draftLiveBookingIds.has(String(booking.id || "")))
     .filter((booking) => !["cancelled", "draft", "waitlist"].includes(String(booking.status || "").toLowerCase()))
     .flatMap((booking) => {
       const invoice = liveInvoiceByBookingId.get(String(booking.id || ""))
@@ -4616,6 +4610,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
       );
       return (booking.items || [])
         .filter((item) => activeBookingItemStatus(item.status))
+        .filter((item) => !representedLiveItemIds.has(String(item.id)))
         .map((item) => {
           const startsAt = new Date(item.startsAt || item.starts_at || 0);
           const endsAt = new Date(item.endsAt || item.ends_at || 0);
@@ -14966,7 +14961,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
   async function cancelParentBookedSession(draftId, day, selectedRow = null) {
     const storedDraft = drafts.find((item) => item.id === draftId);
     const sessionRow = selectedRow || parentBookedSessionRows.find((row) => row.draftId === draftId && row.day === day && row.status !== "Cancelled");
-    const draft = storedDraft || sessionRow?.draft;
+    const draft = sessionRow?.draft || storedDraft;
     if (!draft) return;
     const dayRow = sessionRow?.row || (storedDraft
       ? bookingBlockRows(storedDraft).find((row) => row.day === day)
@@ -14984,7 +14979,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
     const selectedSessionKey = sessionRow?.sessionKey || bookingBlockIdentity(dayRow.blocks?.[0]);
     if ((draft.cancelledSessions || []).some((item) => (
       item.day === day
-      && (item.sessionKey ? item.sessionKey === selectedSessionKey : (item.blocks || []).some((block) => bookingBlockIdentity(block) === selectedSessionKey))
+      && cancellationMatchesBlock(item, dayRow.blocks?.[0])
     ))) {
       setStatus("That session has already been cancelled.");
       return;
@@ -15006,7 +15001,7 @@ export default function BookingLab({ setPage, mode = "lab" }) {
         setStatus(`Session cancellation failed: ${error instanceof Error ? error.message : "Unable to update the live booking."}`);
         return;
       }
-      if (!storedDraft) {
+      if (!storedDraft || draft !== storedDraft) {
         const removedValue = Math.max(0, Number(backendAmendment?.removedTotal || 0));
         await refreshLiveParentLedger({ quiet: true });
         setSelectedParentBookingId(draft.id);

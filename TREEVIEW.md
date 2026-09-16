@@ -1,5 +1,7 @@
 # Project Tree View
 
+`src/bookingLab/sessionIdentity.js` defines child-specific session identities for cancellation history; `scripts/session-identity-check.mjs` covers sibling and older-draft regressions.
+
 The maintained repository tree and system explanation are in [ARCHITECTURE.md](ARCHITECTURE.md#project-tree).
 
 `ARCHITECTURE.md` is the source of truth so structural changes only need to be documented in one place.

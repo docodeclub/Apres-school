@@ -94,6 +94,7 @@ Key principles:
 
 - Parent, employee, safeguarding and finance records are protected by role-aware RLS and server-side checks.
 - Booking prices are frozen on booking lines for audit and invoicing.
+- Session cancellation identities include the child; sibling sessions remain independent and the 24-hour notice rule still applies. Run `node scripts/session-identity-check.mjs` for the regression checks.
 - Sensitive operations use Edge Functions or server API routes rather than trusting browser input.
 - Public enquiries are accepted atomically with a short idempotency window; provider notification outcomes remain admin-only evidence.
 - Production secrets stay in Vercel or Supabase environment settings—not the repository.
